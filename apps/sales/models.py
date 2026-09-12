@@ -113,7 +113,10 @@ class Sale(BusinessOwnedModel):
     transaction_type = models.CharField(max_length=10, choices=TRANSACTION_CHOICES, default="paid", help_text="Payment state. Physical-store unpaid sales are non-cash issues; customer-order sales are receivables until Finance records payment.")
     unpaid_description = models.CharField(max_length=255, blank=True, default="", help_text="Reason for physical-store unpaid issue, or receivable note for customer orders.")
     account = models.ForeignKey("core.CashAccount", null=True, blank=True, on_delete=models.PROTECT, related_name="sales")
-    payment_method = models.CharField(max_length=10, choices=PAYMENT_CHOICES, default="Cash")
+    payment_method = models.CharField(
+        max_length=10, choices=PAYMENT_CHOICES, default="Cash", blank=True,
+        help_text="Payment method actually received. May be blank while a sale remains an unpaid receivable.",
+    )
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default="walkin")
     linked_order = models.ForeignKey(
         "production.Order", null=True, blank=True, on_delete=models.SET_NULL,
@@ -130,6 +133,11 @@ class Sale(BusinessOwnedModel):
 
     class Meta:
         ordering = ["-date", "-id"]
+
+    def clean(self):
+        super().clean()
+        if self.transaction_type == "paid" and not (self.payment_method or "").strip():
+            raise ValidationError({"payment_method": "Select the payment method received for a paid sale."})
 
     def __str__(self):
         return f"Sale #{self.id} — {self.customer}"

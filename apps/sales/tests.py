@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from core.models import Business, CashAccount
@@ -81,3 +82,34 @@ class RestaurantSaleFormTests(TestCase):
         form = SaleForm(business=bakery)
         self.assertNotIn("service_mode", form.fields)
         self.assertNotIn("table_reference", form.fields)
+
+
+class SalePaymentMethodValidationTests(TestCase):
+    def setUp(self):
+        self.business = Business.objects.create(name="Receivable Business", slug="receivable-business")
+
+    def test_unpaid_receivable_may_have_no_payment_method_yet(self):
+        sale = Sale(
+            business=self.business,
+            date="2026-09-02",
+            customer="Credit Customer",
+            transaction_type="unpaid",
+            unpaid_description="Customer receivable — payment to be recorded through Finance.",
+            payment_method="",
+            account=None,
+            source="distribution_order",
+        )
+        sale.full_clean()
+
+    def test_paid_sale_still_requires_payment_method(self):
+        sale = Sale(
+            business=self.business,
+            date="2026-09-02",
+            customer="Paid Customer",
+            transaction_type="paid",
+            payment_method="",
+            source="walkin",
+        )
+        with self.assertRaises(ValidationError) as exc:
+            sale.full_clean()
+        self.assertIn("payment_method", exc.exception.message_dict)
