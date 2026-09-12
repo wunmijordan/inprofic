@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
+from django.utils import timezone
 from django.utils.text import slugify
 from core.models import Business
 from .forms import BusinessSignupForm, UserForm, PermissionMatrixForm, RoleForm, RolePermissionForm
@@ -533,7 +534,6 @@ def founder_subscriptions(request):
             # Keep configurable base pricing from making an already scheduled
             # fixed-amount promotion impossible to pay. One bounded query checks
             # all still-relevant promotions before the atomic price update.
-            from django.utils import timezone
             fixed_promos = {}
             for promo in SubscriptionPromotion.objects.filter(
                 plan_id__in=[plan.pk for plan, *_ in parsed],
