@@ -232,7 +232,7 @@ def _dependency_order(selected):
 def _required_missing_fields(model, source_columns):
     missing = []
     for field in model._meta.concrete_fields:
-        if field.primary_key or field.auto_created or field.auto_now or field.auto_now_add:
+        if field.primary_key or field.auto_created or getattr(field, "auto_now", False) or getattr(field, "auto_now_add", False):
             continue
         if isinstance(field, (models.FileField, models.ImageField)):
             continue
@@ -289,7 +289,7 @@ def _build_source_infos(db: LegacySQLite, source_business_id):
             for row in sample_rows:
                 for field in model._meta.concrete_fields:
                     if (
-                        field.primary_key or field.auto_created or field.auto_now or field.auto_now_add
+                        field.primary_key or field.auto_created or getattr(field, "auto_now", False) or getattr(field, "auto_now_add", False)
                         or field.is_relation or isinstance(field, (models.FileField, models.ImageField))
                         or field.column not in columns
                     ):
@@ -680,7 +680,7 @@ def _transform_row(model, row, *, target_business, mappings, user_map, role_map,
     kwargs = {}
     deferred = []
     for field in model._meta.concrete_fields:
-        if field.primary_key or field.auto_created or field.auto_now or field.auto_now_add:
+        if field.primary_key or field.auto_created or getattr(field, "auto_now", False) or getattr(field, "auto_now_add", False):
             continue
         if isinstance(field, (models.FileField, models.ImageField)):
             continue
@@ -1001,7 +1001,7 @@ def _fixture_required_missing_fields(model, records):
     available = set().union(*(set(record["fields"]) for record in records))
     missing = []
     for field in model._meta.concrete_fields:
-        if field.primary_key or field.auto_created or field.auto_now or field.auto_now_add:
+        if field.primary_key or field.auto_created or getattr(field, "auto_now", False) or getattr(field, "auto_now_add", False):
             continue
         if isinstance(field, (models.FileField, models.ImageField)):
             continue
@@ -1141,7 +1141,7 @@ def analyze_legacy_fixture(uploaded_file, target_business, source_business_id=No
             for record in records:
                 for field in model._meta.concrete_fields:
                     if (
-                        field.primary_key or field.auto_created or field.auto_now or field.auto_now_add
+                        field.primary_key or field.auto_created or getattr(field, "auto_now", False) or getattr(field, "auto_now_add", False)
                         or field.is_relation or isinstance(field, (models.FileField, models.ImageField))
                         or field.name not in record["fields"]
                     ):
@@ -1316,7 +1316,7 @@ def _transform_fixture_record(model, record, *, target_business, mappings, custo
     from sales.models import Customer
     from inventory.models import InventoryLocation
     for field in model._meta.concrete_fields:
-        if field.primary_key or field.auto_created or field.auto_now or field.auto_now_add:
+        if field.primary_key or field.auto_created or getattr(field, "auto_now", False) or getattr(field, "auto_now_add", False):
             continue
         if isinstance(field, (models.FileField, models.ImageField)):
             continue
