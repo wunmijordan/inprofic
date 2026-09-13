@@ -116,6 +116,8 @@ def user_form(request, pk=None):
         )
         if pk else None
     )
+    if membership and not membership.role.visible_to_admin and not request.user.is_superuser:
+        return render(request, "403.html", status=403)
     obj = membership.user if membership else None
     if request.method == "POST":
         form = UserForm(request.POST, instance=obj, business=request.business, actor=request.user, membership=membership)
@@ -141,6 +143,8 @@ def user_permissions(request, pk):
     if not can_manage(request):
         return render(request, "403.html", status=403)
     membership = get_object_or_404(UserBusiness.objects.select_related("user", "role"), pk=pk, business=request.business)
+    if membership.role.key == CustomUser.ROLE_LIVE_TESTER:
+        return render(request, "403.html", {"live_tester_policy_fixed": True}, status=403)
     if request.method == "POST":
         form = PermissionMatrixForm(request.POST, membership=membership)
         if form.is_valid():
@@ -170,6 +174,8 @@ def role_form(request, pk=None):
     if not can_manage_roles(request):
         return render(request, "403.html", status=403)
     obj = get_object_or_404(Role, pk=pk, business=request.business) if pk else None
+    if obj and obj.key == CustomUser.ROLE_LIVE_TESTER:
+        return render(request, "403.html", {"live_tester_policy_fixed": True}, status=403)
     if obj and obj.is_system and request.user.is_superuser is False and obj.key in (CustomUser.ROLE_BUSINESS_ADMIN, CustomUser.ROLE_SUPERUSER):
         return render(request, "403.html", status=403)
     # A role the superuser hid from admins (e.g. a demo/review role) is off
@@ -204,6 +210,8 @@ def role_permissions(request, pk):
     if not can_manage_roles(request):
         return render(request, "403.html", status=403)
     role = get_object_or_404(Role, pk=pk, business=request.business)
+    if role.key == CustomUser.ROLE_LIVE_TESTER:
+        return render(request, "403.html", {"live_tester_policy_fixed": True}, status=403)
     if not role.visible_to_admin and not request.user.is_superuser:
         return render(request, "403.html", status=403)
     if request.method == "POST":

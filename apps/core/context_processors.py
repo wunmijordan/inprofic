@@ -1,5 +1,5 @@
 from accounts.models import RoleModulePermission, UserBusiness
-from accounts.services import business_subscription_for, can_use_commerce_storefront, is_business_admin, user_has_permission
+from accounts.services import business_subscription_for, can_use_commerce_storefront, is_business_admin, is_live_tester, user_has_permission
 from accounts.subscription_services import business_has_feature
 from django.utils.functional import SimpleLazyObject
 from .context import get_request_cache
@@ -41,6 +41,7 @@ def business(request):
         "available_businesses": available_businesses,
         "can_manage_business": can_manage_business,
         "can_use_storefront_pos": bool(biz and getattr(request.user, "is_authenticated", False) and can_use_commerce_storefront(request.user, biz)),
+        "is_live_tester": bool(biz and getattr(request.user, "is_authenticated", False) and is_live_tester(request.user, biz)),
         "vertical_ui": vertical_config(biz),
         "subscription": subscription,
         # Only the reports page consumes this flag. Keep it lazy so ordinary

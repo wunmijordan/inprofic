@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Q
 from .models import (
     BusinessModuleAccess,
     BusinessSubscription,
@@ -32,6 +33,14 @@ ROLE_DEFAULTS = {
         "finance": (True, True), "reports": (True, True), "users": (True, False), "commerce": (False, False),
     },
     CustomUser.ROLE_BUSINESS_ADMIN: {m: (True, True) for m, _ in RoleModulePermission.MODULE_CHOICES},
+    # Demo can open normal operational add/edit workflows so the live UI can be
+    # exercised, but mutation is blocked centrally by middleware. The historical
+    # internal key remains ``live_tester`` so existing assignments stay valid.
+    # User administration remains out of scope to avoid exposing access-control data.
+    CustomUser.ROLE_LIVE_TESTER: {
+        m: ((False, False) if m == "users" else (True, True))
+        for m, _ in RoleModulePermission.MODULE_CHOICES
+    },
     CustomUser.ROLE_SUPERUSER: {m: (True, True) for m, _ in RoleModulePermission.MODULE_CHOICES},
 }
 
@@ -119,9 +128,48 @@ def seed_business_roles(business):
     """
     definitions = dict(CustomUser.SYSTEM_ROLE_DEFINITIONS)
     system_keys = tuple(definitions)
+    hidden_system_keys = {CustomUser.ROLE_SUPERUSER, CustomUser.ROLE_LIVE_TESTER}
 
-    role_rows = list(Role.objects.filter(business=business, key__in=system_keys))
-    roles = {role.key: role for role in role_rows}
+    # Demo used to be described generically as a hidden custom review role. Adopt
+    # any existing ``Demo``/``demo`` role instead of creating a second role, and
+    # keep ``live_tester`` as the canonical key so already-assigned tester users
+    # are not broken by the user-facing rename. This stays in the same bounded
+    # role query used by the normal seeding path.
+    role_rows = list(
+        Role.objects.filter(business=business)
+        .filter(Q(key__in=system_keys) | Q(key="demo") | Q(name__iexact="Demo"))
+        .order_by("pk")
+    )
+    roles = {role.key: role for role in role_rows if role.key in system_keys}
+    canonical_demo = roles.get(CustomUser.ROLE_LIVE_TESTER)
+    legacy_demo_roles = [
+        role for role in role_rows
+        if role.pk != getattr(canonical_demo, "pk", None)
+        and (role.key == "demo" or role.name.strip().casefold() == "demo")
+    ]
+    if not canonical_demo and legacy_demo_roles:
+        # Prefer the row already named Demo so adopting it cannot collide with
+        # another role's unique business/name constraint during the rename.
+        legacy_demo_roles.sort(key=lambda role: (role.name.strip().casefold() != "demo", role.pk))
+        canonical_demo = legacy_demo_roles.pop(0)
+        with transaction.atomic():
+            canonical_demo.key = CustomUser.ROLE_LIVE_TESTER
+            canonical_demo.name = definitions[CustomUser.ROLE_LIVE_TESTER]
+            canonical_demo.is_system = True
+            canonical_demo.visible_to_admin = False
+            canonical_demo.active = True
+            canonical_demo.save(update_fields=["key", "name", "is_system", "visible_to_admin", "active"])
+        roles[CustomUser.ROLE_LIVE_TESTER] = canonical_demo
+
+    if canonical_demo and legacy_demo_roles:
+        # If both names already exist (for example after an earlier Live Tester
+        # deploy), merge old Demo memberships into the canonical fixed policy,
+        # then remove the duplicate role before claiming the Demo display name.
+        with transaction.atomic():
+            for legacy_role in legacy_demo_roles:
+                UserBusiness.objects.filter(role=legacy_role).update(role=canonical_demo)
+                legacy_role.delete()
+
     missing_keys = [key for key in system_keys if key not in roles]
     if missing_keys:
         # Missing system roles are exceptional. Use the original get-or-create
@@ -134,22 +182,30 @@ def seed_business_roles(business):
                     defaults={
                         "name": definitions[key],
                         "is_system": True,
-                        "visible_to_admin": key != CustomUser.ROLE_SUPERUSER,
+                        "visible_to_admin": key not in hidden_system_keys,
                     },
                 )
                 roles[key] = role
 
-    # Preserve business-renamed system-role labels. Only repair the invariant
-    # flags that the old implementation also forced on every call.
+    # Preserve business-renamed ordinary system-role labels. Demo is different:
+    # it is a fixed global testing policy, so its display name and hidden status
+    # are invariants just like the Superuser role's hidden status.
     roles_to_update = []
     for key, role in roles.items():
         changed = False
         if not role.is_system:
             role.is_system = True
             changed = True
-        if key == CustomUser.ROLE_SUPERUSER and role.visible_to_admin:
+        if key in hidden_system_keys and role.visible_to_admin:
             role.visible_to_admin = False
             changed = True
+        if key == CustomUser.ROLE_LIVE_TESTER:
+            if role.name != definitions[key]:
+                role.name = definitions[key]
+                changed = True
+            if not role.active:
+                role.active = True
+                changed = True
         if changed:
             roles_to_update.append(role)
     role_ids = [role.pk for role in roles.values()]
@@ -178,7 +234,7 @@ def seed_business_roles(business):
     if roles_to_update or missing_permissions:
         with transaction.atomic():
             if roles_to_update:
-                Role.objects.bulk_update(roles_to_update, ["is_system", "visible_to_admin"])
+                Role.objects.bulk_update(roles_to_update, ["name", "is_system", "visible_to_admin", "active"])
             if missing_permissions:
                 RoleModulePermission.objects.bulk_create(missing_permissions, ignore_conflicts=True)
 
@@ -246,6 +302,11 @@ def user_has_permission(user, business, module, action="view"):
     membership, user_permissions, role_permissions = _permission_snapshot(user, business)
     if not membership:
         return False
+    # This role intentionally gets edit-level *navigation* permission so Add/Edit
+    # links and GET forms remain testable. Unsafe HTTP methods are independently
+    # blocked before views execute; do not turn this into ordinary write access.
+    if membership.role.key == CustomUser.ROLE_LIVE_TESTER:
+        return module != "users"
     perm = user_permissions.get(module)
     if not perm:
         role_perm = role_permissions.get(module)
@@ -261,6 +322,14 @@ def user_has_permission(user, business, module, action="view"):
 
 
 
+def is_live_tester(user, business):
+    """Return whether the current tenant membership is the server-enforced read-only Demo role."""
+    if not getattr(user, "is_authenticated", False) or not business or getattr(user, "is_superuser", False):
+        return False
+    membership, _user_permissions, _role_permissions = _permission_snapshot(user, business)
+    return bool(membership and membership.role.key == CustomUser.ROLE_LIVE_TESTER)
+
+
 def can_use_commerce_storefront(user, business):
     """Supplemental in-premise storefront/POS capability with the tenant commerce entitlement as a hard ceiling."""
     if not getattr(user, "is_authenticated", False) or not business:
@@ -272,7 +341,10 @@ def can_use_commerce_storefront(user, business):
     membership, _user_permissions, _role_permissions = _permission_snapshot(user, business)
     if not membership:
         return False
-    return bool(membership.commerce_storefront_access or membership.role.key == CustomUser.ROLE_BUSINESS_ADMIN)
+    return bool(
+        membership.commerce_storefront_access
+        or membership.role.key in {CustomUser.ROLE_BUSINESS_ADMIN, CustomUser.ROLE_LIVE_TESTER}
+    )
 
 def is_business_admin(user, business):
     if getattr(user, "is_superuser", False):

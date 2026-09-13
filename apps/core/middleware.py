@@ -3,12 +3,13 @@ from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib.auth import logout as auth_logout
-from django.shortcuts import redirect
+from django.http import JsonResponse
+from django.shortcuts import redirect, render
 from django.urls import reverse
 
 from .models import Business
 from .context import begin_request_cache, end_request_cache, get_request_cache, set_current_business
-from accounts.services import user_has_permission
+from accounts.services import is_live_tester, user_has_permission
 
 
 class BusinessMiddleware:
@@ -116,6 +117,23 @@ class BusinessMiddleware:
         return business
 
 
+
+LIVE_TESTER_ALLOWED_MUTATION_PATHS = (
+    "/accounts/logout/",
+    "/business/switch/",
+)
+LIVE_TESTER_UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def _live_tester_mutation_blocked(request):
+    if request.method not in LIVE_TESTER_UNSAFE_METHODS:
+        return False
+    if any(request.path.startswith(prefix) for prefix in LIVE_TESTER_ALLOWED_MUTATION_PATHS):
+        return False
+    business = getattr(request, "business", None)
+    return bool(business and is_live_tester(request.user, business))
+
+
 EXEMPT_PREFIXES = (
     "/accounts/login", "/accounts/logout", "/accounts/signup",
     "/business/settings", "/business/switch", "/admin", "/static", "/media/", "/shop/",
@@ -175,6 +193,16 @@ class LoginRequiredMiddleware:
             )
             if last_activity_at is None or now - last_activity_at >= min(write_interval, idle_limit):
                 request.session["storetrack_last_activity"] = now
+        if request.user.is_authenticated and _live_tester_mutation_blocked(request):
+            detail = "Demo is read-only. This action was not saved."
+            wants_json = (
+                request.path.startswith("/api/")
+                or "application/json" in (request.headers.get("Accept") or "")
+                or (request.headers.get("Content-Type") or "").startswith("application/json")
+            )
+            if wants_json:
+                return JsonResponse({"detail": detail, "read_only": True}, status=403)
+            return render(request, "403.html", {"live_tester_blocked": True}, status=403)
         if request.user.is_authenticated and not path_is_public:
             if any(request.path.startswith(prefix) for prefix in SUBSCRIPTION_RECOVERY_PREFIXES):
                 return self.get_response(request)

@@ -72,6 +72,8 @@
 </head>
 <body class="min-h-screen flex" style="--tenant-background: {{ biz.background_color|default:'#050733' }}; --tenant-background-contrast: {{ biz.background_text_color|default:'#FFFFFF' }}; --tenant-button: {{ biz.accent_color|default:'#D14900' }}; --tenant-button-contrast: {{ biz.button_text_color|default:'#FFFFFF' }}">
 
+  {% if is_live_tester %}<div class="fixed right-3 top-3 z-[120] rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-900 shadow-lg" title="Demo access can browse and open forms, but cannot save changes.">Demo · read only</div>{% endif %}
+
   {% if user.is_authenticated %}
   <aside class="desktop-sidebar tenant-sidebar hidden md:flex flex-col">
     <div class="shrink-0 px-5 py-5 border-b border-white/10">
@@ -583,6 +585,31 @@
       totalForms.value = formCount + 1;
     }
   </script>
+
+  {% if is_live_tester %}
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const allowedPaths = new Set(['/accounts/logout/', '/business/switch/']);
+      document.querySelectorAll('form').forEach((form) => {
+        if ((form.getAttribute('method') || 'get').toLowerCase() !== 'post') return;
+        let path = '';
+        try { path = new URL(form.action || window.location.href, window.location.origin).pathname; } catch (_) {}
+        if (allowedPaths.has(path)) return;
+        form.dataset.liveTesterReadonly = 'true';
+        form.querySelectorAll('button:not([type]), button[type="submit"], input[type="submit"], input[type="image"]').forEach((control) => {
+          control.disabled = true;
+          control.setAttribute('aria-disabled', 'true');
+          control.title = 'Demo access is read-only — this action cannot be saved.';
+          control.classList.add('opacity-50', 'cursor-not-allowed');
+        });
+        form.addEventListener('submit', function (event) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+        }, true);
+      });
+    });
+  </script>
+  {% endif %}
   {% include "pwa/install_prompt.html" %}
 </body>
 </html>

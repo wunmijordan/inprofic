@@ -29,6 +29,8 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     ROLE_ACCOUNTANT = "accountant"
     ROLE_MD_DIRECTOR = "md_director"
     ROLE_BUSINESS_ADMIN = "business_admin"
+    # Backward-compatible internal key for the fixed, superuser-only Demo role.
+    ROLE_LIVE_TESTER = "live_tester"
     ROLE_SUPERUSER = "superuser"
     SYSTEM_ROLE_DEFINITIONS = (
         (ROLE_STOCK_KEEPER, "Stock Keeper"),
@@ -36,6 +38,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         (ROLE_ACCOUNTANT, "Accountant"),
         (ROLE_MD_DIRECTOR, "MD / Director"),
         (ROLE_BUSINESS_ADMIN, "Business Admin"),
+        (ROLE_LIVE_TESTER, "Demo"),
         (ROLE_SUPERUSER, "Superuser"),
     )
 

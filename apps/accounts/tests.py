@@ -14,7 +14,7 @@ from .models import (
     RoleModulePermission, SubscriptionPayment, SubscriptionPaymentSettings,
     SubscriptionPlanModule, SubscriptionPromotion, SubscriptionService, UserBusiness,
 )
-from .services import business_has_module, can_use_commerce_storefront, seed_business_roles, user_has_permission
+from .services import business_has_module, can_use_commerce_storefront, is_live_tester, seed_business_roles, user_has_permission
 from .subscription_services import (
     apply_subscription_entitlements,
     create_payment_request,
@@ -447,6 +447,92 @@ class SubscriptionEntitlementTests(TestCase):
         self.assertFalse(subscription.founder_lifetime)
         self.assertEqual(subscription.status, BusinessSubscription.STATUS_ACTIVE)
         self.assertEqual(subscription.plan, self.plans["production"])
+
+
+class LiveTesterRoleTests(TestCase):
+    def setUp(self):
+        self.business = Business.objects.create(name="Live Demo Bakery", slug="live-demo-bakery")
+        roles = seed_business_roles(self.business)
+        self.tester_role = roles[CustomUser.ROLE_LIVE_TESTER]
+        self.user = CustomUser.objects.create_user(
+            username="live.tester", password="safe-password-123", fullname="Live Tester"
+        )
+        UserBusiness.objects.create(
+            user=self.user, business=self.business, role=self.tester_role, active=True
+        )
+        self.client.force_login(self.user)
+
+    def test_live_tester_gets_operational_edit_navigation_but_not_user_admin(self):
+        self.assertTrue(is_live_tester(self.user, self.business))
+        self.assertTrue(user_has_permission(self.user, self.business, "inventory", "view"))
+        self.assertTrue(user_has_permission(self.user, self.business, "inventory", "edit"))
+        self.assertTrue(user_has_permission(self.user, self.business, "finance", "edit"))
+        self.assertFalse(user_has_permission(self.user, self.business, "users", "view"))
+        self.assertFalse(user_has_permission(self.user, self.business, "users", "edit"))
+
+    def test_live_tester_can_open_add_form_but_cannot_submit_business_changes(self):
+        from inventory.models import RawMaterial
+
+        response = self.client.get(reverse("raw_material_add"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Demo · read only")
+
+        response = self.client.post(reverse("raw_material_add"), {"name": "Must Not Persist"})
+        self.assertEqual(response.status_code, 403)
+        self.assertContains(response, "Demo access is read-only", status_code=403)
+        self.assertFalse(RawMaterial.raw_objects.filter(business=self.business, name="Must Not Persist").exists())
+
+    def test_live_tester_can_still_logout(self):
+        response = self.client.post(reverse("logout"))
+        self.assertEqual(response.status_code, 302)
+
+    def test_demo_role_is_hidden_from_business_admin_but_assignable_by_superuser(self):
+        self.assertEqual(self.tester_role.name, "Demo")
+        self.assertFalse(self.tester_role.visible_to_admin)
+
+        admin_role = Role.objects.get(business=self.business, key=CustomUser.ROLE_BUSINESS_ADMIN)
+        admin = CustomUser.objects.create_user(
+            username="business.admin.demo.visibility", password="safe-password-123", fullname="Business Admin"
+        )
+        UserBusiness.objects.create(user=admin, business=self.business, role=admin_role, active=True)
+
+        self.client.force_login(admin)
+        response = self.client.get(reverse("users_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Demo")
+        response = self.client.get(reverse("user_edit", args=[self.user.pk]))
+        self.assertEqual(response.status_code, 403)
+
+        founder = CustomUser.objects.create_superuser(
+            username="founder.demo.visibility", password="safe-password-123", fullname="Founder"
+        )
+        self.client.force_login(founder)
+        response = self.client.get(reverse("users_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Demo")
+
+    def test_existing_custom_demo_role_is_adopted_instead_of_duplicated(self):
+        other_business = Business.objects.create(name="Legacy Demo Tenant", slug="legacy-demo-tenant")
+        legacy_demo = Role.objects.create(
+            business=other_business, key="demo", name="Demo", active=True, visible_to_admin=True
+        )
+        legacy_user = CustomUser.objects.create_user(
+            username="legacy.demo.user", password="safe-password-123", fullname="Legacy Demo User"
+        )
+        membership = UserBusiness.objects.create(
+            user=legacy_user, business=other_business, role=legacy_demo, active=True
+        )
+
+        roles = seed_business_roles(other_business)
+        canonical = roles[CustomUser.ROLE_LIVE_TESTER]
+        membership.refresh_from_db()
+        self.assertEqual(canonical.pk, legacy_demo.pk)
+        self.assertEqual(canonical.key, CustomUser.ROLE_LIVE_TESTER)
+        self.assertEqual(canonical.name, "Demo")
+        self.assertFalse(canonical.visible_to_admin)
+        self.assertEqual(membership.role_id, canonical.pk)
+        self.assertEqual(Role.objects.filter(business=other_business, name="Demo").count(), 1)
+
 
 
 class SeedQueryEfficiencyTests(TestCase):
