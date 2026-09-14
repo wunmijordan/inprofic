@@ -450,8 +450,8 @@ def subscription_add_service(request):
 
 @login_required
 def founder_subscriptions(request):
-    from .forms import FounderGrantForm, LegacyTenantImportForm, SubscriptionPromotionForm
-    from .models import BusinessSubscription, SubscriptionPlan, SubscriptionPayment, SubscriptionPaymentSettings, SubscriptionPromotion
+    from .forms import FounderGrantForm, LegacyTenantImportForm, SubscriptionPromotionForm, MarketingPromoCampaignForm
+    from .models import BusinessSubscription, SubscriptionPlan, SubscriptionPayment, SubscriptionPaymentSettings, SubscriptionPromotion, MarketingPromoCampaign
     from .subscription_services import ensure_default_plans, grant_founder_lifetime, mark_payment_paid, start_trial_for_business
     from .legacy_import import LegacyImportError, analyze_legacy_backup, import_legacy_backup
     if not request.user.is_superuser:
@@ -465,6 +465,24 @@ def founder_subscriptions(request):
         request.FILES if action in {"legacy_dry_run", "legacy_import"} else None,
     )
     promotion_form = SubscriptionPromotionForm(request.POST if action == "create_promotion" else None)
+    campaign_id = (request.POST.get("campaign_id") if action == "save_marketing_campaign" else None) or request.GET.get("campaign")
+    try:
+        campaign_pk = int(campaign_id) if campaign_id else None
+    except (TypeError, ValueError):
+        campaign_pk = None
+    campaign_instance = MarketingPromoCampaign.objects.filter(pk=campaign_pk).select_related("promotion__plan").first() if campaign_pk else None
+    campaign_form = MarketingPromoCampaignForm(
+        request.POST if action == "save_marketing_campaign" else None,
+        request.FILES if action == "save_marketing_campaign" else None,
+        instance=campaign_instance,
+    )
+    from .marketing_campaigns import sanitize_campaign_html
+    if action == "save_marketing_campaign":
+        campaign_editor_html = sanitize_campaign_html(request.POST.get("content_html") or "")
+    elif campaign_instance:
+        campaign_editor_html = campaign_instance.content_html
+    else:
+        campaign_editor_html = ""
     legacy_import_report = None
     if request.method == "POST":
         if action in {"legacy_dry_run", "legacy_import"} and legacy_form.is_valid():
@@ -526,6 +544,19 @@ def founder_subscriptions(request):
             promotion.save(update_fields=["active", "updated_at"])
             messages.success(request, f"Promotion ended for {promotion.plan.name}. Base pricing remains unchanged.")
             return redirect("founder_subscriptions")
+        if action == "save_marketing_campaign" and campaign_form.is_valid():
+            campaign = campaign_form.save(commit=False)
+            if not campaign.pk:
+                campaign.created_by = request.user
+            campaign.save()
+            messages.success(request, f"Marketing promo creative saved for {campaign.promotion.plan.name}: {campaign.name}.")
+            return redirect(f"{reverse('founder_subscriptions')}#marketing-promo-campaigns")
+        if action == "deactivate_marketing_campaign":
+            campaign = get_object_or_404(MarketingPromoCampaign, pk=request.POST.get("campaign_id"))
+            campaign.active = False
+            campaign.save(update_fields=["active", "updated_at"])
+            messages.success(request, f"Marketing promo creative '{campaign.name}' was taken off the marketing page.")
+            return redirect(f"{reverse('founder_subscriptions')}#marketing-promo-campaigns")
         if action == "save_plan_pricing":
             from decimal import Decimal, InvalidOperation
             plans_to_update = list(SubscriptionPlan.objects.all().order_by("id"))
@@ -598,5 +629,9 @@ def founder_subscriptions(request):
         "legacy_import_report": legacy_import_report,
         "promotion_form": promotion_form,
         "promotions": SubscriptionPromotion.objects.select_related("plan", "created_by").order_by("-active", "-starts_at", "-id")[:50],
+        "campaign_form": campaign_form,
+        "campaign_instance": campaign_instance,
+        "campaign_editor_html": campaign_editor_html,
+        "marketing_campaigns": MarketingPromoCampaign.objects.select_related("promotion__plan", "created_by").order_by("-active", "-priority", "id")[:50],
         "now": timezone.now(),
     })

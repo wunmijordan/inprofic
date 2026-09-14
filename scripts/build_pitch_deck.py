@@ -230,7 +230,7 @@ def build():
     # 10 — Controls
     slide = base_slide(prs, "Controls are part of the workflow, not an afterthought.", "Trust and accountability", number=10)
     card(slide, "Tenant isolation", "Every business-owned record stays scoped to the active workspace; posted business IDs are never trusted.", 0.72, 1.65, 3.75, 3.35)
-    card(slide, "Role-aware access", "Business Admins, configurable system roles, custom roles and per-module permissions govern visibility and actions.", 4.78, 1.65, 3.75, 3.35, GOLD)
+    card(slide, "Role-aware access", "Business Admins, configurable roles and module permissions govern visibility; the Founder-only Demo role can explore live workflows without writes.", 4.78, 1.65, 3.75, 3.35, GOLD)
     card(slide, "Audit-preserving history", "Creator trails, movement records, immutable price/usage snapshots and reversal states retain what actually happened.", 8.84, 1.65, 3.75, 3.35, GREEN)
     text(slide, "Built to answer: who did what, for which business, to which stock and money record—and how was it corrected?", 1.1, 5.55, 11.1, 0.65, 18, NAVY, True, align=PP_ALIGN.CENTER)
 
@@ -264,11 +264,11 @@ def build():
         rect(slide, x + 0.3, 2.63, 0.75, 0.06, ORANGE if i == 2 else GOLD)
         text(slide, includes, x + 0.3, 3.0, 3.05, 0.95, 13, "C7C8DD")
         text(slide, promise, x + 0.3, 4.55, 3.0, 0.35, 12, GOLD, True)
-    text(slide, "30-day trial • founder-controlled pricing • monthly/yearly billing • additional service profiles", 1.1, 6.15, 11.2, 0.42, 15, WHITE, True, align=PP_ALIGN.CENTER)
+    text(slide, "30-day trial • founder-controlled pricing & timed promos • animated public campaign creative • monthly/yearly billing", 1.1, 6.15, 11.2, 0.42, 15, WHITE, True, align=PP_ALIGN.CENTER)
 
     # 14 — Value
     slide = base_slide(prs, "Why INPROFIC wins the operating conversation.", "Value proposition", number=14)
-    values = [("CONNECTED", "Operational and financial truth in the same workflow."), ("SPECIFIC", "Production nuance without forcing every business into generic ERP language."), ("AUDITABLE", "Stock, payments and corrections retain accountable history."), ("ADAPTABLE", "Five verticals, modular entitlements and two supported deployment paths."), ("COMMERCE-READY", "Validated, payment-first demand flows safely into operations."), ("PRACTICAL", "Server-rendered, approachable and designed for day-to-day teams.")]
+    values = [("CONNECTED", "Operational and financial truth in the same workflow."), ("SPECIFIC", "Production nuance without forcing every business into generic ERP language."), ("AUDITABLE", "Stock, payments and corrections retain accountable history."), ("ADAPTABLE", "Five verticals, modular entitlements, Founder-managed promo campaigns and two supported deployment paths."), ("COMMERCE-READY", "Validated, payment-first demand flows safely into operations."), ("PRACTICAL", "Server-rendered, approachable and designed for day-to-day teams.")]
     for i, (heading, body) in enumerate(values):
         x = 0.72 + (i % 3) * 4.06
         y = 1.55 + (i // 3) * 2.15

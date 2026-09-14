@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth import password_validation
 from core.models import Business
-from .models import CustomUser, Role, RoleModulePermission, UserBusiness, UserModulePermission, SubscriptionPlan, SubscriptionPromotion
+from .models import CustomUser, Role, RoleModulePermission, UserBusiness, UserModulePermission, SubscriptionPlan, SubscriptionPromotion, MarketingPromoCampaign
 from .services import ensure_permissions, is_business_admin, seed_business_roles
 
 CLS = "w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 focus:border-[#8f172d]"
@@ -221,6 +221,57 @@ class SubscriptionPromotionForm(forms.ModelForm):
                 overlap = overlap.exclude(pk=self.instance.pk)
             if overlap.exists():
                 self.add_error(None, "This plan already has an active/scheduled promotion overlapping that period.")
+        return cleaned
+
+
+class MarketingPromoCampaignForm(forms.ModelForm):
+    class Meta:
+        model = MarketingPromoCampaign
+        fields = [
+            "name", "promotion", "content_html", "cta_label", "animation_style", "theme",
+            "priority", "image", "video", "video_poster", "media_alt", "active",
+        ]
+        widgets = {
+            "content_html": forms.HiddenInput(attrs={"data-campaign-html": "1"}),
+            "image": forms.ClearableFileInput(attrs={"accept": "image/*"}),
+            "video": forms.ClearableFileInput(attrs={"accept": "video/mp4,video/webm,video/quicktime"}),
+            "video_poster": forms.ClearableFileInput(attrs={"accept": "image/*"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        from django.db.models import Q
+        from django.utils import timezone
+        super().__init__(*args, **kwargs)
+        promo_qs = SubscriptionPromotion.objects.select_related("plan").filter(
+            Q(active=True, ends_at__gt=timezone.now()) |
+            Q(pk=getattr(self.instance, "promotion_id", None))
+        ).order_by("-starts_at", "plan__monthly_price", "id")
+        self.fields["promotion"].queryset = promo_qs
+        self.fields["promotion"].label_from_instance = lambda obj: f"{obj.plan.name} — {obj.reason}"
+        self.fields["content_html"].required = True
+        self.fields["content_html"].help_text = "Use the editor below. Only INPROFIC's bundled fonts and safe text formatting are retained."
+        for name, field in self.fields.items():
+            if name != "content_html":
+                field.widget.attrs.setdefault("class", CLS)
+
+    def clean_content_html(self):
+        from django.utils.html import strip_tags
+        from .marketing_campaigns import sanitize_campaign_html
+        value = sanitize_campaign_html(self.cleaned_data.get("content_html") or "")
+        if not strip_tags(value).strip():
+            raise forms.ValidationError("Add campaign copy before saving.")
+        return value
+
+    def clean(self):
+        cleaned = super().clean()
+        image = cleaned.get("image")
+        video = cleaned.get("video")
+        poster = cleaned.get("video_poster")
+        if image and video:
+            self.add_error("video", "Use either an image or a video for one campaign, not both.")
+        for field_name, upload, limit_mb in (("image", image, 10), ("video_poster", poster, 10), ("video", video, 80)):
+            if upload and hasattr(upload, "size") and upload.size > limit_mb * 1024 * 1024:
+                self.add_error(field_name, f"Keep this upload below {limit_mb} MB.")
         return cleaned
 
 

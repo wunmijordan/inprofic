@@ -43,14 +43,25 @@ def marketing_home(request):
     """Public product overview; remembered authenticated sessions continue to the app."""
     if request.user.is_authenticated and request.GET.get("view") != "marketing":
         return redirect("dashboard")
-    from accounts.models import SubscriptionPlan
+    from accounts.models import MarketingPromoCampaign, SubscriptionPlan
     from accounts.subscription_services import attach_active_promotions
     plans = attach_active_promotions(
         SubscriptionPlan.objects.filter(active=True)
         .prefetch_related("module_entitlements")
         .order_by("monthly_price", "id")
     )
-    return render(request, "marketing/home.html", {"plans": plans})
+    moment = timezone.now()
+    marketing_campaigns = list(
+        MarketingPromoCampaign.objects.filter(
+            active=True,
+            promotion__active=True,
+            promotion__starts_at__lte=moment,
+            promotion__ends_at__gt=moment,
+        )
+        .select_related("promotion__plan")
+        .order_by("-priority", "id")
+    )
+    return render(request, "marketing/home.html", {"plans": plans, "marketing_campaigns": marketing_campaigns})
 
 
 def today():

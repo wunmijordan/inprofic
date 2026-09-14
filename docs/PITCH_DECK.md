@@ -4,7 +4,7 @@ The editable 16:9 product deck is available as
 [`INPROFIC_Pitch_Deck.pptx`](INPROFIC_Pitch_Deck.pptx). Its 15 slides cover the
 problem, connected operating model, INPROFIC acronym, five verticals,
 inventory, procurement, production, commerce, finance, controls, reporting,
-architecture, subscriptions and value proposition.
+architecture, subscriptions, Founder-managed promotions, safe live demos and value proposition.
 
 All slide content is built from editable PowerPoint text boxes, shapes and
 diagrams. It is not a collection of flattened slide images.

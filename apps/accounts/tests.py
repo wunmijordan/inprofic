@@ -12,7 +12,7 @@ from core.models import Business
 from .models import (
     BusinessFeatureAccess, BusinessModuleAccess, BusinessSubscription, CustomUser,
     RoleModulePermission, SubscriptionPayment, SubscriptionPaymentSettings,
-    SubscriptionPlanModule, SubscriptionPromotion, SubscriptionService, UserBusiness,
+    SubscriptionPlanModule, SubscriptionPromotion, MarketingPromoCampaign, SubscriptionService, UserBusiness,
 )
 from .services import business_has_module, can_use_commerce_storefront, is_live_tester, seed_business_roles, user_has_permission
 from .subscription_services import (
@@ -66,6 +66,46 @@ class TenantSignupTests(TestCase):
         self.assertContains(response, "₦7,500.00")
         plan.refresh_from_db()
         self.assertEqual(plan.monthly_price, Decimal("10000.00"))
+
+    def test_marketing_page_renders_founder_campaign_only_while_linked_promo_is_live(self):
+        from django.utils import timezone
+        plans = ensure_default_plans()
+        plan = plans["business_pro"]
+        promo = SubscriptionPromotion.objects.create(
+            plan=plan, reason="Launch Window", discount_type=SubscriptionPromotion.DISCOUNT_PERCENT,
+            discount_value=Decimal("20"), starts_at=timezone.now() - timezone.timedelta(minutes=1),
+            ends_at=timezone.now() + timezone.timedelta(days=3),
+        )
+        MarketingPromoCampaign.objects.create(
+            name="Homepage launch", promotion=promo,
+            content_html='<h2 style="font-family:Fraunces">Move faster with one workspace.</h2>',
+            animation_style=MarketingPromoCampaign.ANIMATION_KINETIC,
+            theme=MarketingPromoCampaign.THEME_MIDNIGHT,
+        )
+        response = self.client.get(reverse("marketing_home"))
+        self.assertContains(response, "Move faster with one workspace.")
+        self.assertContains(response, 'href="#plans"')
+        promo.active = False
+        promo.save(update_fields=["active"])
+        response = self.client.get(reverse("marketing_home"))
+        self.assertNotContains(response, "Move faster with one workspace.")
+
+    def test_marketing_campaign_sanitises_copy_and_limits_font_families(self):
+        from django.utils import timezone
+        plans = ensure_default_plans()
+        promo = SubscriptionPromotion.objects.create(
+            plan=plans["starter"], reason="Safe creative", discount_type=SubscriptionPromotion.DISCOUNT_PERCENT,
+            discount_value=Decimal("10"), starts_at=timezone.now() - timezone.timedelta(minutes=1),
+            ends_at=timezone.now() + timezone.timedelta(days=1),
+        )
+        campaign = MarketingPromoCampaign.objects.create(
+            name="Safe", promotion=promo,
+            content_html='<script>alert(1)</script><p style="font-family:Comic Sans MS;color:#d14900" onclick="bad()">Hello</p><span style="font-family:IBM Plex Mono">Code</span>',
+        )
+        self.assertNotIn("<script", campaign.content_html)
+        self.assertNotIn("onclick", campaign.content_html)
+        self.assertNotIn("Comic Sans", campaign.content_html)
+        self.assertIn("IBM Plex Mono", campaign.content_html)
 
     def test_signup_provisions_business_admin_and_starter_trial(self):
         response = self.client.post(reverse("signup"), {

@@ -77,6 +77,68 @@
     </div>
   </section>
 
+  <section id="marketing-promo-campaigns" class="mb-7 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h2 class="font-semibold">Marketing promo stage</h2>
+        <p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">Turn any scheduled plan promotion into a high-impact animated banner directly beneath the public marketing header. The whole banner links to the plan cards, and it automatically disappears when its linked promotion ends. Upload an image or MP4/WebM/MOV video, then style the copy here without editing code.</p>
+      </div>
+      <span class="rounded-full bg-[#050733] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white">Founder authored</span>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" class="mt-4 grid gap-4 lg:grid-cols-[1fr_1.1fr]">{% csrf_token %}
+      <input type="hidden" name="campaign_id" value="{% if campaign_instance %}{{ campaign_instance.pk }}{% endif %}">
+      <div class="space-y-3">
+        {% for error in campaign_form.non_field_errors %}<div class="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{{ error }}</div>{% endfor %}
+        {% include '_field.html' with field=campaign_form.name %}
+        {% include '_field.html' with field=campaign_form.promotion %}
+        <div class="grid gap-3 sm:grid-cols-2">{% include '_field.html' with field=campaign_form.animation_style %}{% include '_field.html' with field=campaign_form.theme %}</div>
+        <div class="grid gap-3 sm:grid-cols-2">{% include '_field.html' with field=campaign_form.priority %}{% include '_field.html' with field=campaign_form.cta_label %}</div>
+        {% include '_field.html' with field=campaign_form.image %}
+        {% include '_field.html' with field=campaign_form.video %}
+        {% include '_field.html' with field=campaign_form.video_poster %}
+        {% include '_field.html' with field=campaign_form.media_alt %}
+        {% include '_field.html' with field=campaign_form.active %}
+      </div>
+
+      <div>
+        <label class="mb-1 block text-sm font-medium">Campaign copy</label>
+        {{ campaign_form.content_html }}
+        {% for error in campaign_form.content_html.errors %}<div class="mb-2 text-xs text-rose-700">{{ error }}</div>{% endfor %}
+        <div class="overflow-hidden rounded-xl border border-[#D9CFB4] bg-white">
+          <div class="flex flex-wrap items-center gap-1 border-b border-[#E7DFCC] bg-[#F5EFE0] p-2" data-campaign-toolbar>
+            <select class="rounded border border-[#D9CFB4] bg-white px-2 py-1 text-xs" data-editor-font aria-label="Font family">
+              <option value="Inter">Inter</option><option value="Fraunces">Fraunces</option><option value="IBM Plex Mono">IBM Plex Mono</option>
+            </select>
+            <select class="rounded border border-[#D9CFB4] bg-white px-2 py-1 text-xs" data-editor-size aria-label="Font size">
+              <option value="16px">16</option><option value="20px">20</option><option value="28px">28</option><option value="36px">36</option><option value="48px">48</option><option value="64px">64</option>
+            </select>
+            <button type="button" class="rounded border bg-white px-2 py-1 text-xs font-bold" data-editor-command="bold">B</button>
+            <button type="button" class="rounded border bg-white px-2 py-1 text-xs italic" data-editor-command="italic">I</button>
+            <button type="button" class="rounded border bg-white px-2 py-1 text-xs underline" data-editor-command="underline">U</button>
+            <button type="button" class="rounded border bg-white px-2 py-1 text-xs" data-editor-align="left">Left</button>
+            <button type="button" class="rounded border bg-white px-2 py-1 text-xs" data-editor-align="center">Centre</button>
+            <button type="button" class="rounded border bg-white px-2 py-1 text-xs" data-editor-align="right">Right</button>
+            <label class="ml-1 flex items-center gap-1 text-[10px] uppercase tracking-wider text-stone-500">Colour <input type="color" value="#ffffff" class="h-7 w-8 rounded border bg-white p-0" data-editor-color></label>
+            <button type="button" class="ml-auto rounded border bg-white px-2 py-1 text-xs" data-editor-clear>Clear formatting</button>
+          </div>
+          <div contenteditable="true" data-campaign-editor class="min-h-[260px] px-4 py-4 text-base leading-7 outline-none" style="font-family:Inter,sans-serif" aria-label="Campaign rich text editor"></div>
+        </div>
+        <p class="mt-2 text-[11px] leading-5 text-stone-500">Available system fonts: Inter, Fraunces and IBM Plex Mono. Formatting is sanitised on save; scripts, links and unsafe styles are discarded.</p>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <button name="action" value="save_marketing_campaign" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">{% if campaign_instance %}Update marketing creative{% else %}Create marketing creative{% endif %}</button>
+          {% if campaign_instance %}<a href="{% url 'founder_subscriptions' %}#marketing-promo-campaigns" class="rounded-md border border-[#D9CFB4] bg-white px-4 py-2 text-sm font-semibold">New creative</a>{% endif %}
+        </div>
+      </div>
+    </form>
+
+    <div class="mt-5 overflow-x-auto rounded-lg border border-[#E7DFCC] bg-white">
+      <table class="w-full text-xs"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Creative</th><th class="p-2 text-left">Promotion</th><th>Media</th><th>Priority</th><th>Status</th><th></th></tr></thead><tbody>
+      {% for campaign in marketing_campaigns %}<tr class="border-t"><td class="p-2"><div class="font-semibold">{{ campaign.name }}</div><div class="text-stone-500">{{ campaign.get_animation_style_display }} · {{ campaign.get_theme_display }}</div></td><td class="p-2"><div>{{ campaign.promotion.plan.name }}</div><div class="text-stone-500">{{ campaign.promotion.reason }}</div></td><td class="p-2 text-center">{{ campaign.media_kind|title }}</td><td class="p-2 text-center font-mono">{{ campaign.priority }}</td><td class="p-2 text-center">{% if campaign.active and campaign.promotion.active and campaign.promotion.starts_at <= now and campaign.promotion.ends_at > now %}<span class="text-emerald-700">Live</span>{% elif campaign.active %}<span class="text-amber-700">Waiting / expired promo</span>{% else %}<span class="text-stone-400">Hidden</span>{% endif %}</td><td class="p-2 text-right whitespace-nowrap"><a href="?campaign={{ campaign.pk }}#marketing-promo-campaigns" class="mr-2 text-[#8f172d] underline">Edit</a>{% if campaign.active %}<form method="post" class="inline">{% csrf_token %}<input type="hidden" name="campaign_id" value="{{ campaign.pk }}"><button name="action" value="deactivate_marketing_campaign" class="text-rose-700 underline">Hide</button></form>{% endif %}</td></tr>{% empty %}<tr><td colspan="6" class="p-4 text-center text-stone-500">No marketing promo creative configured yet.</td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+  </section>
+
   <section class="mb-7 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
@@ -141,4 +203,40 @@
 
   <h2 class="font-semibold mb-2">Subscriptions</h2>
   <div class="overflow-x-auto bg-white border border-[#E7DFCC] rounded-lg"><table class="w-full text-sm"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Primary business</th><th>Plan</th><th>Status</th><th>Services</th><th>Expiry</th></tr></thead><tbody>{% for s in subscriptions %}<tr class="border-t"><td class="p-2">{{ s.primary_business.name }}</td><td class="text-center">{{ s.plan.name }}</td><td class="text-center">{{ s.effective_status_label }}</td><td class="text-center">{{ s.services.count }}</td><td class="text-center">{% if s.founder_lifetime %}Lifetime <form method="post" class="inline">{% csrf_token %}<input type="hidden" name="subscription_id" value="{{ s.pk }}"><button name="action" value="revoke_founder" class="ml-1 text-[10px] text-rose-700 underline">revoke</button></form>{% elif s.expires_at %}{{ s.expires_at|date:"j M Y" }}{% else %}—{% endif %}</td></tr>{% endfor %}</tbody></table></div>
-</div>{% endblock %}
+</div>
+{{ campaign_editor_html|json_script:"campaign-editor-initial" }}
+<script>
+(() => {
+  const editor = document.querySelector('[data-campaign-editor]');
+  const hidden = document.querySelector('[data-campaign-html]');
+  const initialNode = document.getElementById('campaign-editor-initial');
+  if (!editor || !hidden) return;
+  const initial = initialNode ? JSON.parse(initialNode.textContent) : '';
+  editor.innerHTML = initial || '<p><strong>Limited-time offer.</strong></p><p>Put the connected business workspace within reach.</p>';
+  let savedRange = null;
+  const remember = () => {
+    const selection = window.getSelection();
+    if (!selection || !selection.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    if (editor.contains(range.commonAncestorContainer)) savedRange = range.cloneRange();
+  };
+  const restore = () => {
+    if (!savedRange) return null;
+    const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(savedRange); return savedRange;
+  };
+  const wrap = (style) => {
+    const range = restore(); if (!range || range.collapsed) return;
+    const span = document.createElement('span'); span.setAttribute('style', style);
+    try { range.surroundContents(span); } catch (_) { span.appendChild(range.extractContents()); range.insertNode(span); }
+    remember(); editor.focus();
+  };
+  editor.addEventListener('keyup', remember); editor.addEventListener('mouseup', remember); editor.addEventListener('input', remember);
+  document.querySelectorAll('[data-editor-command]').forEach(btn => btn.addEventListener('mousedown', e => { e.preventDefault(); restore(); document.execCommand(btn.dataset.editorCommand, false, null); remember(); }));
+  document.querySelectorAll('[data-editor-align]').forEach(btn => btn.addEventListener('mousedown', e => { e.preventDefault(); restore(); document.execCommand('justify' + btn.dataset.editorAlign.charAt(0).toUpperCase() + btn.dataset.editorAlign.slice(1), false, null); remember(); }));
+  document.querySelector('[data-editor-font]')?.addEventListener('change', e => wrap(`font-family:${e.target.value}`));
+  document.querySelector('[data-editor-size]')?.addEventListener('change', e => wrap(`font-size:${e.target.value}`));
+  document.querySelector('[data-editor-color]')?.addEventListener('input', e => wrap(`color:${e.target.value}`));
+  document.querySelector('[data-editor-clear]')?.addEventListener('mousedown', e => { e.preventDefault(); restore(); document.execCommand('removeFormat', false, null); remember(); });
+  editor.closest('form')?.addEventListener('submit', () => { hidden.value = editor.innerHTML; });
+})();
+</script>{% endblock %}

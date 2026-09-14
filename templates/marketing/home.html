@@ -13,6 +13,7 @@
     @font-face { font-family:'Inter'; src:url('{% static "core/fonts/Inter-Regular.ttf" %}') format('truetype'); font-weight:400; font-style:normal; font-display:swap; }
     @font-face { font-family:'Inter'; src:url('{% static "core/fonts/Inter-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
     @font-face { font-family:'Fraunces'; src:url('{% static "core/fonts/Fraunces-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
+    @font-face { font-family:'IBM Plex Mono'; src:url('{% static "core/fonts/IBMPlexMono-Regular.ttf" %}') format('truetype'); font-weight:400; font-style:normal; font-display:swap; }
     :root { --accent:#d14900; --deep:#050733; --gold:#e7bd65; --paper:#faf6ef; }
     html { scroll-behavior:smooth; }
     body { font-family:'Inter',sans-serif; background:var(--paper); color:#211d1a; }
@@ -36,7 +37,41 @@
     @keyframes preview-float { 0%,100%{transform:translateY(0) rotate(-.15deg)} 50%{transform:translateY(-8px) rotate(.15deg)} }
     @keyframes bridge-rise { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
     @keyframes flow-line { 0%,100%{background-position:0 100%} 50%{background-position:0 0} }
-    @media (prefers-reduced-motion:reduce) { html{scroll-behavior:auto}.feature-card,.flow-step{transition:none}.ambient-orb,.hero-preview,.bridge-card>div,.process-flow::before{animation:none} }
+    .promo-stage { position:relative; overflow:hidden; margin-top:-2.75rem; padding-top:4.75rem; background:#050733; }
+    .promo-stage::before { content:""; position:absolute; inset:-40%; background:conic-gradient(from 90deg,transparent 0 20%,rgba(209,73,0,.26) 30%,transparent 42% 70%,rgba(231,189,101,.2) 82%,transparent 92%); animation:promo-orbit 14s linear infinite; pointer-events:none; }
+    .promo-slide { --promo-fg:#fff; --promo-muted:rgba(255,255,255,.72); --promo-chip:rgba(255,255,255,.12); display:none; position:relative; min-height:330px; color:var(--promo-fg); isolation:isolate; }
+    .promo-slide.is-active { display:grid; animation:promo-enter .75s cubic-bezier(.2,.8,.2,1) both; }
+    .promo-theme-midnight { background:linear-gradient(120deg,#050733,#11165f 54%,#3c1608); }
+    .promo-theme-ember { background:linear-gradient(120deg,#4a1604,#d14900 52%,#050733); }
+    .promo-theme-gold { background:linear-gradient(120deg,#050733,#6e531b 55%,#d14900); }
+    .promo-theme-paper { --promo-fg:#211d1a; --promo-muted:#6b625c; --promo-chip:rgba(5,7,51,.08); background:linear-gradient(120deg,#faf6ef,#f5efe0 55%,#f6d8bd); }
+    .promo-slide-grid { display:grid; width:min(1280px,100%); margin:auto; grid-template-columns:minmax(0,1.15fr) minmax(260px,.85fr); align-items:center; gap:34px; padding:38px 28px; }
+    .promo-copy { position:relative; z-index:3; }
+    .promo-copy h2,.promo-copy h3 { margin:.15em 0; line-height:1.02; }
+    .promo-copy p { margin:.45em 0; }
+    .promo-meta { display:flex; flex-wrap:wrap; gap:8px; margin-top:18px; }
+    .promo-chip { border:1px solid color-mix(in srgb,var(--promo-fg) 18%,transparent); border-radius:999px; background:var(--promo-chip); padding:7px 11px; font-size:11px; font-weight:700; backdrop-filter:blur(10px); }
+    .promo-cta { display:inline-flex; align-items:center; gap:8px; margin-top:18px; border-radius:14px; background:#d14900; color:#fff; padding:12px 16px; font-size:12px; font-weight:800; box-shadow:0 16px 34px rgba(209,73,0,.28); }
+    .promo-media { position:relative; z-index:2; min-height:250px; overflow:hidden; border-radius:28px; border:1px solid rgba(255,255,255,.16); background:rgba(255,255,255,.08); box-shadow:0 28px 70px rgba(0,0,0,.28); transform:perspective(900px) rotateY(-4deg); }
+    .promo-media img,.promo-media video { width:100%; height:100%; min-height:250px; object-fit:cover; }
+    .promo-media::after { content:""; position:absolute; inset:0; background:linear-gradient(135deg,rgba(255,255,255,.15),transparent 30% 72%,rgba(209,73,0,.18)); pointer-events:none; }
+    .promo-animation-kinetic.is-active .promo-copy > * { animation:promo-rise .72s both cubic-bezier(.2,.8,.2,1); }
+    .promo-animation-kinetic.is-active .promo-copy > *:nth-child(2){animation-delay:.08s}.promo-animation-kinetic.is-active .promo-copy > *:nth-child(3){animation-delay:.16s}.promo-animation-kinetic.is-active .promo-copy > *:nth-child(4){animation-delay:.24s}
+    .promo-animation-spotlight.is-active .promo-media { animation:promo-spotlight 4.5s ease-in-out infinite alternate; }
+    .promo-animation-parallax.is-active .promo-media { animation:promo-float 5.5s ease-in-out infinite; }
+    .promo-animation-marquee::after { content:"PROMO • INPROFIC • PROMO • INPROFIC • PROMO • INPROFIC •"; position:absolute; left:-8%; right:-8%; bottom:18px; white-space:nowrap; overflow:hidden; color:color-mix(in srgb,var(--promo-fg) 9%,transparent); font:700 40px 'IBM Plex Mono',monospace; letter-spacing:.12em; transform:rotate(-2deg); animation:promo-marquee 14s linear infinite; z-index:1; }
+    .promo-progress { position:absolute; left:50%; bottom:12px; z-index:5; display:flex; gap:5px; transform:translateX(-50%); }
+    .promo-progress span { width:28px; height:3px; border-radius:999px; background:rgba(255,255,255,.25); overflow:hidden; }
+    .promo-progress span.is-active::after { content:""; display:block; height:100%; background:#d14900; animation:promo-timer 7s linear both; }
+    @keyframes promo-enter { from{opacity:0;transform:scale(.985)} to{opacity:1;transform:scale(1)} }
+    @keyframes promo-rise { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes promo-float { 0%,100%{transform:perspective(900px) rotateY(-4deg) translateY(0)} 50%{transform:perspective(900px) rotateY(2deg) translateY(-12px)} }
+    @keyframes promo-spotlight { from{filter:saturate(.9) brightness(.88);transform:perspective(900px) rotateY(-5deg) scale(.98)} to{filter:saturate(1.15) brightness(1.08);transform:perspective(900px) rotateY(1deg) scale(1.025)} }
+    @keyframes promo-marquee { from{transform:translateX(0) rotate(-2deg)} to{transform:translateX(-18%) rotate(-2deg)} }
+    @keyframes promo-orbit { to{transform:rotate(360deg)} }
+    @keyframes promo-timer { from{width:0} to{width:100%} }
+    @media(max-width:780px){.promo-stage{margin-top:-2.25rem;padding-top:4.25rem}.promo-slide-grid{grid-template-columns:1fr;padding:30px 20px 42px}.promo-media{min-height:210px;transform:none}.promo-media img,.promo-media video{min-height:210px}.promo-animation-marquee::after{font-size:28px}}
+    @media (prefers-reduced-motion:reduce) { html{scroll-behavior:auto}.feature-card,.flow-step{transition:none}.ambient-orb,.hero-preview,.bridge-card>div,.process-flow::before,.promo-stage::before,.promo-slide,.promo-copy>*,.promo-media,.promo-animation-marquee::after,.promo-progress span::after{animation:none!important} }
   </style>
 </head>
 <body>
@@ -85,7 +120,7 @@
   </header>
 
   <main class="relative z-10">
-    <section class="relative z-20 mx-auto -mt-12 max-w-6xl px-5 sm:px-8">
+    <section class="relative z-30 mx-auto -mt-12 max-w-6xl px-5 sm:px-8">
       <div class="bridge-card soft-card grid gap-px overflow-hidden rounded-2xl border border-stone-200 bg-stone-200 sm:grid-cols-3">
         <div class="bg-white p-5 text-center"><strong class="font-display text-xl text-[#d14900]">One source of truth</strong><p class="mt-1 text-xs text-stone-500">Stock, orders and money stay connected.</p></div>
         <div class="bg-white p-5 text-center"><strong class="font-display text-xl text-[#d14900]">Built for five verticals</strong><p class="mt-1 text-xs text-stone-500">The language and workflow fit the service.</p></div>
@@ -93,15 +128,94 @@
       </div>
     </section>
 
+    {% if marketing_campaigns %}
+    <section class="promo-stage" data-promo-stage aria-label="Current INPROFIC promotions">
+      {% for campaign in marketing_campaigns %}
+      <a href="#plans" class="promo-slide promo-theme-{{ campaign.theme }} promo-animation-{{ campaign.animation_style }}{% if forloop.first %} is-active{% endif %}" data-promo-slide aria-hidden="{% if forloop.first %}false{% else %}true{% endif %}">
+        <div class="promo-slide-grid">
+          <div class="promo-copy">
+            <div class="text-[10px] font-bold uppercase tracking-[.22em] opacity-70">{{ campaign.promotion.plan.name }} · {{ campaign.promotion.reason }}</div>
+            <div class="mt-3 max-w-3xl text-[clamp(1rem,2vw,1.2rem)] leading-7">{{ campaign.content_html|safe }}</div>
+            <div class="promo-meta">
+              <span class="promo-chip">{% if campaign.promotion.discount_type == 'percent' %}{{ campaign.promotion.discount_value|floatformat:-2 }}% off{% else %}{{ campaign.promotion.discount_value|money:"₦" }} off{% endif %}</span>
+              <span class="promo-chip">{{ campaign.promotion.discounted_monthly_price|money:"₦" }} / month</span>
+              <span class="promo-chip">Ends {{ campaign.promotion.ends_at|date:"j M, g:i A" }}</span>
+            </div>
+            <span class="promo-cta">{{ campaign.cta_label }} <span aria-hidden="true">↓</span></span>
+          </div>
+          {% if campaign.video %}<div class="promo-media"><video autoplay muted loop playsinline preload="metadata"{% if campaign.video_poster %} poster="{{ campaign.video_poster.url }}"{% endif %}><source src="{{ campaign.video.url }}"></video></div>
+          {% elif campaign.image %}<div class="promo-media"><img src="{{ campaign.image.url }}" alt="{{ campaign.media_alt|default:campaign.name }}" loading="eager"></div>
+          {% else %}<div class="promo-media grid place-items-center p-8"><img src="{% static 'core/brand/inprofic-mark-on-dark.png' %}" alt="" class="max-h-44 w-auto opacity-90"></div>{% endif %}
+        </div>
+      </a>
+      {% endfor %}
+      {% if marketing_campaigns|length > 1 %}<div class="promo-progress" aria-hidden="true">{% for campaign in marketing_campaigns %}<span{% if forloop.first %} class="is-active"{% endif %}></span>{% endfor %}</div>{% endif %}
+    </section>
+    {% endif %}
+
     <section id="capabilities" class="mx-auto max-w-7xl px-5 py-24 sm:px-8">
       <div class="max-w-2xl"><p class="text-xs font-bold uppercase tracking-[.22em] text-[#d14900]">The whole operation</p><h2 class="mt-3 font-display text-3xl font-semibold sm:text-5xl">Less switching. Fewer blind spots.</h2><p class="mt-4 leading-7 text-stone-500">Every module shares the same business context and audit trail, so teams can act without stitching together scattered spreadsheets.</p></div>
       <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5"><span class="text-2xl">◫</span><h3 class="mt-4 font-display text-xl font-semibold">Inventory</h3><p class="mt-2 text-sm leading-6 text-stone-500">Track raw materials and finished products, warnings, stock movement history, precise units and purchase-to-usage conversions.</p></article>
-        <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5"><span class="text-2xl">↳</span><h3 class="mt-4 font-display text-xl font-semibold">Procurement</h3><p class="mt-2 text-sm leading-6 text-stone-500">Raise purchase orders, receive arrivals, update landed stock and costs, and retain supplier-side history.</p></article>
-        <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5"><span class="text-2xl">◎</span><h3 class="mt-4 font-display text-xl font-semibold">Production</h3><p class="mt-2 text-sm leading-6 text-stone-500">Plan work from recipes, formulas or bills of materials; control releases, batches, quality, wastage, offcuts and shortages.</p></article>
-        <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5"><span class="text-2xl">◇</span><h3 class="mt-4 font-display text-xl font-semibold">Sales & customers</h3><p class="mt-2 text-sm leading-6 text-stone-500">Handle walk-ins, direct orders, online demand, distribution pricing, customer credit and fulfilment without losing context.</p></article>
-        <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5"><span class="text-2xl">₦</span><h3 class="mt-4 font-display text-xl font-semibold">Finance & expenses</h3><p class="mt-2 text-sm leading-6 text-stone-500">See cash accounts, money movements, receivables, payables and expenses with audit-preserving corrections.</p></article>
-        <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5"><span class="text-2xl">↗</span><h3 class="mt-4 font-display text-xl font-semibold">Reports & backup</h3><p class="mt-2 text-sm leading-6 text-stone-500">Understand stock, sales, procurement, production and financial performance, with practical exports and backup tools.</p></article>
+        <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
+          <span class="text-2xl">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(209, 73, 0)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-building-warehouse">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M3 21v-13l9 -4l9 4v13" /><path d="M13 13h4v8h-10v-6h6" /><path d="M13 21v-9a1 1 0 0 0 -1 -1h-2a1 1 0 0 0 -1 1v3" />
+            </svg>
+          </span>
+          <h3 class="mt-4 font-display text-xl font-semibold">Inventory</h3>
+          <p class="mt-2 text-sm leading-6 text-stone-500">Track raw materials and finished products, warnings, stock movement history, precise units and purchase-to-usage conversions.</p>
+        </article>
+        <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
+          <span class="text-2xl">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(0, 185, 209)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-shopping-cart">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M4 19a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+              <path d="M15 19a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" /><path d="M17 17h-11v-14h-2" /><path d="M6 5l14 1l-1 7h-13" />
+            </svg>
+          </span>
+          <h3 class="mt-4 font-display text-xl font-semibold">Procurement</h3>
+          <p class="mt-2 text-sm leading-6 text-stone-500">Raise purchase orders, receive arrivals, update landed stock and costs, and retain supplier-side history.</p>
+        </article>
+        <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
+          <span class="text-2xl">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(209, 195, 0)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-whisk">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M21.015 3.035l-16.515 16.465" />
+              <path d="M3.173 17.619a4.63 4.63 0 0 0 3.284 3.26a4.67 4.67 0 0 0 4.487 -1.194c1.85 -1.836 4.07 -10.65 4.07 -10.65s-8.88 2.296 -10.639 4.132a4.59 4.59 0 0 0 -1.202 4.452" />
+            </svg>
+          </span>
+          <h3 class="mt-4 font-display text-xl font-semibold">Production</h3>
+          <p class="mt-2 text-sm leading-6 text-stone-500">Plan work from recipes, formulas or bills of materials; control releases, batches, quality, wastage, offcuts and shortages.</p>
+        </article>
+        <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
+          <span class="text-2xl">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(73, 0, 209)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-building-store">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M3 21l18 0" />
+              <path d="M3 7v1a3 3 0 0 0 6 0v-1m0 1a3 3 0 0 0 6 0v-1m0 1a3 3 0 0 0 6 0v-1h-18l2 -4h14l2 4" /><path d="M5 21l0 -10.15" />
+              <path d="M19 21l0 -10.15" /><path d="M9 21v-4a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v4" />
+            </svg>
+          </span>
+          <h3 class="mt-4 font-display text-xl font-semibold">Sales & customers</h3>
+          <p class="mt-2 text-sm leading-6 text-stone-500">Handle walk-ins, direct orders, online demand, distribution pricing, customer credit and fulfilment without losing context.</p>
+        </article>
+        <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
+          <span class="text-2xl">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(0, 209, 45)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-currency-naira">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M7 18v-10.948a1.05 1.05 0 0 1 1.968 -.51l6.064 10.916a1.05 1.05 0 0 0 1.968 -.51v-10.948" />
+              <path d="M5 10h14" /><path d="M5 14h14" />
+            </svg>
+          </span>
+          <h3 class="mt-4 font-display text-xl font-semibold">Finance & expenses</h3>
+          <p class="mt-2 text-sm leading-6 text-stone-500">See cash accounts, money movements, receivables, payables and expenses with audit-preserving corrections.</p>
+        </article>
+        <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
+          <span class="text-2xl">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(209, 0, 146)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-report">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M8 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h5.697" /><path d="M18 14v4h4" /><path d="M18 11v-4a2 2 0 0 0 -2 -2h-2" /><path d="M8 5a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2" />
+              <path d="M14 18a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" /><path d="M8 11h4" /><path d="M8 15h3" />
+            </svg>
+          </span>
+          <h3 class="mt-4 font-display text-xl font-semibold">Reports & backup</h3>
+          <p class="mt-2 text-sm leading-6 text-stone-500">Understand stock, sales, procurement, production and financial performance, with practical exports and backup tools.</p>
+        </article>
       </div>
     </section>
 
@@ -168,7 +282,30 @@
     </section>
   </main>
 
-  <footer class="border-t border-stone-200 bg-[#f5efe0] px-5 py-8"><div class="mx-auto flex max-w-7xl flex-col gap-3 text-sm text-stone-500 sm:flex-row sm:items-center sm:justify-between"><img src="{% static 'core/brand/inprofic-logo-on-light.png' %}" alt="INPROFIC" class="h-8 w-auto" width="2097" height="361"><p>Inventory, operations and commerce—working together.</p><div class="flex gap-4"><a href="{% url 'login' %}" class="hover:text-[#d14900]">Sign in</a><a href="{% url 'signup' %}" class="hover:text-[#d14900]">Sign up</a></div></div></footer>
+  <footer class="border-t border-stone-200 bg-[#f5efe0] px-5 py-8">
+    <div class="mx-auto flex max-w-7xl flex-col gap-3 text-sm text-stone-500 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex flex-col items-start gap-1.5">
+        <img src="{% static 'core/brand/inprofic-logo-on-light.png' %}" alt="INPROFIC" class="h-8 w-auto" width="2097" height="361">
+        <p class="text-xs">&copy; {% now "Y" %} All Rights Reserved.</p>
+      </div>
+      <p>Inventory, Operations and Commerce—working together.</p>
+      <div class="flex gap-4">
+        <a href="{% url 'login' %}" class="hover:text-[#d14900]">Sign In</a>
+        <a href="{% url 'signup' %}" class="hover:text-[#d14900]">Sign Up</a>
+      </div>
+    </div>
+  </footer>
   {% include "pwa/install_prompt.html" %}
+  {% if marketing_campaigns|length > 1 %}<script>
+  (() => {
+    const stage = document.querySelector('[data-promo-stage]'); if (!stage) return;
+    const slides = [...stage.querySelectorAll('[data-promo-slide]')]; const bars = [...stage.querySelectorAll('.promo-progress span')];
+    if (slides.length < 2 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let index = 0, timer;
+    const show = next => { slides[index].classList.remove('is-active'); slides[index].setAttribute('aria-hidden','true'); bars[index]?.classList.remove('is-active'); index = next % slides.length; slides[index].classList.add('is-active'); slides[index].setAttribute('aria-hidden','false'); bars[index]?.classList.add('is-active'); };
+    const start = () => { clearInterval(timer); timer = setInterval(() => show(index + 1), 7000); };
+    stage.addEventListener('mouseenter', () => clearInterval(timer)); stage.addEventListener('mouseleave', start); stage.addEventListener('focusin', () => clearInterval(timer)); stage.addEventListener('focusout', start); start();
+  })();
+  </script>{% endif %}
 </body>
 </html>

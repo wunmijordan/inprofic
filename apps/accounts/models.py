@@ -2,6 +2,7 @@ from django.conf import settings
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
+from django.core.validators import FileExtensionValidator
 from core.models import Business
 
 
@@ -289,6 +290,79 @@ class SubscriptionPromotion(models.Model):
         from decimal import Decimal
         discount = min(max(self.plan.yearly_discount_percent, Decimal("0")), Decimal("100"))
         return (self.discounted_monthly_price * Decimal("12") * (Decimal("1") - discount / Decimal("100"))).quantize(Decimal("0.01"))
+
+
+class MarketingPromoCampaign(models.Model):
+    """Founder-authored creative for an existing subscription promotion."""
+
+    ANIMATION_KINETIC = "kinetic"
+    ANIMATION_SPOTLIGHT = "spotlight"
+    ANIMATION_PARALLAX = "parallax"
+    ANIMATION_MARQUEE = "marquee"
+    ANIMATION_CHOICES = [
+        (ANIMATION_KINETIC, "Kinetic reveal"),
+        (ANIMATION_SPOTLIGHT, "Spotlight sweep"),
+        (ANIMATION_PARALLAX, "Parallax float"),
+        (ANIMATION_MARQUEE, "Marquee energy"),
+    ]
+    THEME_MIDNIGHT = "midnight"
+    THEME_EMBER = "ember"
+    THEME_PAPER = "paper"
+    THEME_GOLD = "gold"
+    THEME_CHOICES = [
+        (THEME_MIDNIGHT, "Midnight"),
+        (THEME_EMBER, "Ember"),
+        (THEME_PAPER, "Paper"),
+        (THEME_GOLD, "Gold"),
+    ]
+
+    name = models.CharField(max_length=100, help_text="Founder-only label for this campaign creative.")
+    promotion = models.OneToOneField(
+        SubscriptionPromotion, on_delete=models.CASCADE, related_name="marketing_campaign"
+    )
+    content_html = models.TextField(help_text="Sanitised rich text rendered in the public promo stage.")
+    cta_label = models.CharField(max_length=80, default="See promotional plans")
+    animation_style = models.CharField(max_length=16, choices=ANIMATION_CHOICES, default=ANIMATION_KINETIC)
+    theme = models.CharField(max_length=16, choices=THEME_CHOICES, default=THEME_MIDNIGHT)
+    priority = models.PositiveSmallIntegerField(default=50, help_text="Higher numbers appear first if several promotions are live.")
+    image = models.ImageField(upload_to="marketing/promotions/%Y/%m/", blank=True)
+    video = models.FileField(
+        upload_to="marketing/promotions/%Y/%m/",
+        blank=True,
+        validators=[FileExtensionValidator(["mp4", "webm", "mov"])],
+    )
+    video_poster = models.ImageField(upload_to="marketing/promotions/%Y/%m/", blank=True)
+    media_alt = models.CharField(max_length=180, blank=True, default="")
+    active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="marketing_promo_campaigns_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-priority", "id"]
+        indexes = [models.Index(fields=["active", "priority"], name="marketing_campaign_idx")]
+
+    def __str__(self):
+        return f"{self.name} — {self.promotion}"
+
+    def is_active_at(self, moment=None):
+        return bool(self.active and self.promotion.is_active_at(moment))
+
+    @property
+    def media_kind(self):
+        if self.video:
+            return "video"
+        if self.image:
+            return "image"
+        return "none"
+
+    def save(self, *args, **kwargs):
+        from .marketing_campaigns import sanitize_campaign_html
+        self.content_html = sanitize_campaign_html(self.content_html)
+        super().save(*args, **kwargs)
 
 
 class SubscriptionPlanModule(models.Model):

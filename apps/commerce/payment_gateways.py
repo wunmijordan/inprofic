@@ -24,9 +24,21 @@ class GatewayError(ValidationError):
     pass
 
 
+_PAYMENT_PROVIDER_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/51.0.2704.103 Safari/537.36"
+)
+
+
 def _json_request(url, *, method="GET", headers=None, payload=None, timeout=30):
     body = None if payload is None else json.dumps(payload).encode("utf-8")
-    request = Request(url, data=body, method=method, headers=headers or {})
+    request_headers = {
+        "User-Agent": _PAYMENT_PROVIDER_USER_AGENT,
+        "Accept": "application/json",
+    }
+    request_headers.update(headers or {})
+    request = Request(url, data=body, method=method, headers=request_headers)
     try:
         with urlopen(request, timeout=timeout) as response:
             raw = response.read().decode("utf-8")
