@@ -36,8 +36,8 @@ class CommerceSettingsForm(forms.ModelForm):
             "enabled": "Commerce master switch",
             "hosted_storefront_enabled": "Hosted storefront",
             "order_now_link_enabled": "Order Now link",
-            "api_enabled": "Headless API",
-            "connector_enabled": "Platform webhook / connector",
+            "api_enabled": "Connected website access",
+            "connector_enabled": "Connected sales platforms",
             "storefront_headline": "Storefront headline",
             "storefront_hero_image": "Storefront header image",
             "storefront_hero_image_position": "Image focal point",
@@ -77,7 +77,7 @@ class StorefrontProductForm(forms.ModelForm):
         self.fields["allow_online_order"].label = "Offer Online mode"
         self.fields["allow_distribution_order"].label = "Offer Distribution / bulk mode"
         self.fields["image"].label = "Storefront product image"
-        self.fields["image"].help_text = "Upload AVIF, GIF, JPEG, PNG or WebP (maximum 5 MB). The public API exposes its absolute URL."
+        self.fields["image"].help_text = "Upload AVIF, GIF, JPEG, PNG or WebP (maximum 5 MB). The image is also available to connected sales channels."
         self.fields["min_quantity"].label = "Physical Store / direct minimum"
         self.fields["preorder_min_quantity"].label = "Online minimum"
         self.fields["distribution_min_quantity"].label = "Distribution / bulk minimum"
@@ -164,7 +164,7 @@ class CommercePaymentConfigurationForm(forms.ModelForm):
         if cleaned.get("monnify_enabled"):
             for name in monnify_required:
                 if not cleaned.get(name):
-                    self.add_error(name, "This credential is required when Monnify is enabled.")
+                    self.add_error(name, "This information is required when Monnify is enabled.")
             if not cleaned.get("monnify_account"):
                 self.add_error("monnify_account", "Choose the INPROFIC settlement account before enabling Monnify.")
         if cleaned.get("bank_transfer_enabled"):
@@ -187,7 +187,7 @@ class CommercePaymentConfigurationForm(forms.ModelForm):
                         "Enter the Monnify bank code used to issue the temporary transfer account.",
                     )
             else:
-                self.add_error("bank_transfer_provider", "Choose the gateway that will verify bank transfers.")
+                self.add_error("bank_transfer_provider", "Choose the payment provider that will confirm bank transfers.")
             if not cleaned.get("bank_cash_account"):
                 self.add_error("bank_cash_account", "Choose the INPROFIC bank account that receives verified transfers.")
         if cleaned.get("paystack_terminal_enabled"):

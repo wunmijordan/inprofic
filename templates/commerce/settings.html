@@ -161,7 +161,7 @@
       permissionButton.textContent = granted ? 'Browser alerts enabled' : 'Enable browser alerts';
       permissionButton.disabled = granted || denied;
       permissionStatus.textContent = !pushConfig?.configured
-        ? (granted ? 'Foreground browser alerts are enabled. Background Web Push will become available after VAPID keys are configured on the server.' : 'Background Web Push is not configured on this deployment yet.')
+        ? (granted ? 'Browser alerts are enabled. Background notifications are not available on this installation yet.' : 'Background notifications are not available on this installation yet.')
         : 'This browser does not support Web Push. Foreground browser alerts can still be used.';
       return;
     }

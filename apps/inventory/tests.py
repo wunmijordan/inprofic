@@ -10,7 +10,7 @@ from core.models import Business, CashAccount
 from core.pdf_fonts import PDF_MONO_MEDIUM_FONT
 from sales.forms import SaleItemForm
 from sales.models import Customer, Sale
-from .forms import RawMaterialForm
+from .forms import FinishedGoodChannelPriceForm, FinishedGoodChannelPriceFormSet, RawMaterialForm
 from .models import (
     DistributionReturn,
     FinishedGood,
@@ -28,6 +28,53 @@ from .services import (
     transfer_market_stock_to_physical,
 )
 from .views import _raw_material_stock_breakdown_markup
+
+
+class FinishedGoodChannelPriceFormTests(TestCase):
+    def setUp(self):
+        self.business = Business.objects.create(
+            name="Channel Price Bakery",
+            slug="channel-price-bakery",
+            vertical=Business.VERTICAL_BAKERY,
+        )
+
+    def test_vertical_channel_labels_keep_optional_blank_choice(self):
+        form = FinishedGoodChannelPriceForm(business=self.business)
+
+        choices = list(form.fields["channel"].choices)
+        self.assertEqual(choices[0][0], "")
+        self.assertEqual(choices[0][1], "Select channel")
+        self.assertIn(("online", "Online Order"), choices)
+
+    def test_untouched_optional_channel_rows_do_not_block_product_save(self):
+        parent = FinishedGood(business=self.business)
+        data = {
+            "channel_prices-TOTAL_FORMS": "3",
+            "channel_prices-INITIAL_FORMS": "0",
+            "channel_prices-MIN_NUM_FORMS": "0",
+            "channel_prices-MAX_NUM_FORMS": "3",
+        }
+        for index in range(3):
+            data[f"channel_prices-{index}-channel"] = ""
+            data[f"channel_prices-{index}-price"] = ""
+
+        formset = FinishedGoodChannelPriceFormSet(
+            data,
+            instance=parent,
+            prefix="channel_prices",
+            form_kwargs={"business": self.business},
+        )
+
+        self.assertTrue(formset.is_valid(), formset.errors)
+
+    def test_selected_channel_requires_a_price_with_clear_message(self):
+        form = FinishedGoodChannelPriceForm(
+            data={"channel": "online", "price": ""},
+            business=self.business,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertEqual(form.errors["price"], ["Enter a price for this channel."])
 
 
 class RawMaterialPdfStockBreakdownTests(SimpleTestCase):

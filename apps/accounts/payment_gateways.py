@@ -45,13 +45,13 @@ def _json_request(url, *, method="GET", headers=None, payload=None, timeout=30):
             data = response.read().decode("utf-8")
     except HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
-        raise GatewayError(f"Payment provider returned HTTP {exc.code}: {detail[:300]}") from exc
+        raise GatewayError("The payment service could not complete this request. Please try again shortly.") from exc
     except URLError as exc:
-        raise GatewayError(f"Could not reach payment provider: {exc.reason}") from exc
+        raise GatewayError("The payment service could not be reached. Check your connection and try again.") from exc
     try:
         return json.loads(data or "{}")
     except json.JSONDecodeError as exc:
-        raise GatewayError("Payment provider returned an unreadable response.") from exc
+        raise GatewayError("The payment service returned an unexpected response. Please try again.") from exc
 
 
 def _paystack_secret():
@@ -226,4 +226,4 @@ def verify_gateway(payment: SubscriptionPayment):
         return verify_paystack(payment)
     if payment.provider == SubscriptionPayment.PROVIDER_MONNIFY:
         return verify_monnify(payment)
-    raise GatewayError("This payment does not use an online gateway.")
+    raise GatewayError("This payment is not set up for online confirmation.")

@@ -30,7 +30,7 @@
         {% if form.restaurant_table_service.errors %}<div class="text-xs text-rose-600 mt-1">{{ form.restaurant_table_service.errors|join:", " }}</div>{% endif %}
       </div>
     </div>
-    <div class="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900"><strong>Public link notice:</strong> changing this address updates both <span class="font-mono">/shop/{{ biz.slug }}/</span> and <span class="font-mono">/api/v1/storefronts/{{ biz.slug }}/</span>. Update connected websites and shared links immediately after saving.</div>
+    <div class="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900"><strong>Public link notice:</strong> changing this address updates your storefront and connected website links. Update any shared or connected links immediately after saving.</div>
     <p class="text-xs text-stone-500 mb-4">Changing the service adjusts labels and workflow capability; it does not rewrite or delete existing inventory, orders, sales, or finance data. Wholesale and retail use direct product procurement and stock sales, so Production is safely hidden and blocked while either service is active.</p>
     <button class="px-4 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save preferences</button>
   </form>
@@ -73,7 +73,7 @@
   document.getElementById('business-settings-form')?.addEventListener('submit', function (event) {
     const originalSlug = '{{ biz.slug|escapejs }}';
     const newSlug = document.getElementById('id_slug')?.value.trim().toLowerCase();
-    if (newSlug && newSlug !== originalSlug && !window.confirm('Change the public business address? Existing storefront links and website API URLs will stop working until they are updated.')) {
+    if (newSlug && newSlug !== originalSlug && !window.confirm('Change the public business address? Existing storefront and connected website links will stop working until they are updated.')) {
       event.preventDefault();
     }
   });

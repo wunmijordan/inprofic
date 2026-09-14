@@ -20,7 +20,7 @@
   {% block extra_head %}{% endblock %}
 </head>
 <body class="min-h-screen">
-  <header class="relative isolate overflow-hidden text-white" style="background:var(--brand-dark)">
+  {% if not hide_storefront_header %}<header class="relative isolate overflow-hidden text-white" style="background:var(--brand-dark)">
     {% if commerce_settings.storefront_hero_image %}
     <div class="absolute inset-y-0 right-0 w-full md:w-[58%]">
       <img src="{{ commerce_settings.storefront_hero_image.url }}" alt="" class="h-full w-full object-cover opacity-65" style="object-position:{{ commerce_settings.storefront_hero_image_position }}">
@@ -35,8 +35,8 @@
       </a>
       <a href="{% url 'storefront' store_business.slug %}" class="rounded-full border border-white/20 bg-white/10 px-3.5 py-2 text-xs font-semibold backdrop-blur transition hover:bg-white/20">Back to catalogue</a>
     </nav>
-  </header>
+  </header>{% endif %}
   {% block content %}{% endblock %}
-  <footer class="mt-16 border-t border-stone-200 bg-white px-5 py-8 text-center"><p class="flex flex-col items-center gap-1.5 text-xs text-stone-400"><img src="{% static 'core/brand/inprofic-logo-on-light.png' %}" alt="INPROFIC" class="h-7 w-auto" width="2097" height="361"><span>Ordering made simple</span></p></footer>
+  {% if not hide_storefront_header %}<footer class="mt-16 border-t border-stone-200 bg-white px-5 py-8 text-center"><p class="flex flex-col items-center gap-1.5 text-xs text-stone-400"><img src="{% static 'core/brand/inprofic-logo-on-light.png' %}" alt="INPROFIC" class="h-7 w-auto" width="2097" height="361"><span>Ordering made simple</span></p></footer>{% endif %}
 </body>
 </html>

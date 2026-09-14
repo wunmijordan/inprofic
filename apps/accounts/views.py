@@ -131,7 +131,7 @@ def user_form(request, pk=None):
                 membership.active = user.is_active
                 membership.save(update_fields=["role", "active"])
                 ensure_permissions(membership)
-                # POS is role-owned. Any temporary legacy override migrated
+                # POS is role-owned. Any temporary direct override is migrated
                 # from the retired checkbox is cleared as soon as this user is
                 # explicitly edited, so the selected role becomes authoritative.
                 UserModulePermission.objects.filter(membership=membership, module="pos").delete()
@@ -240,7 +240,7 @@ def subscription_plans(request):
     service = getattr(request.business, "subscription_service", None)
     subscription = service.subscription if service else BusinessSubscription.objects.filter(primary_business=request.business).select_related("plan").first()
     if not subscription:
-        # Legacy live businesses are not silently downgraded; they may opt into a plan from this page.
+        # Existing businesses are not silently downgraded; they may choose a plan from this page.
         subscription = None
     plans = attach_active_promotions(
         SubscriptionPlan.objects.filter(active=True).prefetch_related("module_entitlements").order_by("monthly_price", "id")
@@ -388,7 +388,7 @@ def subscription_payment_callback(request, provider):
             return render(request, "accounts/subscription_payment_result.html", {"success": True, "payment": payment, "message": "Payment verified. Your subscription access has been updated."})
     except Exception as exc:
         return render(request, "accounts/subscription_payment_result.html", {"success": False, "payment": payment, "message": str(exc)}, status=400)
-    return render(request, "accounts/subscription_payment_result.html", {"success": False, "payment": payment, "message": "Payment is not yet confirmed. If you completed payment, the webhook may still confirm it shortly."}, status=400)
+    return render(request, "accounts/subscription_payment_result.html", {"success": False, "payment": payment, "message": "Payment is not yet confirmed. If you completed payment, confirmation from the payment provider may still arrive shortly."}, status=400)
 
 
 @csrf_exempt
@@ -460,19 +460,19 @@ def subscription_add_service(request):
 
 @login_required
 def founder_subscriptions(request):
-    from .forms import FounderGrantForm, LegacyTenantImportForm, SubscriptionPromotionForm, MarketingPromoCampaignForm
+    from .forms import FounderGrantForm, BusinessRestoreForm, SubscriptionPromotionForm, MarketingPromoCampaignForm
     from .models import BusinessSubscription, SubscriptionPlan, SubscriptionPayment, SubscriptionPaymentSettings, SubscriptionPromotion, MarketingPromoCampaign
     from .subscription_services import ensure_default_plans, grant_founder_lifetime, mark_payment_paid, start_trial_for_business
-    from .legacy_import import LegacyImportError, analyze_legacy_backup, import_legacy_backup
+    from .backup_restore import BackupRestoreError, analyze_backup, restore_backup
     if not request.user.is_superuser:
         return render(request, "403.html", status=403)
     ensure_default_plans()
     payment_settings = SubscriptionPaymentSettings.load()
     action = request.POST.get("action") if request.method == "POST" else ""
     form = FounderGrantForm(request.POST if action == "grant" else None)
-    legacy_form = LegacyTenantImportForm(
-        request.POST if action in {"legacy_dry_run", "legacy_import"} else None,
-        request.FILES if action in {"legacy_dry_run", "legacy_import"} else None,
+    restore_form = BusinessRestoreForm(
+        request.POST if action in {"backup_preview", "backup_restore"} else None,
+        request.FILES if action in {"backup_preview", "backup_restore"} else None,
     )
     promotion_form = SubscriptionPromotionForm(request.POST if action == "create_promotion" else None)
     campaign_id = (request.POST.get("campaign_id") if action == "save_marketing_campaign" else None) or request.GET.get("campaign")
@@ -493,40 +493,40 @@ def founder_subscriptions(request):
         campaign_editor_html = campaign_instance.content_html
     else:
         campaign_editor_html = ""
-    legacy_import_report = None
+    backup_restore_report = None
     if request.method == "POST":
-        if action in {"legacy_dry_run", "legacy_import"} and legacy_form.is_valid():
-            target_business = legacy_form.cleaned_data["target_business"]
-            source_business_id = legacy_form.cleaned_data.get("source_business_id")
-            uploaded = legacy_form.cleaned_data["database"]
+        if action in {"backup_preview", "backup_restore"} and restore_form.is_valid():
+            target_business = restore_form.cleaned_data["target_business"]
+            source_business_id = restore_form.cleaned_data.get("source_business_id")
+            uploaded = restore_form.cleaned_data["database"]
             try:
-                if action == "legacy_dry_run":
-                    legacy_import_report = analyze_legacy_backup(
+                if action == "backup_preview":
+                    backup_restore_report = analyze_backup(
                         uploaded, target_business, source_business_id
                     )
                 else:
                     if not source_business_id:
                         uploaded.seek(0)
-                        auto_report = analyze_legacy_backup(uploaded, target_business, None)
+                        auto_report = analyze_backup(uploaded, target_business, None)
                         source_business_id = auto_report.get("source_business_id")
                         if not source_business_id:
-                            legacy_form.add_error("source_business_id", "This backup contains more than one legacy tenant. Run Dry run and enter the tenant ID you want to import.")
+                            restore_form.add_error("source_business_id", "This backup contains more than one business. Preview it first, then enter the business number you want to restore.")
                         uploaded.seek(0)
-                    expected = f"IMPORT {target_business.slug}"
-                    if legacy_form.cleaned_data.get("confirmation", "").strip() != expected:
-                        legacy_form.add_error("confirmation", f"Type {expected} exactly to authorize this tenant import.")
-                    if not legacy_form.errors:
-                        result = import_legacy_backup(uploaded, target_business, source_business_id, actor=request.user)
+                    expected = f"RESTORE {target_business.slug}"
+                    if restore_form.cleaned_data.get("confirmation", "").strip() != expected:
+                        restore_form.add_error("confirmation", f"Type {expected} exactly to confirm this business restore.")
+                    if not restore_form.errors:
+                        result = restore_backup(uploaded, target_business, source_business_id, actor=request.user)
                         messages.success(
                             request,
-                            f"Legacy tenant import completed for {target_business.name}: "
+                            f"Business restore completed for {target_business.name}: "
                             f"{result['total_rows']} operational rows, "
                             f"{result['identity']['users_created']} new user(s), and "
                             f"{result['identity']['users_matched']} existing user match(es).",
                         )
                         return redirect("founder_subscriptions")
-            except LegacyImportError as exc:
-                legacy_form.add_error(None, str(exc))
+            except BackupRestoreError as exc:
+                restore_form.add_error(None, str(exc))
         if action == "grant" and form.is_valid():
             business = form.cleaned_data["business"]
             service = getattr(business, "subscription_service", None)
@@ -655,8 +655,8 @@ def founder_subscriptions(request):
         "pending_payments": pending_payments,
         "plans": SubscriptionPlan.objects.prefetch_related("module_entitlements").all().order_by("monthly_price", "id"),
         "payment_settings": payment_settings,
-        "legacy_form": legacy_form,
-        "legacy_import_report": legacy_import_report,
+        "restore_form": restore_form,
+        "backup_restore_report": backup_restore_report,
         "promotion_form": promotion_form,
         "promotions": SubscriptionPromotion.objects.select_related("plan", "created_by").order_by("-active", "-starts_at", "-id")[:50],
         "campaign_form": campaign_form,

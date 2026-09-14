@@ -552,21 +552,21 @@ class LiveTesterRoleTests(TestCase):
         self.assertContains(response, "Demo")
 
     def test_existing_custom_demo_role_is_adopted_instead_of_duplicated(self):
-        other_business = Business.objects.create(name="Legacy Demo Tenant", slug="legacy-demo-tenant")
-        legacy_demo = Role.objects.create(
+        other_business = Business.objects.create(name="Existing Demo Tenant", slug="existing-demo-tenant")
+        existing_demo = Role.objects.create(
             business=other_business, key="demo", name="Demo", active=True, visible_to_admin=True
         )
-        legacy_user = CustomUser.objects.create_user(
-            username="legacy.demo.user", password="safe-password-123", fullname="Legacy Demo User"
+        existing_user = CustomUser.objects.create_user(
+            username="existing.demo.user", password="safe-password-123", fullname="Existing Demo User"
         )
         membership = UserBusiness.objects.create(
-            user=legacy_user, business=other_business, role=legacy_demo, active=True
+            user=existing_user, business=other_business, role=existing_demo, active=True
         )
 
         roles = seed_business_roles(other_business)
         canonical = roles[CustomUser.ROLE_LIVE_TESTER]
         membership.refresh_from_db()
-        self.assertEqual(canonical.pk, legacy_demo.pk)
+        self.assertEqual(canonical.pk, existing_demo.pk)
         self.assertEqual(canonical.key, CustomUser.ROLE_LIVE_TESTER)
         self.assertEqual(canonical.name, "Demo")
         self.assertFalse(canonical.visible_to_admin)
@@ -769,7 +769,7 @@ class FounderPaymentSettingsTests(TestCase):
 
 
 
-class LegacyTenantImportTests(TestCase):
+class BusinessRestoreTests(TestCase):
     def _backup(self, businesses):
         import os
         import sqlite3
@@ -789,7 +789,7 @@ class LegacyTenantImportTests(TestCase):
                     "INSERT INTO core_business (id,name,currency_symbol,slug,vertical,accent_color,background_color,tagline,restaurant_table_service) VALUES (?,?,?,?,?,?,?,?,?)",
                     (
                         row["id"], row["name"], "₦", row["slug"], row.get("vertical", "general"),
-                        "#D14900", "#050733", row.get("tagline", "Legacy tenant"), 1,
+                        "#D14900", "#050733", row.get("tagline", "Existing tenant"), 1,
                     ),
                 )
             connection.commit()
@@ -797,42 +797,42 @@ class LegacyTenantImportTests(TestCase):
             data = open(path, "rb").read()
         finally:
             os.unlink(path)
-        return SimpleUploadedFile("legacy.sqlite3", data, content_type="application/octet-stream")
+        return SimpleUploadedFile("backup.sqlite3", data, content_type="application/octet-stream")
 
     def test_dry_run_requires_source_id_when_backup_has_multiple_tenants(self):
-        from .legacy_import import analyze_legacy_sqlite
+        from .backup_restore import analyze_backup_sqlite
         target = Business.objects.create(name="Destination", slug="destination")
         upload = self._backup([
-            {"id": 1, "name": "Legacy One", "slug": "legacy-one"},
-            {"id": 2, "name": "Legacy Two", "slug": "legacy-two"},
+            {"id": 1, "name": "Existing One", "slug": "existing-one"},
+            {"id": 2, "name": "Existing Two", "slug": "existing-two"},
         ])
-        report = analyze_legacy_sqlite(upload, target)
+        report = analyze_backup_sqlite(upload, target)
         self.assertFalse(report["ready"])
         self.assertEqual(len(report["source_businesses"]), 2)
         self.assertIn("multiple tenants", " ".join(report["blockers"]).lower())
 
     def test_import_is_tenant_scoped_and_copies_business_profile_without_slug(self):
-        from .legacy_import import import_legacy_sqlite
+        from .backup_restore import restore_backup_sqlite
         target = Business.objects.create(name="Fresh Destination", slug="keep-this-slug")
         upload = self._backup([
-            {"id": 7, "name": "Legacy Company", "slug": "old-slug", "vertical": "retail", "tagline": "Imported history"},
+            {"id": 7, "name": "Existing Company", "slug": "old-slug", "vertical": "retail", "tagline": "Imported history"},
         ])
-        result = import_legacy_sqlite(upload, target, 7)
+        result = restore_backup_sqlite(upload, target, 7)
         target.refresh_from_db()
-        self.assertEqual(target.name, "Legacy Company")
+        self.assertEqual(target.name, "Existing Company")
         self.assertEqual(target.slug, "keep-this-slug")
         self.assertEqual(target.vertical, "retail")
         self.assertEqual(result["total_rows"], 0)
 
-class LegacyJSONTenantImportTests(TestCase):
+class JSONBusinessRestoreTests(TestCase):
     def _json_backup(self):
         import json
         from django.core.files.uploadedfile import SimpleUploadedFile
         payload = [
             {"model": "core.business", "pk": 1, "fields": {
-                "name": "Legacy One", "currency_symbol": "₦", "slug": "legacy-one",
+                "name": "Existing One", "currency_symbol": "₦", "slug": "existing-one",
                 "vertical": "general", "accent_color": "#D14900", "background_color": "#050733",
-                "tagline": "Legacy data", "storefront_logo": "", "restaurant_table_service": True,
+                "tagline": "Existing data", "storefront_logo": "", "restaurant_table_service": True,
             }},
             {"model": "core.business", "pk": 2, "fields": {
                 "name": "Other Tenant", "currency_symbol": "₦", "slug": "other-tenant",
@@ -840,7 +840,7 @@ class LegacyJSONTenantImportTests(TestCase):
                 "tagline": "Must not leak", "storefront_logo": "", "restaurant_table_service": True,
             }},
             {"model": "core.cashaccount", "pk": 10, "fields": {
-                "business": 1, "created_by": None, "name": "Legacy Cash", "account_type": "cash",
+                "business": 1, "created_by": None, "name": "Existing Cash", "account_type": "cash",
                 "opening_balance": "100.00", "active": True,
             }},
             {"model": "core.cashaccount", "pk": 20, "fields": {
@@ -849,30 +849,30 @@ class LegacyJSONTenantImportTests(TestCase):
             }},
         ]
         return SimpleUploadedFile(
-            "legacy.json", json.dumps(payload).encode("utf-8"), content_type="application/json"
+            "backup.json", json.dumps(payload).encode("utf-8"), content_type="application/json"
         )
 
     def test_json_dry_run_requires_source_tenant_for_old_unscoped_backup(self):
-        from .legacy_import import analyze_legacy_backup
+        from .backup_restore import analyze_backup
         target = Business.objects.create(name="Destination", slug="json-destination")
-        report = analyze_legacy_backup(self._json_backup(), target)
+        report = analyze_backup(self._json_backup(), target)
         self.assertFalse(report["ready"])
         self.assertEqual(len(report["source_businesses"]), 2)
         self.assertIn("multiple tenants", " ".join(report["blockers"]).lower())
 
     def test_json_import_filters_other_tenant_rows(self):
         from core.models import CashAccount
-        from .legacy_import import import_legacy_backup
+        from .backup_restore import restore_backup
         target = Business.objects.create(name="Destination", slug="json-import-destination")
-        result = import_legacy_backup(self._json_backup(), target, 1)
+        result = restore_backup(self._json_backup(), target, 1)
         target.refresh_from_db()
 
-        self.assertEqual(target.name, "Legacy One")
+        self.assertEqual(target.name, "Existing One")
         self.assertEqual(target.slug, "json-import-destination")
         self.assertEqual(result["models"]["core.cashaccount"], 1)
         self.assertEqual(
             list(CashAccount.raw_objects.filter(business=target).values_list("name", flat=True)),
-            ["Legacy Cash"],
+            ["Existing Cash"],
         )
 
     def test_json_import_reconstructs_omitted_customer_and_location_dependencies(self):
@@ -881,16 +881,16 @@ class LegacyJSONTenantImportTests(TestCase):
         from sales.models import Customer, Sale
         from production.models import Order
         from inventory.models import InventoryLocation, StockMovement
-        from .legacy_import import import_legacy_backup
+        from .backup_restore import restore_backup
 
         payload = [
             {"model": "core.business", "pk": 1, "fields": {
-                "name": "Legacy Bakery", "currency_symbol": "₦", "slug": "legacy-bakery",
+                "name": "Existing Bakery", "currency_symbol": "₦", "slug": "existing-bakery",
                 "vertical": "bakery", "accent_color": "#D14900", "background_color": "#050733",
                 "tagline": "", "storefront_logo": "", "restaurant_table_service": True,
             }},
             {"model": "core.cashaccount", "pk": 4, "fields": {
-                "business": 1, "created_by": None, "name": "Legacy Bank", "account_type": "bank",
+                "business": 1, "created_by": None, "name": "Existing Bank", "account_type": "bank",
                 "opening_balance": "0.00", "active": True,
             }},
             {"model": "inventory.rawmaterial", "pk": 1, "fields": {
@@ -908,7 +908,7 @@ class LegacyJSONTenantImportTests(TestCase):
             {"model": "production.order", "pk": 5, "fields": {
                 "business": 1, "created_by": None, "date": "2026-09-01", "order_number": 1,
                 "order_type": "distribution", "is_market_stock": False, "production_destination": "store",
-                "non_stock_purpose": "", "customer": 8, "customer_name": "Legacy Customer",
+                "non_stock_purpose": "", "customer": 8, "customer_name": "Existing Customer",
                 "customer_region": "Mainland", "customer_group": "Wholesale", "transaction_type": "paid",
                 "customer_payment_status": "paid", "customer_payment_method": "Transfer",
                 "customer_payment_account": 4, "unpaid_description": "", "payment_method": "Transfer",
@@ -921,7 +921,7 @@ class LegacyJSONTenantImportTests(TestCase):
                 "discount": "0.00", "price": "500.00",
             }},
             {"model": "sales.sale", "pk": 6, "fields": {
-                "business": 1, "created_by": None, "date": "2026-09-01", "customer": "Legacy Customer",
+                "business": 1, "created_by": None, "date": "2026-09-01", "customer": "Existing Customer",
                 "customer_master": 8, "transaction_type": "paid", "unpaid_description": "",
                 "account": 4, "payment_method": "Transfer", "source": "distribution_order",
                 "linked_order": 5, "service_mode": "", "table_reference": "",
@@ -933,16 +933,16 @@ class LegacyJSONTenantImportTests(TestCase):
             {"model": "inventory.stockmovement", "pk": 1, "fields": {
                 "business": 1, "created_by": None, "raw_material": 1, "finished_good": None,
                 "movement_type": "raw_consumption", "quantity": "-1.000", "affects_stock": True,
-                "balance_after": "9.000", "note": "Legacy use", "reference": "PROD-5",
+                "balance_after": "9.000", "note": "Existing use", "reference": "PROD-5",
                 "unit_value": "100.000000", "location": 1,
             }},
         ]
-        upload = SimpleUploadedFile("legacy.json", json.dumps(payload).encode(), content_type="application/json")
-        target = Business.objects.create(name="Destination", slug="legacy-reconstruct-target")
-        result = import_legacy_backup(upload, target, 1)
+        upload = SimpleUploadedFile("backup.json", json.dumps(payload).encode(), content_type="application/json")
+        target = Business.objects.create(name="Destination", slug="restore-reconstruct-target")
+        result = restore_backup(upload, target, 1)
 
         customer = Customer.raw_objects.get(business=target)
-        self.assertEqual(customer.name, "Legacy Customer")
+        self.assertEqual(customer.name, "Existing Customer")
         self.assertEqual(Order.raw_objects.get(business=target).customer_id, customer.pk)
         self.assertEqual(Sale.raw_objects.get(business=target).customer_master_id, customer.pk)
         self.assertIsNone(Sale.raw_objects.get(business=target).items.get().production_batch_id)

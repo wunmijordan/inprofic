@@ -1,8 +1,8 @@
 {% extends "base.html" %}{% block content %}
 <div class="max-w-2xl"><h1 class="text-2xl font-semibold font-display text-[#8f172d]">Add commerce integration</h1>
-<p class="text-sm text-stone-500 mb-4">Choose how an external system talks to INPROFIC.</p>
+<p class="text-sm text-stone-500 mb-4">Choose how a website or sales platform connects to INPROFIC.</p>
 <div class="grid sm:grid-cols-2 gap-3 mb-5 text-sm">
-  <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-3"><strong>Headless API</strong><p class="text-xs text-stone-500 mt-1">Your own bakery/restaurant website directly reads INPROFIC's catalogue and submits orders to INPROFIC using the generated API key. Best for a website you control.</p></div>
-  <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-3"><strong>Platform webhook / connector</strong><p class="text-xs text-stone-500 mt-1">A third-party platform or adapter (for example WooCommerce/Shopify middleware) pushes normalized order events into INPROFIC. Requests are signed with the generated webhook secret.</p></div>
+  <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-3"><strong>Connected website</strong><p class="text-xs text-stone-500 mt-1">Connect a website you control so it can read your INPROFIC catalogue and send customer orders securely.</p></div>
+  <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-3"><strong>Connected sales platform</strong><p class="text-xs text-stone-500 mt-1">Connect an external sales platform such as WooCommerce or Shopify through your integration service so its orders can flow into INPROFIC. Use the generated connection secret when setting up that service.</p></div>
 </div>
-<form method="post" class="bg-white border border-[#E7DFCC] rounded-lg p-5">{% csrf_token %}{% for field in form %}{% include '_field.html' with field=field %}{% endfor %}<button class="px-4 py-2 bg-[#8f172d] text-white rounded-md text-sm">Create credential</button></form></div>{% endblock %}
+<form method="post" class="bg-white border border-[#E7DFCC] rounded-lg p-5">{% csrf_token %}{% for field in form %}{% include '_field.html' with field=field %}{% endfor %}<button class="px-4 py-2 bg-[#8f172d] text-white rounded-md text-sm">Create connection</button></form></div>{% endblock %}

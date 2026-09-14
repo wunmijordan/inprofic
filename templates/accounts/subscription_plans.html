@@ -13,7 +13,7 @@
     <div class="mt-3 flex flex-wrap gap-2">{% for service in subscription.services.all %}<span class="rounded-full bg-[#F5EFE0] border border-[#E7DFCC] px-2.5 py-1 text-xs">{{ service.business.name }} · {{ service.business.get_vertical_display }}{% if service.is_primary %} · Primary{% endif %}</span>{% endfor %}</div>
     <a href="{% url 'subscription_add_service' %}" class="inline-block mt-3 text-sm text-[#8f172d] underline">+ Add another service/business profile</a>
   </div>
-  {% else %}<div class="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm"><strong>Legacy access:</strong> this existing business has not yet been enrolled in a subscription, so its current module access is preserved. Choosing a plan makes the plan entitlements authoritative.</div>{% endif %}
+  {% else %}<div class="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm"><strong>Existing access:</strong> this existing business has not yet been enrolled in a subscription, so its current module access is preserved. Choosing a plan makes the plan entitlements authoritative.</div>{% endif %}
   <div class="grid lg:grid-cols-3 gap-4">
     {% for card in plan_cards %}{% with plan=card.plan %}<article class="bg-[#FFFDF8] border {% if card.is_current %}border-emerald-400 ring-2 ring-emerald-100{% else %}border-[#E7DFCC]{% endif %} rounded-xl p-5 shadow-[0_2px_8px_#000000d2]">
       <div class="flex flex-wrap items-center justify-between gap-2"><h2 class="font-display text-xl font-semibold text-[#8f172d]">{{ plan.name }}</h2>{% if card.is_current %}<span class="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-800">Current · {{ subscription.effective_status_label }}</span>{% endif %}</div>

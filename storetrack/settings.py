@@ -188,6 +188,11 @@ if not db_url.startswith(('postgres://', 'postgresql://')):
             'NAME': db_path,
             'OPTIONS': {
                 'timeout': 20,  # Wait briefly instead of immediately failing on a concurrent local write.
+                # Django 5.1+ supports IMMEDIATE SQLite transactions. Acquiring
+                # the write reservation at transaction start avoids DEFERRED
+                # read-to-write upgrade failures when a concurrent notification
+                # or request is writing at the same time.
+                'transaction_mode': 'IMMEDIATE',
             }
         }
     }

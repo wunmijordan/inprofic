@@ -51,16 +51,16 @@ class Order(BusinessOwnedModel):
         help_text="Optional reporting region/territory for distribution or online customer analytics.")
     customer_group = models.CharField(max_length=100, blank=True,
         help_text="Optional customer group/segment for distribution or online customer analytics.")
-    # Legacy payment fields are retained for historical rows and database
+    # Existing payment fields are retained for historical rows and database
     # compatibility. They are deliberately not exposed for Physical Store
     # Orders: those are production/restock requests, not direct sales.
-    transaction_type = models.CharField(max_length=10, choices=TRANSACTION_CHOICES, default="paid", help_text="Legacy field retained for historical physical-store orders; direct sales are recorded in Sales.")
+    transaction_type = models.CharField(max_length=10, choices=TRANSACTION_CHOICES, default="paid", help_text="Earlier physical-store order payment field; direct sales are recorded in Sales.")
     customer_payment_status = models.CharField(max_length=10, choices=CUSTOMER_PAYMENT_CHOICES, default="paid", help_text="Distribution/Online only: whether the customer payment has been received or remains a receivable.")
     customer_payment_method = models.CharField(max_length=10, choices=PAYMENT_CHOICES, default="Transfer", blank=True)
     customer_payment_account = models.ForeignKey("core.CashAccount", null=True, blank=True, on_delete=models.PROTECT, related_name="customer_order_payments")
     unpaid_description = models.CharField(max_length=255, blank=True, default="")
     payment_method = models.CharField(max_length=10, choices=PAYMENT_CHOICES, default="Cash", blank=True,
-        help_text="Legacy field retained for historical rows; customer-order payment is handled through Finance.")
+        help_text="Earlier customer-order payment field; current customer payments are handled through Finance.")
     account = models.ForeignKey("core.CashAccount", null=True, blank=True, on_delete=models.PROTECT, related_name="production_orders")
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="pending")
     notes = models.TextField(blank=True)
@@ -312,7 +312,7 @@ class ProductionRunOrder(TimestampedModel):
 
 
 class ProductionRunMaterial(BusinessOwnedModel):
-    """Legacy shared-material override rows retained for migration/history.
+    """Shared-material override rows retained for existing records.
 
     New Shared Production Runs do not use run-level material substitution.
     They aggregate each OrderItem's normal proportional recipe/input usage.
@@ -456,7 +456,7 @@ class ProductionOffcutAllocation(BusinessOwnedModel):
     """One customer allocation from a production batch's planned offcut.
 
     New completions may split planned offcut across any number of Distribution
-    and Online customers.  The legacy single-customer fields on ProductionBatch
+    and Online customers.  The existing single-customer fields on ProductionBatch
     remain as summary/backward-compatibility fields for older records.
     """
     batch = models.ForeignKey(

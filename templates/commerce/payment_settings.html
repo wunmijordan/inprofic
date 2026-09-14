@@ -1,10 +1,10 @@
 {% extends "base.html" %}{% block content %}
 <div class="max-w-4xl">
   <div class="flex flex-wrap items-end justify-between gap-3 mb-5">
-    <div><h1 class="text-2xl font-semibold font-display text-[#8f172d]">Commerce payment settings</h1><p class="text-sm text-stone-500">Configure tenant-specific payment providers and the Finance account that receives each verified settlement.</p></div>
+    <div><h1 class="text-2xl font-semibold font-display text-[#8f172d]">Commerce payment settings</h1><p class="text-sm text-stone-500">Configure payment providers for this business and choose the Finance account that receives each confirmed payment.</p></div>
     <a href="{% url 'commerce_dashboard' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">Back to Commerce</a>
   </div>
-  <div class="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><strong>Credentials are write-only here.</strong> Saved secrets are never returned by the storefront API. Leaving a credential blank preserves its current value.</div>
+  <div class="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><strong>Your payment credentials stay protected.</strong> Saved secret values are never shown back on this page or shared with customers. Leave an existing secret field blank to keep its current value.</div>
   <form method="post" class="space-y-5">{% csrf_token %}
     {% if form.non_field_errors %}<div class="rounded-lg bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">{{ form.non_field_errors }}</div>{% endif %}
     <section class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-5">
@@ -17,12 +17,12 @@
     </section>
     <section class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-5">
       <div class="flex items-center gap-2 mb-3">{{ form.monnify_enabled }}<label for="{{ form.monnify_enabled.id_for_label }}" class="font-semibold">Enable Monnify</label></div>
-      <p class="mb-3 text-xs text-stone-500">Used for hosted checkout and, when selected below, one-time bank-transfer accounts confirmed by Monnify webhooks/server verification.</p>
+      <p class="mb-3 text-xs text-stone-500">Used for hosted checkout and, when selected below, one-time bank-transfer accounts that Monnify confirms automatically.</p>
       <div class="grid md:grid-cols-2 gap-3">{% include '_field.html' with field=form.monnify_api_key %}{% include '_field.html' with field=form.monnify_secret_key %}{% include '_field.html' with field=form.monnify_contract_code %}{% include '_field.html' with field=form.monnify_base_url %}{% include '_field.html' with field=form.monnify_account %}</div>
     </section>
     <section class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-5">
       <div class="flex items-center gap-2 mb-3">{{ form.bank_transfer_enabled }}<label for="{{ form.bank_transfer_enabled.id_for_label }}" class="font-semibold">Enable automated bank transfer</label></div>
-      <p class="mb-3 text-xs text-stone-500">Public storefront/API transfers are gateway-confirmed only. Customers receive a temporary account; there is no manual “I have transferred” approval step for new checkouts.</p>
+      <p class="mb-3 text-xs text-stone-500">Storefront and connected-channel transfers are confirmed automatically by the selected payment provider. Customers receive a temporary account and do not need to submit a transfer claim.</p>
       <div class="grid md:grid-cols-2 gap-3">{% include '_field.html' with field=form.bank_transfer_provider %}<div id="monnify-transfer-bank">{% include '_field.html' with field=form.monnify_transfer_bank_code %}</div>{% include '_field.html' with field=form.bank_cash_account %}</div>
     </section>
     <section class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-5">
@@ -32,7 +32,7 @@
     </section>
     <section class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-5">
       <div class="flex items-center gap-2 mb-3">{{ form.cash_enabled }}<label for="{{ form.cash_enabled.id_for_label }}" class="font-semibold">Enable staff POS cash</label></div>
-      <p class="mb-3 text-xs text-stone-500">Cash never appears on public/headless storefronts. It is available only to authenticated staff with Commerce storefront access.</p>
+      <p class="mb-3 text-xs text-stone-500">Cash is available only for authorised staff using the in-premise POS; it is not offered to customers on the public storefront.</p>
       <div class="grid md:grid-cols-2 gap-3">{% include '_field.html' with field=form.cash_account %}{% include '_field.html' with field=form.cash_instructions %}</div>
     </section>
     <button class="px-4 py-2.5 bg-[#8f172d] text-white rounded-md text-sm">Save payment settings</button>

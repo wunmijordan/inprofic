@@ -1,4 +1,6 @@
 from django import forms
+from django.forms import BaseFormSet, formset_factory
+from django.utils import timezone
 from .models import Expense, ExpensePayment
 from core.models import CashAccount
 
@@ -21,10 +23,16 @@ class ExpenseForm(StyledModelForm):
             "notes": forms.Textarea(attrs={"rows": 2}),
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, business=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["account"].queryset = CashAccount.objects.filter(active=True).order_by("name")
+        self.business = business
+        accounts = CashAccount.objects.filter(active=True)
+        if business is not None:
+            accounts = accounts.filter(business=business)
+        self.fields["account"].queryset = accounts.order_by("name")
         self.fields["account"].required = False
+        if not self.is_bound and not getattr(self.instance, "pk", None):
+            self.fields["date"].initial = timezone.localdate()
 
     def clean(self):
         cleaned = super().clean()
@@ -37,6 +45,31 @@ class ExpenseForm(StyledModelForm):
         if amount is not None and amount <= 0:
             raise forms.ValidationError("Amount must be greater than zero.")
         return amount
+
+
+class BaseExpenseFormSet(BaseFormSet):
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        has_record = any(
+            form.cleaned_data
+            and not form.cleaned_data.get("DELETE")
+            and form.has_changed()
+            for form in self.forms
+        )
+        if not has_record:
+            raise forms.ValidationError("Add at least one expense before saving.")
+
+
+ExpenseFormSet = formset_factory(
+    ExpenseForm,
+    formset=BaseExpenseFormSet,
+    extra=1,
+    can_delete=True,
+    max_num=25,
+    validate_max=True,
+)
 
 
 class ExpensePaymentForm(StyledModelForm):

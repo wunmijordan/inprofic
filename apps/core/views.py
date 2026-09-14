@@ -1891,7 +1891,7 @@ def backup_json(request):
 
     business = getattr(request, "business", None)
     if business is None:
-        return JsonResponse({"error": "No active tenant is selected."}, status=400)
+        return JsonResponse({"error": "No active business is selected."}, status=400)
     data = serializers.serialize("json", tenant_backup_objects(business), indent=2)
     response = HttpResponse(data, content_type="application/json")
     response["Content-Disposition"] = f'attachment; filename="inprofic-{business.slug}-backup-{today()}.json"'

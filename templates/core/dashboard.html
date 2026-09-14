@@ -151,7 +151,7 @@
               </div>
             </section>
             <section class="bg-white border border-[#E7DFCC] rounded-xl overflow-hidden">
-              <div class="px-4 py-3 border-b border-[#E7DFCC] flex items-center justify-between"><div><h4 class="text-xs uppercase tracking-wider font-bold text-[#8f172d]">Operational supply dispensing</h4><p class="text-[10px] text-stone-400 mt-0.5" x-text="detail.uses_production ? `Manual consumption outside the ${detail.recipe_label.toLowerCase()}; every issue reduces stock.` : 'Internal supply use recorded separately from product receipts and sales; every issue reduces stock.'"></p></div><span class="text-xs font-mono text-amber-700" x-text="fmt(detail.summary.operational_dispensed || 0) + ' ' + (detail.summary.stock_unit || '')"></span></div>
+              <div class="px-4 py-3 border-b border-[#E7DFCC] flex items-center justify-between"><div><h4 class="text-xs uppercase tracking-wider font-bold text-[#8f172d]">Operational supply dispensing</h4><p class="text-[10px] text-stone-400 mt-0.5" x-text="detail.uses_production ? `Manual consumption outside the ${detail.recipe_label.toLowerCase()}; every issue reduces stock.` : 'Business-use supplies are recorded separately from product receipts and sales; every issue reduces stock.'"></p></div><span class="text-xs font-mono text-amber-700" x-text="fmt(detail.summary.operational_dispensed || 0) + ' ' + (detail.summary.stock_unit || '')"></span></div>
               <div class="overflow-x-auto"><table class="w-full text-xs min-w-[650px]"><thead class="bg-stone-50 text-stone-500"><tr><th class="px-3 py-2 text-left">Date</th><th class="px-3 py-2 text-right">Quantity</th><th class="px-3 py-2 text-left">Reason</th><th class="px-3 py-2 text-left">Description</th><th class="px-3 py-2 text-left">Location</th></tr></thead><tbody><template x-for="d in detail.operational_dispenses" :key="d.date + d.quantity + d.description"><tr class="border-t border-stone-100"><td class="px-3 py-2" x-text="d.date"></td><td class="px-3 py-2 text-right font-mono" x-text="fmt(d.quantity) + ' ' + d.unit"></td><td class="px-3 py-2" x-text="d.reason"></td><td class="px-3 py-2" x-text="d.description"></td><td class="px-3 py-2" x-text="d.location"></td></tr></template><tr x-show="!detail.operational_dispenses?.length"><td colspan="5" class="p-5 text-center text-stone-400">No operational dispensing recorded.</td></tr></tbody></table></div>
             </section>
             <section x-show="detail.uses_production" class="bg-white border border-[#E7DFCC] rounded-xl overflow-hidden">
@@ -991,7 +991,7 @@
       <div>
         <div class="text-[10px] uppercase tracking-[0.18em] font-bold text-[#8f172d]">Financial scope</div>
         <h3 class="text-lg font-display font-semibold text-[#8f172d]" x-text="scope === 'year' ? 'Year-to-date Financial Summary' : 'Month-to-date Financial Summary'"></h3>
-        <p class="text-[11px] text-stone-500">Cash Inflows, Cash Outflows and Production Activity — without mixing Internal Production with Cash spend.</p>
+        <p class="text-[11px] text-stone-500">Cash Inflows, Cash Outflows and Production Activity — without counting production activity as a second cash expense.</p>
       </div>
       <button @click="scope = null" class="text-stone-400 hover:text-stone-700 text-xl">&times;</button>
     </div>
@@ -1043,7 +1043,7 @@
             <p><strong>Operational Materials</strong> = Supplies used outside {% if vertical_ui.uses_production %}a production {{ vertical_ui.recipe_label }}{% else %}sellable-product receipts and sales{% endif %}.</p>
             <p><strong>Products for Resale</strong> = Sellable stock received directly from a supplier rather than made through Production.</p>
             <p><strong>Misc Expenses</strong> = Rent, Utilities, Labour, Transport, Marketing, Bank Fees and other recorded expenses.</p>
-            <!--<p><strong>Production</strong> is an internal conversion and is therefore not subtracted as another Cash Outflow.</p>-->
+            <!--<p><strong>Production</strong> moves value through stock and is not subtracted again as another Cash Outflow.</p>-->
           </div>
         </div>
       </div>

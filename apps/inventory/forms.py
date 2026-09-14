@@ -89,7 +89,7 @@ class RawMaterialForm(StyledModelForm):
                 f"The fine unit the {vocabulary['recipe_label'].lower()} consumes — kg, g, "
                 "mL, spoon, cap…"
                 if vocabulary["uses_production"]
-                else "The fine unit used when an internal supply is dispensed — kg, g, mL, piece…"
+                else "The fine unit used when an operational supply is dispensed — kg, g, mL, piece…"
             )
             if business.vertical == business.VERTICAL_GENERAL:
                 self.fields["category"].choices = [
@@ -200,12 +200,26 @@ class FinishedGoodChannelPriceForm(StyledModelForm):
     def __init__(self, *args, business=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["price"].required = False
+        self.fields["channel"].error_messages["required"] = "Select a channel."
         if business:
             labels = vertical_config(business)["commerce_channels"]
+            # Keep an explicit blank choice. These rows are optional inline
+            # forms; without a blank option the browser selects the first
+            # channel automatically, making untouched rows look populated and
+            # preventing the parent Finished Good form from saving.
             self.fields["channel"].choices = [
-                (code, labels.get(code, label))
-                for code, label in FinishedGoodChannelPrice.CHANNEL_CHOICES
+                ("", "Select channel"),
+                *[
+                    (code, labels.get(code, label))
+                    for code, label in FinishedGoodChannelPrice.CHANNEL_CHOICES
+                ],
             ]
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("channel") and cleaned.get("price") is None:
+            self.add_error("price", "Enter a price for this channel.")
+        return cleaned
 
 
 FinishedGoodChannelPriceFormSet = inlineformset_factory(

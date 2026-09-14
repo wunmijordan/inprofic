@@ -82,19 +82,37 @@ def commerce_dashboard(request):
     if missing_products:
         StorefrontProduct.objects.bulk_create(missing_products, ignore_conflicts=True)
 
-    products = FinishedGood.objects.select_related("business", "storefront_product").order_by("name")
-    intakes = CommerceIntake.objects.select_related("business").prefetch_related(
-        "items", "payments"
-    )[:50]
-    checkouts = CommerceCheckoutSession.objects.select_related("materialized_intake").prefetch_related("payments")[:50]
+    products = list(FinishedGood.objects.select_related("business", "storefront_product").order_by("name"))
+    intakes = list(CommerceIntake.objects.select_related(
+        "business", "accepted_order", "accepted_sale", "split_order"
+    ).prefetch_related("items", "payments")[:50])
+    checkouts = list(CommerceCheckoutSession.objects.select_related("materialized_intake").prefetch_related("payments")[:50])
     is_admin = is_business_admin(request.user, request.business)
-    integrations = CommerceIntegration.objects.all().order_by("name") if is_admin else []
+    integrations = list(CommerceIntegration.objects.all().order_by("name")) if is_admin else []
+    commerce_counts = {
+        "recent_orders": len(intakes),
+        "awaiting_payment": sum(1 for row in intakes if row.payment_state == CommerceIntake.PAYMENT_PENDING),
+        "production_queue": sum(
+            1 for row in intakes
+            if (row.accepted_order_id and row.accepted_order and row.accepted_order.status in {"pending", "approved"})
+            or (row.split_order_id and row.split_order and row.split_order.status in {"pending", "approved"})
+        ),
+        "needs_review": (
+            sum(1 for row in checkouts if row.status == CommerceCheckoutSession.STATUS_PAID_REVIEW)
+            + sum(
+                1 for row in intakes
+                if row.payment_state == CommerceIntake.PAYMENT_CONFIRMED
+                and row.status == CommerceIntake.STATUS_PENDING
+            )
+        ),
+    }
     return render(request, "commerce/dashboard.html", {
         "commerce_settings": settings,
         "products": products,
         "intakes": intakes,
         "checkouts": checkouts,
         "integrations": integrations,
+        "commerce_counts": commerce_counts,
         "can_manage_commerce": is_admin,
     })
 
@@ -132,12 +150,12 @@ def integration_add(request):
     if request.method=="POST" and form.is_valid():
         integration_type = form.cleaned_data["integration_type"]
         if integration_type == CommerceIntegration.TYPE_API and not settings.api_enabled:
-            form.add_error("integration_type", "Enable Headless API in Commerce Settings first.")
+            form.add_error("integration_type", "Enable Connected website in Commerce Settings first.")
         elif integration_type == CommerceIntegration.TYPE_WEBHOOK and not settings.connector_enabled:
-            form.add_error("integration_type", "Enable Platform webhook / connector in Commerce Settings first.")
+            form.add_error("integration_type", "Enable Connected sales platform in Commerce Settings first.")
         else:
             obj=form.save(commit=False); obj.business=request.business; obj.created_by=request.user; obj.save()
-            messages.success(request,"Integration credential created. Copy the credential now and keep it private.")
+            messages.success(request,"Connection key created. Copy it now and keep it private.")
             return redirect("commerce_dashboard")
     return render(request,"commerce/integration_form.html",{"form":form})
 
@@ -433,13 +451,13 @@ def api_products(request,business_slug):
                 "available_now": str(available_physical_stock(p.finished_good)) if fulfilment == "stock" else None,
                 "lead_time": p.preorder_lead_time if fulfilment == "preorder" else "",
             })
-        legacy_modes=[]
-        if p.allow_stock_order:legacy_modes.append("order")
-        if business.uses_production and not p.finished_good.is_purchased_for_resale and (p.allow_online_order or p.allow_distribution_order):legacy_modes.append("preorder")
+        submitted_modes=[]
+        if p.allow_stock_order:submitted_modes.append("order")
+        if business.uses_production and not p.finished_good.is_purchased_for_resale and (p.allow_online_order or p.allow_distribution_order):submitted_modes.append("preorder")
         image_url = p.public_image_url
         if image_url and "://" not in image_url:
             image_url = request.build_absolute_uri(f"/{image_url.lstrip('/')}")
-        rows.append({"id":str(p.public_id),"name":p.display_name,"description":p.description,"image":image_url,"image_url":image_url,"unit":p.finished_good.unit,"available_now":str(available_physical_stock(p.finished_good)),"order_modes":order_modes,"ordering_modes":legacy_modes,"min_quantity":str(p.min_quantity),"preorder_min_quantity":str(p.preorder_min_quantity),"distribution_min_quantity":str(p.distribution_min_quantity),"max_quantity":str(p.max_quantity) if p.max_quantity is not None else None,"preorder_lead_time":p.preorder_lead_time,"stock_price":str(p.finished_good.selling_price_for("physical_store")),"preorder_price":str(p.finished_good.selling_price_for("online")),"distribution_price":str(p.finished_good.selling_price_for("distribution"))})
+        rows.append({"id":str(p.public_id),"name":p.display_name,"description":p.description,"image":image_url,"image_url":image_url,"unit":p.finished_good.unit,"available_now":str(available_physical_stock(p.finished_good)),"order_modes":order_modes,"ordering_modes":submitted_modes,"min_quantity":str(p.min_quantity),"preorder_min_quantity":str(p.preorder_min_quantity),"distribution_min_quantity":str(p.distribution_min_quantity),"max_quantity":str(p.max_quantity) if p.max_quantity is not None else None,"preorder_lead_time":p.preorder_lead_time,"stock_price":str(p.finished_good.selling_price_for("physical_store")),"preorder_price":str(p.finished_good.selling_price_for("online")),"distribution_price":str(p.finished_good.selling_price_for("distribution"))})
     return JsonResponse({"business":business.name,"business_slug":business.slug,"service":business.get_vertical_display(),"products":rows})
 
 
@@ -453,7 +471,7 @@ def api_checkouts(request, business_slug):
         data = json.loads(request.body or b"{}")
         customer = data.get("customer") or {}
         if not isinstance(customer, dict):
-            raise ValidationError("Customer must be a JSON object.")
+            raise ValidationError("Customer details are not in the expected format.")
         customer_phone = str(customer.get("phone") or "").strip()
         customer_email = str(customer.get("email") or "").strip()
         if not customer_phone:
@@ -470,7 +488,7 @@ def api_checkouts(request, business_slug):
         items = []
         for row in data.get("items") or []:
             if not isinstance(row, dict):
-                raise ValidationError("Each checkout item must be a JSON object.")
+                raise ValidationError("One or more checkout items are not in the expected format.")
             product = products.get(str(row.get("product_id")))
             if not product:
                 raise ValidationError("Unknown or unpublished product.")
@@ -535,11 +553,11 @@ def api_orders(request, business_slug):
     if not ok:
         return JsonResponse({"detail": "Invalid or disabled commerce API credential."}, status=403)
     return JsonResponse({
-        "detail": "This legacy endpoint no longer creates orders before payment.",
+        "detail": "This earlier order route no longer creates orders before payment.",
         "code": "checkout_first_required",
         "checkout_endpoint": f"/api/v1/storefronts/{business.slug}/checkouts",
         "payment_methods_endpoint": f"/api/v1/storefronts/{business.slug}/payment-methods",
-        "message": "Create a checkout, initiate a supported gateway payment, and wait for verified payment before an intake/order is materialized.",
+        "message": "Create a checkout, start a supported online payment, and wait for confirmed payment before the order is created.",
     }, status=410)
 
 
@@ -721,6 +739,10 @@ def storefront_receipt(request, business_slug, receipt_id):
         "customer_name": customer_name,
         "customer_phone": customer_phone,
         "customer_email": customer_email,
+        "hide_storefront_header": bool(
+            (checkout is not None and checkout.source == CommerceCheckoutSession.SOURCE_STAFF_POS)
+            or (intake is not None and intake.source == CommerceIntake.SOURCE_STAFF_POS)
+        ),
     })
     # Receipt links are intentionally unguessable but can contain customer PII;
     # keep them out of shared/browser caches even outside the installed PWA.
@@ -834,7 +856,7 @@ def storefront_pos(request):
                     note="Cash received by authorized storefront staff.",
                 )
                 return redirect("storefront_receipt", business_slug=request.business.slug, receipt_id=receipt.public_id)
-            messages.info(request, "Payment request sent to the configured POS terminal. Complete the card payment on the terminal; INPROFIC will approve it only after gateway verification.")
+            messages.info(request, "Payment request sent to the configured POS terminal. Complete the card payment on the terminal; INPROFIC will mark it paid after automatic confirmation.")
             return redirect(f"{reverse('commerce_storefront_pos')}?checkout={checkout.public_id}")
         except (ValidationError, GatewayError, InvalidOperation, TypeError, ValueError) as exc:
             if checkout is not None:

@@ -77,8 +77,8 @@ class RestaurantSaleFormTests(TestCase):
         )
         self.assertTrue(form.is_valid(), form.errors)
 
-    def test_non_restaurant_keeps_legacy_sale_form(self):
-        bakery = Business.objects.create(name="Bakery", slug="legacy-bakery")
+    def test_non_restaurant_keeps_standard_sale_form(self):
+        bakery = Business.objects.create(name="Bakery", slug="existing-bakery")
         form = SaleForm(business=bakery)
         self.assertNotIn("service_mode", form.fields)
         self.assertNotIn("table_reference", form.fields)

@@ -25,11 +25,11 @@
 
     <div id="physical-destination-wrap" class="mb-3 hidden">
       <div class="text-xs font-medium text-stone-600 mb-1">Production destination</div>
-      <p class="text-[11px] text-stone-400 mb-2">Choose where completed production goes. Replenishment enters {{ vertical_ui.stock_location }} stock. Non-stock production is for an internal/non-sale purpose and does not enter stock.</p>
+      <p class="text-[11px] text-stone-400 mb-2">Choose where completed production goes. Replenishment enters {{ vertical_ui.stock_location }} stock. Non-stock production is for business use or another non-sale purpose and does not enter stock.</p>
       {% include "_field.html" with field=form.production_destination %}
       <div id="non-stock-purpose-wrap" class="mt-3 hidden">
         {% include "_field.html" with field=form.non_stock_purpose %}
-        <p class="text-[11px] text-stone-400 mt-1">Enter the specific purpose, such as Staff Welfare, Gift, Charity, Event Use, or another internal purpose.</p>
+        <p class="text-[11px] text-stone-400 mt-1">Enter the specific purpose, such as Staff Welfare, Gift, Charity, Event Use, or another business-use purpose.</p>
       </div>
     </div>
 

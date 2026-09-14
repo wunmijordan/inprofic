@@ -28,7 +28,7 @@ class BusinessForm(forms.ModelForm):
         self.fields["slug"].label = "Public business address"
         self.fields["slug"].help_text = (
             "Choose a short unique address such as sunrisestore. Letters, numbers, hyphens and underscores are allowed. "
-            "Changing it also changes storefront and API links."
+            "Changing it also changes storefront and connected-website links."
         )
         self.fields["background_color"].label = "Navigation / background color"
         self.fields["accent_color"].label = "Button / action color"

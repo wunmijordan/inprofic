@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from decimal import Decimal, InvalidOperation
 from datetime import timedelta
 
@@ -24,10 +25,13 @@ from .models import (
     StorefrontProduct,
 )
 from .notification_services import queue_commerce_notification
+
+logger = logging.getLogger(__name__)
 from .services import (
     ChannelMinimumError,
     _channel_allowed,
     _channel_minimum,
+    auto_process_paid_intake,
     resolve_channel_and_fulfilment,
 )
 
@@ -348,19 +352,25 @@ def create_checkout(
             "expires_at": expires_at.isoformat(),
         },
     )
-    source_label = dict(CommerceIntake.SOURCE_CHOICES).get(source, "commerce channel")
-    channel_label = vertical_config(business)["commerce_channels"].get(sales_channel, sales_channel)
-    queue_commerce_notification(
-        business=business,
-        event_type=CommerceNotification.EVENT_CHECKOUT_RECEIVED,
-        title=f"New checkout from {source_label}",
-        message=(
-            f"{checkout.customer_name} selected {channel_label} for "
-            f"{business.currency_symbol}{total:,.2f}. Payment is still pending."
-        ),
-        target_url="/commerce/",
-        dedupe_key=f"checkout:{checkout.public_id}:received",
-    )
+    # A staff POS checkout is an in-progress counter transaction, not a new
+    # customer checkout that needs to alert the main app before payment.
+    # Deferring POS activity until settlement also prevents the Web Push
+    # dispatcher from competing with the immediate cash-settlement write on
+    # SQLite. Public/external checkout notifications keep their existing flow.
+    if source != CommerceIntake.SOURCE_STAFF_POS:
+        source_label = dict(CommerceIntake.SOURCE_CHOICES).get(source, "commerce channel")
+        channel_label = vertical_config(business)["commerce_channels"].get(sales_channel, sales_channel)
+        queue_commerce_notification(
+            business=business,
+            event_type=CommerceNotification.EVENT_CHECKOUT_RECEIVED,
+            title=f"New checkout from {source_label}",
+            message=(
+                f"{checkout.customer_name} selected {channel_label} for "
+                f"{business.currency_symbol}{total:,.2f}. Payment is still pending."
+            ),
+            target_url="/commerce/",
+            dedupe_key=f"checkout:{checkout.public_id}:received",
+        )
     return checkout, True
 
 
@@ -512,6 +522,12 @@ def materialize_paid_checkout(checkout, *, actor=None, allow_expired_recovery=Fa
         f"Paid checkout materialized as {intake.public_number}",
         {"intake_id": str(intake.public_id), "amount": str(checkout.amount)},
     )
+    # Full payment is the operational handoff point. Stock-backed lines consume
+    # their reservation immediately; made-to-order lines become pending
+    # Production orders for staff to continue. Any failure bubbles to the
+    # recovery wrapper so a verified payment is retained for review.
+    auto_process_paid_intake(intake, user=actor)
+    intake.refresh_from_db()
     return intake, True
 
 
@@ -523,6 +539,7 @@ def attempt_materialize_paid_checkout(checkout, *, actor=None, allow_expired_rec
                 checkout, actor=actor, allow_expired_recovery=allow_expired_recovery
             )
     except Exception as exc:
+        logger.exception("Paid checkout materialization/fulfilment failed for checkout %s", checkout.pk)
         # The nested savepoint above rolls back any partial intake work. Record a
         # recoverable state in a fresh transaction while leaving receipts intact.
         CommerceCheckoutSession.raw_objects.filter(pk=checkout.pk, business=checkout.business).update(

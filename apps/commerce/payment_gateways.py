@@ -46,11 +46,11 @@ def _json_request(url, *, method="GET", headers=None, payload=None, timeout=30):
         detail = exc.read().decode("utf-8", errors="replace")
         raise GatewayError(f"Payment provider returned HTTP {exc.code}: {detail[:240]}") from exc
     except URLError as exc:
-        raise GatewayError(f"Could not reach payment provider: {exc.reason}") from exc
+        raise GatewayError("The payment service could not be reached. Check your connection and try again.") from exc
     try:
         return json.loads(raw or "{}")
     except json.JSONDecodeError as exc:
-        raise GatewayError("Payment provider returned an unreadable response.") from exc
+        raise GatewayError("The payment service returned an unexpected response. Please try again.") from exc
 
 
 def _require(value, message):

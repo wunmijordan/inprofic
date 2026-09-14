@@ -132,12 +132,12 @@ class BusinessModuleAccess(models.Model):
     tenants; explicit enabled=False is the commercial hard ceiling.
     """
     SOURCE_DEFAULT = "default"
-    SOURCE_LEGACY = "legacy"
+    SOURCE_EXISTING = "existing"
     SOURCE_PLAN = "plan"
     SOURCE_FOUNDER = "founder"
     SOURCE_CHOICES = [
         (SOURCE_DEFAULT, "Service default"),
-        (SOURCE_LEGACY, "Legacy full access"),
+        (SOURCE_EXISTING, "Existing full access"),
         (SOURCE_PLAN, "Subscription plan"),
         (SOURCE_FOUNDER, "Founder lifetime grant"),
     ]
@@ -374,7 +374,7 @@ class MarketingPromoCampaign(models.Model):
     promotion = models.OneToOneField(
         SubscriptionPromotion, on_delete=models.CASCADE, related_name="marketing_campaign"
     )
-    content_html = models.TextField(help_text="Sanitised rich text rendered in the public promo stage.")
+    content_html = models.TextField(help_text="Promotion text shown to customers on the public offer display.")
     cta_label = models.CharField(max_length=80, default="See promotional plans")
     animation_style = models.CharField(max_length=16, choices=ANIMATION_CHOICES, default=ANIMATION_KINETIC)
     theme = models.CharField(max_length=16, choices=THEME_CHOICES, default=THEME_MIDNIGHT)

@@ -21,7 +21,7 @@
 
     {% if formset.non_form_errors %}<div class="text-sm text-rose-700 bg-rose-50 text-rose-700 border border-rose-200 rounded-md p-3 mb-3">{{ formset.non_form_errors }}</div>{% endif %}
     <span class="block text-xs font-medium text-stone-600 mb-1">Products</span>
-    <p class="text-[11px] text-stone-400 mb-1">{% if vertical_ui.uses_production %}Batches and/or loose pieces.{% else %}Enter the number of stock units sold.{% endif %} Price is resolved server-side from the product, channel, and customer agreement where applicable.</p>
+    <p class="text-[11px] text-stone-400 mb-1">{% if vertical_ui.uses_production %}Batches and/or loose pieces.{% else %}Enter the number of stock units sold.{% endif %} INPROFIC automatically applies the correct product, channel, and customer price where applicable.</p>
     {{ formset.management_form }}
     <div class="border border-[#E7DFCC] rounded-md overflow-hidden">
       <div class="overflow-x-auto">

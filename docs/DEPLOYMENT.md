@@ -227,7 +227,7 @@ PWA alerts on this device**. Signing out deactivates that account's server-side
 push subscriptions for privacy; the user can explicitly enable the device again
 on a later session.
 
-### Tenant backups and Founder Console legacy import
+### Tenant backups and Founder Console backup restore
 
 Reports → Backup is explicitly tenant-scoped. The exporter includes only the
 active `Business` and operational rows proven to belong to it; child models
@@ -259,7 +259,7 @@ an integrity check. Both formats:
 - preserve the destination tenant's subscription/entitlement boundary.
 
 The real import requires re-uploading the same backup and typing
-`IMPORT <destination-slug>`. The importer repeats the dry run, maps legacy IDs
+`IMPORT <destination-slug>`. The importer repeats the dry run, maps backup record IDs
 to new PostgreSQL IDs, and performs all writes plus a Founder audit entry inside
 one database transaction. SQLite identity rows can be merged by username/email;
 historical JSON backups that did not include user records clear nullable creator

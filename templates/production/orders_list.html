@@ -6,7 +6,7 @@
     <h2 class="text-xl font-semibold font-display text-[#8f172d]">{{ vertical_ui.orders }}</h2>
     <p class="text-sm text-stone-500 mt-0.5">Customer, online and stock-replenishment demand — approve to release raw materials, complete to finish production</p>
   </div>
-  <div class="flex flex-wrap gap-2"><a href="{% url 'production_runs' %}" class="px-3.5 py-2 text-sm rounded-md border border-[#D9CFB4] text-[#8f172d] hover:bg-[#F0EAD9]">{{ vertical_ui.runs }}</a>{% if can_reset_current_business_numbering %}<form method="post" action="{% url 'reset_order_numbering' %}" onsubmit="return confirm('Reset {{ biz.name|escapejs }} Order # numbering so its next Order starts from #1? Other businesses and database IDs are unaffected.');">{% csrf_token %}<input type="hidden" name="scope" value="business"><input type="hidden" name="business_id" value="{{ biz.pk }}"><button type="submit" class="px-3.5 py-2 text-sm rounded-md border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100">Reset {{ biz.name }} Order #</button></form>{% endif %}{% if module_permissions.production.edit %}<a href="{% url 'order_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ New {{ vertical_ui.orders|slice:":-1" }}</a>{% endif %}</div>
+  <div class="flex flex-wrap gap-2"><a href="{% url 'production_runs' %}" class="px-3.5 py-2 text-sm rounded-md border border-[#D9CFB4] text-[#8f172d] hover:bg-[#F0EAD9]">{{ vertical_ui.runs }}</a>{% if can_reset_current_business_numbering %}<form method="post" action="{% url 'reset_order_numbering' %}" onsubmit="return confirm('Reset {{ biz.name|escapejs }} Order # numbering so its next Order starts from #1? Other businesses and their records are unaffected.');">{% csrf_token %}<input type="hidden" name="scope" value="business"><input type="hidden" name="business_id" value="{{ biz.pk }}"><button type="submit" class="px-3.5 py-2 text-sm rounded-md border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100">Reset {{ biz.name }} Order #</button></form>{% endif %}{% if module_permissions.production.edit %}<a href="{% url 'order_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ New {{ vertical_ui.orders|slice:":-1" }}</a>{% endif %}</div>
 </div>
 
 {% if request.user.is_superuser %}
@@ -20,13 +20,13 @@
     </form>
     {% if can_global_reset_order_numbering %}<form method="post" action="{% url 'reset_order_numbering' %}" onsubmit="return confirm('Reset ALL business Order # sequences to 1? This is only allowed because no production Orders exist anywhere.');">{% csrf_token %}<input type="hidden" name="scope" value="global"><button class="px-3 py-1.5 text-xs rounded border border-red-300 text-red-700 bg-white hover:bg-red-50">Reset all businesses</button></form>{% endif %}
   </div>
-  <p class="mt-2 text-[11px] text-amber-800">Visible Order # numbering is tenant-specific. Database IDs remain global and are never reset.</p>
+  <p class="mt-2 text-[11px] text-amber-800">Each business keeps its own visible Order # sequence. Resetting it does not affect saved orders.</p>
 </div>
 {% endif %}
 
 {% if not orders %}
   <div class="text-center py-10 text-sm text-stone-400 italic">No Orders yet.</div>
-  {% if can_reset_current_business_numbering %}<p class="text-center -mt-7 mb-8 text-xs text-amber-700">This business has no Orders, so its visible Order # sequence can be reset independently. The database primary-key sequence is not changed.</p>{% endif %}
+  {% if can_reset_current_business_numbering %}<p class="text-center -mt-7 mb-8 text-xs text-amber-700">This business has no Orders, so its visible Order # sequence can be reset independently. Saved order references are not changed.</p>{% endif %}
 {% else %}
 <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg shadow-[0_2px_8px_#000000d2] mb-8 overflow-x-auto overflow-y-auto max-h-[28rem]">
   <table class="min-w-max w-full text-sm">

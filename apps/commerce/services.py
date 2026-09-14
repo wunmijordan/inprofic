@@ -1,3 +1,4 @@
+import logging
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
@@ -12,6 +13,8 @@ from core.services import audit
 from core.verticals import vertical_config
 from .models import CommerceIntake, CommerceNotification, CommerceSettings
 from .notification_services import queue_commerce_notification
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -60,16 +63,16 @@ def _fulfilment_mode(business, channel):
 
 
 def resolve_channel_and_fulfilment(*, business, sales_channel=None, ordering_mode=None):
-    """Resolve the new sales-channel contract while accepting legacy callers."""
+    """Resolve the sales-channel contract while accepting older request formats."""
     channel = (sales_channel or "").strip().lower()
-    legacy_mode = (ordering_mode or "").strip().lower()
+    submitted_mode = (ordering_mode or "").strip().lower()
     if not channel:
-        if legacy_mode == CommerceIntake.MODE_PREORDER:
+        if submitted_mode == CommerceIntake.MODE_PREORDER:
             channel = CommerceIntake.CHANNEL_ONLINE
-        elif legacy_mode == CommerceIntake.MODE_STOCK:
+        elif submitted_mode == CommerceIntake.MODE_STOCK:
             channel = CommerceIntake.CHANNEL_PHYSICAL_STORE
-        elif legacy_mode in dict(CommerceIntake.CHANNEL_CHOICES):
-            channel = legacy_mode
+        elif submitted_mode in dict(CommerceIntake.CHANNEL_CHOICES):
+            channel = submitted_mode
     if channel not in dict(CommerceIntake.CHANNEL_CHOICES):
         raise ValidationError("Choose physical_store, online, or distribution as the order mode.")
     return channel, _fulfilment_mode(business, channel)
@@ -152,13 +155,41 @@ def create_intake(*, business, source, ordering_mode=None, sales_channel=None, c
     return intake, True
 
 
+def _commerce_payment_snapshot(intake):
+    """Return the confirmed commerce payment details used by Production.
+
+    Commerce owns the actual cash/ledger posting. Production only needs a
+    truthful payment snapshot so a paid made-to-order request does not look
+    like a receivable while it waits for staff to begin production.
+    """
+    payment = intake.payments.filter(status="paid").order_by("-settled_at", "-id").first()
+    if not payment:
+        return "unpaid", "", None
+    method = {
+        "cash": "Cash",
+        "pos_card": "Card",
+        "paystack": "Card",
+        "monnify": "Card",
+        "bank_transfer": "Transfer",
+    }.get(payment.method, "Transfer")
+    receipt = payment.receipts.filter(reversed_at__isnull=True).select_related("account").order_by("-verified_at", "-id").first()
+    return "paid", method, receipt.account if receipt else None
+
+
 def _make_production_order(intake, quantities, *, user=None):
+    payment_status, payment_method, payment_account = _commerce_payment_snapshot(intake)
     order = Order.raw_objects.create(
         business=intake.business, created_by=user, date=timezone.localdate(),
         order_type=intake.sales_channel if intake.sales_channel in {"distribution", "online"} else "online",
         customer_name=intake.customer_name, customer_region="", customer_group="",
-        customer_payment_status="unpaid", customer_payment_method="Transfer",
-        notes=f"Commerce {intake.public_number} — made-to-order/pre-order demand",
+        customer_payment_status=payment_status,
+        customer_payment_method=payment_method,
+        customer_payment_account=payment_account,
+        transaction_type=("paid" if payment_status == "paid" else "unpaid"),
+        payment_method=payment_method,
+        account=payment_account,
+        unpaid_description=("" if payment_status == "paid" else "Customer receivable — payment to be recorded through Finance."),
+        notes=f"Commerce {intake.public_number} — paid order intake awaiting production" if payment_status == "paid" else f"Commerce {intake.public_number} — made-to-order/pre-order demand",
     )
     for item, qty in quantities:
         if qty <= 0:
@@ -231,7 +262,15 @@ def accept_intake(intake, *, user=None):
             raise ValidationError("This order has no fulfilment-ready products.")
         intake.accepted_sale = sale
         intake.accepted_order = order
-        intake.fulfilment_state = CommerceIntake.FULFIL_COMPLETE
+        # Stock-backed lines are complete immediately; made-to-order lines are
+        # only handed to Production as a pending order. Mixed baskets therefore
+        # remain partially fulfilled until staff completes the production work.
+        if sale and order:
+            intake.fulfilment_state = CommerceIntake.FULFIL_PARTIAL
+        elif order:
+            intake.fulfilment_state = CommerceIntake.FULFIL_PENDING
+        else:
+            intake.fulfilment_state = CommerceIntake.FULFIL_COMPLETE
         intake.status = CommerceIntake.STATUS_ACCEPTED
         intake.save(update_fields=["accepted_sale", "accepted_order", "fulfilment_state", "status", "updated_at"])
         if sale:
@@ -309,6 +348,63 @@ def accept_intake(intake, *, user=None):
     release_checkout_reservation_for_intake(intake)
     audit(intake.business, user, "commerce_accept", intake, f"{intake.public_number} processed from sellable stock", {"sale_id": intake.accepted_sale_id, "split_order_id": intake.split_order_id, "policy": policy})
     return intake
+
+
+@transaction.atomic
+def auto_process_paid_intake(intake, *, user=None):
+    """Commit a fully-paid intake into stock fulfilment or Production.
+
+    The operation is intentionally idempotent: already accepted/fulfilled
+    intakes are returned unchanged, partial/unpaid intakes are ignored, and
+    only a pending fully-paid intake is handed to the existing acceptance
+    engine. This keeps the manual Commerce action available only as an
+    exception/recovery path.
+    """
+    intake = CommerceIntake.raw_objects.select_for_update().get(pk=intake.pk, business=intake.business)
+    if intake.payment_state != CommerceIntake.PAYMENT_CONFIRMED:
+        return intake, False
+    if intake.status in {CommerceIntake.STATUS_ACCEPTED, CommerceIntake.STATUS_FULFILLED}:
+        return intake, False
+    if intake.status != CommerceIntake.STATUS_PENDING:
+        return intake, False
+    processed = accept_intake(intake, user=user)
+    if processed.status not in {CommerceIntake.STATUS_ACCEPTED, CommerceIntake.STATUS_FULFILLED}:
+        raise ValidationError(
+            processed.rejection_reason or "The paid order needs staff review before fulfilment can continue."
+        )
+    return processed, True
+
+
+def attempt_auto_process_paid_intake(intake, *, user=None):
+    """Best-effort automatic fulfilment for an already-created intake.
+
+    Payment must never be lost because an operational stock/production handoff
+    needs review. The nested savepoint rolls back only the fulfilment attempt;
+    the confirmed payment remains intact and the intake stays visible for staff.
+    """
+    try:
+        with transaction.atomic():
+            return auto_process_paid_intake(intake, user=user)
+    except Exception as exc:
+        logger.exception("Automatic commerce fulfilment failed for intake %s", intake.pk)
+        message = str(exc).strip() or "Automatic fulfilment needs staff review."
+        CommerceIntake.raw_objects.filter(pk=intake.pk, business=intake.business).update(
+            rejection_reason=f"Payment confirmed. Staff review required: {message}"[:255]
+        )
+        audit(
+            intake.business, user, "commerce_auto_fulfil_review", intake,
+            f"{intake.public_number} needs staff review after payment confirmation",
+            {"reason": message[:500]},
+        )
+        queue_commerce_notification(
+            business=intake.business,
+            event_type=CommerceNotification.EVENT_PAYMENT_REVIEW,
+            title="Paid order needs fulfilment review",
+            message=f"{intake.public_number} is paid, but automatic fulfilment needs staff review.",
+            target_url="/commerce/",
+            dedupe_key=f"intake:{intake.public_id}:auto-review",
+        )
+        return CommerceIntake.raw_objects.get(pk=intake.pk, business=intake.business), False
 
 
 @transaction.atomic

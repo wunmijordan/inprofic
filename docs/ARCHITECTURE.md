@@ -135,7 +135,7 @@ an agreed `CustomerProductPrice` for the selected finished good and channel.
 That price has priority over the finished good's channel price. If no customer
 agreement exists for that exact channel/product, the finished good's
 `FinishedGoodChannelPrice` for that channel is used. If no channel price is
-configured, the finished good's legacy/default `selling_price` is used.
+configured, the finished good's default `selling_price` is used.
 
 The production-order form now receives these layers separately so its
 Price/Unit display resolves the same way for the selected **channel + product**,
@@ -530,7 +530,7 @@ This is the numbering foundation for multi-tenant operation: two businesses may 
 
 ### Repeatable planned-offcut customer allocations
 
-At production completion, saleable planned offcut may be split across any number of interested Distribution/Online customers. Each allocation records customer, channel, quantity, and its own linked Sale/receivable in `ProductionOffcutAllocation`. The batch keeps aggregate customer-allocation units plus the automatic remainder retained as general finished-goods stock. Legacy single-customer batch fields remain for backward compatibility with batches completed before this structure.
+At production completion, saleable planned offcut may be split across any number of interested Distribution/Online customers. Each allocation records customer, channel, quantity, and its own linked Sale/receivable in `ProductionOffcutAllocation`. The batch keeps aggregate customer-allocation units plus the automatic remainder retained as general finished-goods stock. The original single-customer batch fields remain available for batches completed before this structure.
 
 If no customer is available, all saleable planned offcut automatically remains in general finished-goods stock. If several customers are available, the sum of their allocations may not exceed the saleable planned offcut; any remainder still becomes general stock.
 
@@ -540,7 +540,7 @@ Shared Production Run creation uses a multi-select dropdown of eligible Pending 
 
 INPROFIC now has an additive `commerce` app and an account-level subscription entitlement layer. Commerce uses `CommerceIntake` as the only public/external write boundary; API/storefront callers never write Production, Sales, stock or Finance directly. See `docs/COMMERCE_INTEGRATION.md`.
 
-Commercial subscriptions are translated into explicit `BusinessModuleAccess` rows. Existing businesses without a `BusinessSubscription` remain legacy/permissive until they opt in; new signups begin a 30-day STARTER trial. Additional service lines are separate `Business` profiles linked by `SubscriptionService` under the same commercial subscription. See `docs/SUBSCRIPTIONS.md`.
+Commercial subscriptions are translated into explicit `BusinessModuleAccess` rows. Existing businesses without a `BusinessSubscription` remain fully enabled until they opt in; new signups begin a 30-day STARTER trial. Additional service lines are separate `Business` profiles linked by `SubscriptionService` under the same commercial subscription. See `docs/SUBSCRIPTIONS.md`.
 
 ## Subscription checkout and commerce integration surfaces (September 2026 refinement)
 

@@ -1,28 +1,82 @@
 {% extends "base.html" %}
 {% block content %}
-<h2 class="text-xl font-semibold font-display text-[#8f172d] mb-4">{% if obj %}Edit Expense{% else %}Record Miscellaneous Expense{% endif %}</h2>
+<div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+  <div>
+    <h2 class="text-xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit Expense{% else %}Record Expenses{% endif %}</h2>
+    <p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">Use this for business spending that is not a supplier purchase order, such as utilities, repairs, transport, labour, marketing and other overheads. Use Procurement for stock purchases so arrivals and costs remain linked to inventory.</p>
+  </div>
+</div>
+
+{% if obj %}
 <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg shadow-[0_2px_8px_#000000d2] p-5 max-w-2xl">
-  <p class="text-xs text-stone-500 mb-4">Use this for business spending that is not a supplier purchase order — utilities, repairs, transport, labour, marketing and other overheads. If the spend is a procured inventory item, use Procurement so it is tied to the purchased material and stock.</p>
   <form method="post">
     {% csrf_token %}
     {% if form.non_field_errors %}<div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-3">{{ form.non_field_errors }}</div>{% endif %}
-    <div class="grid sm:grid-cols-2 gap-3">
-      {% include "_field.html" with field=form.date %}
-      {% include "_field.html" with field=form.category %}
-    </div>
+    <div class="grid sm:grid-cols-2 gap-3">{% include "_field.html" with field=form.date %}{% include "_field.html" with field=form.category %}</div>
     {% include "_field.html" with field=form.description %}
-    <div class="grid sm:grid-cols-2 gap-3">
-      {% include "_field.html" with field=form.amount %}
-      {% include "_field.html" with field=form.vendor %}
-      {% include "_field.html" with field=form.payment_status %}
-      {% include "_field.html" with field=form.payment_method %}
-      {% include "_field.html" with field=form.account %}
-    </div>
+    <div class="grid sm:grid-cols-2 gap-3">{% include "_field.html" with field=form.amount %}{% include "_field.html" with field=form.vendor %}{% include "_field.html" with field=form.payment_status %}{% include "_field.html" with field=form.payment_method %}{% include "_field.html" with field=form.account %}</div>
     {% include "_field.html" with field=form.notes %}
-    <div class="flex justify-end gap-2 mt-3">
-      <a href="{% url 'expenses_list' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a>
-      <button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save Expense</button>
-    </div>
+    <div class="flex justify-end gap-2 mt-3"><a href="{% url 'expenses_list' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a><button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save Expense</button></div>
   </form>
 </div>
+{% else %}
+<form method="post" class="space-y-4">
+  {% csrf_token %}
+  {{ formset.management_form }}
+  {% if formset.non_form_errors %}<div class="max-w-5xl rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{{ formset.non_form_errors }}</div>{% endif %}
+  <div id="expense-rows" class="space-y-3 max-w-6xl">
+    {% for form in formset %}
+    <section class="expense-row rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4 shadow-sm" {% if forloop.first %}data-formset-row{% endif %}>
+      <div class="mb-3 flex items-center justify-between gap-3"><h3 class="text-sm font-semibold text-stone-700">Expense <span class="expense-row-number">{{ forloop.counter }}</span></h3><label class="flex items-center gap-2 text-xs text-rose-700">{{ form.DELETE }} Remove</label></div>
+      {% if form.non_field_errors %}<div class="mb-3 rounded-md border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">{{ form.non_field_errors }}</div>{% endif %}
+      <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {% include "_field.html" with field=form.date %}
+        {% include "_field.html" with field=form.category %}
+        <div class="xl:col-span-2">{% include "_field.html" with field=form.description %}</div>
+        {% include "_field.html" with field=form.amount %}
+        {% include "_field.html" with field=form.vendor %}
+        {% include "_field.html" with field=form.payment_status %}
+        {% include "_field.html" with field=form.payment_method %}
+        <div class="xl:col-span-2">{% include "_field.html" with field=form.account %}</div>
+        <div class="xl:col-span-2">{% include "_field.html" with field=form.notes %}</div>
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+  <div class="max-w-6xl flex flex-wrap items-center justify-between gap-3">
+    <button type="button" id="add-expense-row" class="rounded-md border border-[#D9CFB4] bg-white px-3.5 py-2 text-sm font-medium text-[#8f172d] hover:bg-[#F0EAD9]">+ Add Another Expense</button>
+    <div class="flex flex-wrap justify-end gap-2"><a href="{% url 'expenses_list' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a><button type="submit" name="save_add_new" value="1" class="px-3.5 py-2 text-sm rounded-md font-medium border border-[#8f172d] text-[#8f172d] bg-white hover:bg-[#FFF5F4]">Save &amp; Add More</button><button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save Expenses</button></div>
+  </div>
+</form>
+<script>
+(() => {
+  const container = document.getElementById('expense-rows');
+  const total = document.getElementById('id_expenses-TOTAL_FORMS');
+  const add = document.getElementById('add-expense-row');
+  const today = new Date().toISOString().slice(0, 10);
+  function renumber(){ container.querySelectorAll('.expense-row-number').forEach((node, index) => node.textContent = index + 1); }
+  add?.addEventListener('click', () => {
+    const template = container.querySelector('[data-formset-row]');
+    if (!template || !total) return;
+    const index = Number(total.value || 0);
+    const row = template.cloneNode(true);
+    row.removeAttribute('data-formset-row');
+    row.querySelectorAll('input, select, textarea, label').forEach((el) => {
+      ['name','id','for'].forEach(attr => {
+        const value = el.getAttribute(attr);
+        if (value) el.setAttribute(attr, value.replace(/-\d+-/, `-${index}-`));
+      });
+      if (el.matches('input, select, textarea')) {
+        if (el.type === 'checkbox') el.checked = false;
+        else if (el.tagName === 'SELECT') el.selectedIndex = 0;
+        else el.value = el.type === 'date' ? today : '';
+      }
+    });
+    row.querySelectorAll('.text-rose-600, .text-rose-700').forEach(node => { if (!node.querySelector('input')) node.remove(); });
+    container.appendChild(row); total.value = index + 1; renumber(); row.querySelector('input, select, textarea')?.focus();
+  });
+  renumber();
+})();
+</script>
+{% endif %}
 {% endblock %}

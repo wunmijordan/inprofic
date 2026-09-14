@@ -13,7 +13,7 @@ website basket
   -> operational acceptance, fulfilment, Sales/Production and Finance
 ```
 
-Do not use the legacy `/orders` create endpoint. It is retired for writes and returns HTTP `410 checkout_first_required`. All new and migrated integrations must create `/checkouts`; no operational intake exists until verified payment succeeds.
+Do not use the retired `/orders` create endpoint. It is retired for writes and returns HTTP `410 checkout_first_required`. All new and migrated integrations must create `/checkouts`; no operational intake exists until verified payment succeeds.
 
 ## 1. Responsibilities and security
 
@@ -579,7 +579,7 @@ The browser calls the website’s own API routes; the website server attaches th
 - [ ] Instant bank transfer displays the provider-issued temporary account and settles only after webhook + provider verification.
 - [ ] Cash and physical terminal payments are tested only from the authenticated in-premise Storefront POS.
 
-## 15. Legacy compatibility only
+## 15. Earlier integration compatibility
 
 `POST /api/v1/storefronts/{business_slug}/orders` is now **retired for writes**. It returns HTTP `410` with `code: "checkout_first_required"` and points the caller to `/checkouts`. This prevents any new integration from materializing an intake before payment.
 

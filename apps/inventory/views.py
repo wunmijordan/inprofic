@@ -495,7 +495,7 @@ def raw_material_form(request, pk=None):
             m.save()
             audit(request.business, request.user, "create" if obj is None else "update", m, f"Raw material {m.name} saved")
             messages.success(request, "Raw material saved.")
-            return redirect("inventory")
+            return redirect("raw_material_add" if "save_add_new" in request.POST else "inventory")
     else:
         form = RawMaterialForm(instance=obj, business=request.business)
     return render(request, "inventory/rawmaterial_form.html", {"form": form, "obj": obj})
@@ -548,7 +548,7 @@ def finished_good_form(request, pk=None):
             channel_price_formset.save()
             audit(request.business, request.user, "create" if obj is None else "update", good, f"Finished good {good.name} saved")
             messages.success(request, "Product saved.")
-            return redirect("inventory")
+            return redirect("finished_good_add" if "save_add_new" in request.POST else "inventory")
     else:
         form = FinishedGoodForm(instance=obj, business=request.business)
         selected_source = getattr(obj, "source_type", FinishedGood.SOURCE_MADE_IN_HOUSE)

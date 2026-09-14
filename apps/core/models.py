@@ -105,7 +105,7 @@ class Business(models.Model):
 
     @classmethod
     def default(cls):
-        """Return the legacy tenant for bootstrap/admin compatibility only.
+        """Return the default business for setup and administration only.
 
         Request tenancy is resolved from memberships in BusinessMiddleware;
         application views must not use this helper to choose a user's tenant.
@@ -157,7 +157,7 @@ class BusinessOwnedModel(TimestampedModel):
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="%(app_label)s_%(class)s_created",
-        help_text="Who made this entry. Null for records created before this field existed.",
+        help_text="Person who created this record.",
     )
 
     objects = BusinessManager()

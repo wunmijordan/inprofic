@@ -131,7 +131,7 @@ def business_has_feature(business, feature):
         if cache is not None:
             cache[key] = feature_access
     row = feature_access.get(feature)
-    # Missing feature rows retain legacy/full behavior until a subscription is explicitly applied.
+    # Missing feature rows retain full access until a subscription is explicitly applied.
     return row is not False
 
 

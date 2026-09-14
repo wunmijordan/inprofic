@@ -93,7 +93,7 @@ def api_checkout_payment_initiate(request, business_slug, checkout_id):
     try:
         data = json.loads(request.body or b"{}")
         if not isinstance(data, dict):
-            raise ValidationError("Payment request must be a JSON object.")
+            raise ValidationError("The payment request format is invalid.")
         method = (data.get("method") or "").strip().lower()
         capture_checkout_gateway_email(
             checkout, method, data.get("customer_email") or data.get("email")
@@ -390,7 +390,7 @@ def payment_settings(request):
         saved.business = request.business
         saved.created_by = saved.created_by or request.user
         saved.save()
-        messages.success(request, "Commerce payment settings saved. Credentials remain server-side.")
+        messages.success(request, "Commerce payment settings saved. Payment credentials remain securely stored.")
         return redirect("commerce_payment_settings")
     return render(request, "commerce/payment_settings.html", {"form": form, "config": config})
 
@@ -438,7 +438,7 @@ def payment_confirm(request, public_id):
             )
         token = (request.POST.get("confirmation_token") or "").strip()
         if not token:
-            raise ValidationError("The confirmation token is missing; reload and try again.")
+            raise ValidationError("Payment confirmation could not be completed. Reload the page and try again.")
         receipt, created = record_verified_payment(
             payment=payment,
             amount=request.POST.get("amount"),

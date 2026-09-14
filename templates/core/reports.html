@@ -75,7 +75,7 @@
   <h3 class="font-medium text-sm mb-1">Full Backup</h3>
   <p class="text-xs text-stone-500 mb-3">Everything in this system, as one file you keep on your device.</p>
   <a href="{% url 'backup_json' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25] inline-block">Download backup (JSON)</a>
-  <p class="text-[11px] text-stone-400 mt-2">To restore on the server: <code class="font-mono">python manage.py loaddata backup.json</code> — see the README.</p>
+  <p class="text-[11px] text-stone-400 mt-2">To restore a business backup, use Founder Console → Business backup restore.</p>
 </div>
 {% else %}
 <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 mb-5"><div class="font-medium text-amber-900">Basic Reports</div><p class="text-xs text-amber-800 mt-1">Your plan includes the current stock CSV and dated sales CSV. Upgrade for Excel exports, procurement/production/finance reports and full backup.</p><div class="mt-3 flex gap-2"><a href="{% url 'export_stock_csv' %}" class="px-3 py-2 text-sm rounded-md bg-white border border-amber-300">Stock CSV</a><form action="{% url 'export_sales_csv' %}" method="get" class="flex gap-2"><input type="date" name="from" class="rounded border border-amber-300 px-2 text-sm"><input type="date" name="to" class="rounded border border-amber-300 px-2 text-sm"><button class="px-3 py-2 text-sm rounded-md bg-white border border-amber-300">Sales CSV</button></form></div></div>

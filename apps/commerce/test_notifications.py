@@ -90,6 +90,24 @@ class CommerceNotificationTests(TestCase):
             1,
         )
 
+    def test_staff_pos_checkout_does_not_emit_pending_checkout_notification(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            checkout, created = create_checkout(
+                business=self.business,
+                source=CommerceIntake.SOURCE_STAFF_POS,
+                order_mode="physical_store",
+                customer={"name": "Walk-in Customer"},
+                items=[{"storefront_product": self.product, "quantity": "1"}],
+                idempotency_key="staff-pos-no-pending-notice",
+            )
+        self.assertTrue(created)
+        self.assertEqual(checkout.source, CommerceIntake.SOURCE_STAFF_POS)
+        self.assertFalse(CommerceNotification.raw_objects.filter(
+            business=self.business,
+            event_type=CommerceNotification.EVENT_CHECKOUT_RECEIVED,
+            dedupe_key=f"checkout:{checkout.public_id}:received",
+        ).exists())
+
     def test_notification_preferences_filter_categories(self):
         self.settings.notify_order_activity = False
         self.settings.save(update_fields=["notify_order_activity", "updated_at"])
@@ -112,7 +130,7 @@ class CommerceNotificationTests(TestCase):
             title="Payment",
         ))
 
-    def test_legacy_integration_intake_notifies_once(self):
+    def test_existing_integration_intake_notifies_once(self):
         request = {
             "business": self.business,
             "source": CommerceIntake.SOURCE_CONNECTOR,

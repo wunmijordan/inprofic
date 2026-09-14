@@ -51,7 +51,7 @@ def _validate_return_url(value):
         return ""
     parsed = urlparse(value)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise ValidationError("return_url must be an absolute HTTP or HTTPS URL.")
+        raise ValidationError("Enter a complete return address beginning with http:// or https://.")
     return value
 
 
@@ -228,7 +228,7 @@ def _account_for(config, method, business, actor):
         if configured.business_id != business.pk:
             raise ValidationError("The configured settlement account belongs to another business.")
         return configured
-    # Legacy intake payments historically allowed a fallback account. Keep that
+    # Existing intake payments can use a fallback account. Keep that
     # behavior for old records/endpoints; new checkout initiation requires an
     # explicitly configured account through _assert_method_eligible().
     preferred_type = "cash" if method == CommercePayment.METHOD_CASH else "card" if method == CommercePayment.METHOD_POS_CARD else "bank"
@@ -268,7 +268,7 @@ def _target_amount(target):
 
 
 def initiate_payment(*, intake=None, checkout=None, method, idempotency_key, return_url="", surface="public"):
-    """Initialize payment for either a legacy intake or a pre-intake checkout."""
+    """Initialize payment for either an existing intake or a checkout."""
     if (intake is None) == (checkout is None):
         raise ValidationError("Choose exactly one payment target.")
     target = checkout or intake
@@ -289,7 +289,7 @@ def initiate_payment(*, intake=None, checkout=None, method, idempotency_key, ret
     elif not _method_enabled(config, method):
         raise ValidationError("This payment method is not enabled for this storefront.")
     if method in {CommercePayment.METHOD_PAYSTACK, CommercePayment.METHOD_MONNIFY} and not return_url:
-        raise ValidationError("return_url is required for online gateway payments.")
+        raise ValidationError("A return address is required for online payments.")
     gateway_provider = {
         CommercePayment.METHOD_PAYSTACK: CommercePayment.GATEWAY_PAYSTACK,
         CommercePayment.METHOD_MONNIFY: CommercePayment.GATEWAY_MONNIFY,
@@ -380,7 +380,12 @@ def initiate_payment(*, intake=None, checkout=None, method, idempotency_key, ret
                 "authorization_url", "gateway_reference", "gateway_metadata",
                 "last_error", "status", "updated_at",
             ])
-    if payment_created:
+    # Cash at the staff POS is verified immediately by the same request.
+    # Do not publish a transient "payment started" event between creation and
+    # settlement; on SQLite its push-dispatch writer could race the financial
+    # ledger write. The normal verified-payment notification is emitted once
+    # settlement succeeds. Other payment methods retain the pending alert.
+    if payment_created and not (surface == "pos" and method == CommercePayment.METHOD_CASH):
         queue_commerce_notification(
             business=payment.business,
             event_type=CommerceNotification.EVENT_PAYMENT_STARTED,
@@ -459,11 +464,16 @@ def _linked_sales(intake):
 
 @transaction.atomic
 def sync_payment_receipts_to_sales(intake):
-    """Allocate already-posted intake receipts when/after downstream sales exist."""
+    """Allocate already-posted intake receipts when/after downstream sales exist.
+
+    Returns the amount newly allocated during this call. Callers that create a
+    downstream Sale can use this to avoid posting the same cash receipt twice.
+    """
     intake = CommerceIntake.raw_objects.select_for_update().get(pk=intake.pk, business=intake.business)
     sales = list(_linked_sales(intake))
     if not sales:
-        return
+        return Decimal("0")
+    newly_allocated = Decimal("0")
     receipts = CommercePaymentReceipt.raw_objects.filter(
         business=intake.business, payment__intake=intake, reversed_at__isnull=True
     ).prefetch_related("allocations").order_by("verified_at", "id")
@@ -494,6 +504,7 @@ def sync_payment_receipts_to_sales(intake):
             CommercePaymentAllocation.objects.create(
                 receipt=receipt, sale=sale, customer_payment=customer_payment, amount=amount
             )
+            newly_allocated += amount
             paid += amount
             sale.transaction_type = "paid" if paid >= sale.total else "partial"
             sale.save(update_fields=["transaction_type", "updated_at"])
@@ -501,14 +512,17 @@ def sync_payment_receipts_to_sales(intake):
                 sale.linked_order.customer_payment_status = "paid"
                 sale.linked_order.save(update_fields=["customer_payment_status", "updated_at"])
             remaining -= amount
+    return newly_allocated
 
 
 def sync_commerce_payments_for_order(order):
     intakes = CommerceIntake.raw_objects.filter(business=order.business).filter(
         Q(accepted_order=order) | Q(split_order=order)
     )
+    newly_allocated = Decimal("0")
     for intake in intakes:
-        sync_payment_receipts_to_sales(intake)
+        newly_allocated += sync_payment_receipts_to_sales(intake)
+    return newly_allocated
 
 
 def _refresh_payment(payment):
@@ -622,6 +636,9 @@ def record_verified_payment(
     _refresh_payment(payment)
     if payment.intake_id:
         sync_payment_receipts_to_sales(payment.intake)
+        if payment.status == CommercePayment.STATUS_PAID:
+            from .services import attempt_auto_process_paid_intake
+            attempt_auto_process_paid_intake(payment.intake, user=actor)
     elif payment.checkout_id and payment.status == CommercePayment.STATUS_PAID:
         from .checkout_services import attempt_materialize_paid_checkout
         attempt_materialize_paid_checkout(payment.checkout, actor=actor)

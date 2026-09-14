@@ -128,7 +128,7 @@ class FinishedGood(BusinessOwnedModel):
                    "order is completed — same timing as physical store stock, not when merely ordered.")
     reorder_level = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, default=0,
         help_text="For Physical Store ONLY.")
-    # Legacy/default price used when no channel-specific price is configured.
+    # Default price used when no channel-specific price is configured.
     selling_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     transferred_market_stock = models.DecimalField(
         max_digits=14,
@@ -259,7 +259,7 @@ class FinishedGood(BusinessOwnedModel):
 
     def selling_price_for(self, channel, customer=None):
         """Resolve the selling price in this order:
-        customer-specific price -> channel price -> legacy/default price.
+        customer-specific price -> channel price -> default price.
 
         Customer overrides are intentionally kept in the Sales app to avoid
         coupling the inventory master price to customer agreements.
@@ -404,7 +404,7 @@ class StockAdjustment(BusinessOwnedModel):
     REASON_CHOICES = [
         ("count", "Physical count correction"), ("wastage", "Wastage / spoilage"),
         ("damage", "Damage"), ("return_customer", "Customer return"),
-        ("return_supplier", "Supplier return"), ("internal", "Internal use"),
+        ("return_supplier", "Supplier return"), ("internal", "Business use"),
         ("charity", "Charity / donation"), ("staff", "Staff issue"), ("other", "Other"),
     ]
     date = models.DateField()
@@ -666,7 +666,7 @@ class StockMovement(BusinessOwnedModel):
     quantity = models.DecimalField(
         max_digits=15,
         decimal_places=3,
-        help_text="Signed quantity in the item's internal stock unit.",
+        help_text="Signed quantity in the item's stock tracking unit.",
     )
 
     # A finished good can be produced for physical store stock or directly

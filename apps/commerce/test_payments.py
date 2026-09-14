@@ -10,12 +10,14 @@ from accounts.models import BusinessModuleAccess, CustomUser, UserBusiness
 from accounts.services import seed_business_roles
 from core.models import Business, CashAccount, FinancialTransaction
 from inventory.models import FinishedGood, FinishedGoodChannelPrice
+from production.models import Order
 
 from .models import (
     CommerceCheckoutSession,
     CommerceGatewayEvent,
     CommerceIntegration,
     CommerceIntake,
+    CommerceNotification,
     CommercePayment,
     CommercePaymentClaim,
     CommercePaymentConfiguration,
@@ -24,8 +26,9 @@ from .models import (
     StorefrontProduct,
 )
 from .payment_gateways import GatewayError, monnify_signature_valid, verify_monnify, verify_paystack
-from .payment_services import record_verified_payment, reverse_payment_receipt
-from .services import accept_intake, create_intake
+from .checkout_services import create_checkout
+from .payment_services import initiate_payment, record_verified_payment, reverse_payment_receipt
+from .services import create_intake
 
 
 class CommercePaymentTestBase(TestCase):
@@ -113,6 +116,31 @@ class CommercePaymentTestBase(TestCase):
         return CommercePayment.raw_objects.create(**values)
 
 
+class PosCashNotificationTests(CommercePaymentTestBase):
+    def test_staff_pos_cash_skips_transient_payment_started_notification(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            checkout, _ = create_checkout(
+                business=self.business,
+                source=CommerceIntake.SOURCE_STAFF_POS,
+                order_mode=CommerceIntake.CHANNEL_PHYSICAL_STORE,
+                customer={"name": "Walk-in Customer"},
+                items=[{"storefront_product": self.product, "quantity": "1"}],
+                idempotency_key="pos-cash-notification-test",
+            )
+        with self.captureOnCommitCallbacks(execute=True):
+            payment = initiate_payment(
+                checkout=checkout,
+                method=CommercePayment.METHOD_CASH,
+                idempotency_key="pos-cash-notification-payment",
+                surface="pos",
+            )
+        self.assertFalse(CommerceNotification.raw_objects.filter(
+            business=self.business,
+            event_type=CommerceNotification.EVENT_PAYMENT_STARTED,
+            dedupe_key=f"payment:{payment.public_id}:started",
+        ).exists())
+
+
 class HeadlessPaymentApiTests(CommercePaymentTestBase):
     def test_public_payment_methods_never_expose_cash(self):
         path = f"/api/v1/storefronts/{self.business.slug}/payment-methods"
@@ -123,9 +151,9 @@ class HeadlessPaymentApiTests(CommercePaymentTestBase):
         self.assertNotIn(CommercePayment.METHOD_POS_CARD, methods)
         self.assertIn(CommercePayment.METHOD_BANK_TRANSFER, methods)
 
-    def test_legacy_order_creation_endpoint_requires_checkout_first(self):
+    def test_direct_order_creation_endpoint_requires_checkout_first(self):
         path = f"/api/v1/storefronts/{self.business.slug}/orders"
-        response = self.api_post(path, {"customer": {"name": "Sample Customer"}}, idem="legacy-order")
+        response = self.api_post(path, {"customer": {"name": "Sample Customer"}}, idem="existing-order")
         self.assertEqual(response.status_code, 410)
         self.assertEqual(response.json()["code"], "checkout_first_required")
 
@@ -166,7 +194,7 @@ class HeadlessPaymentApiTests(CommercePaymentTestBase):
         self.assertEqual(response.status_code, 201)
         checkout = CommerceCheckoutSession.raw_objects.get(public_id=response.json()["checkout_id"])
         self.assertEqual(checkout.amount, Decimal("4500.00"))
-        self.assertEqual(CommerceIntake.raw_objects.filter(business=self.business).count(), 1)  # setup legacy intake only
+        self.assertEqual(CommerceIntake.raw_objects.filter(business=self.business).count(), 1)  # setup existing intake only
 
     def test_payment_initialization_is_tenant_scoped(self):
         other = Business.objects.create(name="Other Store", slug="other-store", vertical=Business.VERTICAL_RETAIL)
@@ -328,21 +356,100 @@ class ManualVerificationTests(CommercePaymentTestBase):
         self.assertEqual(claim.status, CommercePaymentClaim.STATUS_ACCEPTED)
         self.assertEqual(FinancialTransaction.raw_objects.count(), 1)
 
-    def test_verified_intake_payment_allocates_to_sale_without_second_cash_entry(self):
+    def test_verified_intake_payment_auto_accepts_stock_and_allocates_without_second_cash_entry(self):
         payment = self.make_payment()
         record_verified_payment(
             payment=payment,
             amount="5000",
             actor=None,
-            idempotency_key="paid-before-acceptance",
+            idempotency_key="paid-auto-acceptance",
         )
-        accept_intake(self.intake, user=None)
         self.intake.refresh_from_db()
+        self.good.refresh_from_db()
         sale = self.intake.accepted_sale
+        self.assertIsNotNone(sale)
+        self.assertEqual(self.intake.status, CommerceIntake.STATUS_ACCEPTED)
+        self.assertEqual(self.intake.fulfilment_state, CommerceIntake.FULFIL_COMPLETE)
+        self.assertEqual(self.good.stock, Decimal("18"))
         self.assertEqual(sale.payments.count(), 1)
         self.assertEqual(sale.payments.get().amount, Decimal("5000.00"))
         self.assertEqual(sale.transaction_type, "paid")
         self.assertEqual(FinancialTransaction.raw_objects.count(), 1)
+
+    def test_staff_pos_full_payment_materializes_and_consumes_reservation_automatically(self):
+        checkout, _ = create_checkout(
+            business=self.business,
+            source=CommerceIntake.SOURCE_STAFF_POS,
+            order_mode=CommerceIntake.CHANNEL_PHYSICAL_STORE,
+            customer={"name": "Counter Customer"},
+            items=[{"storefront_product": self.product, "quantity": "1"}],
+            idempotency_key="pos-auto-fulfil-checkout",
+        )
+        payment = initiate_payment(
+            checkout=checkout, method=CommercePayment.METHOD_CASH,
+            idempotency_key="pos-auto-fulfil-payment", surface="pos",
+        )
+        record_verified_payment(
+            payment=payment, amount=payment.amount, actor=None,
+            idempotency_key="pos-auto-fulfil-receipt",
+        )
+        checkout.refresh_from_db()
+        self.good.refresh_from_db()
+        intake = checkout.materialized_intake
+        intake.refresh_from_db()
+        self.assertEqual(checkout.status, CommerceCheckoutSession.STATUS_MATERIALIZED)
+        self.assertIsNotNone(checkout.reservation_released_at)
+        self.assertEqual(intake.status, CommerceIntake.STATUS_ACCEPTED)
+        self.assertIsNotNone(intake.accepted_sale_id)
+        self.assertEqual(self.good.stock, Decimal("19"))
+
+    def test_paid_made_to_order_intake_creates_pending_production_order(self):
+        business = Business.objects.create(
+            name="Made To Order Works", slug="made-to-order-works", vertical=Business.VERTICAL_GENERAL
+        )
+        BusinessModuleAccess.objects.update_or_create(
+            business=business, module="commerce", defaults={"enabled": True}
+        )
+        CommerceSettings.raw_objects.create(business=business, enabled=True, api_enabled=True)
+        account = CashAccount.raw_objects.create(
+            business=business, name="Order Payments", account_type="cash", active=True
+        )
+        CommercePaymentConfiguration.raw_objects.create(
+            business=business, currency="NGN", cash_enabled=True, cash_account=account
+        )
+        good = FinishedGood.raw_objects.create(
+            business=business, name="Custom Product", unit="unit", units_per_batch=1,
+            stock=0, reorder_level=0, selling_price=Decimal("3000.00"),
+        )
+        product = StorefrontProduct.raw_objects.create(
+            business=business, finished_good=good, published=True,
+            allow_stock_order=True, allow_online_order=True, allow_preorder=True,
+        )
+        intake, _ = create_intake(
+            business=business, source=CommerceIntake.SOURCE_API, sales_channel="online",
+            customer={"name": "Made To Order Customer"},
+            items=[{"storefront_product": product, "quantity": "2"}],
+            idempotency_key="made-to-order-paid-intake",
+        )
+        payment = CommercePayment.raw_objects.create(
+            business=business, intake=intake, method=CommercePayment.METHOD_CASH,
+            status=CommercePayment.STATUS_PENDING, amount=intake.total, currency="NGN",
+            reference="STP-MADE-TO-ORDER-1", idempotency_key="made-to-order-payment",
+        )
+        record_verified_payment(
+            payment=payment, amount=intake.total, actor=None,
+            idempotency_key="made-to-order-receipt",
+        )
+        intake.refresh_from_db()
+        good.refresh_from_db()
+        order = intake.accepted_order
+        self.assertIsNotNone(order)
+        self.assertEqual(order.status, "pending")
+        self.assertEqual(order.customer_payment_status, "paid")
+        self.assertEqual(intake.status, CommerceIntake.STATUS_ACCEPTED)
+        self.assertEqual(intake.fulfilment_state, CommerceIntake.FULFIL_PENDING)
+        self.assertEqual(good.stock, Decimal("0"))
+        self.assertEqual(Order.raw_objects.filter(business=business).count(), 1)
 
     def test_receipt_reversal_is_compensating_and_idempotent(self):
         payment = self.make_payment()

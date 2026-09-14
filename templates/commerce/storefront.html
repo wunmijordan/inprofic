@@ -1,4 +1,4 @@
-{% load static %}
+{% load static core_extras %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -92,9 +92,9 @@
             <h3 class="font-display text-lg font-semibold leading-tight text-stone-900">{{ p.display_name }}</h3>
             <p class="line-clamp-2 mt-1.5 min-h-[2rem] text-xs leading-4 text-stone-500">{{ p.description|default:"Choose from the ordering options below." }}</p>
             <div class="mt-3 space-y-1.5 border-y border-stone-100 py-2.5 text-[11px]">
-              {% if p.allow_stock_order %}<div class="flex items-center justify-between gap-3"><span class="truncate text-stone-500">{{ commerce_channels.physical_store }}</span><span class="shrink-0 font-semibold text-stone-900">{{ store_business.currency_symbol }}{{ p.stock_price }} <span class="font-normal text-stone-400">/ {{ p.finished_good.unit }}</span></span></div>{% endif %}
-              {% if p.allow_online_order %}<div class="flex items-center justify-between gap-3"><span class="truncate text-stone-500">{{ commerce_channels.online }}</span><span class="shrink-0 font-semibold text-stone-900">{{ store_business.currency_symbol }}{{ p.preorder_price }} <span class="font-normal text-stone-400">/ {{ p.finished_good.unit }}</span></span></div>{% endif %}
-              {% if p.allow_distribution_order %}<div class="flex items-center justify-between gap-3"><span class="truncate text-stone-500">{{ commerce_channels.distribution }}</span><span class="shrink-0 font-semibold text-stone-900">{{ store_business.currency_symbol }}{{ p.distribution_price }} <span class="font-normal text-stone-400">/ {{ p.finished_good.unit }}</span></span></div>{% endif %}
+              {% if p.allow_stock_order %}<div class="flex items-center justify-between gap-3"><span class="truncate text-stone-500">{{ commerce_channels.physical_store }}</span><span class="shrink-0 font-semibold text-stone-900">{{ p.stock_price|money:store_business.currency_symbol }} <span class="font-normal text-stone-400">/ {{ p.finished_good.unit }}</span></span></div>{% endif %}
+              {% if p.allow_online_order %}<div class="flex items-center justify-between gap-3"><span class="truncate text-stone-500">{{ commerce_channels.online }}</span><span class="shrink-0 font-semibold text-stone-900">{{ p.preorder_price|money:store_business.currency_symbol }} <span class="font-normal text-stone-400">/ {{ p.finished_good.unit }}</span></span></div>{% endif %}
+              {% if p.allow_distribution_order %}<div class="flex items-center justify-between gap-3"><span class="truncate text-stone-500">{{ commerce_channels.distribution }}</span><span class="shrink-0 font-semibold text-stone-900">{{ p.distribution_price|money:store_business.currency_symbol }} <span class="font-normal text-stone-400">/ {{ p.finished_good.unit }}</span></span></div>{% endif %}
             </div>
             <button type="button" class="add-product mt-auto flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-semibold text-white transition hover:brightness-90 focus:outline-none focus:ring-4 focus:ring-stone-200" style="background:var(--brand)"><span class="add-product-label">Add to basket</span><span aria-hidden="true">+</span></button>
           </div>
@@ -270,7 +270,7 @@
             if (product.max && product.quantity > product.max) short.push(`${product.name}: maximum ${product.max} ${product.unit}`);
           });
           button.disabled = short.length > 0;
-          button.querySelector('.mode-total').textContent = `{{ store_business.currency_symbol }}${total.toFixed(2)}`;
+          button.querySelector('.mode-total').textContent = `{{ store_business.currency_symbol }}${total.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
           button.querySelector('.mode-note').textContent = short.length ? short.join(' · ') : button.value === 'physical_store' ? '{{ storefront_copy.immediate_order|escapejs }}' : '{% if store_business.uses_production %}{{ storefront_copy.prepared_order|escapejs }}{% else %}{{ storefront_copy.immediate_order|escapejs }}{% endif %}';
         });
         modeError.textContent = anyAvailable ? '' : 'These products do not share an ordering option. Remove one item or create separate checkouts.';

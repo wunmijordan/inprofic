@@ -1,10 +1,16 @@
 {% extends "base.html" %}
 {% load core_extras %}{% block content %}
-<div class="max-w-6xl">
+<div class="max-w-6xl" data-founder-console data-founder-default="{% if backup_restore_report or restore_form.errors %}recovery{% elif campaign_instance or promotion_form.errors or campaign_form.errors %}promotions{% else %}plans{% endif %}">
   <h1 class="text-2xl font-semibold font-display text-[#8f172d]">Founder Console</h1>
-  <p class="text-sm text-stone-500 mb-5">Superuser-only subscription operations. Grant lifetime access, configure all plan pricing centrally, and review/confirm subscription payments.</p>
+  <p class="text-sm text-stone-500 mb-4">Superuser-only subscription operations. Manage plans, promotions, subscribers and business recovery from focused workspaces.</p>
 
-  <div class="grid lg:grid-cols-2 gap-5 mb-6">
+  <div class="mb-5 flex flex-wrap gap-2 rounded-lg border border-[#E7DFCC] bg-[#FFFDF8] p-2" role="tablist" aria-label="Founder Console workspace">
+    <button type="button" data-founder-tab="plans" class="rounded-md px-4 py-2 text-sm font-medium">Plans & access</button>
+    <button type="button" data-founder-tab="promotions" class="rounded-md px-4 py-2 text-sm font-medium">Promotions & marketing</button>
+    <button type="button" data-founder-tab="recovery" class="rounded-md px-4 py-2 text-sm font-medium">Business recovery</button>
+  </div>
+
+  <div data-founder-section="plans" class="grid lg:grid-cols-2 gap-5 mb-6">
     <form method="post" class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-5">{% csrf_token %}
       <h2 class="font-semibold mb-3">Grant founder lifetime access</h2>
       {% include '_field.html' with field=form.business %}{% include '_field.html' with field=form.plan %}{% include '_field.html' with field=form.note %}
@@ -18,7 +24,7 @@
     </div>
   </div>
 
-  <form method="post" class="mb-7 bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-5">{% csrf_token %}
+  <form method="post" data-founder-section="plans" class="mb-7 bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-5">{% csrf_token %}
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
         <h2 class="font-semibold">Subscription payment channels</h2>
@@ -38,7 +44,7 @@
     </div>
   </form>
 
-  <form method="post" class="mb-7">{% csrf_token %}
+  <form method="post" data-founder-section="plans" class="mb-7">{% csrf_token %}
     <div class="flex flex-wrap justify-between items-end gap-3 mb-2"><div><h2 class="font-semibold">Plan pricing</h2><p class="text-xs text-stone-500">Set monthly price, annual-payment discount and additional-service discount for every plan, then save them together.</p></div><button name="action" value="save_plan_pricing" class="px-4 py-2 bg-[#8f172d] text-white rounded-md text-sm font-medium">Save all plan pricing</button></div>
     <div class="grid md:grid-cols-3 gap-3">
       {% for plan in plans %}<div class="bg-white border border-[#E7DFCC] rounded-lg p-4">
@@ -52,7 +58,7 @@
     <div class="mt-3 text-right"><button name="action" value="save_plan_pricing" class="px-4 py-2 bg-[#8f172d] text-white rounded-md text-sm font-medium">Save all plan pricing</button></div>
   </form>
 
-  <section id="plan-entitlements" class="mb-7 rounded-2xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
+  <section id="plan-entitlements" data-founder-section="plans" class="mb-7 rounded-2xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div><h2 class="font-semibold">Plan module access</h2><p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">Set the commercial module ceiling for each plan. Changes are applied immediately to businesses currently subscribed to that plan. Reports keeps a three-level entitlement so Starter can retain Basic reporting without receiving Full reporting.</p></div>
       <span class="rounded-full bg-[#050733] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white">Founder controlled</span>
@@ -76,7 +82,7 @@
     </form>
   </section>
 
-  <section class="mb-7 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
+  <section data-founder-section="promotions" class="mb-7 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
         <h2 class="font-semibold">Plan promotions</h2>
@@ -103,7 +109,7 @@
     </div>
   </section>
 
-  <section id="marketing-promo-campaigns" class="mb-7 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
+  <section id="marketing-promo-campaigns" data-founder-section="promotions" class="mb-7 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
         <h2 class="font-semibold">Marketing promo stage</h2>
@@ -165,61 +171,61 @@
     </div>
   </section>
 
-  <section class="mb-7 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
+  <section id="business-recovery" data-founder-section="recovery" class="mb-7 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h2 class="font-semibold">Legacy tenant data import</h2>
-        <p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">Founder-only recovery path for a legacy tenant. Accepts INPROFIC JSON backups and raw PythonAnywhere SQLite backups. Dry run reads the upload without writing, re-establishes the selected tenant boundary, compares it with the current application schema, and verifies the destination tenant is operationally empty. The final import repeats those checks and writes inside one transaction.</p>
+        <h2 class="font-semibold">Business backup restore</h2>
+        <p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">Restore a business from an INPROFIC backup or a PythonAnywhere database backup. Preview checks the file first and confirms that the destination is ready before anything is restored.</p>
       </div>
-      <span class="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-900">Tenant scoped</span>
+      <span class="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-900">Business protected</span>
     </div>
 
     <form method="post" enctype="multipart/form-data" class="mt-4 grid gap-3 md:grid-cols-2">{% csrf_token %}
-      {% for error in legacy_form.non_field_errors %}<div class="md:col-span-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{{ error }}</div>{% endfor %}
-      {% include '_field.html' with field=legacy_form.target_business %}
-      {% include '_field.html' with field=legacy_form.database %}
-      {% include '_field.html' with field=legacy_form.source_business_id %}
-      {% include '_field.html' with field=legacy_form.confirmation %}
+      {% for error in restore_form.non_field_errors %}<div class="md:col-span-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{{ error }}</div>{% endfor %}
+      {% include '_field.html' with field=restore_form.target_business %}
+      {% include '_field.html' with field=restore_form.database %}
+      {% include '_field.html' with field=restore_form.source_business_id %}
+      {% include '_field.html' with field=restore_form.confirmation %}
       <div class="md:col-span-2 flex flex-wrap gap-2">
-        <button name="action" value="legacy_dry_run" class="rounded-md border border-[#8f172d] bg-white px-4 py-2 text-sm font-semibold text-[#8f172d]">Dry run / compare only</button>
-        <button name="action" value="legacy_import" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Import selected tenant</button>
+        <button name="action" value="backup_preview" class="rounded-md border border-[#8f172d] bg-white px-4 py-2 text-sm font-semibold text-[#8f172d]">Preview backup</button>
+        <button name="action" value="backup_restore" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Restore selected business</button>
       </div>
-      <p class="md:col-span-2 text-[11px] leading-5 text-stone-500">For the real import, re-upload the same backup and type <span class="font-mono">IMPORT &lt;destination-slug&gt;</span>. Subscription plans, founder grants, module entitlements, notification read state, push subscriptions, and media file contents are not imported. A tenant-scoped backup with one business is auto-detected; the legacy tenant ID is needed only for older backups that contain several tenants, and all non-selected tenant rows are excluded.</p>
+      <p class="md:col-span-2 text-[11px] leading-5 text-stone-500">To restore, re-upload the same backup and type <span class="font-mono">RESTORE &lt;business-address&gt;</span>. Subscription plans, founder grants, module access, notification history, saved notification devices, and uploaded attachments are not restored. A backup containing one business is selected automatically; if several businesses are present, choose the business number shown in the preview.</p>
     </form>
 
-    {% if legacy_import_report %}
-      <div class="mt-5 rounded-xl border {% if legacy_import_report.ready %}border-emerald-200 bg-emerald-50{% else %}border-amber-200 bg-amber-50{% endif %} p-4">
+    {% if backup_restore_report %}
+      <div class="mt-5 rounded-xl border {% if backup_restore_report.ready %}border-emerald-200 bg-emerald-50{% else %}border-amber-200 bg-amber-50{% endif %} p-4">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <div class="text-sm font-semibold {% if legacy_import_report.ready %}text-emerald-900{% else %}text-amber-900{% endif %}">Dry-run result: {% if legacy_import_report.ready %}ready to import{% else %}action required{% endif %}</div>
-            {% if legacy_import_report.source_business %}<div class="mt-1 text-xs text-stone-600">{% if legacy_import_report.backup_format %}<span class="font-medium">{{ legacy_import_report.backup_format }}</span> · {% endif %}Legacy source: <strong>{{ legacy_import_report.source_business.name }}</strong> · ID <span class="font-mono">{{ legacy_import_report.source_business.id }}</span> → destination <strong>{{ legacy_import_report.target_business.name }}</strong></div>{% endif %}
+            <div class="text-sm font-semibold {% if backup_restore_report.ready %}text-emerald-900{% else %}text-amber-900{% endif %}">Preview result: {% if backup_restore_report.ready %}ready to restore{% else %}action required{% endif %}</div>
+            {% if backup_restore_report.source_business %}<div class="mt-1 text-xs text-stone-600">{% if backup_restore_report.backup_format %}<span class="font-medium">{{ backup_restore_report.backup_format }}</span> · {% endif %}Backup business: <strong>{{ backup_restore_report.source_business.name }}</strong> · business #<span class="font-mono">{{ backup_restore_report.source_business.id }}</span> → destination <strong>{{ backup_restore_report.target_business.name }}</strong></div>{% endif %}
           </div>
         </div>
 
-        {% if legacy_import_report.source_businesses|length > 1 %}
+        {% if backup_restore_report.source_businesses|length > 1 %}
           <div class="mt-3 rounded-lg bg-white/80 p-3">
-            <div class="text-xs font-semibold text-stone-800">Tenants found in this backup</div>
-            <div class="mt-2 grid gap-1 text-xs text-stone-600 sm:grid-cols-2">{% for source in legacy_import_report.source_businesses %}<div><span class="font-mono">#{{ source.id }}</span> · {{ source.name|default:'Unnamed tenant' }}{% if source.slug %} · {{ source.slug }}{% endif %}</div>{% endfor %}</div>
+            <div class="text-xs font-semibold text-stone-800">Businesses found in this backup</div>
+            <div class="mt-2 grid gap-1 text-xs text-stone-600 sm:grid-cols-2">{% for source in backup_restore_report.source_businesses %}<div><span class="font-mono">#{{ source.id }}</span> · {{ source.name|default:'Unnamed business' }}{% if source.slug %} · {{ source.slug }}{% endif %}</div>{% endfor %}</div>
           </div>
         {% endif %}
 
-        {% if legacy_import_report.blockers %}<div class="mt-3"><div class="text-xs font-semibold text-rose-800">Blockers</div><ul class="mt-1 list-disc pl-5 text-xs leading-5 text-rose-700">{% for item in legacy_import_report.blockers %}<li>{{ item }}</li>{% endfor %}</ul></div>{% endif %}
-        {% if legacy_import_report.warnings %}<div class="mt-3"><div class="text-xs font-semibold text-amber-900">Warnings</div><ul class="mt-1 list-disc pl-5 text-xs leading-5 text-amber-800">{% for item in legacy_import_report.warnings %}<li>{{ item }}</li>{% endfor %}</ul></div>{% endif %}
+        {% if backup_restore_report.blockers %}<div class="mt-3"><div class="text-xs font-semibold text-rose-800">Needs attention</div><ul class="mt-1 list-disc pl-5 text-xs leading-5 text-rose-700">{% for item in backup_restore_report.blockers %}<li>{{ item }}</li>{% endfor %}</ul></div>{% endif %}
+        {% if backup_restore_report.warnings %}<div class="mt-3"><div class="text-xs font-semibold text-amber-900">Warnings</div><ul class="mt-1 list-disc pl-5 text-xs leading-5 text-amber-800">{% for item in backup_restore_report.warnings %}<li>{{ item }}</li>{% endfor %}</ul></div>{% endif %}
 
-        {% if legacy_import_report.unique_conflicts %}
+        {% if backup_restore_report.unique_conflicts %}
         <div class="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3">
-          <div class="text-xs font-semibold text-rose-800">Global unique-value collisions</div>
-          <div class="mt-1 text-[11px] text-rose-700">Sensitive values are hidden; only the affected model, field, and number of existing live matches are shown.</div>
-          <div class="mt-2 overflow-x-auto"><table class="w-full bg-white text-xs"><thead><tr><th class="p-2 text-left">Model</th><th class="p-2 text-left">Field</th><th class="p-2 text-right">Matches</th></tr></thead><tbody>{% for row in legacy_import_report.unique_conflicts %}<tr class="border-t"><td class="p-2">{{ row.model }}</td><td class="p-2 font-mono">{{ row.field }}</td><td class="p-2 text-right font-mono">{{ row.count }}</td></tr>{% endfor %}</tbody></table></div>
+          <div class="text-xs font-semibold text-rose-800">Matching records need attention</div>
+          <div class="mt-1 text-[11px] text-rose-700">Sensitive values are hidden. Only the affected record type, detail, and number of matches are shown.</div>
+          <div class="mt-2 overflow-x-auto"><table class="w-full bg-white text-xs"><thead><tr><th class="p-2 text-left">Record type</th><th class="p-2 text-left">Detail</th><th class="p-2 text-right">Matches</th></tr></thead><tbody>{% for row in backup_restore_report.unique_conflicts %}<tr class="border-t"><td class="p-2">{{ row.model }}</td><td class="p-2 font-mono">{{ row.field }}</td><td class="p-2 text-right font-mono">{{ row.count }}</td></tr>{% endfor %}</tbody></table></div>
         </div>
         {% endif %}
-        {% if legacy_import_report.target_conflicts %}<div class="mt-3 overflow-x-auto"><table class="w-full bg-white text-xs"><thead><tr><th class="p-2 text-left">Existing destination model</th><th class="p-2 text-right">Rows</th></tr></thead><tbody>{% for row in legacy_import_report.target_conflicts %}<tr class="border-t"><td class="p-2">{{ row.model }}</td><td class="p-2 text-right font-mono">{{ row.count }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+        {% if backup_restore_report.target_conflicts %}<div class="mt-3 overflow-x-auto"><table class="w-full bg-white text-xs"><thead><tr><th class="p-2 text-left">Existing record type</th><th class="p-2 text-right">Records</th></tr></thead><tbody>{% for row in backup_restore_report.target_conflicts %}<tr class="border-t"><td class="p-2">{{ row.model }}</td><td class="p-2 text-right font-mono">{{ row.count }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
 
         <details class="mt-3">
-          <summary class="cursor-pointer text-xs font-semibold text-stone-700">Schema/model row comparison</summary>
+          <summary class="cursor-pointer text-xs font-semibold text-stone-700">Backup record comparison</summary>
           <div class="mt-2 max-h-80 overflow-auto rounded-lg border border-stone-200 bg-white">
-            <table class="w-full text-xs"><thead class="sticky top-0 bg-[#F5EFE0]"><tr><th class="p-2 text-left">Model</th><th class="p-2 text-right">Legacy rows</th><th class="p-2 text-left">Notes</th></tr></thead><tbody>
-              {% for row in legacy_import_report.models %}{% if row.rows or row.missing_required or row.skipped_file_fields %}<tr class="border-t"><td class="p-2">{{ row.name }}<div class="font-mono text-[10px] text-stone-400">{{ row.label }}</div></td><td class="p-2 text-right font-mono">{{ row.rows }}</td><td class="p-2 text-stone-500">{% if row.missing_required %}Missing required: {{ row.missing_required|join:', ' }}. {% endif %}{% if row.skipped_file_fields %}Media skipped: {{ row.skipped_file_fields|join:', ' }}. {% endif %}{% if row.ignored_source_columns %}Legacy-only columns ignored: {{ row.ignored_source_columns|join:', ' }}.{% endif %}</td></tr>{% endif %}{% endfor %}
+            <table class="w-full text-xs"><thead class="sticky top-0 bg-[#F5EFE0]"><tr><th class="p-2 text-left">Record type</th><th class="p-2 text-right">Backup records</th><th class="p-2 text-left">Notes</th></tr></thead><tbody>
+              {% for row in backup_restore_report.models %}{% if row.rows or row.missing_required or row.skipped_file_fields %}<tr class="border-t"><td class="p-2">{{ row.name }}</td><td class="p-2 text-right font-mono">{{ row.rows }}</td><td class="p-2 text-stone-500">{% if row.missing_required %}Missing information: {{ row.missing_required|join:', ' }}. {% endif %}{% if row.skipped_file_fields %}Attachments not included: {{ row.skipped_file_fields|join:', ' }}. {% endif %}</td></tr>{% endif %}{% endfor %}
             </tbody></table>
           </div>
         </details>
@@ -227,9 +233,39 @@
     {% endif %}
   </section>
 
-  <h2 class="font-semibold mb-2">Subscriptions</h2>
-  <div class="overflow-x-auto bg-white border border-[#E7DFCC] rounded-lg"><table class="w-full text-sm"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Primary business</th><th>Plan</th><th>Status</th><th>Services</th><th>Expiry</th></tr></thead><tbody>{% for s in subscriptions %}<tr class="border-t"><td class="p-2">{{ s.primary_business.name }}</td><td class="text-center">{{ s.plan.name }}</td><td class="text-center">{{ s.effective_status_label }}</td><td class="text-center">{{ s.services.count }}</td><td class="text-center">{% if s.founder_lifetime %}Lifetime <form method="post" class="inline">{% csrf_token %}<input type="hidden" name="subscription_id" value="{{ s.pk }}"><button name="action" value="revoke_founder" class="ml-1 text-[10px] text-rose-700 underline">revoke</button></form>{% elif s.expires_at %}{{ s.expires_at|date:"j M Y" }}{% else %}—{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+  <section data-founder-section="plans">
+    <div class="mb-2"><h2 class="font-semibold">Subscriptions</h2><p class="text-xs text-stone-500">Review current plan state and founder lifetime grants without leaving the plans workspace.</p></div>
+    <div class="overflow-x-auto bg-white border border-[#E7DFCC] rounded-lg"><table class="w-full text-sm"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Primary business</th><th>Plan</th><th>Status</th><th>Services</th><th>Expiry</th></tr></thead><tbody>{% for s in subscriptions %}<tr class="border-t"><td class="p-2">{{ s.primary_business.name }}</td><td class="text-center">{{ s.plan.name }}</td><td class="text-center">{{ s.effective_status_label }}</td><td class="text-center">{{ s.services.count }}</td><td class="text-center">{% if s.founder_lifetime %}Lifetime <form method="post" class="inline">{% csrf_token %}<input type="hidden" name="subscription_id" value="{{ s.pk }}"><button name="action" value="revoke_founder" class="ml-1 text-[10px] text-rose-700 underline">revoke</button></form>{% elif s.expires_at %}{{ s.expires_at|date:"j M Y" }}{% else %}—{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+  </section>
 </div>
+<script>
+(() => {
+  const root = document.querySelector('[data-founder-console]');
+  if (!root) return;
+  const tabs = [...root.querySelectorAll('[data-founder-tab]')];
+  const sections = [...root.querySelectorAll('[data-founder-section]')];
+  const activate = (name, remember = true) => {
+    sections.forEach(section => { section.style.display = section.dataset.founderSection === name ? '' : 'none'; });
+    tabs.forEach(tab => {
+      const active = tab.dataset.founderTab === name;
+      tab.style.background = active ? '#8f172d' : 'transparent';
+      tab.style.color = active ? '#fff' : '#57534e';
+      tab.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    if (remember) { try { sessionStorage.setItem('inprofic-founder-tab', name); } catch (_) {} }
+  };
+  tabs.forEach(tab => tab.addEventListener('click', () => activate(tab.dataset.founderTab)));
+  let initial = root.dataset.founderDefault || 'plans';
+  if (location.hash === '#marketing-promo-campaigns') initial = 'promotions';
+  if (location.hash === '#business-recovery') initial = 'recovery';
+  if (location.hash === '#plan-entitlements') initial = 'plans';
+  if (!location.hash && initial === 'plans') {
+    try { initial = sessionStorage.getItem('inprofic-founder-tab') || initial; } catch (_) {}
+  }
+  if (!tabs.some(tab => tab.dataset.founderTab === initial)) initial = 'plans';
+  activate(initial, false);
+})();
+</script>
 {{ campaign_editor_html|json_script:"campaign-editor-initial" }}
 <script>
 (() => {

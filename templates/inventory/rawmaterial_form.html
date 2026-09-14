@@ -17,14 +17,14 @@
       {% else %}
       <p><strong>Materials here are supporting supplies</strong> such as packaging, cleaning stock, or other items your business consumes. Add goods bought for resale under <strong>{{ vertical_ui.product_label }}</strong>, then receive their arrivals through Purchase Orders.</p>
       <p><strong>Three layers, if you need them:</strong> what you buy → what's in the pack → the fine unit used when stock is issued.</p>
-      <p><strong>Purchase unit</strong> — bag, carton, pack. <strong>Package qty/unit</strong> — what's printed on it, e.g. 1 bag = <code>50</code> <code>kg</code>. <strong>Usage unit</strong> — the fine unit used for internal stock, such as kg, g, mL, spoon, cap, or piece.</p>
+      <p><strong>Purchase unit</strong> — bag, carton, pack. <strong>Package qty/unit</strong> — what's printed on it, e.g. 1 bag = <code>50</code> <code>kg</code>. <strong>Usage unit</strong> — the fine unit used for stock tracking, such as kg, g, mL, spoon, cap, or piece.</p>
       {% endif %}
       <p><strong>Usage conversion</strong> — how many usage units in ONE package unit. Standard conversions: kg→g and litre→ml are both <code>1000</code>.
       Same unit both ways (e.g. flour bought and used in kg) → <code>1</code>. Non-standard units like spoon or cap aren't a fixed ratio —
       count it yourself (e.g. "1kg of ack fills 200 spoons" → usage unit <code>spoon</code>, usage conversion <code>200</code>).</p>
       <p>Stock and cost below are entered <strong>per purchase unit</strong> (e.g. "3" bags, "9000" per bag) — everything converts and
-      stores internally in the fine usage unit, since that's what {% if vertical_ui.uses_production %}{{ vertical_ui.recipe_label|lower }} calculations and production deductions{% else %}supply dispensing and stock calculations{% endif %} run on.
-      <strong>Reorder level is entered in purchase units</strong> (e.g. "2" bags), but is converted and stored internally in the
+      tracks stock in the fine usage unit, since that's what {% if vertical_ui.uses_production %}{{ vertical_ui.recipe_label|lower }} calculations and production deductions{% else %}supply dispensing and stock calculations{% endif %} run on.
+      <strong>Reorder level is entered in purchase units</strong> (e.g. "2" bags), and INPROFIC automatically converts it to the
       usage unit so existing stock calculations remain unchanged.</p>
     </div>
 
@@ -99,6 +99,7 @@
     {% include "_field.html" with field=form.reorder_level_purchase_units %}
     <div class="flex justify-end gap-2 mt-2">
       <a href="{% url 'inventory' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a>
+      {% if not obj %}<button type="submit" name="save_add_new" value="1" class="px-3.5 py-2 text-sm rounded-md font-medium border border-[#8f172d] bg-white text-[#8f172d] hover:bg-[#FFF5F4]">Save &amp; Add New</button>{% endif %}
       <button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save</button>
     </div>
   </form>

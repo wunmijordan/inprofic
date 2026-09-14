@@ -1,10 +1,11 @@
+{% load core_extras %}
 {% if checkout %}
 <div id="storefront-history-record" hidden
      data-key="checkout:{{ checkout.public_id }}"
      data-checkout-id="{{ checkout.public_id }}"
      data-reference="{% if checkout.materialized_intake %}{{ checkout.materialized_intake.public_number }}{% else %}Checkout {{ checkout.public_id|stringformat:'s'|slice:':8'|upper }}{% endif %}"
      data-status="{% if checkout.materialized_intake %}{{ checkout.materialized_intake.get_status_display }}{% else %}{{ checkout.get_status_display }}{% endif %}"
-     data-amount="{{ checkout.currency }} {{ checkout.amount|floatformat:2 }}"
+     data-amount="{{ checkout.currency }} {{ checkout.amount|num }}"
      data-href="{% if checkout.materialized_intake %}{% url 'storefront_order_status' store_business.slug checkout.materialized_intake.public_id %}{% else %}{% url 'storefront_checkout' store_business.slug checkout.public_id %}{% endif %}"
      data-updated="{{ checkout.updated_at|date:'c' }}"></div>
 {% elif intake %}

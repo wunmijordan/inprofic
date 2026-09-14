@@ -71,7 +71,7 @@ def notification_read(request):
     try:
         payload = json.loads(request.body or b"{}")
     except json.JSONDecodeError:
-        return JsonResponse({"detail": "Submit valid JSON."}, status=400)
+        return JsonResponse({"detail": "The submitted notification details are invalid."}, status=400)
 
     unread = _unread(request)
     if payload.get("all") is True:
@@ -168,9 +168,9 @@ def push_unsubscribe(request):
         payload = json.loads(request.body or b"{}")
         endpoint = str(payload.get("endpoint") or "").strip()
     except (json.JSONDecodeError, TypeError, ValueError):
-        return JsonResponse({"detail": "Submit valid JSON."}, status=400)
+        return JsonResponse({"detail": "The submitted notification details are invalid."}, status=400)
     if not endpoint:
-        return JsonResponse({"detail": "endpoint is required."}, status=400)
+        return JsonResponse({"detail": "A notification destination is required."}, status=400)
     updated = CommercePushSubscription.objects.filter(
         user=request.user,
         endpoint_hash=endpoint_hash(endpoint),

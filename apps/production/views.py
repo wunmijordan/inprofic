@@ -609,8 +609,8 @@ def _latest_material_cost(material, production_date):
     ).order_by("-effective_date", "-id").first()
     if snapshot:
         return snapshot.usage_unit_cost, "latest_procurement"
-    # Legacy/manual fallback for materials that predate historical snapshots.
-    return material.cost_per_unit, "legacy_current_cost"
+    # Fallback for materials that do not have a saved cost snapshot.
+    return material.cost_per_unit, "current_cost_fallback"
 
 
 def _create_production_cost_snapshot(order, item, batch):
@@ -644,7 +644,7 @@ def _create_production_cost_snapshot(order, item, batch):
         )
     snapshot.total_cost = total_cost
     snapshot.unit_cost = total_cost / batch.saleable_units if batch.saleable_units else Decimal("0")
-    snapshot.cost_source = "latest_procurement" if sources == {"latest_procurement"} else "latest_procurement_with_legacy_fallback"
+    snapshot.cost_source = "latest_procurement" if sources == {"latest_procurement"} else "latest_procurement_with_current_cost_fallback"
     snapshot.save(update_fields=["total_cost", "unit_cost", "cost_source"])
     batch.total_cost = total_cost
     batch.unit_cost = snapshot.unit_cost
@@ -746,8 +746,8 @@ def order_complete(request, pk):
                     saleable = form.cleaned_data["saleable_units"]
                     allocations = form.cleaned_data.get("planned_offcut_allocations", [])
                     aggregate_customer_units = form.cleaned_data.get("planned_surplus_customer_units") or Decimal("0")
-                    legacy_customer = allocations[0]["customer"] if len(allocations) == 1 else None
-                    legacy_channel = allocations[0]["channel"] if len(allocations) == 1 else ""
+                    single_customer = allocations[0]["customer"] if len(allocations) == 1 else None
+                    single_channel = allocations[0]["channel"] if len(allocations) == 1 else ""
 
                     batch = ProductionBatch.objects.create(
                         business=order.business,
@@ -763,8 +763,8 @@ def order_complete(request, pk):
                         ordered_units=item.total_units,
                         planned_surplus_stock_units=form.cleaned_data.get("planned_surplus_stock_units") or Decimal("0"),
                         planned_surplus_customer_units=aggregate_customer_units,
-                        planned_surplus_customer=legacy_customer,
-                        planned_surplus_customer_channel=legacy_channel,
+                        planned_surplus_customer=single_customer,
+                        planned_surplus_customer_channel=single_channel,
                         produced_units=produced,
                         wastage_units=wastage,
                         wastage_reason=form.cleaned_data.get("wastage_reason", ""),
@@ -951,14 +951,31 @@ def order_complete(request, pk):
                     # Link them to the newly-created receivable without posting
                     # another ledger transaction.
                     from commerce.payment_services import sync_commerce_payments_for_order
-                    sync_commerce_payments_for_order(order)
-                    if sale.transaction_type == "paid":
+                    commerce_allocated = sync_commerce_payments_for_order(order)
+                    # Commerce payments were already posted to the financial
+                    # ledger at verification time. When that receipt is now
+                    # allocated to the completed production sale, do not create
+                    # a second cash transaction for the same money.
+                    if sale.transaction_type == "paid" and commerce_allocated <= 0:
                         record_cash(
                             request.business, request.user, date=sale.date, amount=sale.total,
                             transaction_type=FinancialTransaction.INCOME, category="Customer order payment",
                             description=f"Payment received for order #{order.display_number}", payment_method=sale.payment_method,
                             reference=f"ORDER-{order.pk}", account=order.customer_payment_account,
                         )
+
+                    # A commerce made-to-order line stays operationally pending
+                    # until staff completes this Production order. Completion is
+                    # the point at which the originating commerce intake is truly
+                    # fulfilled.
+                    from commerce.models import CommerceIntake
+                    CommerceIntake.raw_objects.filter(business=order.business).filter(
+                        Q(accepted_order=order) | Q(split_order=order)
+                    ).update(
+                        status=CommerceIntake.STATUS_FULFILLED,
+                        fulfilment_state=CommerceIntake.FULFIL_COMPLETE,
+                        rejection_reason="",
+                    )
 
                 audit_allocations = []
                 for item, form, offcut_formset in completion_forms:
@@ -1302,7 +1319,7 @@ def reset_order_numbering(request):
                     "Global production order numbering reset; this business's next visible Order will start from #1.",
                     {"model": "production.Order", "scope": "global", "business_id": business.pk},
                 )
-        messages.success(request, "All business Order # sequences were reset. Each business will start its next Order from #1. Database IDs and all other data were left unchanged.")
+        messages.success(request, "All business Order # sequences were reset. Each business will start its next Order from #1. Existing records and all other data were left unchanged.")
         return redirect("orders_list")
 
     if request.user.is_superuser:

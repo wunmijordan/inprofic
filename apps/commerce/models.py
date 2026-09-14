@@ -99,7 +99,7 @@ class CommerceSettings(BusinessOwnedModel):
     )
     notify_order_activity = models.BooleanField(
         default=True,
-        help_text="Alert when a website, API, or connector sends a checkout or order.",
+        help_text="Alert when a connected sales channel sends a checkout or order.",
     )
     notify_payment_activity = models.BooleanField(
         default=True,
@@ -131,7 +131,7 @@ class CommerceSettings(BusinessOwnedModel):
 class CommerceIntegration(BusinessOwnedModel):
     TYPE_API = "api"
     TYPE_WEBHOOK = "webhook"
-    TYPE_CHOICES = [(TYPE_API, "Headless API"), (TYPE_WEBHOOK, "Platform webhook / connector")]
+    TYPE_CHOICES = [(TYPE_API, "Connected website"), (TYPE_WEBHOOK, "Connected sales platform")]
 
     name = models.CharField(max_length=100)
     integration_type = models.CharField(max_length=12, choices=TYPE_CHOICES, default=TYPE_API)
@@ -155,7 +155,7 @@ class StorefrontProduct(BusinessOwnedModel):
     public_name = models.CharField(max_length=140, blank=True, default="")
     description = models.TextField(blank=True, default="")
     image = models.ImageField(upload_to=storefront_product_image_upload_to, blank=True)
-    # Retained as a read-only legacy fallback for live records created before uploads.
+    # Retained as a read-only fallback for records created before image uploads.
     image_url = models.URLField(blank=True, default="")
     allow_stock_order = models.BooleanField(default=True)
     allow_preorder = models.BooleanField(default=True)
@@ -479,13 +479,13 @@ class CommercePaymentConfiguration(BusinessOwnedModel):
         max_length=20,
         choices=BANK_TRANSFER_PROVIDER_CHOICES,
         default=BANK_TRANSFER_PROVIDER_PAYSTACK,
-        help_text="Gateway that issues the temporary transfer account and confirms payment automatically.",
+        help_text="Payment service that provides the temporary transfer account and confirms payment automatically.",
     )
     monnify_transfer_bank_code = models.CharField(
         max_length=12,
         blank=True,
         default="",
-        help_text="Monnify bank code used to issue the temporary transfer account. Configure the bank your merchant account supports.",
+        help_text="Bank used by Monnify when creating a temporary transfer account. Choose a bank supported by your merchant account.",
     )
     bank_name = models.CharField(max_length=120, blank=True, default="")
     bank_account_name = models.CharField(max_length=160, blank=True, default="")
@@ -526,7 +526,7 @@ class CommercePayment(BusinessOwnedModel):
     GATEWAY_PAYSTACK = "paystack"
     GATEWAY_MONNIFY = "monnify"
     GATEWAY_CHOICES = [
-        (GATEWAY_NONE, "No gateway"),
+        (GATEWAY_NONE, "No automatic payment provider"),
         (GATEWAY_PAYSTACK, "Paystack"),
         (GATEWAY_MONNIFY, "Monnify"),
     ]

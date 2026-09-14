@@ -124,7 +124,7 @@ class Sale(BusinessOwnedModel):
     )
     service_mode = models.CharField(
         max_length=12, choices=SERVICE_MODE_CHOICES, blank=True, default="",
-        help_text="Restaurant service context. Blank for bakery/general sales and historical rows.",
+        help_text="Restaurant service context. Leave blank when restaurant service details do not apply.",
     )
     table_reference = models.CharField(
         max_length=40, blank=True, default="",
@@ -166,7 +166,7 @@ class SaleItem(TimestampedModel):
     price = models.DecimalField(max_digits=12, decimal_places=2, default=0,
         help_text="Snapshot of the product's selling price at sale time — set automatically.")
     unit_cost = models.DecimalField(max_digits=16, decimal_places=6, null=True, blank=True,
-        help_text="Historical finished-good cost per unit at the time of sale.")
+        help_text="Product cost per unit captured at the time of sale.")
     production_batch = models.ForeignKey("production.ProductionBatch", null=True, blank=True, on_delete=models.SET_NULL, related_name="sale_items")
 
     def __str__(self):

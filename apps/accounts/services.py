@@ -146,16 +146,16 @@ def seed_business_roles(business):
     )
     roles = {role.key: role for role in role_rows if role.key in system_keys}
     canonical_demo = roles.get(CustomUser.ROLE_LIVE_TESTER)
-    legacy_demo_roles = [
+    duplicate_demo_roles = [
         role for role in role_rows
         if role.pk != getattr(canonical_demo, "pk", None)
         and (role.key == "demo" or role.name.strip().casefold() == "demo")
     ]
-    if not canonical_demo and legacy_demo_roles:
+    if not canonical_demo and duplicate_demo_roles:
         # Prefer the row already named Demo so adopting it cannot collide with
         # another role's unique business/name constraint during the rename.
-        legacy_demo_roles.sort(key=lambda role: (role.name.strip().casefold() != "demo", role.pk))
-        canonical_demo = legacy_demo_roles.pop(0)
+        duplicate_demo_roles.sort(key=lambda role: (role.name.strip().casefold() != "demo", role.pk))
+        canonical_demo = duplicate_demo_roles.pop(0)
         with transaction.atomic():
             canonical_demo.key = CustomUser.ROLE_LIVE_TESTER
             canonical_demo.name = definitions[CustomUser.ROLE_LIVE_TESTER]
@@ -165,14 +165,14 @@ def seed_business_roles(business):
             canonical_demo.save(update_fields=["key", "name", "is_system", "visible_to_admin", "active"])
         roles[CustomUser.ROLE_LIVE_TESTER] = canonical_demo
 
-    if canonical_demo and legacy_demo_roles:
+    if canonical_demo and duplicate_demo_roles:
         # If both names already exist (for example after an earlier Live Tester
         # deploy), merge old Demo memberships into the canonical fixed policy,
         # then remove the duplicate role before claiming the Demo display name.
         with transaction.atomic():
-            for legacy_role in legacy_demo_roles:
-                UserBusiness.objects.filter(role=legacy_role).update(role=canonical_demo)
-                legacy_role.delete()
+            for duplicate_role in duplicate_demo_roles:
+                UserBusiness.objects.filter(role=duplicate_role).update(role=canonical_demo)
+                duplicate_role.delete()
 
     missing_keys = [key for key in system_keys if key not in roles]
     if missing_keys:
@@ -268,7 +268,7 @@ def seed_business_modules(business, source=BusinessModuleAccess.SOURCE_DEFAULT):
 def business_has_module(business, module):
     """Return the business entitlement. Explicit disabled rows are a hard ceiling.
 
-    Legacy businesses with no subscription keep the historical missing-row=enabled
+    Existing businesses with no subscription keep the current missing-row=enabled
     rule. Once a subscription exists, expiry is enforced dynamically even before
     a scheduled entitlement refresh runs. Dashboard remains available; the
     dedicated Plans/Billing URLs are separately whitelisted as the recovery surface.

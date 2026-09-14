@@ -24,6 +24,9 @@
     <span class="block text-xs font-medium text-stone-600 mb-1 mt-4">Channel Selling Prices</span>
     <p class="text-[11px] text-stone-400 mb-2">Optional channel-specific prices. If a channel is left blank, the default Selling Price above is used.</p>
     {{ channel_price_formset.management_form }}
+    {% if channel_price_formset.non_form_errors %}
+      <div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-2">{{ channel_price_formset.non_form_errors }}</div>
+    {% endif %}
     <div class="border border-[#E7DFCC] rounded-md overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full min-w-[680px] text-sm">
@@ -31,8 +34,15 @@
           <tbody>
             {% for f in channel_price_formset %}
             <tr class="border-t border-[#E7DFCC]">
-              <td class="px-2 py-1.5">{{ f.id }}{{ f.channel }}</td>
-              <td class="px-2 py-1.5">{{ f.price }}</td>
+              <td class="px-2 py-1.5">
+                {{ f.id }}{{ f.channel }}
+                {% for error in f.channel.errors %}<span class="block text-[11px] text-rose-600 mt-0.5">{{ error }}</span>{% endfor %}
+                {% for error in f.non_field_errors %}<span class="block text-[11px] text-rose-600 mt-0.5">{{ error }}</span>{% endfor %}
+              </td>
+              <td class="px-2 py-1.5">
+                {{ f.price }}
+                {% for error in f.price.errors %}<span class="block text-[11px] text-rose-600 mt-0.5">{{ error }}</span>{% endfor %}
+              </td>
               <td class="px-2 py-1.5 text-center">{% if f.instance.pk %}{{ f.DELETE }}{% endif %}</td>
             </tr>
             {% endfor %}
@@ -46,6 +56,9 @@
     <span class="block text-xs font-medium text-stone-600 mb-1 mt-2">{{ vertical_ui.recipe_label }} ({{ vertical_ui.recipe_item_label }} quantities per batch)</span>
     <p class="text-[11px] text-stone-400 mb-1">Quantity is defined against the registered batch yield above and entered in each material's <strong>usage unit</strong>. Mark <strong>Flexible</strong> only where the {{ vertical_ui.recipe_label|lower }} permits an approval-time quantity adjustment.</p>
     {{ formset.management_form }}
+    {% if formset.non_form_errors %}
+      <div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-2">{{ formset.non_form_errors }}</div>
+    {% endif %}
     <div class="border border-[#E7DFCC] rounded-md overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full min-w-[680px] text-sm">
@@ -75,6 +88,9 @@
     <span class="block text-xs font-medium text-stone-600 mb-1 mt-5">{{ vertical_ui.production_inputs_label }}</span>
     <p class="text-[11px] text-stone-400 mb-1">These are consumed per batch but sit outside the main {{ vertical_ui.recipe_label|lower }} — for example packaging, labels, fuel, or other per-production supplies. Quantities use each material's usage unit.</p>
     {{ production_formset.management_form }}
+    {% if production_formset.non_form_errors %}
+      <div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-2">{{ production_formset.non_form_errors }}</div>
+    {% endif %}
     <div class="border border-[#E7DFCC] rounded-md overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full min-w-[680px] text-sm">
@@ -104,6 +120,7 @@
 
     <div class="flex justify-end gap-2 mt-4">
       <a href="{% url 'inventory' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a>
+      {% if not obj %}<button type="submit" name="save_add_new" value="1" class="px-3.5 py-2 text-sm rounded-md font-medium border border-[#8f172d] bg-white text-[#8f172d] hover:bg-[#FFF5F4]">Save &amp; Add New</button>{% endif %}
       <button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save</button>
     </div>
   </form>

@@ -1,43 +1,147 @@
 {% extends "base.html" %}
 {% load core_extras %}{% block content %}
-<div class="max-w-6xl">
+<div class="max-w-6xl" data-commerce-dashboard>
   <div class="flex flex-wrap justify-between items-end gap-3 mb-5">
-    <div><h1 class="text-2xl font-semibold font-display text-[#8f172d]">Commerce</h1><p class="text-sm text-stone-500">API-first ordering, hosted storefront, Order Now links and platform connectors all feed the same tenant-scoped intake.</p></div>
-    <div class="flex flex-wrap gap-2">{% if module_permissions.finance.view or can_manage_commerce %}<a href="{% url 'commerce_payment_queue' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">Payments</a>{% endif %}{% if can_manage_commerce %}<a href="{% url 'commerce_payment_settings' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">Payment settings</a>{% endif %}<a href="{% url 'commerce_settings' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">Settings</a><a href="{% url 'commerce_integration_add' %}" class="px-3 py-2 bg-[#8f172d] text-white rounded-md text-sm">+ Integration</a></div>
+    <div>
+      <h1 class="text-2xl font-semibold font-display text-[#8f172d]">Commerce</h1>
+      <p class="text-sm text-stone-500">Manage sales channels, paid-order handoff, storefront products and connected platforms from one workspace.</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      {% if module_permissions.finance.view or can_manage_commerce %}<a href="{% url 'commerce_payment_queue' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">Payments</a>{% endif %}
+      {% if can_manage_commerce %}<a href="{% url 'commerce_payment_settings' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">Payment settings</a>{% endif %}
+      <a href="{% url 'commerce_settings' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">Settings</a>
+      <a href="{% url 'commerce_integration_add' %}" class="px-3 py-2 bg-[#8f172d] text-white rounded-md text-sm">+ Integration</a>
+    </div>
   </div>
 
   {% if not commerce_settings.enabled %}
   <div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-    <strong>Commerce is globally paused.</strong> Individual integration choices remain saved, but Storefront, Order Now, Headless API and Platform Connector public traffic are blocked until the Commerce master switch is enabled.
+    <strong>Commerce is paused.</strong> Your channel settings stay saved, but Storefront, Order Now, connected website and sales-platform ordering remain unavailable until Commerce is enabled.
   </div>
   {% endif %}
-  <div class="grid md:grid-cols-4 gap-3 mb-6">
-    <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-4"><div class="text-xs text-stone-500">Hosted storefront</div><div class="font-medium">{% if commerce_settings.enabled and commerce_settings.hosted_storefront_enabled %}<span class="text-emerald-700">Enabled</span>{% elif commerce_settings.hosted_storefront_enabled %}<span class="text-amber-700">Configured · paused</span>{% else %}Disabled{% endif %}</div>{% if commerce_settings.enabled and commerce_settings.hosted_storefront_enabled %}<a class="text-xs text-[#8f172d] underline" href="{% url 'storefront' biz.slug %}" target="_blank">/shop/{{ biz.slug }}/</a>{% endif %}</div>
-    <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-4"><div class="text-xs text-stone-500">Order Now link</div><div class="font-medium">{% if commerce_settings.enabled and commerce_settings.order_now_link_enabled %}<span class="text-emerald-700">Enabled</span>{% elif commerce_settings.order_now_link_enabled %}<span class="text-amber-700">Configured · paused</span>{% else %}Disabled{% endif %}</div>{% if commerce_settings.enabled and commerce_settings.order_now_link_enabled %}<a class="text-xs text-[#8f172d] underline" href="{% url 'storefront_order_now' biz.slug %}" target="_blank">/shop/{{ biz.slug }}/order-now/</a>{% endif %}</div>
-    <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-4"><div class="text-xs text-stone-500">Headless API</div><div class="font-medium">{% if commerce_settings.enabled and commerce_settings.api_enabled %}<span class="text-emerald-700">Enabled</span>{% elif commerce_settings.api_enabled %}<span class="text-amber-700">Configured · paused</span>{% else %}Disabled{% endif %}</div><div class="text-[11px] text-stone-500">Business-owned websites call INPROFIC directly.</div></div>
-    <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-4"><div class="text-xs text-stone-500">Platform connector</div><div class="font-medium">{% if commerce_settings.enabled and commerce_settings.connector_enabled %}<span class="text-emerald-700">Enabled</span>{% elif commerce_settings.connector_enabled %}<span class="text-amber-700">Configured · paused</span>{% else %}Disabled{% endif %}</div><div class="text-[11px] text-stone-500">Third-party platforms push signed order events.</div></div>
+
+  <div class="mb-5 flex flex-wrap gap-2 rounded-lg border border-[#E7DFCC] bg-[#FFFDF8] p-2" role="tablist" aria-label="Commerce workspace">
+    <button type="button" data-commerce-tab="overview" class="rounded-md px-4 py-2 text-sm font-medium">Overview</button>
+    <button type="button" data-commerce-tab="orders" class="rounded-md px-4 py-2 text-sm font-medium">Orders</button>
+    <button type="button" data-commerce-tab="products" class="rounded-md px-4 py-2 text-sm font-medium">Products</button>
+    <button type="button" data-commerce-tab="connections" class="rounded-md px-4 py-2 text-sm font-medium">Connections</button>
   </div>
-  <div class="mb-6 bg-white border border-[#E7DFCC] rounded-lg p-4"><div class="text-xs text-stone-500">Insufficient stock policy</div><div class="font-medium">{{ commerce_settings.get_insufficient_stock_policy_display }}</div></div>
 
-  <h2 class="font-semibold mb-2">Storefront products</h2><div class="overflow-x-auto bg-white border border-[#E7DFCC] rounded-lg mb-6"><table class="w-full text-sm"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Product</th><th>Physical availability</th><th>Published</th><th>Physical</th><th>Online</th><th>Distribution / bulk</th><th></th></tr></thead><tbody>{% for good in products %}<tr class="border-t"><td class="p-2">{{ good.name }}</td><td class="text-center">{{ good.physical_saleable_stock }} {{ good.unit }}</td><td class="text-center">{% if good.storefront_product.published %}✓{% else %}—{% endif %}</td><td class="text-center">{% if good.storefront_product.allow_stock_order %}✓{% else %}—{% endif %}</td><td class="text-center">{% if good.storefront_product.allow_online_order %}✓{% else %}—{% endif %}</td><td class="text-center">{% if good.storefront_product.allow_distribution_order %}✓ · min {{ good.storefront_product.distribution_min_quantity }}{% else %}—{% endif %}</td><td class="p-2 text-right"><a href="{% url 'storefront_product_edit' good.pk %}" class="text-[#8f172d] underline">Configure</a></td></tr>{% empty %}<tr><td colspan="7" class="p-4 text-center text-stone-500">No finished goods yet.</td></tr>{% endfor %}</tbody></table></div>
+  <section data-commerce-panel="overview">
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <button type="button" data-commerce-jump="orders" class="text-left bg-white border border-[#E7DFCC] rounded-lg p-4">
+        <div class="text-xs text-stone-500">Recent orders</div><div class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{{ commerce_counts.recent_orders }}</div><div class="mt-1 text-[11px] text-stone-500">Latest commerce intake</div>
+      </button>
+      <button type="button" data-commerce-jump="orders" class="text-left bg-white border border-[#E7DFCC] rounded-lg p-4">
+        <div class="text-xs text-stone-500">Awaiting payment</div><div class="mt-1 text-2xl font-semibold font-display">{{ commerce_counts.awaiting_payment }}</div><div class="mt-1 text-[11px] text-stone-500">No stock is permanently consumed yet</div>
+      </button>
+      <button type="button" data-commerce-jump="orders" class="text-left bg-white border border-[#E7DFCC] rounded-lg p-4">
+        <div class="text-xs text-stone-500">Production queue</div><div class="mt-1 text-2xl font-semibold font-display">{{ commerce_counts.production_queue }}</div><div class="mt-1 text-[11px] text-stone-500">Paid made-to-order work awaiting staff</div>
+      </button>
+      <button type="button" data-commerce-jump="orders" class="text-left bg-white border border-[#E7DFCC] rounded-lg p-4">
+        <div class="text-xs text-stone-500">Needs review</div><div class="mt-1 text-2xl font-semibold font-display {% if commerce_counts.needs_review %}text-amber-700{% endif %}">{{ commerce_counts.needs_review }}</div><div class="mt-1 text-[11px] text-stone-500">Paid orders that could not auto-process</div>
+      </button>
+    </div>
 
-  <h2 class="font-semibold mb-2">Commerce intake</h2><div class="overflow-x-auto bg-white border border-[#E7DFCC] rounded-lg"><table class="w-full text-sm"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Request</th><th>Customer</th><th>Channel</th><th>Fulfilment</th><th>Total</th><th>Order</th><th>Payment</th><th></th></tr></thead><tbody>{% for i in intakes %}<tr class="border-t"><td class="p-2">{{ i.public_number }}</td><td class="text-center">{{ i.customer_name }}</td><td class="text-center">{{ i.display_sales_channel }}</td><td class="text-center">{{ i.get_ordering_mode_display }}</td><td class="text-center font-mono">{{ i.total|money:biz.currency_symbol }}</td><td class="text-center">{{ i.get_status_display }}</td><td class="text-center">{% with p=i.payments.first %}{% if p %}<span class="inline-flex rounded-full px-2 py-0.5 text-xs {% if p.status == 'paid' %}bg-emerald-50 text-emerald-700{% elif p.status == 'awaiting_verification' %}bg-amber-50 text-amber-700{% elif p.status == 'failed' %}bg-rose-50 text-rose-700{% else %}bg-stone-100 text-stone-600{% endif %}">{{ p.get_status_display }}</span><div class="font-mono text-[10px] text-stone-400">{{ p.reference }}</div>{% else %}<span class="text-stone-400">Not initiated</span>{% endif %}{% endwith %}</td><td class="p-2 text-right">{% if i.status == 'pending' %}<form method="post" action="{% url 'commerce_intake_accept' i.public_id %}">{% csrf_token %}<button class="px-3 py-1.5 rounded bg-[#8f172d] text-white text-xs">Accept</button></form>{% elif i.status == 'awaiting_preorder' %}<span class="text-xs text-amber-700">Waiting for made-to-order choice</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="8" class="p-4 text-center text-stone-500">No incoming commerce orders.</td></tr>{% endfor %}</tbody></table></div>
+    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-4"><div class="text-xs text-stone-500">Hosted storefront</div><div class="font-medium">{% if commerce_settings.enabled and commerce_settings.hosted_storefront_enabled %}<span class="text-emerald-700">Enabled</span>{% elif commerce_settings.hosted_storefront_enabled %}<span class="text-amber-700">Configured · paused</span>{% else %}Disabled{% endif %}</div>{% if commerce_settings.enabled and commerce_settings.hosted_storefront_enabled %}<a class="text-xs text-[#8f172d] underline" href="{% url 'storefront' biz.slug %}" target="_blank">Open storefront</a>{% endif %}</div>
+      <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-4"><div class="text-xs text-stone-500">Order Now link</div><div class="font-medium">{% if commerce_settings.enabled and commerce_settings.order_now_link_enabled %}<span class="text-emerald-700">Enabled</span>{% elif commerce_settings.order_now_link_enabled %}<span class="text-amber-700">Configured · paused</span>{% else %}Disabled{% endif %}</div>{% if commerce_settings.enabled and commerce_settings.order_now_link_enabled %}<a class="text-xs text-[#8f172d] underline" href="{% url 'storefront_order_now' biz.slug %}" target="_blank">Open Order Now</a>{% endif %}</div>
+      <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-4"><div class="text-xs text-stone-500">Connected website</div><div class="font-medium">{% if commerce_settings.enabled and commerce_settings.api_enabled %}<span class="text-emerald-700">Enabled</span>{% elif commerce_settings.api_enabled %}<span class="text-amber-700">Configured · paused</span>{% else %}Disabled{% endif %}</div><div class="text-[11px] text-stone-500">Business-owned websites send paid orders here.</div></div>
+      <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-4"><div class="text-xs text-stone-500">Connected sales platform</div><div class="font-medium">{% if commerce_settings.enabled and commerce_settings.connector_enabled %}<span class="text-emerald-700">Enabled</span>{% elif commerce_settings.connector_enabled %}<span class="text-amber-700">Configured · paused</span>{% else %}Disabled{% endif %}</div><div class="text-[11px] text-stone-500">External sales platforms feed the same order flow.</div></div>
+    </div>
 
-  {% if integrations %}<h2 class="font-semibold mt-6 mb-2">Integration credentials</h2><div class="space-y-3">{% for x in integrations %}
-  <div class="bg-white border border-[#E7DFCC] rounded-lg p-4">
-    <div class="flex flex-wrap justify-between gap-2"><div><div class="font-medium">{{ x.name }}</div><div class="text-xs text-stone-500">{{ x.get_integration_type_display }} · {% if x.active %}Active{% else %}Disabled{% endif %}</div></div></div>
-    {% if x.integration_type == 'api' %}
-      <div class="mt-3 text-xs text-stone-500">API key</div><div class="flex gap-2 items-center"><code id="api-key-{{ x.pk }}" class="text-xs break-all bg-stone-50 border rounded px-2 py-1.5 flex-1">{{ x.api_key }}</code><button type="button" data-copy="#api-key-{{ x.pk }}" class="copy-btn px-2 py-1.5 border rounded text-xs">Copy</button></div>
-      <div class="mt-2 text-xs text-stone-500">Catalogue endpoint</div><div class="flex gap-2 items-center"><code id="api-url-{{ x.pk }}" class="text-xs break-all bg-stone-50 border rounded px-2 py-1.5 flex-1">{{ request.scheme }}://{{ request.get_host }}/api/v1/storefronts/{{ biz.slug }}/products</code><button type="button" data-copy="#api-url-{{ x.pk }}" class="copy-btn px-2 py-1.5 border rounded text-xs">Copy</button></div>
-      <div class="mt-2 text-xs text-stone-500">Payment-first checkout endpoint</div><div class="flex gap-2 items-center"><code id="api-orders-url-{{ x.pk }}" class="text-xs break-all bg-stone-50 border rounded px-2 py-1.5 flex-1">{{ request.scheme }}://{{ request.get_host }}/api/v1/storefronts/{{ biz.slug }}/checkouts</code><button type="button" data-copy="#api-orders-url-{{ x.pk }}" class="copy-btn px-2 py-1.5 border rounded text-xs">Copy</button></div>
-      <div class="mt-2 text-[11px] text-amber-700">Use <strong>/checkouts</strong> for new websites. The older /orders route creates intake before payment and remains only for compatibility.</div>
-    {% else %}
-      <div class="mt-3 text-xs text-stone-500">Webhook secret</div><div class="flex gap-2 items-center"><code id="webhook-secret-{{ x.pk }}" class="text-xs break-all bg-stone-50 border rounded px-2 py-1.5 flex-1">{{ x.webhook_secret }}</code><button type="button" data-copy="#webhook-secret-{{ x.pk }}" class="copy-btn px-2 py-1.5 border rounded text-xs">Copy</button></div>
-      <div class="mt-2 text-xs text-stone-500">Connector endpoint</div><div class="flex gap-2 items-center"><code id="connector-url-{{ x.pk }}" class="text-xs break-all bg-stone-50 border rounded px-2 py-1.5 flex-1">{{ request.scheme }}://{{ request.get_host }}/api/v1/connectors/{{ biz.slug }}/{{ x.pk }}/orders</code><button type="button" data-copy="#connector-url-{{ x.pk }}" class="copy-btn px-2 py-1.5 border rounded text-xs">Copy</button></div>
-    {% endif %}
-  </div>{% endfor %}</div>{% endif %}
+    <div class="bg-white border border-[#E7DFCC] rounded-lg p-4">
+      <div class="text-xs text-stone-500">Insufficient stock policy</div>
+      <div class="font-medium">{{ commerce_settings.get_insufficient_stock_policy_display }}</div>
+      <p class="mt-1 text-[11px] text-stone-500">Physical stock is reserved during checkout. Once full payment is confirmed, stock-backed lines are deducted automatically and made-to-order lines are sent to Production as pending work.</p>
+    </div>
+  </section>
+
+  <section data-commerce-panel="orders" style="display:none">
+    <div class="mb-3">
+      <h2 class="font-semibold">Order intake</h2>
+      <p class="text-xs text-stone-500">Full payment normally processes the order automatically. Manual action appears only for an exception that still needs staff review.</p>
+    </div>
+    {% if commerce_counts.needs_review %}<div class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">Some paid activity needs review because the automatic handoff could not complete safely. {% if module_permissions.finance.view or can_manage_commerce %}<a href="{% url 'commerce_payment_queue' %}" class="font-semibold underline">Open Payments</a>{% endif %}</div>{% endif %}
+    <div class="overflow-x-auto bg-white border border-[#E7DFCC] rounded-lg">
+      <table class="w-full text-sm"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Request</th><th>Customer</th><th>Channel</th><th>Total</th><th>Payment</th><th>Operational state</th><th></th></tr></thead><tbody>
+      {% for i in intakes %}
+        <tr class="border-t">
+          <td class="p-2"><div class="font-medium">{{ i.public_number }}</div><div class="text-[10px] text-stone-400">{{ i.get_ordering_mode_display }}</div></td>
+          <td class="p-2 text-center">{{ i.customer_name }}</td>
+          <td class="p-2 text-center">{{ i.display_sales_channel }}</td>
+          <td class="p-2 text-center font-mono">{{ i.total|money:biz.currency_symbol }}</td>
+          <td class="p-2 text-center">
+            {% with p=i.payments.first %}{% if p %}<span class="inline-flex rounded-full px-2 py-0.5 text-xs {% if p.status == 'paid' %}bg-emerald-50 text-emerald-700{% elif p.status == 'awaiting_verification' %}bg-amber-50 text-amber-700{% elif p.status == 'failed' %}bg-rose-50 text-rose-700{% else %}bg-stone-100 text-stone-600{% endif %}">{{ p.get_status_display }}</span><div class="font-mono text-[10px] text-stone-400">{{ p.reference }}</div>{% else %}<span class="text-stone-400">Not initiated</span>{% endif %}{% endwith %}
+          </td>
+          <td class="p-2 text-center">
+            {% if i.accepted_order_id and i.accepted_order.status == 'pending' %}<span class="text-amber-700">Paid · pending Production</span>
+            {% elif i.accepted_order_id and i.accepted_order.status == 'approved' %}<span class="text-amber-700">Paid · in Production</span>
+            {% elif i.split_order_id and i.split_order.status == 'pending' %}<span class="text-amber-700">Stock processed · balance pending Production</span>
+            {% elif i.split_order_id and i.split_order.status == 'approved' %}<span class="text-amber-700">Stock processed · balance in Production</span>
+            {% elif i.fulfilment_state == 'complete' %}<span class="text-emerald-700">Processed</span>
+            {% elif i.payment_state == 'confirmed' and i.status == 'pending' %}<span class="text-amber-700">Paid · review required</span>
+            {% else %}<span class="text-stone-600">{{ i.get_status_display }}</span>{% endif %}
+            {% if i.rejection_reason %}<div class="mt-1 max-w-xs text-[10px] leading-4 text-amber-700">{{ i.rejection_reason }}</div>{% endif %}
+          </td>
+          <td class="p-2 text-right whitespace-nowrap">
+            {% if i.status == 'pending' and i.payment_state == 'confirmed' %}<form method="post" action="{% url 'commerce_intake_accept' i.public_id %}">{% csrf_token %}<button class="px-3 py-1.5 rounded bg-[#8f172d] text-white text-xs">Review & process</button></form>
+            {% elif i.status == 'pending' %}<span class="text-xs text-stone-400">Awaiting payment</span>
+            {% elif i.status == 'awaiting_preorder' %}<span class="text-xs text-amber-700">Awaiting customer choice</span>
+            {% else %}<span class="text-xs text-stone-400">No action needed</span>{% endif %}
+          </td>
+        </tr>
+      {% empty %}<tr><td colspan="7" class="p-4 text-center text-stone-500">No incoming commerce orders.</td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+  </section>
+
+  <section data-commerce-panel="products" style="display:none">
+    <div class="mb-3"><h2 class="font-semibold">Storefront products</h2><p class="text-xs text-stone-500">Control what customers and in-premise staff can sell through each channel.</p></div>
+    <div class="overflow-x-auto bg-white border border-[#E7DFCC] rounded-lg"><table class="w-full text-sm"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Product</th><th>Physical availability</th><th>Published</th><th>Physical</th><th>Online</th><th>Distribution / bulk</th><th></th></tr></thead><tbody>{% for good in products %}<tr class="border-t"><td class="p-2">{{ good.name }}</td><td class="text-center">{{ good.physical_saleable_stock }} {{ good.unit }}</td><td class="text-center">{% if good.storefront_product.published %}✓{% else %}—{% endif %}</td><td class="text-center">{% if good.storefront_product.allow_stock_order %}✓{% else %}—{% endif %}</td><td class="text-center">{% if good.storefront_product.allow_online_order %}✓{% else %}—{% endif %}</td><td class="text-center">{% if good.storefront_product.allow_distribution_order %}✓ · min {{ good.storefront_product.distribution_min_quantity }}{% else %}—{% endif %}</td><td class="p-2 text-right"><a href="{% url 'storefront_product_edit' good.pk %}" class="text-[#8f172d] underline">Configure</a></td></tr>{% empty %}<tr><td colspan="7" class="p-4 text-center text-stone-500">No finished goods yet.</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+
+  <section data-commerce-panel="connections" style="display:none">
+    <div class="mb-3 flex flex-wrap items-end justify-between gap-3"><div><h2 class="font-semibold">Connections</h2><p class="text-xs text-stone-500">Manage the access details used by your website and connected sales platforms.</p></div>{% if can_manage_commerce %}<a href="{% url 'commerce_integration_add' %}" class="px-3 py-2 bg-[#8f172d] text-white rounded-md text-sm">+ Integration</a>{% endif %}</div>
+    {% if integrations %}<div class="space-y-3">{% for x in integrations %}
+      <div class="bg-white border border-[#E7DFCC] rounded-lg p-4">
+        <div class="flex flex-wrap justify-between gap-2"><div><div class="font-medium">{{ x.name }}</div><div class="text-xs text-stone-500">{{ x.get_integration_type_display }} · {% if x.active %}Active{% else %}Disabled{% endif %}</div></div></div>
+        {% if x.integration_type == 'api' %}
+          <div class="mt-3 text-xs text-stone-500">Website access key</div><div class="flex gap-2 items-center"><code id="api-key-{{ x.pk }}" class="text-xs break-all bg-stone-50 border rounded px-2 py-1.5 flex-1">{{ x.api_key }}</code><button type="button" data-copy="#api-key-{{ x.pk }}" class="copy-btn px-2 py-1.5 border rounded text-xs">Copy</button></div>
+          <div class="mt-2 text-xs text-stone-500">Catalogue link</div><div class="flex gap-2 items-center"><code id="api-url-{{ x.pk }}" class="text-xs break-all bg-stone-50 border rounded px-2 py-1.5 flex-1">{{ request.scheme }}://{{ request.get_host }}/api/v1/storefronts/{{ biz.slug }}/products</code><button type="button" data-copy="#api-url-{{ x.pk }}" class="copy-btn px-2 py-1.5 border rounded text-xs">Copy</button></div>
+          <div class="mt-2 text-xs text-stone-500">Checkout link</div><div class="flex gap-2 items-center"><code id="api-orders-url-{{ x.pk }}" class="text-xs break-all bg-stone-50 border rounded px-2 py-1.5 flex-1">{{ request.scheme }}://{{ request.get_host }}/api/v1/storefronts/{{ biz.slug }}/checkouts</code><button type="button" data-copy="#api-orders-url-{{ x.pk }}" class="copy-btn px-2 py-1.5 border rounded text-xs">Copy</button></div>
+          <div class="mt-2 text-[11px] text-stone-500">New connections should use the checkout link so payment is confirmed before the operational order is created.</div>
+        {% else %}
+          <div class="mt-3 text-xs text-stone-500">Connection key</div><div class="flex gap-2 items-center"><code id="webhook-secret-{{ x.pk }}" class="text-xs break-all bg-stone-50 border rounded px-2 py-1.5 flex-1">{{ x.webhook_secret }}</code><button type="button" data-copy="#webhook-secret-{{ x.pk }}" class="copy-btn px-2 py-1.5 border rounded text-xs">Copy</button></div>
+          <div class="mt-2 text-xs text-stone-500">Order connection link</div><div class="flex gap-2 items-center"><code id="connector-url-{{ x.pk }}" class="text-xs break-all bg-stone-50 border rounded px-2 py-1.5 flex-1">{{ request.scheme }}://{{ request.get_host }}/api/v1/connectors/{{ biz.slug }}/{{ x.pk }}/orders</code><button type="button" data-copy="#connector-url-{{ x.pk }}" class="copy-btn px-2 py-1.5 border rounded text-xs">Copy</button></div>
+        {% endif %}
+      </div>
+    {% endfor %}</div>{% elif can_manage_commerce %}<div class="rounded-lg border border-[#E7DFCC] bg-white p-5 text-sm text-stone-500">No connected websites or sales platforms yet.</div>{% else %}<div class="rounded-lg border border-[#E7DFCC] bg-white p-5 text-sm text-stone-500">Connection details are available to business administrators.</div>{% endif %}
+  </section>
 </div>
 <script>
+(() => {
+  const root = document.querySelector('[data-commerce-dashboard]');
+  if (!root) return;
+  const tabs = [...root.querySelectorAll('[data-commerce-tab]')];
+  const panels = [...root.querySelectorAll('[data-commerce-panel]')];
+  const activate = (name, remember = true) => {
+    panels.forEach(panel => { panel.style.display = panel.dataset.commercePanel === name ? '' : 'none'; });
+    tabs.forEach(tab => {
+      const active = tab.dataset.commerceTab === name;
+      tab.style.background = active ? '#8f172d' : 'transparent';
+      tab.style.color = active ? '#fff' : '#57534e';
+      tab.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    if (remember) { try { sessionStorage.setItem('inprofic-commerce-tab', name); } catch (_) {} }
+  };
+  tabs.forEach(tab => tab.addEventListener('click', () => activate(tab.dataset.commerceTab)));
+  root.querySelectorAll('[data-commerce-jump]').forEach(btn => btn.addEventListener('click', () => activate(btn.dataset.commerceJump)));
+  let initial = 'overview';
+  try { initial = sessionStorage.getItem('inprofic-commerce-tab') || initial; } catch (_) {}
+  if (!panels.some(panel => panel.dataset.commercePanel === initial)) initial = 'overview';
+  activate(initial, false);
+})();
 document.querySelectorAll('.copy-btn').forEach(btn => btn.addEventListener('click', async () => {
   const node = document.querySelector(btn.dataset.copy); if (!node) return;
   try { await navigator.clipboard.writeText(node.textContent.trim()); const old=btn.textContent; btn.textContent='Copied'; setTimeout(()=>btn.textContent=old,1200); } catch(e) { window.prompt('Copy this value:', node.textContent.trim()); }

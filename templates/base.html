@@ -72,7 +72,7 @@
 </head>
 <body class="min-h-screen flex" style="--tenant-background: {{ biz.background_color|default:'#050733' }}; --tenant-background-contrast: {{ biz.background_text_color|default:'#FFFFFF' }}; --tenant-button: {{ biz.accent_color|default:'#D14900' }}; --tenant-button-contrast: {{ biz.button_text_color|default:'#FFFFFF' }}">
 
-  {% if is_live_tester %}<div class="fixed right-3 top-3 z-[120] rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-900 shadow-lg" title="Demo access can browse and open forms, but cannot save changes.">Demo · read only</div>{% endif %}
+  {% if is_live_tester %}<div class="fixed right-3 top-3 z-[120] rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-900 shadow-lg" title="Demo access can browse and open forms, but cannot save changes.">Demo · Read Only</div>{% endif %}
 
   {% if user.is_authenticated %}
   <aside class="desktop-sidebar tenant-sidebar hidden md:flex flex-col">
@@ -639,7 +639,7 @@
         form.querySelectorAll('button:not([type]), button[type="submit"], input[type="submit"], input[type="image"]').forEach((control) => {
           control.disabled = true;
           control.setAttribute('aria-disabled', 'true');
-          control.title = 'Demo access is read-only — this action cannot be saved.';
+          control.title = 'Demo access is read-only. This action cannot be saved.';
           control.classList.add('opacity-50', 'cursor-not-allowed');
         });
         form.addEventListener('submit', function (event) {

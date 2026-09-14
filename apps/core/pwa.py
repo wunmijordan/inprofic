@@ -17,8 +17,8 @@ from .models import Business
 
 
 def _pwa_build_version():
-    raw = str(getattr(settings, "PWA_BUILD_VERSION", "dev") or "dev")
-    return re.sub(r"[^A-Za-z0-9._-]", "-", raw)[:40] or "dev"
+    raw = str(getattr(settings, "PWA_BUILD_VERSION", "current") or "current")
+    return re.sub(r"[^A-Za-z0-9._-]", "-", raw)[:40] or "current"
 
 
 def _icons():
