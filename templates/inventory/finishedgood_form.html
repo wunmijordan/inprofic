@@ -6,6 +6,7 @@
   <form method="post">
     {% csrf_token %}
     {% if form.non_field_errors %}<div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-3">{{ form.non_field_errors }}</div>{% endif %}
+    {% if form.source_type %}<div class="rounded-lg border border-[#E7DFCC] bg-white p-3 mb-3">{% include "_field.html" with field=form.source_type %}<p class="text-[11px] text-stone-500">{{ vertical_ui.product_sources.purchased_for_resale }} items are received through Procurement and can be published to both the in-premise and external storefronts without entering the production chain.</p></div>{% endif %}
     {% include "_field.html" with field=form.name %}
     <div class="grid grid-cols-3 gap-3">
       {% include "_field.html" with field=form.unit %}
@@ -14,7 +15,7 @@
     </div>
     {% include "_field.html" with field=form.stock %}
     {% if vertical_ui.uses_production %}
-      {% include "_field.html" with field=form.units_per_batch %}
+      <div data-production-only {% if not show_production_fields %}class="hidden"{% endif %}>{% include "_field.html" with field=form.units_per_batch %}</div>
       {% if obj %}<p class="text-[11px] text-stone-400 -mt-2 mb-3">Total made all-time: <span class="font-mono">{{ obj.total_produced|num }}</span> {{ obj.unit }} (updates automatically as orders complete)</p>{% endif %}
     {% else %}
       <p class="text-[11px] text-stone-500 -mt-1 mb-3">After setup, add stock through Procurement so each supplier arrival, quantity, and unit cost remains traceable.</p>
@@ -41,6 +42,7 @@
     </div>
 
     {% if vertical_ui.uses_production %}
+    <div data-production-chain {% if not show_production_fields %}class="hidden"{% endif %}>
     <span class="block text-xs font-medium text-stone-600 mb-1 mt-2">{{ vertical_ui.recipe_label }} ({{ vertical_ui.recipe_item_label }} quantities per batch)</span>
     <p class="text-[11px] text-stone-400 mb-1">Quantity is defined against the registered batch yield above and entered in each material's <strong>usage unit</strong>. Mark <strong>Flexible</strong> only where the {{ vertical_ui.recipe_label|lower }} permits an approval-time quantity adjustment.</p>
     {{ formset.management_form }}
@@ -97,6 +99,7 @@
       </div>
       <button type="button" onclick="addFormsetRow('production_materials','production-material-rows')" class="w-full text-xs text-[#8f172d] font-medium py-2 hover:bg-[#F0EAD9]">+ Add Production Input</button>
     </div>
+    </div>
     {% endif %}
 
     <div class="flex justify-end gap-2 mt-4">
@@ -108,6 +111,19 @@
 
 {% if vertical_ui.uses_production %}{{ raw_material_units|json_script:"raw-material-usage-units" }}
 <script>
+  function syncProductSourceUI() {
+    const source = document.getElementById('id_source_type');
+    if (!source) return;
+    const madeInHouse = source.value !== 'purchased_for_resale';
+    document.querySelectorAll('[data-production-only], [data-production-chain]').forEach((node) => {
+      node.classList.toggle('hidden', !madeInHouse);
+    });
+  }
+  document.addEventListener('change', (event) => {
+    if (event.target && event.target.id === 'id_source_type') syncProductSourceUI();
+  });
+  document.addEventListener('DOMContentLoaded', syncProductSourceUI);
+
   const rawMaterialUsageUnits = JSON.parse(
     document.getElementById('raw-material-usage-units').textContent || '{}'
   );

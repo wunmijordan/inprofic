@@ -102,6 +102,17 @@ class RawMaterial(BusinessOwnedModel):
 
 
 class FinishedGood(BusinessOwnedModel):
+    SOURCE_MADE_IN_HOUSE = "made_in_house"
+    SOURCE_PURCHASED_FOR_RESALE = "purchased_for_resale"
+    SOURCE_CHOICES = [
+        (SOURCE_MADE_IN_HOUSE, "Made in-house"),
+        (SOURCE_PURCHASED_FOR_RESALE, "Purchased for resale"),
+    ]
+
+    source_type = models.CharField(
+        max_length=24, choices=SOURCE_CHOICES, default=SOURCE_MADE_IN_HOUSE,
+        help_text="Whether this sellable product is made by the business or bought from a supplier for resale.",
+    )
     name = models.CharField(max_length=120)
     unit = models.CharField(max_length=20, help_text="loaf, plate, box…")
     units_per_batch = models.DecimalField(max_digits=12, decimal_places=2, default=1,
@@ -137,6 +148,14 @@ class FinishedGood(BusinessOwnedModel):
         return self.name
 
     @property
+    def is_purchased_for_resale(self):
+        return self.source_type == self.SOURCE_PURCHASED_FOR_RESALE
+
+    @property
+    def is_made_in_house(self):
+        return self.source_type == self.SOURCE_MADE_IN_HOUSE
+
+    @property
     def is_low(self):
         """Low-stock status applies only to physical-store products."""
         return (
@@ -162,7 +181,7 @@ class FinishedGood(BusinessOwnedModel):
     def is_physical_store_configured(self):
         if self.stock is None:
             return False
-        if self.business_id and not self.business.uses_production:
+        if self.business_id and (not self.business.uses_production or self.is_purchased_for_resale):
             return True
         return self.reorder_level is not None and self.reorder_level > 0
 
@@ -257,7 +276,7 @@ class FinishedGood(BusinessOwnedModel):
         """Estimated ingredient cost PER UNIT (matches selling_price being
         per unit) — recipe quantities are per batch, so this divides the
         batch cost back down by units_per_batch."""
-        if self.business_id and not self.business.uses_production:
+        if self.business_id and (not self.business.uses_production or self.is_purchased_for_resale):
             if hasattr(self, "prefetched_latest_purchase_unit_value"):
                 latest_value = self.prefetched_latest_purchase_unit_value
                 if latest_value is not None:

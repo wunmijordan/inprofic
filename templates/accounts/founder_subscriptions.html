@@ -52,6 +52,30 @@
     <div class="mt-3 text-right"><button name="action" value="save_plan_pricing" class="px-4 py-2 bg-[#8f172d] text-white rounded-md text-sm font-medium">Save all plan pricing</button></div>
   </form>
 
+  <section id="plan-entitlements" class="mb-7 rounded-2xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div><h2 class="font-semibold">Plan module access</h2><p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">Set the commercial module ceiling for each plan. Changes are applied immediately to businesses currently subscribed to that plan. Reports keeps a three-level entitlement so Starter can retain Basic reporting without receiving Full reporting.</p></div>
+      <span class="rounded-full bg-[#050733] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white">Founder controlled</span>
+    </div>
+    <form method="post" class="mt-4">{% csrf_token %}
+      <div class="grid gap-4 lg:grid-cols-3">
+        {% for plan in plans %}<div class="group relative overflow-hidden rounded-2xl border border-[#D9CFB4] bg-white p-4 transition duration-200 hover:-translate-y-0.5 hover:shadow-lg">
+          <div class="flex items-start justify-between gap-2"><div><div class="font-display text-lg font-semibold text-[#8f172d]">{{ plan.name }}</div><div class="mt-1 text-[11px] text-stone-500">{{ plan.module_entitlements.all|length }} commercial module rules</div></div><span class="rounded-full bg-[#F5EFE0] px-2 py-1 text-[10px] font-semibold text-stone-600">Live policy</span></div>
+          <div class="mt-4 space-y-3">
+            {% for entitlement in plan.module_entitlements.all %}
+              {% if entitlement.module == 'reports' %}
+                <label class="block rounded-xl border border-stone-200 bg-stone-50 p-3"><span class="flex items-center justify-between gap-2"><span class="text-sm font-medium">{{ entitlement.get_module_display }}</span><span class="text-[10px] font-bold uppercase tracking-wider text-[#8f172d]">{% if entitlement.level == 'basic' %}Basic{% elif entitlement.level == 'full' %}Full{% else %}Off{% endif %}</span></span><select name="module_{{ plan.pk }}_reports" class="mt-2 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-2 text-xs"><option value="none" {% if entitlement.level == 'none' or not entitlement.enabled %}selected{% endif %}>Not included</option><option value="basic" {% if entitlement.enabled and entitlement.level == 'basic' %}selected{% endif %}>Basic reports</option><option value="full" {% if entitlement.enabled and entitlement.level == 'full' %}selected{% endif %}>Full reports</option></select></label>
+              {% else %}
+                <label class="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-stone-200 px-3 py-2.5 transition hover:bg-stone-50"><span class="text-sm">{{ entitlement.get_module_display }}</span><span class="relative inline-flex h-6 w-11 shrink-0"><input type="checkbox" name="module_{{ plan.pk }}_{{ entitlement.module }}" class="peer sr-only" {% if entitlement.enabled %}checked{% endif %}><span class="absolute inset-0 rounded-full bg-stone-300 transition peer-checked:bg-[#8f172d]"></span><span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span></span></label>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>{% endfor %}
+      </div>
+      <div class="mt-4 flex justify-end"><button name="action" value="save_plan_entitlements" class="rounded-xl bg-[#8f172d] px-5 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30">Save all module access</button></div>
+    </form>
+  </section>
+
   <section class="mb-7 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
@@ -62,17 +86,19 @@
     </div>
     <form method="post" class="mt-4 grid gap-3 md:grid-cols-2">{% csrf_token %}
       {% for error in promotion_form.non_field_errors %}<div class="md:col-span-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{{ error }}</div>{% endfor %}
-      {% include '_field.html' with field=promotion_form.plan %}
+      <div class="md:col-span-2 rounded-xl border border-orange-200 bg-orange-50 p-3">{% include '_field.html' with field=promotion_form.applies_to_all_plans %}<p class="mt-1 text-[11px] text-stone-600">When enabled, the same discount rule is evaluated against each plan's own base price.</p></div>
+      <div data-promo-plan-field>{% include '_field.html' with field=promotion_form.plan %}</div>
       {% include '_field.html' with field=promotion_form.reason %}
       {% include '_field.html' with field=promotion_form.discount_type %}
       {% include '_field.html' with field=promotion_form.discount_value %}
+      {% include '_field.html' with field=promotion_form.billing_cycle %}
       {% include '_field.html' with field=promotion_form.starts_at %}
       {% include '_field.html' with field=promotion_form.ends_at %}
       <div class="md:col-span-2"><button name="action" value="create_promotion" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Schedule promotion</button></div>
     </form>
     <div class="mt-5 overflow-x-auto rounded-lg border border-[#E7DFCC] bg-white">
-      <table class="w-full text-xs"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Plan / reason</th><th>Discount</th><th>Window</th><th>Status</th><th></th></tr></thead><tbody>
-      {% for promo in promotions %}<tr class="border-t"><td class="p-2"><div class="font-semibold">{{ promo.plan.name }}</div><div class="text-stone-500">{{ promo.reason }}</div></td><td class="p-2 text-center font-mono">{% if promo.discount_type == 'percent' %}{{ promo.discount_value|floatformat:-2 }}%{% else %}{{ promo.discount_value|money:"₦" }}{% endif %}</td><td class="p-2 text-center text-stone-500">{{ promo.starts_at|date:"j M Y H:i" }}<br>→ {{ promo.ends_at|date:"j M Y H:i" }}</td><td class="p-2 text-center">{% if promo.active and promo.starts_at <= now and promo.ends_at > now %}<span class="text-emerald-700">Active</span>{% elif promo.active and promo.starts_at > now %}<span class="text-amber-700">Scheduled</span>{% elif promo.active %}<span class="text-stone-500">Expired</span>{% else %}<span class="text-stone-400">Ended</span>{% endif %}</td><td class="p-2 text-right">{% if promo.active and promo.ends_at > now %}<form method="post">{% csrf_token %}<input type="hidden" name="promotion_id" value="{{ promo.pk }}"><button name="action" value="deactivate_promotion" class="text-rose-700 underline">End now</button></form>{% endif %}</td></tr>{% empty %}<tr><td colspan="5" class="p-4 text-center text-stone-500">No promotions configured yet.</td></tr>{% endfor %}
+      <table class="w-full text-xs"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Plan / reason</th><th>Discount</th><th>Billing</th><th>Window</th><th>Status</th><th></th></tr></thead><tbody>
+      {% for promo in promotions %}<tr class="border-t"><td class="p-2"><div class="font-semibold">{{ promo.target_label }}</div><div class="text-stone-500">{{ promo.reason }}</div></td><td class="p-2 text-center font-mono">{% if promo.discount_type == 'percent' %}{{ promo.discount_value|floatformat:-2 }}%{% else %}{{ promo.discount_value|money:"₦" }}{% endif %}</td><td class="p-2 text-center text-stone-500">{{ promo.billing_cycle_label }}</td><td class="p-2 text-center text-stone-500">{{ promo.starts_at|date:"j M Y H:i" }}<br>→ {{ promo.ends_at|date:"j M Y H:i" }}</td><td class="p-2 text-center">{% if promo.active and promo.starts_at <= now and promo.ends_at > now %}<span class="text-emerald-700">Active</span>{% elif promo.active and promo.starts_at > now %}<span class="text-amber-700">Scheduled</span>{% elif promo.active %}<span class="text-stone-500">Expired</span>{% else %}<span class="text-stone-400">Ended</span>{% endif %}</td><td class="p-2 text-right">{% if promo.active and promo.ends_at > now %}<form method="post">{% csrf_token %}<input type="hidden" name="promotion_id" value="{{ promo.pk }}"><button name="action" value="deactivate_promotion" class="text-rose-700 underline">End now</button></form>{% endif %}</td></tr>{% empty %}<tr><td colspan="6" class="p-4 text-center text-stone-500">No promotions configured yet.</td></tr>{% endfor %}
       </tbody></table>
     </div>
   </section>
@@ -134,7 +160,7 @@
 
     <div class="mt-5 overflow-x-auto rounded-lg border border-[#E7DFCC] bg-white">
       <table class="w-full text-xs"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Creative</th><th class="p-2 text-left">Promotion</th><th>Media</th><th>Priority</th><th>Status</th><th></th></tr></thead><tbody>
-      {% for campaign in marketing_campaigns %}<tr class="border-t"><td class="p-2"><div class="font-semibold">{{ campaign.name }}</div><div class="text-stone-500">{{ campaign.get_animation_style_display }} · {{ campaign.get_theme_display }}</div></td><td class="p-2"><div>{{ campaign.promotion.plan.name }}</div><div class="text-stone-500">{{ campaign.promotion.reason }}</div></td><td class="p-2 text-center">{{ campaign.media_kind|title }}</td><td class="p-2 text-center font-mono">{{ campaign.priority }}</td><td class="p-2 text-center">{% if campaign.active and campaign.promotion.active and campaign.promotion.starts_at <= now and campaign.promotion.ends_at > now %}<span class="text-emerald-700">Live</span>{% elif campaign.active %}<span class="text-amber-700">Waiting / expired promo</span>{% else %}<span class="text-stone-400">Hidden</span>{% endif %}</td><td class="p-2 text-right whitespace-nowrap"><a href="?campaign={{ campaign.pk }}#marketing-promo-campaigns" class="mr-2 text-[#8f172d] underline">Edit</a>{% if campaign.active %}<form method="post" class="inline">{% csrf_token %}<input type="hidden" name="campaign_id" value="{{ campaign.pk }}"><button name="action" value="deactivate_marketing_campaign" class="text-rose-700 underline">Hide</button></form>{% endif %}</td></tr>{% empty %}<tr><td colspan="6" class="p-4 text-center text-stone-500">No marketing promo creative configured yet.</td></tr>{% endfor %}
+      {% for campaign in marketing_campaigns %}<tr class="border-t"><td class="p-2"><div class="font-semibold">{{ campaign.name }}</div><div class="text-stone-500">{{ campaign.get_animation_style_display }} · {{ campaign.get_theme_display }}</div></td><td class="p-2"><div>{{ campaign.promotion.target_label }}</div><div class="text-stone-500">{{ campaign.promotion.reason }}</div></td><td class="p-2 text-center">{{ campaign.media_kind|title }}</td><td class="p-2 text-center font-mono">{{ campaign.priority }}</td><td class="p-2 text-center">{% if campaign.active and campaign.promotion.active and campaign.promotion.starts_at <= now and campaign.promotion.ends_at > now %}<span class="text-emerald-700">Live</span>{% elif campaign.active %}<span class="text-amber-700">Waiting / expired promo</span>{% else %}<span class="text-stone-400">Hidden</span>{% endif %}</td><td class="p-2 text-right whitespace-nowrap"><a href="?campaign={{ campaign.pk }}#marketing-promo-campaigns" class="mr-2 text-[#8f172d] underline">Edit</a>{% if campaign.active %}<form method="post" class="inline">{% csrf_token %}<input type="hidden" name="campaign_id" value="{{ campaign.pk }}"><button name="action" value="deactivate_marketing_campaign" class="text-rose-700 underline">Hide</button></form>{% endif %}</td></tr>{% empty %}<tr><td colspan="6" class="p-4 text-center text-stone-500">No marketing promo creative configured yet.</td></tr>{% endfor %}
       </tbody></table>
     </div>
   </section>
@@ -238,5 +264,20 @@
   document.querySelector('[data-editor-color]')?.addEventListener('input', e => wrap(`color:${e.target.value}`));
   document.querySelector('[data-editor-clear]')?.addEventListener('mousedown', e => { e.preventDefault(); restore(); document.execCommand('removeFormat', false, null); remember(); });
   editor.closest('form')?.addEventListener('submit', () => { hidden.value = editor.innerHTML; });
+})();
+</script>
+<script>
+(() => {
+  const allPlans = document.querySelector('[data-promo-all-plans]');
+  const planWrap = document.querySelector('[data-promo-plan-field]');
+  const planSelect = planWrap?.querySelector('select');
+  if (!allPlans || !planWrap) return;
+  const sync = () => {
+    const all = allPlans.checked;
+    planWrap.classList.toggle('opacity-40', all);
+    planWrap.classList.toggle('pointer-events-none', all);
+    if (planSelect) { planSelect.disabled = all; if (all) planSelect.value = ''; }
+  };
+  allPlans.addEventListener('change', sync); sync();
 })();
 </script>{% endblock %}

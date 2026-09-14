@@ -234,9 +234,16 @@ def create_checkout(
         price = Decimal(good.selling_price_for(sales_channel)).quantize(Decimal("0.01"))
         payable_qty = qty
         reserve_qty = Decimal("0")
-        production_qty = qty if fulfilment_mode == CommerceIntake.MODE_PREORDER else Decimal("0")
+        # Bought-in resale products are always fulfilled from purchased stock,
+        # even inside a production vertical and even when the storefront sales
+        # channel would normally mean made-to-order production.
+        stock_fulfilment = (
+            fulfilment_mode == CommerceIntake.MODE_STOCK
+            or good.source_type == FinishedGood.SOURCE_PURCHASED_FOR_RESALE
+        )
+        production_qty = qty if (not stock_fulfilment and fulfilment_mode == CommerceIntake.MODE_PREORDER) else Decimal("0")
 
-        if fulfilment_mode == CommerceIntake.MODE_STOCK:
+        if stock_fulfilment:
             available = available_physical_stock(good, now=now)
             reserve_qty = min(qty, available)
             shortage = qty - reserve_qty
@@ -251,7 +258,12 @@ def create_checkout(
                 }]
                 if policy == CommerceSettings.POLICY_REDUCE and reserve_qty > 0:
                     payable_qty = reserve_qty
-                elif policy == CommerceSettings.POLICY_SPLIT and business.uses_production and product.allow_online_order:
+                elif (
+                    policy == CommerceSettings.POLICY_SPLIT
+                    and business.uses_production
+                    and good.source_type == FinishedGood.SOURCE_MADE_IN_HOUSE
+                    and product.allow_online_order
+                ):
                     production_qty = shortage
                 elif policy == CommerceSettings.POLICY_INVITE:
                     suggestions = [m for m in _mode_alternatives(product, business, qty) if m["code"] != sales_channel]
@@ -280,6 +292,13 @@ def create_checkout(
     total = total.quantize(Decimal("0.01"))
     if total <= 0:
         raise ValidationError("This checkout has no payable amount.")
+    # Preserve stock-mode checkouts so an insufficient-stock SPLIT continues
+    # through the existing sale + production-shortfall workflow. A channel that
+    # is normally pre-order becomes stock only when every item is bought-in
+    # resale stock and therefore has nothing to manufacture.
+    effective_fulfilment_mode = fulfilment_mode
+    if fulfilment_mode == CommerceIntake.MODE_PREORDER and not any(row[5] > 0 for row in prepared):
+        effective_fulfilment_mode = CommerceIntake.MODE_STOCK
 
     try:
         checkout = CommerceCheckoutSession.raw_objects.create(
@@ -287,7 +306,7 @@ def create_checkout(
             source=source,
             external_order_id=(external_order_id or "").strip(),
             idempotency_key=idempotency_key,
-            ordering_mode=fulfilment_mode,
+            ordering_mode=effective_fulfilment_mode,
             sales_channel=sales_channel,
             customer_name=customer_name,
             customer_phone=(customer.get("phone") or "").strip(),

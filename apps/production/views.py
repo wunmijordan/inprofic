@@ -58,7 +58,9 @@ def _price_map():
     The customer override map is display-only. The authoritative price snapshot
     is resolved server-side when each OrderItem is saved.
     """
-    goods = list(FinishedGood.objects.all().prefetch_related("channel_prices"))
+    goods = list(FinishedGood.objects.filter(
+        source_type=FinishedGood.SOURCE_MADE_IN_HOUSE
+    ).prefetch_related("channel_prices"))
     products = {}
     for g in goods:
         channel_prices = {

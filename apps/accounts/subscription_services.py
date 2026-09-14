@@ -2,6 +2,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 from django.db import transaction
+from django.db.models import Q
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
@@ -21,6 +22,14 @@ from .models import (
 from .services import ensure_permissions, invalidate_business_access_cache, seed_business_roles
 
 
+# POS is an operational role permission, not a commercial plan entitlement.
+# This prevents a cashier from needing broad Commerce access simply to operate
+# the in-premise counter.
+PLAN_ENTITLEMENT_MODULES = tuple(
+    (module, label) for module, label in RoleModulePermission.MODULE_CHOICES if module != "pos"
+)
+
+
 PLAN_MATRIX = {
     SubscriptionPlan.CODE_STARTER: {
         "dashboard": "full", "inventory": "full", "sales": "full", "expenses": "full",
@@ -32,17 +41,15 @@ PLAN_MATRIX = {
         "sales": "full", "expenses": "full", "finance": "none", "reports": "full",
         "users": "full", "commerce": "none",
     },
-    SubscriptionPlan.CODE_BUSINESS_PRO: {module: "full" for module, _ in RoleModulePermission.MODULE_CHOICES},
+    SubscriptionPlan.CODE_BUSINESS_PRO: {module: "full" for module, _ in PLAN_ENTITLEMENT_MODULES},
 }
 
 
 def ensure_default_plans():
     """Ensure built-in plans and entitlement rows exist with bounded queries.
 
-    The previous implementation performed get/update-or-create work for every
-    plan/module pair on every page visit. This version keeps the same
-    self-healing semantics, but reads the complete seed state in two queries
-    and only writes when something is actually missing or has drifted.
+    Built-in defaults are seeds, not a policy reset. Founder-configured plan
+    module rows remain authoritative; this routine only creates missing rows.
     """
     names = {
         SubscriptionPlan.CODE_STARTER: "STARTER",
@@ -80,12 +87,11 @@ def ensure_default_plans():
     )
     entitlements = {(row.plan_id, row.module): row for row in entitlement_rows}
     missing_entitlements = []
-    entitlement_updates = []
     for code in codes:
         plan = plans.get(code)
         if not plan:
             continue
-        for module, _label in RoleModulePermission.MODULE_CHOICES:
+        for module, _label in PLAN_ENTITLEMENT_MODULES:
             level = PLAN_MATRIX[code].get(module, "none")
             enabled = level != "none"
             row = entitlements.get((plan.pk, module))
@@ -96,19 +102,15 @@ def ensure_default_plans():
                     )
                 )
                 continue
-            if row.enabled != enabled or row.level != level:
-                row.enabled = enabled
-                row.level = level
-                entitlement_updates.append(row)
+            # Existing rows may have been edited from the Founder Console.
+            # Never re-impose PLAN_MATRIX on an existing entitlement.
 
-    if trial_updates or missing_entitlements or entitlement_updates:
+    if trial_updates or missing_entitlements:
         with transaction.atomic():
             if trial_updates:
                 SubscriptionPlan.objects.bulk_update(trial_updates, ["trial_days"])
             if missing_entitlements:
                 SubscriptionPlanModule.objects.bulk_create(missing_entitlements, ignore_conflicts=True)
-            if entitlement_updates:
-                SubscriptionPlanModule.objects.bulk_update(entitlement_updates, ["enabled", "level"])
 
     return plans
 
@@ -145,7 +147,7 @@ def apply_subscription_entitlements(subscription):
     active = subscription.is_effectively_active
     for service in subscription.services.select_related("business"):
         business = service.business
-        for module, _label in RoleModulePermission.MODULE_CHOICES:
+        for module, _label in PLAN_ENTITLEMENT_MODULES:
             entitlement = plan_rows.get(module)
             enabled = bool((active and entitlement and entitlement.enabled) or (not active and module == "dashboard"))
             # Preserve vertical/service capability restrictions in the central permission resolver;
@@ -248,61 +250,91 @@ def add_service_business(subscription, *, name, service_type, actor):
     return business
 
 
-def active_promotion_for_plan(plan, *, moment=None):
-    """Resolve at most one effective promotion for a plan without changing its base price."""
+def active_promotion_for_plan(plan, *, moment=None, billing_cycle=None):
+    """Resolve one effective plan-specific or all-plan promotion for a billing cycle."""
     moment = moment or timezone.now()
     prefetched = getattr(plan, "_active_promotions", None)
     if prefetched is not None:
-        candidates = [promo for promo in prefetched if promo.active and promo.starts_at <= moment < promo.ends_at]
-        return sorted(candidates, key=lambda promo: (promo.starts_at, promo.pk or 0), reverse=True)[0] if candidates else None
+        candidates = [
+            promo for promo in prefetched
+            if (
+                promo.applies_to_plan(plan)
+                and promo.active
+                and promo.starts_at <= moment < promo.ends_at
+                and (billing_cycle is None or promo.applies_to_billing_cycle(billing_cycle))
+            )
+        ]
+        # A plan-specific promo wins over an all-plan promo if historical data
+        # contains an overlap; form validation prevents creating new overlaps.
+        return sorted(
+            candidates,
+            key=lambda promo: (not promo.applies_to_all_plans, promo.starts_at, promo.pk or 0),
+            reverse=True,
+        )[0] if candidates else None
     return (
         SubscriptionPromotion.objects.filter(
-            plan=plan, active=True, starts_at__lte=moment, ends_at__gt=moment
+            Q(plan=plan) | Q(applies_to_all_plans=True),
+            active=True, starts_at__lte=moment, ends_at__gt=moment,
         )
-        .order_by("-starts_at", "-id")
+        .filter(
+            Q(billing_cycle=SubscriptionPromotion.CYCLE_BOTH) | Q(billing_cycle=billing_cycle)
+            if billing_cycle else Q()
+        )
+        .order_by("applies_to_all_plans", "-starts_at", "-id")
         .first()
     )
 
 
 def attach_active_promotions(plans, *, moment=None):
-    """Attach active promotions to an already-loaded plan collection in one query."""
+    """Attach active promotions and per-plan effective promo prices in one query."""
     moment = moment or timezone.now()
     plans = list(plans)
     plan_ids = [plan.pk for plan in plans]
-    rows = SubscriptionPromotion.objects.filter(
-        plan_id__in=plan_ids, active=True, starts_at__lte=moment, ends_at__gt=moment
-    ).order_by("plan_id", "-starts_at", "-id")
-    by_plan = {}
-    for promo in rows:
-        by_plan.setdefault(promo.plan_id, []).append(promo)
+    rows = list(SubscriptionPromotion.objects.filter(
+        Q(plan_id__in=plan_ids) | Q(applies_to_all_plans=True),
+        active=True, starts_at__lte=moment, ends_at__gt=moment,
+    ).select_related("plan").order_by("applies_to_all_plans", "-starts_at", "-id"))
     for plan in plans:
-        plan._active_promotions = by_plan.get(plan.pk, [])
-        plan.current_promotion = plan._active_promotions[0] if plan._active_promotions else None
+        plan._active_promotions = [promo for promo in rows if promo.applies_to_plan(plan)]
+        plan.current_monthly_promotion = active_promotion_for_plan(
+            plan, moment=moment, billing_cycle=SubscriptionPayment.CYCLE_MONTHLY
+        )
+        plan.current_yearly_promotion = active_promotion_for_plan(
+            plan, moment=moment, billing_cycle=SubscriptionPayment.CYCLE_YEARLY
+        )
+        # Backward-compatible display hook: prefer a monthly offer, otherwise
+        # expose the yearly-only offer so marketing can still announce it.
+        plan.current_promotion = plan.current_monthly_promotion or plan.current_yearly_promotion
+        if plan.current_monthly_promotion:
+            plan.promo_monthly_price = plan.current_monthly_promotion.discounted_monthly_price_for(plan)
+            plan.promo_additional_service_monthly_price = plan.current_monthly_promotion.discounted_additional_service_monthly_price_for(plan)
+        if plan.current_yearly_promotion:
+            plan.promo_yearly_price = plan.current_yearly_promotion.discounted_yearly_price_for(plan)
     return plans
 
 
-def effective_monthly_price(plan, promotion=None):
+def effective_monthly_price(plan, promotion=None, *, billing_cycle=SubscriptionPayment.CYCLE_MONTHLY):
     if promotion is False:
         return Decimal(plan.monthly_price or 0).quantize(Decimal("0.01"))
-    promotion = promotion if promotion is not None else active_promotion_for_plan(plan)
-    return promotion.discounted_monthly_price if promotion else Decimal(plan.monthly_price or 0).quantize(Decimal("0.01"))
+    promotion = promotion if promotion is not None else active_promotion_for_plan(plan, billing_cycle=billing_cycle)
+    return promotion.discounted_monthly_price_for(plan) if promotion else Decimal(plan.monthly_price or 0).quantize(Decimal("0.01"))
 
 
-def effective_additional_service_monthly_price(plan, promotion=None):
+def effective_additional_service_monthly_price(plan, promotion=None, *, billing_cycle=SubscriptionPayment.CYCLE_MONTHLY):
     if promotion is False:
         return plan.additional_service_monthly_price
-    promotion = promotion if promotion is not None else active_promotion_for_plan(plan)
+    promotion = promotion if promotion is not None else active_promotion_for_plan(plan, billing_cycle=billing_cycle)
     if promotion:
-        return promotion.discounted_additional_service_monthly_price
+        return promotion.discounted_additional_service_monthly_price_for(plan)
     return plan.additional_service_monthly_price
 
 
 def payment_amount(plan, service_count, months=1, billing_cycle="monthly", promotion=None):
     service_count = max(1, int(service_count or 1))
     if promotion is None:
-        promotion = active_promotion_for_plan(plan)
-    base_monthly = effective_monthly_price(plan, promotion)
-    addon_monthly = effective_additional_service_monthly_price(plan, promotion)
+        promotion = active_promotion_for_plan(plan, billing_cycle=billing_cycle)
+    base_monthly = effective_monthly_price(plan, promotion, billing_cycle=billing_cycle)
+    addon_monthly = effective_additional_service_monthly_price(plan, promotion, billing_cycle=billing_cycle)
     monthly_total = base_monthly + Decimal(service_count - 1) * addon_monthly
     if billing_cycle == SubscriptionPayment.CYCLE_YEARLY:
         discount = min(max(plan.yearly_discount_percent, Decimal("0")), Decimal("100"))
@@ -327,7 +359,7 @@ def create_payment_request(subscription, plan, *, months=1, billing_cycle="month
     if billing_cycle == SubscriptionPayment.CYCLE_YEARLY:
         months = 12
     service_count = max(1, subscription.services.count())
-    promotion = active_promotion_for_plan(plan)
+    promotion = active_promotion_for_plan(plan, billing_cycle=billing_cycle)
     base_amount = payment_amount(plan, service_count, months, billing_cycle=billing_cycle, promotion=False)
     amount = payment_amount(plan, service_count, months, billing_cycle=billing_cycle, promotion=promotion)
     if amount <= 0:

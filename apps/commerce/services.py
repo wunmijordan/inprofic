@@ -22,7 +22,7 @@ def _current_unit_cost(good, on_date):
     latest_purchase = good.stock_movements.filter(
         movement_type=StockMovement.FG_PURCHASE, occurred_at__date__lte=on_date, quantity__gt=0
     ).order_by("-occurred_at", "-id").first()
-    if not good.business.uses_production and latest_purchase:
+    if (not good.business.uses_production or good.is_purchased_for_resale) and latest_purchase:
         return latest_purchase.unit_value
     return latest_cost.unit_cost if latest_cost else latest_purchase.unit_value if latest_purchase else good.est_cost
 
@@ -161,7 +161,10 @@ def _make_production_order(intake, quantities, *, user=None):
         notes=f"Commerce {intake.public_number} — made-to-order/pre-order demand",
     )
     for item, qty in quantities:
-        if qty <= 0: continue
+        if qty <= 0:
+            continue
+        if item.finished_good.is_purchased_for_resale:
+            raise ValidationError(f"{item.finished_good.name} is purchased for resale and cannot enter a production order.")
         OrderItem.objects.create(
             order=order, finished_good=item.finished_good, batch_qty=Decimal("0"), piece_qty=qty,
             production_batch_qty=Decimal("0"), production_piece_qty=qty, discount=Decimal("0"),
@@ -209,14 +212,39 @@ def accept_intake(intake, *, user=None):
     settings, _ = CommerceSettings.raw_objects.get_or_create(business=intake.business, defaults={"created_by": user})
     items = list(intake.items.select_related("finished_good"))
     if intake.ordering_mode == CommerceIntake.MODE_PREORDER:
-        order = _make_production_order(intake, [(item, item.requested_quantity) for item in items], user=user)
+        made_items = [item for item in items if item.finished_good.is_made_in_house]
+        resale_items = [item for item in items if item.finished_good.is_purchased_for_resale]
+        order = None
+        sale = None
+        if resale_items:
+            # Resale stock remains stock even when another item in the same
+            # basket is made-to-order. This supports mixed baskets such as a
+            # prepared meal plus a bottled drink without manufacturing the drink.
+            sale = _make_physical_sale(
+                intake, [(item, item.requested_quantity) for item in resale_items], user=user
+            )
+        if made_items:
+            order = _make_production_order(
+                intake, [(item, item.requested_quantity) for item in made_items], user=user
+            )
+        if not sale and not order:
+            raise ValidationError("This order has no fulfilment-ready products.")
+        intake.accepted_sale = sale
         intake.accepted_order = order
+        intake.fulfilment_state = CommerceIntake.FULFIL_COMPLETE
         intake.status = CommerceIntake.STATUS_ACCEPTED
-        intake.save(update_fields=["accepted_order", "status", "updated_at"])
+        intake.save(update_fields=["accepted_sale", "accepted_order", "fulfilment_state", "status", "updated_at"])
+        if sale:
+            from .payment_services import sync_payment_receipts_to_sales
+            sync_payment_receipts_to_sales(intake)
         from core.services import audit
         from .checkout_services import release_checkout_reservation_for_intake
         release_checkout_reservation_for_intake(intake)
-        audit(intake.business, user, "commerce_accept", intake, f"{intake.public_number} accepted as Pre-order", {"order_id": order.pk})
+        audit(
+            intake.business, user, "commerce_accept", intake,
+            f"{intake.public_number} accepted with source-aware fulfilment",
+            {"order_id": getattr(order, "pk", None), "sale_id": getattr(sale, "pk", None)},
+        )
         return intake
 
     from .checkout_services import available_physical_stock
@@ -246,7 +274,18 @@ def accept_intake(intake, *, user=None):
     if sale_quantities:
         intake.accepted_sale = _make_physical_sale(intake, sale_quantities, user=user)
     if shortages and policy == CommerceSettings.POLICY_SPLIT:
-        intake.split_order = _make_production_order(intake, shortages, user=user)
+        producible_shortages = [
+            (item, qty) for item, qty in shortages
+            if item.finished_good.is_made_in_house
+        ]
+        resale_shortages = [
+            (item, qty) for item, qty in shortages
+            if item.finished_good.is_purchased_for_resale
+        ]
+        if producible_shortages:
+            intake.split_order = _make_production_order(intake, producible_shortages, user=user)
+        if resale_shortages:
+            intake.rejection_reason = "Purchased resale items were reduced to available supplier stock; they cannot be manufactured."
         intake.fulfilment_state = CommerceIntake.FULFIL_PARTIAL
     elif shortages and policy == CommerceSettings.POLICY_REDUCE:
         intake.fulfilment_state = CommerceIntake.FULFIL_PARTIAL

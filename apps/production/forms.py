@@ -168,20 +168,22 @@ class OrderItemFormSetBase(BaseInlineFormSet):
         self.order_type = order_type or getattr(kwargs.get("instance"), "order_type", None)
         self.market_stock = bool(market_stock)
         super().__init__(*args, **kwargs)
+        made_in_house = FinishedGood.objects.filter(
+            source_type=FinishedGood.SOURCE_MADE_IN_HOUSE
+        )
         if self.market_stock:
-            # Market Stock is independent of the Physical Store catalogue.
-            # Distribution-only products can be produced here and can reach
-            # the shelf only through the explicit Market Stock transfer flow.
-            allowed = FinishedGood.objects.all().order_by("name")
-            for form in self.forms:
-                form.fields["finished_good"].queryset = allowed
+            # Market Stock is independent of the Physical Store catalogue, but
+            # bought-in resale products must never enter a production order.
+            allowed = made_in_house.order_by("name")
         elif store_replenishment:
-            allowed = FinishedGood.objects.filter(
+            allowed = made_in_house.filter(
                 stock__isnull=False,
                 reorder_level__gt=0,
             ).order_by("name")
-            for form in self.forms:
-                form.fields["finished_good"].queryset = allowed
+        else:
+            allowed = made_in_house.order_by("name")
+        for form in self.forms:
+            form.fields["finished_good"].queryset = allowed
 
     def clean(self):
         super().clean()

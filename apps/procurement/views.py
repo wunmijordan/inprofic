@@ -189,10 +189,7 @@ def po_receive(request, pk):
                     or (
                         item.finished_good_id
                         and po.business.uses_production
-                        and (
-                            item.finished_good.recipe_items.exists()
-                            or item.finished_good.production_materials.exists()
-                        )
+                        and item.finished_good.source_type != FinishedGood.SOURCE_PURCHASED_FOR_RESALE
                     )
                 )
             ), None)

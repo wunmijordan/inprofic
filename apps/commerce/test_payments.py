@@ -375,9 +375,9 @@ class StorefrontPosGuardTests(CommercePaymentTestBase):
         self.staff = CustomUser.objects.create_user(
             username="pos.staff", password="safe-password-123", fullname="POS Staff"
         )
-        UserBusiness.objects.create(
-            user=self.staff, business=self.business, role=roles[CustomUser.ROLE_INVENTORY_MANAGER],
-            active=True, commerce_storefront_access=True,
+        membership = UserBusiness.objects.create(
+            user=self.staff, business=self.business, role=roles[CustomUser.ROLE_POS_OPERATOR],
+            active=True,
         )
         self.client.force_login(self.staff)
         session = self.client.session

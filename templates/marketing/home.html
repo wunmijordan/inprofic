@@ -134,11 +134,11 @@
       <a href="#plans" class="promo-slide promo-theme-{{ campaign.theme }} promo-animation-{{ campaign.animation_style }}{% if forloop.first %} is-active{% endif %}" data-promo-slide aria-hidden="{% if forloop.first %}false{% else %}true{% endif %}">
         <div class="promo-slide-grid">
           <div class="promo-copy">
-            <div class="text-[10px] font-bold uppercase tracking-[.22em] opacity-70">{{ campaign.promotion.plan.name }} · {{ campaign.promotion.reason }}</div>
+            <div class="text-[10px] font-bold uppercase tracking-[.22em] opacity-70">{{ campaign.promotion.target_label }} · {{ campaign.promotion.reason }}</div>
             <div class="mt-3 max-w-3xl text-[clamp(1rem,2vw,1.2rem)] leading-7">{{ campaign.content_html|safe }}</div>
             <div class="promo-meta">
               <span class="promo-chip">{% if campaign.promotion.discount_type == 'percent' %}{{ campaign.promotion.discount_value|floatformat:-2 }}% off{% else %}{{ campaign.promotion.discount_value|money:"₦" }} off{% endif %}</span>
-              <span class="promo-chip">{{ campaign.promotion.discounted_monthly_price|money:"₦" }} / month</span>
+              <span class="promo-chip">{% if campaign.promotion.billing_cycle == 'yearly' %}Yearly payment only{% elif campaign.promotion.billing_cycle == 'monthly' %}Monthly payment only{% else %}Monthly + yearly{% endif %}</span>
               <span class="promo-chip">Ends {{ campaign.promotion.ends_at|date:"j M, g:i A" }}</span>
             </div>
             <span class="promo-cta">{{ campaign.cta_label }} <span aria-hidden="true">↓</span></span>
@@ -256,14 +256,13 @@
           {% for plan in plans %}
           <article class="soft-card flex flex-col rounded-3xl border {% if plan.code == 'business_pro' %}border-[#d14900] ring-2 ring-[#d14900]/10{% else %}border-stone-200{% endif %} bg-[#fffdf8] p-6">
             <div class="flex items-center justify-between gap-2"><h3 class="font-display text-2xl font-semibold text-[#d14900]">{{ plan.name }}</h3>{% if plan.code == 'business_pro' %}<span class="rounded-full bg-[#d14900] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white">Complete</span>{% endif %}</div>
-            {% if plan.current_promotion %}
-            <div class="mt-4 flex flex-wrap items-end gap-x-2 gap-y-1"><span class="text-sm text-stone-400 line-through">{{ plan.monthly_price|money:"₦" }}</span><span class="font-display text-3xl font-semibold text-[#d14900]">{{ plan.current_promotion.discounted_monthly_price|money:"₦" }}</span><span class="text-xs text-stone-500"> / month</span></div>
-            <div class="mt-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2"><p class="text-xs font-bold text-[#b94300]">{{ plan.current_promotion.reason }}</p><p class="mt-0.5 text-[11px] text-stone-600">{% if plan.current_promotion.discount_type == 'percent' %}{{ plan.current_promotion.discount_value|floatformat:-2 }}% off{% else %}{{ plan.current_promotion.discount_value|money:"₦" }} off monthly base{% endif %} · ends {{ plan.current_promotion.ends_at|date:"j M Y, g:i A" }}</p></div>
-            <p class="mt-2 text-xs text-emerald-700">{{ plan.current_promotion.discounted_yearly_price|money:"₦" }} yearly · includes {{ plan.yearly_discount_percent|floatformat:-2 }}% annual-payment discount</p>
+            {% if plan.current_monthly_promotion %}
+            <div class="mt-4 flex flex-wrap items-end gap-x-2 gap-y-1"><span class="text-sm text-stone-400 line-through">{{ plan.monthly_price|money:"₦" }}</span><span class="font-display text-3xl font-semibold text-[#d14900]">{{ plan.promo_monthly_price|money:"₦" }}</span><span class="text-xs text-stone-500"> / month</span></div>
+            <div class="mt-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2"><p class="text-xs font-bold text-[#b94300]">{{ plan.current_monthly_promotion.reason }}</p><p class="mt-0.5 text-[11px] text-stone-600">Monthly eligible · ends {{ plan.current_monthly_promotion.ends_at|date:"j M Y, g:i A" }}</p></div>
             {% else %}
             <div class="mt-4"><span class="font-display text-3xl font-semibold">{{ plan.monthly_price|money:"₦" }}</span><span class="text-xs text-stone-500"> / month</span></div>
-            <p class="mt-1 text-xs text-emerald-700">{{ plan.yearly_price|money:"₦" }} yearly · {{ plan.yearly_discount_percent|floatformat:-2 }}% discount</p>
             {% endif %}
+            {% if plan.current_yearly_promotion %}<p class="mt-2 text-xs font-semibold text-emerald-700">{{ plan.promo_yearly_price|money:"₦" }} yearly · {{ plan.current_yearly_promotion.reason }} · yearly eligible</p>{% else %}<p class="mt-1 text-xs text-emerald-700">{{ plan.yearly_price|money:"₦" }} yearly · {{ plan.yearly_discount_percent|floatformat:-2 }}% discount</p>{% endif %}
             <div class="mt-5 flex-1 space-y-2 border-t border-stone-200 pt-5 text-sm">
               {% for entitlement in plan.module_entitlements.all %}
                 {% if entitlement.enabled %}<div class="flex items-center justify-between gap-3"><span>{{ entitlement.get_module_display }}</span><span class="text-xs font-semibold text-emerald-700">{% if entitlement.level == 'basic' %}Basic{% else %}Included{% endif %}</span></div>{% endif %}

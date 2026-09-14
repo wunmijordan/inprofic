@@ -30,6 +30,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     ROLE_ACCOUNTANT = "accountant"
     ROLE_MD_DIRECTOR = "md_director"
     ROLE_BUSINESS_ADMIN = "business_admin"
+    ROLE_POS_OPERATOR = "pos_operator"
     # Backward-compatible internal key for the fixed, superuser-only Demo role.
     ROLE_LIVE_TESTER = "live_tester"
     ROLE_SUPERUSER = "superuser"
@@ -39,6 +40,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         (ROLE_ACCOUNTANT, "Accountant"),
         (ROLE_MD_DIRECTOR, "MD / Director"),
         (ROLE_BUSINESS_ADMIN, "Business Admin"),
+        (ROLE_POS_OPERATOR, "In-Premise POS"),
         (ROLE_LIVE_TESTER, "Demo"),
         (ROLE_SUPERUSER, "Superuser"),
     )
@@ -108,6 +110,7 @@ class RoleModulePermission(models.Model):
         ("reports", "Reports"),
         ("users", "User Management"),
         ("commerce", "Commerce"),
+        ("pos", "In-Premise POS"),
     ]
     role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name="module_permissions")
     module = models.CharField(max_length=30, choices=MODULE_CHOICES)
@@ -159,10 +162,6 @@ class UserBusiness(models.Model):
     business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name="user_memberships")
     role = models.ForeignKey(Role, on_delete=models.PROTECT, related_name="memberships")
     active = models.BooleanField(default=True)
-    commerce_storefront_access = models.BooleanField(
-        default=False,
-        help_text="Allow this staff member to use the in-premise Commerce Storefront / POS without granting general Commerce administration access.",
-    )
 
     class Meta:
         constraints = [
@@ -242,10 +241,31 @@ class SubscriptionPromotion(models.Model):
         (DISCOUNT_AMOUNT, "Fixed amount off"),
     ]
 
-    plan = models.ForeignKey(SubscriptionPlan, on_delete=models.CASCADE, related_name="promotions")
+    CYCLE_BOTH = "both"
+    CYCLE_MONTHLY = "monthly"
+    CYCLE_YEARLY = "yearly"
+    BILLING_CYCLE_CHOICES = [
+        (CYCLE_BOTH, "Monthly and yearly"),
+        (CYCLE_MONTHLY, "Monthly only"),
+        (CYCLE_YEARLY, "Yearly only"),
+    ]
+
+    plan = models.ForeignKey(
+        SubscriptionPlan, on_delete=models.CASCADE, related_name="promotions",
+        null=True, blank=True,
+        help_text="Leave blank when this promotion applies to every active plan.",
+    )
+    applies_to_all_plans = models.BooleanField(
+        default=False,
+        help_text="Apply this single promotion to every active subscription plan using each plan's own base price.",
+    )
     reason = models.CharField(max_length=140)
     discount_type = models.CharField(max_length=12, choices=DISCOUNT_CHOICES)
     discount_value = models.DecimalField(max_digits=14, decimal_places=2)
+    billing_cycle = models.CharField(
+        max_length=12, choices=BILLING_CYCLE_CHOICES, default=CYCLE_BOTH,
+        help_text="Limit this promotion to monthly payments, yearly payments, or both.",
+    )
     starts_at = models.DateTimeField()
     ends_at = models.DateTimeField()
     active = models.BooleanField(default=True)
@@ -260,17 +280,35 @@ class SubscriptionPromotion(models.Model):
         indexes = [models.Index(fields=["plan", "active", "starts_at", "ends_at"], name="plan_promo_active_idx")]
 
     def __str__(self):
-        return f"{self.plan.name} — {self.reason}"
+        target = "All plans" if self.applies_to_all_plans else (self.plan.name if self.plan_id else "No plan")
+        return f"{target} — {self.reason}"
+
+    @property
+    def target_label(self):
+        return "All plans" if self.applies_to_all_plans else (self.plan.name if self.plan_id else "No plan")
+
+    def applies_to_plan(self, plan):
+        return bool(self.applies_to_all_plans or (self.plan_id and plan and self.plan_id == plan.pk))
+
+    def applies_to_billing_cycle(self, billing_cycle):
+        billing_cycle = (billing_cycle or self.CYCLE_MONTHLY).strip().lower()
+        return self.billing_cycle == self.CYCLE_BOTH or self.billing_cycle == billing_cycle
+
+    @property
+    def billing_cycle_label(self):
+        return dict(self.BILLING_CYCLE_CHOICES).get(self.billing_cycle, "Monthly and yearly")
 
     def is_active_at(self, moment=None):
         from django.utils import timezone
         moment = moment or timezone.now()
         return bool(self.active and self.starts_at <= moment < self.ends_at)
 
-    @property
-    def discounted_monthly_price(self):
+    def discounted_monthly_price_for(self, plan=None):
         from decimal import Decimal
-        base = Decimal(self.plan.monthly_price or 0)
+        plan = plan or self.plan
+        if not plan:
+            return Decimal("0.00")
+        base = Decimal(plan.monthly_price or 0)
         value = max(Decimal("0"), Decimal(self.discount_value or 0))
         if self.discount_type == self.DISCOUNT_PERCENT:
             value = min(value, Decimal("100"))
@@ -279,17 +317,33 @@ class SubscriptionPromotion(models.Model):
             result = base - value
         return max(Decimal("0"), result).quantize(Decimal("0.01"))
 
+    def discounted_additional_service_monthly_price_for(self, plan=None):
+        from decimal import Decimal
+        plan = plan or self.plan
+        if not plan:
+            return Decimal("0.00")
+        discount = min(max(plan.additional_service_discount_percent, Decimal("0")), Decimal("100"))
+        return (self.discounted_monthly_price_for(plan) * (Decimal("1") - discount / Decimal("100"))).quantize(Decimal("0.01"))
+
+    def discounted_yearly_price_for(self, plan=None):
+        from decimal import Decimal
+        plan = plan or self.plan
+        if not plan:
+            return Decimal("0.00")
+        discount = min(max(plan.yearly_discount_percent, Decimal("0")), Decimal("100"))
+        return (self.discounted_monthly_price_for(plan) * Decimal("12") * (Decimal("1") - discount / Decimal("100"))).quantize(Decimal("0.01"))
+
+    @property
+    def discounted_monthly_price(self):
+        return self.discounted_monthly_price_for()
+
     @property
     def discounted_additional_service_monthly_price(self):
-        from decimal import Decimal
-        discount = min(max(self.plan.additional_service_discount_percent, Decimal("0")), Decimal("100"))
-        return (self.discounted_monthly_price * (Decimal("1") - discount / Decimal("100"))).quantize(Decimal("0.01"))
+        return self.discounted_additional_service_monthly_price_for()
 
     @property
     def discounted_yearly_price(self):
-        from decimal import Decimal
-        discount = min(max(self.plan.yearly_discount_percent, Decimal("0")), Decimal("100"))
-        return (self.discounted_monthly_price * Decimal("12") * (Decimal("1") - discount / Decimal("100"))).quantize(Decimal("0.01"))
+        return self.discounted_yearly_price_for()
 
 
 class MarketingPromoCampaign(models.Model):

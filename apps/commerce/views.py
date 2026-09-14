@@ -414,7 +414,15 @@ def api_products(request,business_slug):
         for code, enabled, minimum in mode_config:
             if not enabled:
                 continue
-            fulfilment = "stock" if not business.uses_production or code == "physical_store" else "preorder"
+            fulfilment = (
+                "stock"
+                if (
+                    not business.uses_production
+                    or p.finished_good.is_purchased_for_resale
+                    or code == "physical_store"
+                )
+                else "preorder"
+            )
             order_modes.append({
                 "code": code,
                 "label": channel_labels[code],
@@ -427,7 +435,7 @@ def api_products(request,business_slug):
             })
         legacy_modes=[]
         if p.allow_stock_order:legacy_modes.append("order")
-        if business.uses_production and (p.allow_online_order or p.allow_distribution_order):legacy_modes.append("preorder")
+        if business.uses_production and not p.finished_good.is_purchased_for_resale and (p.allow_online_order or p.allow_distribution_order):legacy_modes.append("preorder")
         image_url = p.public_image_url
         if image_url and "://" not in image_url:
             image_url = request.build_absolute_uri(f"/{image_url.lstrip('/')}")
@@ -722,26 +730,40 @@ def storefront_receipt(request, business_slug, receipt_id):
 
 
 def _staff_pos_products(business):
+    vocabulary = vertical_config(business)
+    channel = vocabulary.get("direct_sale_channel") or CommerceIntake.CHANNEL_PHYSICAL_STORE
+    filters = {"business": business, "published": True}
+    if channel == CommerceIntake.CHANNEL_DISTRIBUTION:
+        filters["allow_distribution_order"] = True
+    elif channel == CommerceIntake.CHANNEL_ONLINE:
+        filters["allow_online_order"] = True
+    else:
+        filters["allow_stock_order"] = True
     products = list(
-        StorefrontProduct.raw_objects.filter(
-            business=business, published=True, allow_stock_order=True
-        ).select_related("finished_good__business").prefetch_related(
-            "finished_good__channel_prices"
-        ).order_by("public_name", "finished_good__name")
+        StorefrontProduct.raw_objects.filter(**filters)
+        .select_related("finished_good__business")
+        .prefetch_related("finished_good__channel_prices")
+        .order_by("public_name", "finished_good__name")
     )
     for product in products:
-        product.pos_price = product.finished_good.selling_price_for(CommerceIntake.CHANNEL_PHYSICAL_STORE)
+        product.pos_price = product.finished_good.selling_price_for(channel)
+        product.pos_available = available_physical_stock(product.finished_good)
+        product.pos_channel = channel
+        product.pos_min_quantity = product.distribution_min_quantity if channel == CommerceIntake.CHANNEL_DISTRIBUTION else product.min_quantity
     return products
 
 
 @login_required
 @require_http_methods(["GET", "POST"])
 def storefront_pos(request):
-    if not can_use_commerce_storefront(request.user, request.business):
+    pos_action = "edit" if request.method == "POST" else "view"
+    if not can_use_commerce_storefront(request.user, request.business, pos_action):
         return render(request, "403.html", status=403)
     if not _commerce_enabled(request.business):
         messages.error(request, "Commerce is disabled for this business. A Business Admin can enable it from Commerce settings.")
         return redirect("commerce_dashboard")
+    pos_ui = vertical_config(request.business)["pos"]
+    pos_channel = vertical_config(request.business).get("direct_sale_channel") or CommerceIntake.CHANNEL_PHYSICAL_STORE
     products = list(_staff_pos_products(request.business))
     methods = eligible_payment_methods(request.business, surface="pos")
     error = ""
@@ -776,14 +798,17 @@ def storefront_pos(request):
                     items.append({"storefront_product": product, "quantity": quantity})
             if not items:
                 raise ValidationError("Add at least one product to the sale.")
-            customer_name = (request.POST.get("customer_name") or "Walk-in Customer").strip() or "Walk-in Customer"
+            customer_default = pos_ui.get("customer_default") or "Walk-in Customer"
+            customer_name = (request.POST.get("customer_name") or customer_default).strip() or customer_default
             customer_email = (request.POST.get("customer_email") or "").strip()
             if customer_email:
                 validate_email(customer_email)
             checkout, _ = create_checkout(
                 business=request.business,
                 source=CommerceIntake.SOURCE_STAFF_POS,
-                order_mode=CommerceIntake.CHANNEL_PHYSICAL_STORE,
+                order_mode=pos_channel,
+                service_mode=(request.POST.get("service_mode") or "") if pos_ui.get("show_service_mode") else "",
+                table_reference=(request.POST.get("table_reference") or "") if pos_ui.get("show_reference") else "",
                 customer={
                     "name": customer_name,
                     "phone": (request.POST.get("customer_phone") or "").strip(),
@@ -823,6 +848,9 @@ def storefront_pos(request):
         "active_checkout": active_checkout,
         "active_payment": active_payment,
         "active_payment_data": serialize_payment(active_payment) if active_payment else None,
+        "pos_ui": pos_ui,
+        "pos_channel": pos_channel,
+        "pos_channel_label": vertical_config(request.business)["commerce_channels"].get(pos_channel, pos_channel.replace("_", " ").title()),
     })
 
 

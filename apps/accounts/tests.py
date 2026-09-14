@@ -714,14 +714,49 @@ class FounderPaymentSettingsTests(TestCase):
         self.assertEqual(payment.promotion_reason, "Launch Promo")
         self.assertEqual(payment.promotion_discount_amount, Decimal("5000.00"))
 
+    def test_yearly_only_promotion_is_not_applied_to_monthly_payment(self):
+        from django.utils import timezone
+        from .subscription_services import start_trial_for_business
+
+        current = self.plans["starter"]
+        target = self.plans["production"]
+        target.monthly_price = Decimal("10000.00")
+        target.yearly_discount_percent = Decimal("0.00")
+        target.save(update_fields=["monthly_price", "yearly_discount_percent"])
+        subscription = start_trial_for_business(self.business, current)
+        promo = SubscriptionPromotion.objects.create(
+            plan=target, reason="Annual commitment",
+            discount_type=SubscriptionPromotion.DISCOUNT_PERCENT,
+            discount_value=Decimal("10.00"),
+            billing_cycle=SubscriptionPromotion.CYCLE_YEARLY,
+            starts_at=timezone.now() - timezone.timedelta(minutes=1),
+            ends_at=timezone.now() + timezone.timedelta(days=2),
+            created_by=self.user,
+        )
+
+        monthly = create_payment_request(
+            subscription, target, billing_cycle=SubscriptionPayment.CYCLE_MONTHLY,
+            provider=SubscriptionPayment.PROVIDER_PAYSTACK,
+        )
+        yearly = create_payment_request(
+            subscription, target, billing_cycle=SubscriptionPayment.CYCLE_YEARLY,
+            provider=SubscriptionPayment.PROVIDER_PAYSTACK,
+        )
+
+        self.assertIsNone(monthly.promotion_id)
+        self.assertEqual(monthly.amount, Decimal("10000.00"))
+        self.assertEqual(yearly.promotion_id, promo.pk)
+        self.assertEqual(yearly.base_amount, Decimal("120000.00"))
+        self.assertEqual(yearly.amount, Decimal("108000.00"))
+
     def test_storefront_pos_access_is_supplemental_not_general_commerce_edit(self):
         roles = seed_business_roles(self.business)
         staff = CustomUser.objects.create_user(
             username="walkin.cashier", password="safe-password-123", fullname="Walk-in Cashier"
         )
         membership = UserBusiness.objects.create(
-            user=staff, business=self.business, role=roles[CustomUser.ROLE_STOCK_KEEPER],
-            commerce_storefront_access=True, active=True,
+            user=staff, business=self.business, role=roles[CustomUser.ROLE_POS_OPERATOR],
+            active=True,
         )
         BusinessModuleAccess.objects.update_or_create(
             business=self.business, module="commerce", defaults={"enabled": True}

@@ -5,6 +5,7 @@ from django.forms import inlineformset_factory
 from .models import PurchaseOrder, PurchaseOrderItem
 from inventory.models import FinishedGood, RawMaterial
 from core.models import CashAccount
+from core.verticals import vertical_config
 
 INPUT_CLS = "w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 focus:border-[#8f172d]"
 
@@ -63,18 +64,15 @@ class PurchaseOrderItemForm(StyledModelForm):
         self.business = business
         super().__init__(*args, **kwargs)
         raw_materials = RawMaterial.objects.filter(business=business).order_by("name")
-        # Direct procurement is intentionally limited to products without a
-        # recipe/BOM. Mixed produced-and-purchased stock would need lot-level
-        # source allocation to keep COGS defensible.
         products = FinishedGood.objects.filter(
             business=business,
             stock__isnull=False,
         )
         if business and business.uses_production:
-            products = products.filter(
-                recipe_items__isnull=True,
-                production_materials__isnull=True,
-            )
+            # Production businesses may procure only products explicitly
+            # classified as bought-in resale stock. Made-in-house goods remain
+            # exclusive to recipes / production orders.
+            products = products.filter(source_type=FinishedGood.SOURCE_PURCHASED_FOR_RESALE)
         products = products.distinct().order_by("name")
         material_choices = []
 
@@ -91,8 +89,9 @@ class PurchaseOrderItemForm(StyledModelForm):
                         ],
                     )
                 )
+        resale_label = vertical_config(business)["product_sources"]["resale_group"] if business else "Products for resale"
         product_group = (
-            "Products for resale",
+            resale_label,
             [(f"finished:{product.pk}", product.name) for product in products],
         )
         groups = [product_group, *material_choices]
@@ -127,10 +126,7 @@ class PurchaseOrderItemForm(StyledModelForm):
                 stock__isnull=False,
             )
             if self.business and self.business.uses_production:
-                selected = selected.filter(
-                    recipe_items__isnull=True,
-                    production_materials__isnull=True,
-                )
+                selected = selected.filter(source_type=FinishedGood.SOURCE_PURCHASED_FOR_RESALE)
             selected = selected.distinct().first()
             if selected:
                 self.instance.raw_material = None

@@ -206,6 +206,132 @@ VERTICAL_CONFIG = {
 }
 
 
+POS_CONFIG = {
+    Business.VERTICAL_RESTAURANT: {
+        "eyebrow": "In-premise service",
+        "title": "Restaurant POS",
+        "intro": "Build dine-in, takeaway and delivery orders from the live menu, then complete payment at the counter.",
+        "catalog_label": "Menu",
+        "basket_label": "Current order",
+        "search_placeholder": "Search menu items…",
+        "customer_label": "Guest / customer",
+        "customer_default": "Walk-in Guest",
+        "checkout_label": "Complete order",
+        "empty_label": "No published counter menu items are available.",
+        "service_modes": [("dine_in", "Dine-in"), ("takeaway", "Takeaway / pickup"), ("delivery", "Delivery")],
+        "service_mode_label": "Service mode",
+        "show_service_mode": True,
+        "show_reference": True,
+        "reference_label": "Table / service reference",
+        "reference_placeholder": "e.g. Table 8 or Patio A",
+    },
+    Business.VERTICAL_WHOLESALE: {
+        "eyebrow": "Trade counter",
+        "title": "Wholesale Counter",
+        "intro": "Build trade orders from available warehouse stock using wholesale pricing and configured minimum quantities.",
+        "catalog_label": "Trade products",
+        "basket_label": "Trade order",
+        "search_placeholder": "Search stock products…",
+        "customer_label": "Trade customer",
+        "customer_default": "Counter Trade Customer",
+        "checkout_label": "Complete trade sale",
+        "empty_label": "No published wholesale products are available for counter sale.",
+        "service_modes": [],
+        "service_mode_label": "",
+        "show_service_mode": False,
+        "show_reference": False,
+        "reference_label": "",
+        "reference_placeholder": "",
+    },
+    Business.VERTICAL_RETAIL: {
+        "eyebrow": "In-store selling",
+        "title": "Retail POS",
+        "intro": "Ring up walk-in purchases from live shop stock with fast product search, basket controls and configured payment methods.",
+        "catalog_label": "Products",
+        "basket_label": "Basket",
+        "search_placeholder": "Search products…",
+        "customer_label": "Customer",
+        "customer_default": "Walk-in Customer",
+        "checkout_label": "Complete sale",
+        "empty_label": "No published retail products are available for in-store sale.",
+        "service_modes": [],
+        "service_mode_label": "",
+        "show_service_mode": False,
+        "show_reference": False,
+        "reference_label": "",
+        "reference_placeholder": "",
+    },
+    Business.VERTICAL_BAKERY: {
+        "eyebrow": "Counter selling",
+        "title": "Bakery Counter",
+        "intro": "Sell ready bakery items from current counter stock with a fast basket and payment workflow.",
+        "catalog_label": "Bakes",
+        "basket_label": "Current sale",
+        "search_placeholder": "Search bakes…",
+        "customer_label": "Customer",
+        "customer_default": "Walk-in Customer",
+        "checkout_label": "Complete sale",
+        "empty_label": "No published counter products are available.",
+        "service_modes": [],
+        "service_mode_label": "",
+        "show_service_mode": False,
+        "show_reference": False,
+        "reference_label": "",
+        "reference_placeholder": "",
+    },
+    Business.VERTICAL_GENERAL: {
+        "eyebrow": "Direct product sales",
+        "title": "Product Sales POS",
+        "intro": "Sell available finished goods directly from stock without leaving the operational workspace.",
+        "catalog_label": "Sellable products",
+        "basket_label": "Current sale",
+        "search_placeholder": "Search finished goods…",
+        "customer_label": "Customer",
+        "customer_default": "Walk-in Customer",
+        "checkout_label": "Complete sale",
+        "empty_label": "No published finished goods are available for direct sale.",
+        "service_modes": [],
+        "service_mode_label": "",
+        "show_service_mode": False,
+        "show_reference": False,
+        "reference_label": "",
+        "reference_placeholder": "",
+    },
+}
+
+
+PRODUCT_SOURCE_LABELS = {
+    Business.VERTICAL_RESTAURANT: {
+        "made_in_house": "Prepared in-house",
+        "purchased_for_resale": "Purchased for resale",
+        "resale_group": "Purchased drinks / packaged resale items",
+    },
+    Business.VERTICAL_BAKERY: {
+        "made_in_house": "Baked / made in-house",
+        "purchased_for_resale": "Purchased for resale",
+        "resale_group": "Purchased resale products",
+    },
+    Business.VERTICAL_GENERAL: {
+        "made_in_house": "Made / assembled in-house",
+        "purchased_for_resale": "Purchased for resale",
+        "resale_group": "Purchased resale products",
+    },
+    Business.VERTICAL_WHOLESALE: {
+        "made_in_house": "Not used for this vertical",
+        "purchased_for_resale": "Purchased stock",
+        "resale_group": "Stock products",
+    },
+    Business.VERTICAL_RETAIL: {
+        "made_in_house": "Not used for this vertical",
+        "purchased_for_resale": "Purchased stock",
+        "resale_group": "Stock products",
+    },
+}
+
+
 def vertical_config(business):
     key = getattr(business, "vertical", Business.VERTICAL_BAKERY)
-    return VERTICAL_CONFIG.get(key, VERTICAL_CONFIG[Business.VERTICAL_GENERAL])
+    config = dict(VERTICAL_CONFIG.get(key, VERTICAL_CONFIG[Business.VERTICAL_GENERAL]))
+    config["pos"] = POS_CONFIG.get(key, POS_CONFIG[Business.VERTICAL_GENERAL])
+    config["product_sources"] = PRODUCT_SOURCE_LABELS.get(key, PRODUCT_SOURCE_LABELS[Business.VERTICAL_GENERAL])
+    return config

@@ -218,6 +218,7 @@ class LoginRequiredMiddleware:
 
 
 MODULE_RULES = [
+    ("/commerce/storefront-pos", "pos"),
     ("/inventory", "inventory"),
     ("/procurement", "procurement"),
     ("/orders", "production"),

@@ -152,18 +152,44 @@ class RawMaterialForm(StyledModelForm):
 class FinishedGoodForm(StyledModelForm):
     class Meta:
         model = FinishedGood
-        fields = ["name", "unit", "units_per_batch", "stock", "reorder_level", "selling_price"]
+        fields = ["source_type", "name", "unit", "units_per_batch", "stock", "reorder_level", "selling_price"]
 
     def __init__(self, *args, business=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.business = business
         self.fields["stock"].required = False
         self.fields["reorder_level"].required = False
         self.fields["selling_price"].required = False
+        if business:
+            labels = vertical_config(business)["product_sources"]
+            if business.uses_production:
+                self.fields["source_type"].label = "Product source"
+                self.fields["source_type"].choices = [
+                    (FinishedGood.SOURCE_MADE_IN_HOUSE, labels["made_in_house"]),
+                    (FinishedGood.SOURCE_PURCHASED_FOR_RESALE, labels["purchased_for_resale"]),
+                ]
+                self.fields["source_type"].help_text = "Purchased-for-resale products are stocked through Procurement and never sent into recipes or production orders."
+            else:
+                self.fields.pop("source_type")
+                self.instance.source_type = FinishedGood.SOURCE_PURCHASED_FOR_RESALE
         if business and not business.uses_production:
             self.fields.pop("units_per_batch")
             self.fields["unit"].label = "Stock / selling unit"
             self.fields["stock"].label = "Opening stock"
             self.fields["stock"].help_text = "Use this only for the opening balance. Record later arrivals by receiving a purchase order."
+
+    def clean(self):
+        cleaned = super().clean()
+        source = cleaned.get("source_type") or getattr(self.instance, "source_type", FinishedGood.SOURCE_MADE_IN_HOUSE)
+        stock_tracked = bool(
+            self.business
+            and (not self.business.uses_production or source == FinishedGood.SOURCE_PURCHASED_FOR_RESALE)
+        )
+        if stock_tracked and cleaned.get("stock") is None:
+            cleaned["stock"] = Decimal("0")
+        if stock_tracked and cleaned.get("reorder_level") is None:
+            cleaned["reorder_level"] = Decimal("0")
+        return cleaned
 
 
 class FinishedGoodChannelPriceForm(StyledModelForm):
@@ -171,9 +197,15 @@ class FinishedGoodChannelPriceForm(StyledModelForm):
         model = FinishedGoodChannelPrice
         fields = ["channel", "price"]
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, business=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["price"].required = False
+        if business:
+            labels = vertical_config(business)["commerce_channels"]
+            self.fields["channel"].choices = [
+                (code, labels.get(code, label))
+                for code, label in FinishedGoodChannelPrice.CHANNEL_CHOICES
+            ]
 
 
 FinishedGoodChannelPriceFormSet = inlineformset_factory(

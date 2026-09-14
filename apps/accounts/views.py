@@ -3,6 +3,7 @@ from django.contrib.auth import login as auth_login
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -12,7 +13,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 from core.models import Business
 from .forms import BusinessSignupForm, UserForm, PermissionMatrixForm, RoleForm, RolePermissionForm
-from .models import BusinessModuleAccess, CustomUser, Role, RoleModulePermission, UserBusiness
+from .models import BusinessModuleAccess, CustomUser, Role, RoleModulePermission, UserBusiness, UserModulePermission
 from .services import ensure_permissions, is_business_admin, seed_business_modules, seed_business_roles, user_has_permission
 
 
@@ -128,9 +129,12 @@ def user_form(request, pk=None):
                 membership, _ = UserBusiness.objects.get_or_create(user=user, business=request.business, defaults={"role": role, "active": user.is_active})
                 membership.role = role
                 membership.active = user.is_active
-                membership.commerce_storefront_access = bool(form.cleaned_data.get("commerce_storefront_access"))
-                membership.save(update_fields=["role", "active", "commerce_storefront_access"])
+                membership.save(update_fields=["role", "active"])
                 ensure_permissions(membership)
+                # POS is role-owned. Any temporary legacy override migrated
+                # from the retired checkbox is cleared as soon as this user is
+                # explicitly edited, so the selected role becomes authoritative.
+                UserModulePermission.objects.filter(membership=membership, module="pos").delete()
             messages.success(request, "User updated." if obj else "User created.")
             return redirect("users_list")
     else:
@@ -153,7 +157,7 @@ def user_permissions(request, pk):
             return redirect("users_permissions", pk=membership.pk)
     else:
         form = PermissionMatrixForm(membership=membership)
-    rows = [(m, label, form[f"{m}_view"], form[f"{m}_edit"]) for m, label in RoleModulePermission.MODULE_CHOICES]
+    rows = [(m, label, form[f"{m}_view"], form[f"{m}_edit"]) for m, label in RoleModulePermission.MODULE_CHOICES if m != "pos"]
     return render(request, "accounts/user_permissions.html", {"membership": membership, "form": form, "rows": rows})
 
 
@@ -279,7 +283,13 @@ def subscription_payment(request, plan_code=None):
     if not subscription:
         subscription = start_trial_for_business(request.business, selected or plans[SubscriptionPlan.CODE_STARTER])
     selected = selected or subscription.plan
-    selected.current_promotion = active_promotion_for_plan(selected)
+    selected.current_monthly_promotion = active_promotion_for_plan(
+        selected, billing_cycle=SubscriptionPayment.CYCLE_MONTHLY
+    )
+    selected.current_yearly_promotion = active_promotion_for_plan(
+        selected, billing_cycle=SubscriptionPayment.CYCLE_YEARLY
+    )
+    selected.current_promotion = selected.current_monthly_promotion or selected.current_yearly_promotion
     payment_locked = payment_is_locked(subscription, selected)
     requires_change_warning = bool(
         subscription.is_effectively_active and subscription.plan_id != selected.pk
@@ -536,20 +546,20 @@ def founder_subscriptions(request):
             promotion.created_by = request.user
             promotion.active = True
             promotion.save()
-            messages.success(request, f"Promotion scheduled for {promotion.plan.name}: {promotion.reason}.")
+            messages.success(request, f"Promotion scheduled for {promotion.target_label}: {promotion.reason}.")
             return redirect("founder_subscriptions")
         if action == "deactivate_promotion":
             promotion = get_object_or_404(SubscriptionPromotion, pk=request.POST.get("promotion_id"))
             promotion.active = False
             promotion.save(update_fields=["active", "updated_at"])
-            messages.success(request, f"Promotion ended for {promotion.plan.name}. Base pricing remains unchanged.")
+            messages.success(request, f"Promotion ended for {promotion.target_label}. Base pricing remains unchanged.")
             return redirect("founder_subscriptions")
         if action == "save_marketing_campaign" and campaign_form.is_valid():
             campaign = campaign_form.save(commit=False)
             if not campaign.pk:
                 campaign.created_by = request.user
             campaign.save()
-            messages.success(request, f"Marketing promo creative saved for {campaign.promotion.plan.name}: {campaign.name}.")
+            messages.success(request, f"Marketing promo creative saved for {campaign.promotion.target_label}: {campaign.name}.")
             return redirect(f"{reverse('founder_subscriptions')}#marketing-promo-campaigns")
         if action == "deactivate_marketing_campaign":
             campaign = get_object_or_404(MarketingPromoCampaign, pk=request.POST.get("campaign_id"))
@@ -557,6 +567,29 @@ def founder_subscriptions(request):
             campaign.save(update_fields=["active", "updated_at"])
             messages.success(request, f"Marketing promo creative '{campaign.name}' was taken off the marketing page.")
             return redirect(f"{reverse('founder_subscriptions')}#marketing-promo-campaigns")
+        if action == "save_plan_entitlements":
+            from .models import SubscriptionPlanModule
+            from .subscription_services import PLAN_ENTITLEMENT_MODULES, apply_subscription_entitlements
+            plans_to_update = list(SubscriptionPlan.objects.all().order_by("id"))
+            with transaction.atomic():
+                for plan in plans_to_update:
+                    for module, _label in PLAN_ENTITLEMENT_MODULES:
+                        field_name = f"module_{plan.pk}_{module}"
+                        if module == "reports":
+                            level = (request.POST.get(field_name) or "none").strip().lower()
+                            if level not in {SubscriptionPlanModule.LEVEL_NONE, SubscriptionPlanModule.LEVEL_BASIC, SubscriptionPlanModule.LEVEL_FULL}:
+                                level = SubscriptionPlanModule.LEVEL_NONE
+                        else:
+                            level = SubscriptionPlanModule.LEVEL_FULL if request.POST.get(field_name) == "on" else SubscriptionPlanModule.LEVEL_NONE
+                        SubscriptionPlanModule.objects.update_or_create(
+                            plan=plan, module=module,
+                            defaults={"enabled": level != SubscriptionPlanModule.LEVEL_NONE, "level": level},
+                        )
+                subscription_ids = list(BusinessSubscription.objects.filter(plan__in=plans_to_update).values_list("pk", flat=True))
+                for subscription in BusinessSubscription.objects.filter(pk__in=subscription_ids).select_related("plan"):
+                    apply_subscription_entitlements(subscription)
+            messages.success(request, "All plan module access settings were saved together and applied to current subscribers.")
+            return redirect(f"{reverse('founder_subscriptions')}#plan-entitlements")
         if action == "save_plan_pricing":
             from decimal import Decimal, InvalidOperation
             plans_to_update = list(SubscriptionPlan.objects.all().order_by("id"))
@@ -573,19 +606,16 @@ def founder_subscriptions(request):
             # Keep configurable base pricing from making an already scheduled
             # fixed-amount promotion impossible to pay. One bounded query checks
             # all still-relevant promotions before the atomic price update.
-            fixed_promos = {}
-            for promo in SubscriptionPromotion.objects.filter(
-                plan_id__in=[plan.pk for plan, *_ in parsed],
+            fixed_promos = list(SubscriptionPromotion.objects.filter(
+                Q(plan_id__in=[plan.pk for plan, *_ in parsed]) | Q(applies_to_all_plans=True),
                 active=True,
                 discount_type=SubscriptionPromotion.DISCOUNT_AMOUNT,
                 ends_at__gt=timezone.now(),
-            ).order_by("plan_id", "starts_at", "id"):
-                current = fixed_promos.get(promo.plan_id)
-                if current is None or promo.discount_value > current.discount_value:
-                    fixed_promos[promo.plan_id] = promo
+            ).select_related("plan"))
             invalid = []
             for plan, monthly, _yearly_discount, _addon_discount in parsed:
-                promo = fixed_promos.get(plan.pk)
+                applicable = [promo for promo in fixed_promos if promo.applies_to_plan(plan)]
+                promo = max(applicable, key=lambda row: row.discount_value, default=None)
                 if promo and monthly <= promo.discount_value:
                     invalid.append(f"{plan.name} ({promo.reason})")
             if invalid:
@@ -623,7 +653,7 @@ def founder_subscriptions(request):
         "form": form,
         "subscriptions": subscriptions,
         "pending_payments": pending_payments,
-        "plans": SubscriptionPlan.objects.all().order_by("monthly_price", "id"),
+        "plans": SubscriptionPlan.objects.prefetch_related("module_entitlements").all().order_by("monthly_price", "id"),
         "payment_settings": payment_settings,
         "legacy_form": legacy_form,
         "legacy_import_report": legacy_import_report,

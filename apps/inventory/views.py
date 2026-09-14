@@ -516,21 +516,33 @@ def finished_good_form(request, pk=None):
     uses_production = request.business.uses_production
     if request.method == "POST":
         form = FinishedGoodForm(request.POST, instance=obj, business=request.business)
-        formset = RecipeItemFormSet(request.POST, instance=obj if obj else FinishedGood(), prefix="recipe_items") if uses_production else None
-        production_formset = ProductionMaterialFormSet(request.POST, instance=obj if obj else FinishedGood(), prefix="production_materials") if uses_production else None
-        channel_price_formset = FinishedGoodChannelPriceFormSet(request.POST, instance=obj if obj else FinishedGood(), prefix="channel_prices")
-        production_forms_valid = not uses_production or (formset.is_valid() and production_formset.is_valid())
+        selected_source = (
+            request.POST.get("source_type")
+            or getattr(obj, "source_type", FinishedGood.SOURCE_MADE_IN_HOUSE)
+        )
+        show_production_fields = uses_production and selected_source != FinishedGood.SOURCE_PURCHASED_FOR_RESALE
+        formset = RecipeItemFormSet(
+            request.POST, instance=obj if obj else FinishedGood(), prefix="recipe_items"
+        ) if uses_production else None
+        production_formset = ProductionMaterialFormSet(
+            request.POST, instance=obj if obj else FinishedGood(), prefix="production_materials"
+        ) if uses_production else None
+        channel_price_formset = FinishedGoodChannelPriceFormSet(
+            request.POST, instance=obj if obj else FinishedGood(), prefix="channel_prices",
+            form_kwargs={"business": request.business},
+        )
+        production_forms_valid = not show_production_fields or (formset.is_valid() and production_formset.is_valid())
         if form.is_valid() and production_forms_valid and channel_price_formset.is_valid():
             good = form.save(commit=False)
             good.business = request.business
             if obj is None:
                 good.created_by = request.user
             good.save()
-            if uses_production:
+            if show_production_fields:
                 formset.instance = good
                 production_formset.instance = good
             channel_price_formset.instance = good
-            if uses_production:
+            if show_production_fields:
                 formset.save()
                 production_formset.save()
             channel_price_formset.save()
@@ -539,9 +551,13 @@ def finished_good_form(request, pk=None):
             return redirect("inventory")
     else:
         form = FinishedGoodForm(instance=obj, business=request.business)
+        selected_source = getattr(obj, "source_type", FinishedGood.SOURCE_MADE_IN_HOUSE)
+        show_production_fields = uses_production and selected_source != FinishedGood.SOURCE_PURCHASED_FOR_RESALE
         formset = RecipeItemFormSet(instance=obj, prefix="recipe_items") if uses_production else None
         production_formset = ProductionMaterialFormSet(instance=obj, prefix="production_materials") if uses_production else None
-        channel_price_formset = FinishedGoodChannelPriceFormSet(instance=obj, prefix="channel_prices")
+        channel_price_formset = FinishedGoodChannelPriceFormSet(
+            instance=obj, prefix="channel_prices", form_kwargs={"business": request.business}
+        )
     raw_material_units = {
         str(material.pk): material.usage_unit
         for material in RawMaterial.objects.all()
@@ -553,6 +569,7 @@ def finished_good_form(request, pk=None):
         "channel_price_formset": channel_price_formset,
         "obj": obj,
         "raw_material_units": raw_material_units,
+        "show_production_fields": show_production_fields,
     })
 
 

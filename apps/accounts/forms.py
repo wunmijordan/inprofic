@@ -6,6 +6,9 @@ from .services import ensure_permissions, is_business_admin, seed_business_roles
 
 CLS = "w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 focus:border-[#8f172d]"
 
+# POS is intentionally role-owned. It does not appear in the per-user override matrix.
+USER_OVERRIDE_MODULES = tuple((m, label) for m, label in RoleModulePermission.MODULE_CHOICES if m != "pos")
+
 
 class BusinessSignupForm(forms.Form):
     business_name = forms.CharField(max_length=120, label="Business name")
@@ -52,12 +55,6 @@ class BusinessSignupForm(forms.Form):
 class UserForm(forms.ModelForm):
     password = forms.CharField(widget=forms.PasswordInput, required=False, help_text="Required for a new user; leave blank when editing to keep the current password.")
     role = forms.ModelChoiceField(queryset=Role.objects.none(), empty_label=None)
-    commerce_storefront_access = forms.BooleanField(
-        required=False,
-        label="Commerce storefront access",
-        help_text="Allow this staff member to operate the in-premise storefront/POS without granting full Commerce administration rights.",
-    )
-
     class Meta:
         model = CustomUser
         fields = ["fullname", "username", "email", "phone", "role", "password", "is_active"]
@@ -81,10 +78,8 @@ class UserForm(forms.ModelForm):
         self.fields["role"].queryset = qs
         for f in self.fields.values():
             f.widget.attrs["class"] = CLS
-        self.fields["commerce_storefront_access"].widget.attrs["class"] = "h-4 w-4 accent-[#8f172d]"
         if membership:
             self.fields["role"].initial = membership.role_id
-            self.fields["commerce_storefront_access"].initial = membership.commerce_storefront_access
 
     def clean_password(self):
         value = self.cleaned_data.get("password")
@@ -120,7 +115,7 @@ class PermissionMatrixForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.membership = membership
         ensure_permissions(membership)
-        for module, label in RoleModulePermission.MODULE_CHOICES:
+        for module, label in USER_OVERRIDE_MODULES:
             p = membership.module_permissions.get(module=module)
             role_p = membership.role.module_permissions.filter(module=module).first()
             self.fields[f"{module}_view"] = forms.BooleanField(required=False, label=f"{label}: View", initial=p.can_view if p.can_view is not None else (role_p.can_view if role_p else False))
@@ -129,7 +124,7 @@ class PermissionMatrixForm(forms.Form):
             self.fields[f"{module}_edit"].widget.attrs["class"] = "h-4 w-4 accent-[#8f172d]"
 
     def save(self):
-        for module, _ in RoleModulePermission.MODULE_CHOICES:
+        for module, _ in USER_OVERRIDE_MODULES:
             UserModulePermission.objects.update_or_create(
                 membership=self.membership, module=module,
                 defaults={"can_view": self.cleaned_data.get(f"{module}_view", False),
@@ -185,8 +180,9 @@ class RolePermissionForm(forms.Form):
 class SubscriptionPromotionForm(forms.ModelForm):
     class Meta:
         model = SubscriptionPromotion
-        fields = ["plan", "reason", "discount_type", "discount_value", "starts_at", "ends_at"]
+        fields = ["applies_to_all_plans", "plan", "reason", "discount_type", "discount_value", "billing_cycle", "starts_at", "ends_at"]
         widgets = {
+            "applies_to_all_plans": forms.CheckboxInput(attrs={"data-promo-all-plans": "1"}),
             "starts_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
             "ends_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
         }
@@ -194,33 +190,61 @@ class SubscriptionPromotionForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["plan"].queryset = SubscriptionPlan.objects.filter(active=True).order_by("monthly_price", "id")
-        for field in self.fields.values():
-            field.widget.attrs["class"] = CLS
+        self.fields["plan"].required = False
+        self.fields["plan"].help_text = "Choose one plan, or enable All plans above."
+        self.fields["applies_to_all_plans"].label = "Apply this promotion to all plans"
+        for name, field in self.fields.items():
+            if name != "applies_to_all_plans":
+                field.widget.attrs["class"] = CLS
 
     def clean(self):
         from decimal import Decimal
+        from django.db.models import Q
         cleaned = super().clean()
         plan = cleaned.get("plan")
+        all_plans = bool(cleaned.get("applies_to_all_plans"))
         kind = cleaned.get("discount_type")
         value = cleaned.get("discount_value")
         starts = cleaned.get("starts_at")
         ends = cleaned.get("ends_at")
+        billing_cycle = cleaned.get("billing_cycle") or SubscriptionPromotion.CYCLE_BOTH
+        if all_plans:
+            cleaned["plan"] = None
+            plan = None
+        elif not plan:
+            self.add_error("plan", "Choose a plan, or apply this promotion to all plans.")
         if starts and ends and ends <= starts:
             self.add_error("ends_at", "Promotion expiry must be after its start time.")
         if value is not None and value <= 0:
             self.add_error("discount_value", "Enter a discount greater than zero.")
         if kind == SubscriptionPromotion.DISCOUNT_PERCENT and value is not None and value >= Decimal("100"):
             self.add_error("discount_value", "Percentage discounts must leave a payable amount (use less than 100%).")
-        if kind == SubscriptionPromotion.DISCOUNT_AMOUNT and plan and value is not None and value >= plan.monthly_price:
-            self.add_error("discount_value", "A fixed discount must leave a payable amount below the plan's monthly base price.")
-        if plan and starts and ends:
+        target_plans = list(SubscriptionPlan.objects.filter(active=True)) if all_plans else ([plan] if plan else [])
+        if kind == SubscriptionPromotion.DISCOUNT_AMOUNT and value is not None:
+            invalid = [p.name for p in target_plans if value >= p.monthly_price]
+            if invalid:
+                self.add_error("discount_value", "A fixed discount must leave a payable amount on every targeted plan: " + ", ".join(invalid))
+        if starts and ends and target_plans:
             overlap = SubscriptionPromotion.objects.filter(
-                plan=plan, active=True, starts_at__lt=ends, ends_at__gt=starts
+                active=True, starts_at__lt=ends, ends_at__gt=starts
+            ).filter(
+                Q(applies_to_all_plans=True) |
+                Q(plan_id__in=[p.pk for p in target_plans])
             )
+            if all_plans:
+                overlap = SubscriptionPromotion.objects.filter(
+                    active=True, starts_at__lt=ends, ends_at__gt=starts
+                )
             if self.instance.pk:
                 overlap = overlap.exclude(pk=self.instance.pk)
-            if overlap.exists():
-                self.add_error(None, "This plan already has an active/scheduled promotion overlapping that period.")
+            def cycles_overlap(existing):
+                return (
+                    billing_cycle == SubscriptionPromotion.CYCLE_BOTH
+                    or existing.billing_cycle == SubscriptionPromotion.CYCLE_BOTH
+                    or existing.billing_cycle == billing_cycle
+                )
+            if any(cycles_overlap(existing) for existing in overlap.only("billing_cycle")):
+                self.add_error(None, "Another active/scheduled promotion overlaps at least one targeted plan and billing cycle in that period.")
         return cleaned
 
 
@@ -247,7 +271,7 @@ class MarketingPromoCampaignForm(forms.ModelForm):
             Q(pk=getattr(self.instance, "promotion_id", None))
         ).order_by("-starts_at", "plan__monthly_price", "id")
         self.fields["promotion"].queryset = promo_qs
-        self.fields["promotion"].label_from_instance = lambda obj: f"{obj.plan.name} — {obj.reason}"
+        self.fields["promotion"].label_from_instance = lambda obj: f"{obj.target_label} — {obj.reason}"
         self.fields["content_html"].required = True
         self.fields["content_html"].help_text = "Use the editor below. Only INPROFIC's bundled fonts and safe text formatting are retained."
         for name, field in self.fields.items():

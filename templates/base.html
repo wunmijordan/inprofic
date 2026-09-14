@@ -142,12 +142,13 @@
 
   {% if user.is_authenticated and module_permissions.commerce.view %}
   <aside id="commerce-notification-dock"
-         class="fixed bottom-3 right-3 z-[80] hidden w-[calc(100vw-1.5rem)] max-w-sm overflow-hidden rounded-2xl border border-stone-200 bg-[#FFFDF8] shadow-[0_20px_55px_rgba(33,29,26,.32)]"
+         class="fixed bottom-3 z-[80] hidden overflow-hidden rounded-2xl border border-stone-200 bg-[#FFFDF8] shadow-[0_20px_55px_rgba(33,29,26,.32)]"
+         style="right:.75rem;width:min(19rem,calc(100vw - 1.5rem));"
          data-feed-url="{% url 'commerce_notification_feed' %}"
          data-read-url="{% url 'commerce_notification_read' %}"
          data-socket-path="/ws/commerce/notifications/"
          aria-live="polite">
-    <div class="flex items-center gap-3 border-b border-white/10 px-3.5 py-3 text-white" style="background:var(--tenant-background)">
+    <div id="commerce-notification-drag-handle" class="flex cursor-grab select-none items-center gap-2.5 border-b border-white/10 px-3 py-2.5 text-white active:cursor-grabbing" style="background:var(--tenant-background)" title="Drag left or right to move alerts">
       <span class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10" aria-hidden="true">
         <svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
         <span class="absolute -right-1 -top-1 h-2.5 w-2.5 animate-pulse rounded-full bg-amber-400 ring-2 ring-white/80"></span>
@@ -160,7 +161,7 @@
         <svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
       </button>
     </div>
-    <div id="commerce-notification-body" class="hidden h-80 flex-col" aria-hidden="true">
+    <div id="commerce-notification-body" class="hidden h-72 flex-col" aria-hidden="true">
       <div class="flex items-center justify-between border-b border-stone-200 px-4 py-2.5">
         <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-stone-500">Unread activity</span>
         <button type="button" id="commerce-notification-read-all" class="text-xs font-semibold text-stone-500 hover:text-stone-900">Mark all read</button>
@@ -180,6 +181,7 @@
       const plural = document.getElementById('commerce-notification-plural');
       const list = document.getElementById('commerce-notification-list');
       const readAll = document.getElementById('commerce-notification-read-all');
+      const dragHandle = document.getElementById('commerce-notification-drag-handle');
       let latestId = null;
       let initialized = false;
       let suppressNextAnnouncement = false;
@@ -190,6 +192,44 @@
       let reconnectAttempt = 0;
       let pageClosing = false;
       let refreshSequence = 0;
+
+      const positionKey = 'inprofic-commerce-dock-left';
+      function clampDockLeft(left) {
+        const margin = 12;
+        return Math.max(margin, Math.min(left, window.innerWidth - dock.offsetWidth - margin));
+      }
+      function restoreDockPosition() {
+        const stored = Number(window.localStorage.getItem(positionKey));
+        if (!Number.isFinite(stored)) return;
+        dock.style.right = 'auto';
+        dock.style.left = `${clampDockLeft(stored)}px`;
+      }
+      if (dragHandle) {
+        let dragStartX = 0;
+        let dragStartLeft = 0;
+        dragHandle.addEventListener('pointerdown', function (event) {
+          if (event.target.closest('button, a, input, select, textarea')) return;
+          const rect = dock.getBoundingClientRect();
+          dragStartX = event.clientX;
+          dragStartLeft = rect.left;
+          dock.style.right = 'auto';
+          dock.style.left = `${rect.left}px`;
+          dragHandle.setPointerCapture(event.pointerId);
+        });
+        dragHandle.addEventListener('pointermove', function (event) {
+          if (!dragHandle.hasPointerCapture(event.pointerId)) return;
+          dock.style.left = `${clampDockLeft(dragStartLeft + event.clientX - dragStartX)}px`;
+        });
+        dragHandle.addEventListener('pointerup', function (event) {
+          if (!dragHandle.hasPointerCapture(event.pointerId)) return;
+          dragHandle.releasePointerCapture(event.pointerId);
+          window.localStorage.setItem(positionKey, String(Math.round(dock.getBoundingClientRect().left)));
+        });
+      }
+      window.addEventListener('resize', function () {
+        if (dock.style.left) dock.style.left = `${clampDockLeft(dock.getBoundingClientRect().left)}px`;
+      });
+      restoreDockPosition();
 
       function csrfToken() {
         const match = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);

@@ -1,34 +1,115 @@
-{% extends "base.html" %}
-{% block title %}Storefront POS · INPROFIC{% endblock %}
-{% block content %}
-<div class="mx-auto max-w-6xl space-y-6">
-  <div class="flex flex-wrap items-end justify-between gap-4">
-    <div><p class="text-xs font-bold uppercase tracking-[.18em] text-slate-400">In-premise commerce</p><h1 class="mt-1 text-2xl font-semibold text-slate-900">Storefront POS</h1><p class="mt-1 text-sm text-slate-500">Walk-in sales only. Cash requires staff confirmation; terminal card payments require gateway verification.</p></div>
-    {% if module_permissions.commerce.view %}<a href="{% url 'commerce_dashboard' %}" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700">Commerce dashboard</a>{% endif %}
-  </div>
-  {% if pos_error %}<div class="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{{ pos_error }}</div>{% endif %}
-  {% if active_checkout and active_payment %}
-  <section id="active-pos-payment" data-status-url="{% url 'commerce_storefront_pos_status' active_checkout.public_id %}" class="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-    <div class="flex flex-wrap items-center justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-wider text-amber-700">Terminal payment in progress</p><h2 class="mt-1 text-lg font-semibold text-slate-900">{{ active_payment.reference }}</h2><p class="mt-1 text-sm text-slate-600">{{ active_payment.currency }} {{ active_payment.amount|floatformat:2 }} · {{ active_payment.get_status_display }}</p></div><span class="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-amber-800">Waiting for verified gateway confirmation</span></div>
-    <p class="mt-3 text-xs leading-5 text-amber-800">Do not approve the sale manually. Complete the card transaction on the configured terminal; INPROFIC will create the order only after verified payment.</p>
-  </section>
-  {% endif %}
-  <form method="post" class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">{% csrf_token %}<input type="hidden" name="pos_key" value="{{ pos_key }}">
-    <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div class="border-b border-slate-100 px-5 py-4"><h2 class="font-semibold text-slate-900">Products</h2><p class="text-xs text-slate-500">Enter quantities for the walk-in basket.</p></div>
-      <div class="divide-y divide-slate-100">
-        {% for product in products %}<label class="grid grid-cols-[minmax(0,1fr)_7rem] items-center gap-4 px-5 py-4"><span><strong class="block text-sm text-slate-900">{{ product.display_name }}</strong><span class="mt-1 block text-xs text-slate-500">{{ request.business.currency_symbol }}{{ product.pos_price|floatformat:2 }}{% if product.finished_good.unit %} · {{ product.finished_good.unit }}{% endif %}</span></span><input name="qty_{{ product.public_id }}" type="number" min="0" step="0.001" placeholder="0" class="h-11 rounded-xl border border-slate-300 px-3 text-right text-sm outline-none focus:border-slate-500"></label>{% empty %}<p class="p-5 text-sm text-slate-500">No published Physical Store products are available.</p>{% endfor %}
+{% load static core_extras %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ pos_ui.title }} · {{ biz.name }} · INPROFIC</title>
+  <link rel="icon" type="image/png" href="{% static 'core/brand/inprofic-mark.png' %}">
+  <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
+  <style>
+    @font-face{font-family:Inter;src:url('{% static "core/fonts/Inter-Regular.ttf" %}') format('truetype');font-weight:400;font-display:swap}
+    @font-face{font-family:Inter;src:url('{% static "core/fonts/Inter-SemiBold.ttf" %}') format('truetype');font-weight:600 700;font-display:swap}
+    @font-face{font-family:Fraunces;src:url('{% static "core/fonts/Fraunces-SemiBold.ttf" %}') format('truetype');font-weight:600 700;font-display:swap}
+    body{font-family:Inter,sans-serif;background:#f6f3ee;color:#211d1a}.font-display{font-family:Fraunces,serif}
+    .pos-scroll{scrollbar-width:thin;scrollbar-color:#c9c1b7 transparent}.pos-scroll::-webkit-scrollbar{width:7px;height:7px}.pos-scroll::-webkit-scrollbar-thumb{background:#c9c1b7;border-radius:999px}
+    .product-card[data-hidden="true"]{display:none}.cart-row[hidden]{display:none}@media(min-width:1024px){.pos-main{height:calc(100vh - 73px);overflow:hidden}.pos-fill{height:100%}}
+  </style>
+</head>
+<body class="min-h-screen" style="--tenant-background:{{ biz.background_color|default:'#050733' }};--tenant-button:{{ biz.accent_color|default:'#D14900' }}">
+  <header class="sticky top-0 z-40 border-b border-white/10 text-white shadow-lg" style="background:var(--tenant-background)">
+    <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+      <div class="flex min-w-0 items-center gap-3">
+        <a href="{% url 'dashboard' %}" class="rounded-xl bg-white/10 p-2 transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-2" aria-label="Back to INPROFIC dashboard">
+          <svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2"><path d="m15 18-6-6 6-6"/><path d="M9 12h11"/></svg>
+        </a>
+        <div class="min-w-0"><p class="truncate text-[10px] font-bold uppercase tracking-[.2em] text-amber-300">{{ pos_ui.eyebrow }} · {{ pos_channel_label }}</p><h1 class="truncate font-display text-xl font-semibold sm:text-2xl">{{ pos_ui.title }}</h1></div>
       </div>
-    </section>
-    <aside class="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div><label class="text-xs font-semibold text-slate-600">Customer name</label><input name="customer_name" value="Walk-in Customer" class="mt-1.5 h-11 w-full rounded-xl border border-slate-300 px-3 text-sm"></div>
-      <div><label class="text-xs font-semibold text-slate-600">Phone (optional)</label><input name="customer_phone" class="mt-1.5 h-11 w-full rounded-xl border border-slate-300 px-3 text-sm"></div>
-      <div><label class="text-xs font-semibold text-slate-600">Email (optional)</label><input name="customer_email" type="email" class="mt-1.5 h-11 w-full rounded-xl border border-slate-300 px-3 text-sm"></div>
-      <fieldset><legend class="text-xs font-semibold text-slate-600">Payment</legend><div class="mt-2 space-y-2">{% for method in payment_methods %}<label class="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm"><input type="radio" name="method" value="{{ method.code }}" {% if forloop.first %}checked{% endif %} class="accent-[#D14900]"><span class="font-medium text-slate-800">{{ method.label }}</span></label>{% empty %}<div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Configure cash or a supported POS terminal in Commerce payment settings.</div>{% endfor %}</div></fieldset>
-      <label class="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600"><input type="checkbox" name="cash_received" class="mt-1 accent-[#D14900]"><span><strong class="text-slate-800">Cash received</strong><br>Required only when Cash is selected. Never check this for a card-terminal sale.</span></label>
-      <button {% if not payment_methods or not products %}disabled{% endif %} class="w-full rounded-xl bg-[#D14900] px-4 py-3 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50">Start / complete sale</button>
-    </aside>
-  </form>
-</div>
+      <div class="flex items-center gap-2">
+        {% if module_permissions.commerce.view %}<a href="{% url 'commerce_dashboard' %}" class="hidden rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold transition hover:bg-white/20 sm:block">Commerce</a>{% endif %}
+        <a href="{% url 'dashboard' %}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate-900 transition hover:bg-stone-100">Main App</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="pos-main mx-auto max-w-7xl px-3 py-4 sm:px-5 ">
+    {% if messages %}<div class="mb-3 space-y-2">{% for message in messages %}<div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ message }}</div>{% endfor %}</div>{% endif %}
+    {% if pos_error %}<div class="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{{ pos_error }}</div>{% endif %}
+    {% if active_checkout and active_payment %}
+      <section id="active-pos-payment" data-status-url="{% url 'commerce_storefront_pos_status' active_checkout.public_id %}" class="mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+        <div class="flex flex-wrap items-center justify-between gap-3"><div><p class="text-[10px] font-bold uppercase tracking-wider text-amber-700">Terminal payment in progress</p><h2 class="mt-1 font-semibold">{{ active_payment.reference }}</h2><p class="text-sm text-stone-600">{{ active_payment.currency }} {{ active_payment.amount|floatformat:2 }} · {{ active_payment.get_status_display }}</p></div><span class="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-amber-800">Awaiting gateway verification</span></div>
+      </section>
+    {% endif %}
+
+    <form method="post" id="pos-form" class="grid gap-3 pos-fill lg:grid-cols-[minmax(0,1fr)_22rem]">{% csrf_token %}<input type="hidden" name="pos_key" value="{{ pos_key }}">
+      <section class="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
+        <div class="border-b border-stone-200 p-4 sm:p-5">
+          <div class="flex flex-wrap items-end justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-wider text-stone-400">{{ pos_ui.catalog_label }}</p><p class="mt-1 max-w-2xl text-sm text-stone-500">{{ pos_ui.intro }}</p></div><div class="rounded-full bg-stone-100 px-3 py-1.5 text-xs font-semibold text-stone-600"><span id="visible-product-count">{{ products|length }}</span> available</div></div>
+          <label class="relative mt-4 block"><span class="sr-only">Search</span><svg viewBox="0 0 24 24" class="pointer-events-none absolute left-3 top-3 h-5 w-5 fill-none stroke-stone-400" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="pos-search" type="search" style="padding-left:2.5rem" autocomplete="off" placeholder="{{ pos_ui.search_placeholder }}" class="h-11 w-full rounded-xl border border-stone-300 bg-stone-50 pr-4 text-sm outline-none transition focus:border-stone-500 focus:bg-white focus:ring-2 focus:ring-stone-200"></label>
+        </div>
+        <div class="pos-scroll min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+          <div id="product-grid" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-2">
+            {% for product in products %}
+              <article class="product-card group rounded-2xl border border-stone-200 bg-[#FFFDF8] p-4 transition hover:border-stone-400 shadow-sm " data-name="{{ product.display_name|lower }}" data-product="{{ product.public_id }}" data-price="{{ product.pos_price }}" data-min="{{ product.pos_min_quantity }}">
+                <div class="flex gap-3">{% if product.public_image_url %}<img src="{{ product.public_image_url }}" alt="" class="h-20 w-20 shrink-0 rounded-xl object-cover">{% else %}<div class="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-2xl font-semibold text-stone-300">{{ product.display_name|slice:':1' }}</div>{% endif %}<div class="min-w-0 flex-1"><h3 class="text-sm font-semibold text-stone-900">{{ product.display_name }}</h3><p class="mt-1 font-mono text-base font-semibold text-[#8f172d]">{{ product.pos_price|money:biz.currency_symbol }}</p><p class="mt-1 text-[11px] text-stone-500">Stock: {{ product.pos_available|floatformat:-2 }} {{ product.finished_good.unit }}{% if product.pos_min_quantity > 1 %} · Min {{ product.pos_min_quantity|floatformat:-2 }}{% endif %}</p></div></div>
+                <div class="mt-3 flex items-center gap-2"><button type="button" data-add="{{ product.public_id }}" class="flex-1 rounded-xl bg-stone-800 px-3 py-2.5 text-sm font-semibold text-white transition  focus:outline-none focus:ring-2 ">Add</button><input aria-label="Quantity for {{ product.display_name }}" name="qty_{{ product.public_id }}" data-qty="{{ product.public_id }}" type="number" min="0" step="0.01" value="0" class="h-10 w-20 rounded-xl border border-stone-300 bg-white px-2 text-right font-mono text-sm outline-none focus:border-stone-500"></div>
+              </article>
+            {% empty %}<div class="col-span-full rounded-2xl border border-dashed border-stone-300 p-10 text-center text-sm text-stone-500">{{ pos_ui.empty_label }}</div>{% endfor %}
+          </div>
+        </div>
+      </section>
+
+      <aside class="pos-scroll min-h-0 overflow-y-auto rounded-2xl border border-stone-200 bg-white shadow-sm pos-fill">
+        <div class="sticky top-0 z-10 border-b border-stone-200 bg-white/95 p-4 backdrop-blur"><div class="flex items-center justify-between"><div><p class="text-[10px] font-bold uppercase tracking-wider text-stone-400">{{ pos_ui.basket_label }}</p><h2 class="font-display text-xl font-semibold">Checkout</h2></div><button type="button" id="clear-cart" class="rounded-lg px-2 py-1 text-xs font-semibold text-stone-500 hover:bg-stone-100">Clear</button></div><div class="mt-3 flex items-end justify-between"><span class="text-xs text-stone-500"><span id="cart-count">0</span> line item(s)</span><strong id="cart-total" class="font-mono text-2xl text-[#8f172d]">{{ biz.currency_symbol }}0.00</strong></div></div>
+        <div class="p-4">
+          <div id="cart-empty" class="rounded-xl border border-dashed border-stone-300 bg-stone-50 px-4 py-6 text-center text-sm text-stone-500">Select a product to start the sale.</div>
+          <div id="cart-lines" class="space-y-2"></div>
+
+          <div class="mt-5 grid gap-3 border-t border-stone-200 pt-4">
+            {% if pos_ui.show_service_mode %}<fieldset><legend class="text-xs font-semibold text-stone-600">{{ pos_ui.service_mode_label }}</legend><div class="mt-2 grid grid-cols-3 gap-2">{% for code,label in pos_ui.service_modes %}<label class="cursor-pointer"><input type="radio" name="service_mode" value="{{ code }}" class="peer sr-only" {% if forloop.first %}checked{% endif %}><span class="block rounded-xl border border-stone-200 px-2 py-2 text-center text-xs font-semibold transition peer-checked:border-[#8f172d] peer-checked:bg-[#8f172d] peer-checked:text-white">{{ label }}</span></label>{% endfor %}</div></fieldset>{% endif %}
+            {% if pos_ui.show_reference %}<label class="text-xs font-semibold text-stone-600">{{ pos_ui.reference_label }}<input name="table_reference" placeholder="{{ pos_ui.reference_placeholder }}" class="mt-1.5 h-10 w-full rounded-xl border border-stone-300 px-3 text-sm font-normal outline-none focus:border-stone-500"></label>{% endif %}
+            <label class="text-xs font-semibold text-stone-600">{{ pos_ui.customer_label }}<input name="customer_name" value="{{ pos_ui.customer_default }}" class="mt-1.5 h-10 w-full rounded-xl border border-stone-300 px-3 text-sm font-normal outline-none focus:border-stone-500"></label>
+            <div class="grid grid-cols-2 gap-2"><label class="text-xs font-semibold text-stone-600">Phone<input name="customer_phone" class="mt-1.5 h-10 w-full rounded-xl border border-stone-300 px-3 text-sm font-normal"></label><label class="text-xs font-semibold text-stone-600">Email<input name="customer_email" type="email" class="mt-1.5 h-10 w-full rounded-xl border border-stone-300 px-3 text-sm font-normal"></label></div>
+            <fieldset><legend class="text-xs font-semibold text-stone-600">Payment method</legend><div class="mt-2 grid gap-2">{% for method in payment_methods %}<label class="cursor-pointer"><input type="radio" name="method" value="{{ method.code }}" {% if forloop.first %}checked{% endif %} class="peer sr-only"><span class="flex items-center justify-between rounded-xl border border-stone-200 p-3 text-sm transition peer-checked:border-[#8f172d] peer-checked:bg-[#8f172d] peer-checked:text-white"><span class="font-medium">{{ method.label }}</span><span class="h-2.5 w-2.5 rounded-full bg-stone-300 peer-checked:bg-[#8f172d]"></span></span></label>{% empty %}<div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Configure cash or a supported terminal in Commerce payment settings.</div>{% endfor %}</div></fieldset>
+            <label id="cash-confirm-wrap" class="flex items-start gap-3 rounded-xl border border-stone-200 bg-stone-50 p-3 text-xs leading-5 text-stone-600"><input type="checkbox" name="cash_received" class="mt-1 accent-[#D14900]"><span><strong class="text-stone-800">Cash physically received</strong><br>Required only for cash. Card-terminal sales wait for gateway verification.</span></label>
+            <button id="checkout-button" {% if not payment_methods or not products %}disabled{% endif %} class="mt-1 w-full rounded-xl bg-[#D14900] px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 disabled:cursor-not-allowed disabled:opacity-50">{{ pos_ui.checkout_label }}</button>
+          </div>
+        </div>
+      </aside>
+    </form>
+  </main>
+
+{{ biz.currency_symbol|default:'₦'|json_script:"pos-currency-value" }}
+<script>
+(() => {
+  const search = document.getElementById('pos-search');
+  const cards = [...document.querySelectorAll('.product-card')];
+  const cartLines = document.getElementById('cart-lines');
+  const empty = document.getElementById('cart-empty');
+  const totalNode = document.getElementById('cart-total');
+  const countNode = document.getElementById('cart-count');
+  const visibleNode = document.getElementById('visible-product-count');
+  const currency = JSON.parse(document.getElementById('pos-currency-value').textContent || '"₦"');
+  const money = n => currency + Number(n || 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  function renderCart(){
+    cartLines.innerHTML=''; let total=0,count=0;
+    cards.forEach(card => {
+      const input=card.querySelector('[data-qty]'); const qty=Number(input.value||0); if(qty<=0)return;
+      const price=Number(card.dataset.price||0); const name=card.querySelector('h3').textContent.trim(); const id=card.dataset.product; count++; total += qty*price;
+      const row=document.createElement('div'); row.className='flex items-center gap-2 rounded-xl border border-stone-200 p-2.5';
+      row.innerHTML=`<div class="min-w-0 flex-1"><div class="truncate text-xs font-semibold"></div><div class="mt-0.5 text-[11px] text-stone-500">${money(price)} each</div></div><button type="button" class="h-8 w-8 rounded-lg border text-sm" data-cart-dec="${id}" aria-label="Reduce quantity">−</button><span class="w-10 text-center font-mono text-xs">${qty}</span><button type="button" class="h-8 w-8 rounded-lg border text-sm" data-cart-inc="${id}" aria-label="Increase quantity">+</button>`;
+      row.querySelector('.truncate').textContent=name; cartLines.appendChild(row);
+    });
+    empty.hidden=count>0; countNode.textContent=count; totalNode.textContent=money(total);
+  }
+  function change(id, direction){ const input=document.querySelector(`[data-qty="${id}"]`); if(!input)return; const card=input.closest('.product-card'); const min=Math.max(Number(card.dataset.min||1),0.01); const current=Number(input.value||0); input.value=direction>0 ? (current>0?current+1:min) : (current<=min?0:Math.max(min,current-1)); input.dispatchEvent(new Event('change',{bubbles:true})); }
+  document.addEventListener('click', e => { const add=e.target.closest('[data-add]'); if(add){change(add.dataset.add,1);return;} const inc=e.target.closest('[data-cart-inc]'); if(inc){change(inc.dataset.cartInc,1);return;} const dec=e.target.closest('[data-cart-dec]'); if(dec){change(dec.dataset.cartDec,-1);} });
+  document.querySelectorAll('[data-qty]').forEach(i => i.addEventListener('change',renderCart));
+  document.getElementById('clear-cart')?.addEventListener('click',()=>{document.querySelectorAll('[data-qty]').forEach(i=>i.value=0);renderCart();});
+  search?.addEventListener('input',()=>{const q=search.value.trim().toLowerCase();let visible=0;cards.forEach(c=>{const hide=q&&!c.dataset.name.includes(q);c.dataset.hidden=hide?'true':'false';if(!hide)visible++;});visibleNode.textContent=visible;});
+  renderCart();
+})();
+</script>
 {% if active_checkout and active_payment and active_payment.status != 'paid' %}<script>(function(){const box=document.getElementById('active-pos-payment');if(!box)return;const url=box.dataset.statusUrl;let stop=false;async function poll(){if(stop||document.hidden)return;try{const r=await fetch(url,{headers:{Accept:'application/json'},cache:'no-store'});if(!r.ok)return;const d=await r.json();if(d.payment&&d.payment.receipt_path){stop=true;window.location.href=d.payment.receipt_path;return;}if(d.payment&&['failed','cancelled','refunded'].includes(d.payment.status)){stop=true;window.location.reload();}}catch(e){}}setInterval(poll,5000);})();</script>{% endif %}
-{% endblock %}
+</body>
+</html>

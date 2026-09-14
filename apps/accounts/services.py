@@ -32,6 +32,10 @@ ROLE_DEFAULTS = {
         "production": (True, False), "sales": (True, False), "expenses": (True, False),
         "finance": (True, True), "reports": (True, True), "users": (True, False), "commerce": (False, False),
     },
+    CustomUser.ROLE_POS_OPERATOR: {
+        "dashboard": (True, False),
+        "pos": (True, True),
+    },
     CustomUser.ROLE_BUSINESS_ADMIN: {m: (True, True) for m, _ in RoleModulePermission.MODULE_CHOICES},
     # Demo can open normal operational add/edit workflows so the live UI can be
     # exercised, but mutation is blocked centrally by middleware. The historical
@@ -251,6 +255,8 @@ def ensure_permissions(membership):
 def seed_business_modules(business, source=BusinessModuleAccess.SOURCE_DEFAULT):
     """Provision today's full module set behind the future plan boundary."""
     for module, _label in RoleModulePermission.MODULE_CHOICES:
+        if module == "pos":
+            continue
         BusinessModuleAccess.objects.get_or_create(
             business=business,
             module=module,
@@ -330,21 +336,14 @@ def is_live_tester(user, business):
     return bool(membership and membership.role.key == CustomUser.ROLE_LIVE_TESTER)
 
 
-def can_use_commerce_storefront(user, business):
-    """Supplemental in-premise storefront/POS capability with the tenant commerce entitlement as a hard ceiling."""
-    if not getattr(user, "is_authenticated", False) or not business:
-        return False
-    if not business_has_module(business, "commerce"):
-        return False
-    if getattr(user, "is_superuser", False):
-        return True
-    membership, _user_permissions, _role_permissions = _permission_snapshot(user, business)
-    if not membership:
-        return False
-    return bool(
-        membership.commerce_storefront_access
-        or membership.role.key in {CustomUser.ROLE_BUSINESS_ADMIN, CustomUser.ROLE_LIVE_TESTER}
-    )
+def can_use_commerce_storefront(user, business, action="view"):
+    """Return the independent in-premise POS permission.
+
+    POS intentionally does not inherit the user's Commerce role permission. The
+    business still needs an active subscription, while View/Edit are governed by
+    the dedicated ``pos`` role/user permission row.
+    """
+    return user_has_permission(user, business, "pos", action)
 
 def is_business_admin(user, business):
     if getattr(user, "is_superuser", False):
