@@ -99,10 +99,21 @@ class PurchaseOrderItemForm(StyledModelForm):
             groups = [*material_choices, product_group]
         self.fields["item"].choices = [("", "Select an inventory item…"), *groups]
         self.fields["qty"].min_value = Decimal("0.01")
+        # The entry field captures the amount actually paid for this line.
+        # The model continues to store normalized cost per whole purchase unit,
+        # so downstream stock valuation and production costing stay unchanged.
         self.fields["unit_cost"].min_value = Decimal("0")
+        self.fields["unit_cost"].label = "Total purchase cost"
+        self.fields["unit_cost"].help_text = (
+            "Enter the total amount paid for the quantity on this row. "
+            "Fractional quantities are supported; the cost for one whole purchase unit is calculated automatically."
+        )
         if self.instance and self.instance.pk:
             kind, pk = self.instance.item_identity
             self.fields["item"].initial = f"{kind}:{pk}"
+            # Show the original line amount when editing. The stored unit_cost
+            # remains normalized per whole purchase unit.
+            self.initial["unit_cost"] = (self.instance.qty * self.instance.unit_cost).quantize(Decimal("0.01"))
 
     def clean(self):
         cleaned = super().clean()
@@ -135,6 +146,17 @@ class PurchaseOrderItemForm(StyledModelForm):
             selected = None
         if not selected:
             self.add_error("item", "Select an item belonging to the active business.")
+
+        qty = cleaned.get("qty")
+        purchase_total = cleaned.get("unit_cost")
+        if qty and qty > 0 and purchase_total is not None:
+            # Normalize the amount paid for this row back to a cost per one
+            # whole purchase/stock unit. This keeps the model contract intact:
+            # line_total == qty * unit_cost, and receiving can continue to
+            # convert that normalized cost into the material's usage unit.
+            normalized_unit_cost = (purchase_total / qty).quantize(Decimal("0.01"))
+            cleaned["unit_cost"] = normalized_unit_cost
+            self.instance.unit_cost = normalized_unit_cost
         return cleaned
 
 

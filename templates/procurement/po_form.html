@@ -16,20 +16,21 @@
 
     {% if formset.non_form_errors %}<div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-3">{{ formset.non_form_errors }}</div>{% endif %}
     <span class="block text-xs font-medium text-stone-600 mb-1">Items</span>
-    <p class="text-[11px] text-stone-400 mb-1">For materials, quantity and cost use the configured purchase unit (for example bags). For products for resale, they use the product's stock unit. Receiving the PO records a separate stock arrival for every line.</p>
+    <p class="text-[11px] text-stone-400 mb-1">Enter the quantity actually purchased and the total amount paid for that quantity. Fractional quantities are supported — for example, 0.5 bag at ₦35,000. INPROFIC calculates the equivalent cost of one whole purchase unit automatically. For products for resale, quantity uses the product's stock unit.</p>
     {{ formset.management_form }}
     <div class="border border-[#E7DFCC] rounded-md overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full min-w-[680px] text-sm">
           <thead class="bg-[#F0EAD9] text-stone-600 text-xs"><tr>
-            <th class="text-left px-2 py-1.5">Inventory Item</th><th class="text-right px-2 py-1.5 w-24">Qty</th><th class="text-right px-2 py-1.5 w-28">Unit Cost</th><th class="text-right px-2 py-1.5 w-28">Current Cost</th><th class="w-16"></th>
+            <th class="text-left px-2 py-1.5">Inventory Item</th><th class="text-right px-2 py-1.5 w-24">Qty</th><th class="text-right px-2 py-1.5 w-32">Total Purchase Cost</th><th class="text-right px-2 py-1.5 w-32">Whole Unit Cost</th><th class="text-right px-2 py-1.5 w-28">Previous Cost</th><th class="w-16"></th>
           </tr></thead>
           <tbody id="po-rows">
             {% for f in formset %}
             <tr {% if forloop.first %}data-formset-row{% endif %} class="border-t border-[#E7DFCC]" data-row>
               <td class="px-2 py-1.5">{{ f.id }}{{ f.item }}{% if f.item.errors %}<div class="text-[11px] text-rose-600 mt-1">{{ f.item.errors|join:", " }}</div>{% endif %}</td>
               <td class="px-2 py-1.5">{{ f.qty }}</td>
-              <td class="px-2 py-1.5">{{ f.unit_cost }}</td>
+              <td class="px-2 py-1.5">{{ f.unit_cost }}{% if f.unit_cost.errors %}<div class="text-[11px] text-rose-600 mt-1">{{ f.unit_cost.errors|join:", " }}</div>{% endif %}</td>
+              <td class="px-2 py-1.5 text-right text-xs text-stone-700 font-mono derived-unit-cost-display">—</td>
               <td class="px-2 py-1.5 text-right text-xs text-stone-400 font-mono current-cost-display">—</td>
               <td class="px-2 py-1.5 text-center text-xs text-rose-600">
                 {% if f.instance.pk %}
@@ -60,14 +61,30 @@
         if (input && input.value === '') input.value = '0';
       });
       const select = row.querySelector('select');
-      const cell = row.querySelector('.current-cost-display');
+      const currentCell = row.querySelector('.current-cost-display');
+      const derivedCell = row.querySelector('.derived-unit-cost-display');
+      const qtyInput = row.querySelector('input[name$="-qty"]');
+      const totalInput = row.querySelector('input[name$="-unit_cost"]');
+      const updateDerived = () => {
+        const qty = Number(qtyInput?.value || 0);
+        const total = Number(totalInput?.value || 0);
+        if (!derivedCell) return;
+        if (qty > 0 && Number.isFinite(total)) {
+          derivedCell.textContent = (total / qty).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        } else {
+          derivedCell.textContent = '—';
+        }
+      };
+      qtyInput?.addEventListener('input', updateDerived);
+      totalInput?.addEventListener('input', updateDerived);
+      updateDerived();
       if (!select || select.dataset.wired) return;
       select.dataset.wired = '1';
       select.addEventListener('change', () => {
         const cost = CURRENT_COSTS[select.value];
-        cell.textContent = cost ? cost : '—';
+        currentCell.textContent = cost ? Number(cost).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '—';
       });
-      if (select.value && CURRENT_COSTS[select.value]) cell.textContent = CURRENT_COSTS[select.value];
+      if (select.value && CURRENT_COSTS[select.value]) currentCell.textContent = Number(CURRENT_COSTS[select.value]).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
     });
   }
   wireRows();

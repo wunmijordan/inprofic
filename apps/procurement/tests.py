@@ -103,7 +103,7 @@ class DirectProductProcurementTests(TestCase):
             "items-MAX_NUM_FORMS": "1000",
             "items-0-item": f"finished:{self.product.pk}",
             "items-0-qty": "8",
-            "items-0-unit_cost": "51.25",
+            "items-0-unit_cost": "410.00",
         })
 
         self.assertRedirects(response, reverse("procurement_list"), fetch_redirect_response=False)
@@ -112,6 +112,41 @@ class DirectProductProcurementTests(TestCase):
         self.assertEqual(line.finished_good, self.product)
         self.assertEqual(line.qty, Decimal("8"))
         self.assertEqual(line.unit_cost, Decimal("51.25"))
+
+    def test_purchase_form_normalizes_fractional_quantity_total_cost(self):
+        material = RawMaterial.raw_objects.create(
+            business=self.business,
+            name="Sugar",
+            purchase_unit="bag",
+            package_qty=Decimal("50"),
+            package_unit="kg",
+            usage_unit="kg",
+            usage_conversion_factor=Decimal("1"),
+            cost_per_unit=Decimal("1320"),
+        )
+        response = self.client.post(reverse("po_add"), {
+            "date": "2026-09-14",
+            "supplier": "Sugar Supplier",
+            "payment_status": "unpaid",
+            "payment_method": "Transfer",
+            "account": "",
+            "amount_paid": "",
+            "items-TOTAL_FORMS": "1",
+            "items-INITIAL_FORMS": "0",
+            "items-MIN_NUM_FORMS": "0",
+            "items-MAX_NUM_FORMS": "1000",
+            "items-0-item": f"raw:{material.pk}",
+            "items-0-qty": "0.50",
+            # Staff enters what was actually paid for the half bag.
+            "items-0-unit_cost": "35000.00",
+        })
+
+        self.assertRedirects(response, reverse("procurement_list"), fetch_redirect_response=False)
+        line = PurchaseOrderItem.objects.get(raw_material=material)
+        self.assertEqual(line.qty, Decimal("0.50"))
+        self.assertEqual(line.unit_cost, Decimal("70000.00"))
+        self.assertEqual(line.line_total, Decimal("35000.0000"))
+
 
     def test_purchase_item_choices_exclude_another_business(self):
         other = Business.objects.create(name="Other", slug="other", vertical=Business.VERTICAL_RETAIL)
