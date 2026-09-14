@@ -133,6 +133,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const index = Number(totalForms.value || 0);
         const html = template.innerHTML.replaceAll('__prefix__', String(index));
         rows.insertAdjacentHTML('beforeend', html);
+        const addedRow = rows.lastElementChild;
+        addedRow?.querySelectorAll('input[type="number"]').forEach((input) => {
+          if (input.value === '') input.value = '0';
+        });
         totalForms.value = String(index + 1);
         update();
       });

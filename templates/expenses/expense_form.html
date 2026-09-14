@@ -27,7 +27,7 @@
   <div id="expense-rows" class="space-y-3 max-w-6xl">
     {% for form in formset %}
     <section class="expense-row rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4 shadow-sm" {% if forloop.first %}data-formset-row{% endif %}>
-      <div class="mb-3 flex items-center justify-between gap-3"><h3 class="text-sm font-semibold text-stone-700">Expense <span class="expense-row-number">{{ forloop.counter }}</span></h3><label class="flex items-center gap-2 text-xs text-rose-700">{{ form.DELETE }} Remove</label></div>
+      <div class="mb-3 flex items-center justify-between gap-3"><h3 class="text-sm font-semibold text-stone-700">Expense <span class="expense-row-number">{{ forloop.counter }}</span></h3><div><span class="hidden">{{ form.DELETE }}</span><button type="button" data-remove-expense-row class="rounded px-2 py-1 text-xs text-rose-700 hover:bg-rose-50">Remove</button></div></div>
       {% if form.non_field_errors %}<div class="mb-3 rounded-md border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">{{ form.non_field_errors }}</div>{% endif %}
       <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {% include "_field.html" with field=form.date %}
@@ -44,8 +44,8 @@
     {% endfor %}
   </div>
   <div class="max-w-6xl flex flex-wrap items-center justify-between gap-3">
-    <button type="button" id="add-expense-row" class="rounded-md border border-[#D9CFB4] bg-white px-3.5 py-2 text-sm font-medium text-[#8f172d] hover:bg-[#F0EAD9]">+ Add Another Expense</button>
-    <div class="flex flex-wrap justify-end gap-2"><a href="{% url 'expenses_list' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a><button type="submit" name="save_add_new" value="1" class="px-3.5 py-2 text-sm rounded-md font-medium border border-[#8f172d] text-[#8f172d] bg-white hover:bg-[#FFF5F4]">Save &amp; Add More</button><button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save Expenses</button></div>
+    <button type="button" id="add-expense-row" class="rounded-md border border-[#D9CFB4] bg-white px-3.5 py-2 text-sm font-medium text-[#8f172d] hover:bg-[#F0EAD9]">+ Add another expense</button>
+    <div class="flex flex-wrap justify-end gap-2"><a href="{% url 'expenses_list' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a><button type="submit" name="save_add_new" value="1" class="px-3.5 py-2 text-sm rounded-md font-medium border border-[#8f172d] text-[#8f172d] bg-white hover:bg-[#FFF5F4]">Save &amp; add more</button><button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save expenses</button></div>
   </div>
 </form>
 <script>
@@ -54,7 +54,7 @@
   const total = document.getElementById('id_expenses-TOTAL_FORMS');
   const add = document.getElementById('add-expense-row');
   const today = new Date().toISOString().slice(0, 10);
-  function renumber(){ container.querySelectorAll('.expense-row-number').forEach((node, index) => node.textContent = index + 1); }
+  function renumber(){ let visible = 0; container.querySelectorAll('.expense-row').forEach((row) => { if (row.classList.contains('hidden')) return; visible += 1; const node = row.querySelector('.expense-row-number'); if (node) node.textContent = visible; }); }
   add?.addEventListener('click', () => {
     const template = container.querySelector('[data-formset-row]');
     if (!template || !total) return;
@@ -69,11 +69,24 @@
       if (el.matches('input, select, textarea')) {
         if (el.type === 'checkbox') el.checked = false;
         else if (el.tagName === 'SELECT') el.selectedIndex = 0;
+        else if (el.type === 'number') el.value = '0';
         else el.value = el.type === 'date' ? today : '';
       }
     });
     row.querySelectorAll('.text-rose-600, .text-rose-700').forEach(node => { if (!node.querySelector('input')) node.remove(); });
     container.appendChild(row); total.value = index + 1; renumber(); row.querySelector('input, select, textarea')?.focus();
+  });
+  container?.addEventListener('click', (event) => {
+    const remove = event.target.closest('[data-remove-expense-row]');
+    if (!remove) return;
+    const row = remove.closest('.expense-row');
+    const deleted = row?.querySelector('input[name$="-DELETE"]');
+    if (deleted) deleted.checked = true;
+    row?.querySelectorAll('input, select, textarea, button').forEach((control) => {
+      if (control !== deleted && control !== remove) control.disabled = true;
+    });
+    if (row) row.classList.add('hidden');
+    renumber();
   });
   renumber();
 })();

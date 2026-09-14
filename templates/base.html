@@ -72,7 +72,7 @@
 </head>
 <body class="min-h-screen flex" style="--tenant-background: {{ biz.background_color|default:'#050733' }}; --tenant-background-contrast: {{ biz.background_text_color|default:'#FFFFFF' }}; --tenant-button: {{ biz.accent_color|default:'#D14900' }}; --tenant-button-contrast: {{ biz.button_text_color|default:'#FFFFFF' }}">
 
-  {% if is_live_tester %}<div class="fixed right-3 top-3 z-[120] rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-900 shadow-lg" title="Demo access can browse and open forms, but cannot save changes.">Demo · Read Only</div>{% endif %}
+  {% if is_live_tester %}<div class="fixed right-3 top-3 z-[120] rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-900 shadow-lg" title="Demo access can browse and open forms, but cannot save changes.">Demo · read only</div>{% endif %}
 
   {% if user.is_authenticated %}
   <aside class="desktop-sidebar tenant-sidebar hidden md:flex flex-col">
@@ -594,35 +594,97 @@
       });
     });
 
-    // Generic "add another row" for Django inline formsets.
+    // Generic "add another row" helper for Django formsets. New rows must
+    // never inherit a previously entered product/price/cost from the row used
+    // as the visual template. Number fields follow the Production Order form
+    // convention and start at 0. A newly-added row can also be removed safely
+    // without changing Django's form indexes.
     function addFormsetRow(prefix, containerId) {
       const totalForms = document.getElementById(`id_${prefix}-TOTAL_FORMS`);
-      const formCount = parseInt(totalForms.value, 10);
       const container = document.getElementById(containerId);
+      if (!totalForms || !container) return null;
+
+      const formCount = parseInt(totalForms.value || '0', 10);
       const template = container.querySelector('[data-formset-row]');
+      if (!template) return null;
+
       const newRow = template.cloneNode(true);
-      newRow.querySelectorAll('input, select').forEach((el) => {
-        ['name', 'id'].forEach((attr) => {
-          if (el.getAttribute(attr)) {
-            el.setAttribute(attr, el.getAttribute(attr).replace(/-\d+-/, `-${formCount}-`));
-          }
+      newRow.removeAttribute('data-formset-row');
+
+      newRow.querySelectorAll('input, select, textarea, label').forEach((el) => {
+        ['name', 'id', 'for'].forEach((attr) => {
+          const value = el.getAttribute(attr);
+          if (value) el.setAttribute(attr, value.replace(/-\d+-/, `-${formCount}-`));
         });
-        if (el.type === 'checkbox') { el.checked = false; }
-        else if (el.tagName !== 'SELECT') { el.value = ''; }
-        else { el.selectedIndex = 0; }
+
+        if (!el.matches('input, select, textarea')) return;
+        if (el.type === 'checkbox' || el.type === 'radio') {
+          el.checked = false;
+        } else if (el.tagName === 'SELECT') {
+          el.selectedIndex = 0;
+        } else if (el.type === 'number') {
+          el.value = el.dataset.formsetDefault ?? '0';
+        } else if (el.type === 'file') {
+          // Browsers do not permit setting file input values programmatically.
+        } else {
+          el.value = '';
+        }
+        el.disabled = false;
       });
+
       // A cloned row must be wired as a NEW row. Event-binding markers from
       // the template row would otherwise prevent dynamic price/unit handlers
       // from attaching to the clone.
       newRow.querySelectorAll('[data-wired]').forEach((el) => el.removeAttribute('data-wired'));
       newRow.removeAttribute('data-wired');
-      // Clear any calculated/display-only values carried over from the
-      // template row (for example a raw material's usage unit).
-      newRow.querySelectorAll('.unit-display').forEach((el) => {
+
+      // Do not carry calculated/display-only values or server/client errors
+      // from the row used as the template.
+      newRow.querySelectorAll('.price-display, .current-cost-display, .unit-display').forEach((el) => {
         el.textContent = '—';
       });
+      newRow.querySelectorAll('.client-field-error').forEach((el) => el.remove());
+      newRow.querySelectorAll('div.text-rose-600, span.text-rose-600').forEach((el) => {
+        if (!el.querySelector('input, select, textarea')) el.remove();
+      });
+
+      const actionCell = newRow.querySelector('td:last-child');
+      if (actionCell) {
+        // can_delete fields are sometimes only rendered for saved rows. Ensure
+        // every dynamically-added row has its own DELETE field so it can be
+        // safely ignored by Django when the user removes it.
+        let deleteInput = newRow.querySelector(`input[name="${prefix}-${formCount}-DELETE"]`);
+        if (!deleteInput) {
+          deleteInput = document.createElement('input');
+          deleteInput.type = 'checkbox';
+          deleteInput.name = `${prefix}-${formCount}-DELETE`;
+          deleteInput.id = `id_${prefix}-${formCount}-DELETE`;
+          actionCell.appendChild(deleteInput);
+        }
+        deleteInput.checked = false;
+        deleteInput.classList.add('hidden');
+        const deleteLabel = deleteInput.closest('label');
+        if (deleteLabel) deleteLabel.classList.add('hidden');
+
+        actionCell.querySelectorAll('[data-remove-new-formset-row]').forEach((el) => el.remove());
+        const removeButton = document.createElement('button');
+        removeButton.type = 'button';
+        removeButton.dataset.removeNewFormsetRow = '1';
+        removeButton.className = 'px-2 py-1 rounded text-xs text-rose-700 hover:bg-rose-50';
+        removeButton.textContent = 'Remove';
+        removeButton.addEventListener('click', () => {
+          deleteInput.checked = true;
+          newRow.querySelectorAll('input, select, textarea, button').forEach((control) => {
+            if (control !== deleteInput && control !== removeButton) control.disabled = true;
+          });
+          newRow.classList.add('hidden');
+        });
+        actionCell.appendChild(removeButton);
+      }
+
       container.appendChild(newRow);
-      totalForms.value = formCount + 1;
+      totalForms.value = String(formCount + 1);
+      return newRow;
     }
   </script>
 

@@ -55,6 +55,10 @@
   const CURRENT_COSTS = JSON.parse(document.getElementById('mat-costs').textContent);
   function wireRows() {
     document.querySelectorAll('#po-rows tr[data-row]').forEach((row) => {
+      ['qty', 'unit_cost'].forEach((suffix) => {
+        const input = row.querySelector(`input[name$="-${suffix}"]`);
+        if (input && input.value === '') input.value = '0';
+      });
       const select = row.querySelector('select');
       const cell = row.querySelector('.current-cost-display');
       if (!select || select.dataset.wired) return;
