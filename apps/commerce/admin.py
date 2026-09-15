@@ -53,3 +53,6 @@ admin.site.register(CommercePaymentAllocation, ImmutablePaymentAdmin)
 admin.site.register(CommerceGatewayEvent, ImmutablePaymentAdmin)
 admin.site.register(CommerceNotification, ImmutablePaymentAdmin)
 admin.site.register(CommerceNotificationRead, ImmutablePaymentAdmin)
+
+from .models import DeliveryProviderAccount
+admin.site.register(DeliveryProviderAccount)

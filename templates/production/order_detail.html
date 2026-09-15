@@ -29,12 +29,13 @@
 <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg shadow-[0_2px_8px_#000000d2] mb-8 overflow-x-auto overflow-y-auto max-h-[28rem]">
   <table class="min-w-max w-full text-sm">
     <thead class="bg-[#F0EAD9] text-stone-600 text-md text-middle"><tr>
-      <th class="px-2 py-1.5">Product</th><th class="px-2 py-1.5">Ordered batches</th><th class="px-2 py-1.5">Ordered pieces</th><th class="px-2 py-1.5">Ordered / requested units</th><th class="px-2 py-1.5">Production target</th><th class="px-2 py-1.5">Planned offcut</th><th class="px-2 py-1.5">Price</th><th class="px-2 py-1.5">Discount</th><th class="px-2 py-1.5">Line Total</th>
+      <th class="px-2 py-1.5">Product</th><th class="px-2 py-1.5">Production basis</th><th class="px-2 py-1.5">Ordered batches</th><th class="px-2 py-1.5">Ordered pieces</th><th class="px-2 py-1.5">Ordered / requested units</th><th class="px-2 py-1.5">Production target</th><th class="px-2 py-1.5">Planned offcut</th><th class="px-2 py-1.5">Price</th><th class="px-2 py-1.5">Discount</th><th class="px-2 py-1.5">Line Total</th>
     </tr></thead>
     <tbody>
       {% for i in order.items.all %}
       <tr class="border-t border-[#E7DFCC]">
         <td class="px-2 py-1.5">{{ i.finished_good.name }}</td>
+        <td class="px-2 py-1.5 text-xs">{% if i.production_basis == 'base_material' and i.finished_good.base_material %}<span class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 font-semibold text-emerald-800">Base material</span><div class="mt-1 text-[10px] text-stone-500">{{ i.base_material_quantity|num }} {{ i.finished_good.base_material.usage_unit }} {{ i.finished_good.base_material.name }}</div>{% else %}<span class="rounded-full border border-stone-200 bg-stone-50 px-2 py-1 text-stone-600">Product quantity</span>{% endif %}</td>
         <td class="px-2 py-1.5 text-right font-mono">{{ i.batch_qty|num }}</td>
         <td class="px-2 py-1.5 text-right font-mono">{{ i.piece_qty|num }}</td>
         <td class="px-2 py-1.5 text-right font-mono font-medium">{{ i.total_units|num }}</td>

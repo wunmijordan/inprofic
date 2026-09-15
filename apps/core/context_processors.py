@@ -35,6 +35,9 @@ def business(request):
     subscription = None
     if biz and getattr(request.user, "is_authenticated", False):
         subscription = business_subscription_for(biz)
+    visible_module_count = sum(
+        1 for permission in permissions.values() if permission.get("view")
+    )
     return {
         "biz": biz,
         "module_permissions": permissions,
@@ -44,6 +47,11 @@ def business(request):
         "is_live_tester": bool(biz and getattr(request.user, "is_authenticated", False) and is_live_tester(request.user, biz)),
         "vertical_ui": vertical_config(biz),
         "subscription": subscription,
+        # Purpose-built, single-workspace roles (for example External Auditor,
+        # POS-only staff, and riders) should not be sent "back" into an app
+        # surface they cannot use. Multi-module users get the shared back
+        # affordance on every standard workspace page.
+        "show_workspace_back": visible_module_count > 1,
         # Only the reports page consumes this flag. Keep it lazy so ordinary
         # navigation doesn't query feature entitlements that won't be rendered.
         "reports_full": (

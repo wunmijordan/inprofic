@@ -26,7 +26,7 @@ from .services import ensure_permissions, invalidate_business_access_cache, seed
 # This prevents a cashier from needing broad Commerce access simply to operate
 # the in-premise counter.
 PLAN_ENTITLEMENT_MODULES = tuple(
-    (module, label) for module, label in RoleModulePermission.MODULE_CHOICES if module != "pos"
+    (module, label) for module, label in RoleModulePermission.MODULE_CHOICES if module not in {"pos", "delivery_rider"}
 )
 
 
@@ -34,14 +34,17 @@ PLAN_MATRIX = {
     SubscriptionPlan.CODE_STARTER: {
         "dashboard": "full", "inventory": "full", "sales": "full", "expenses": "full",
         "procurement": "none", "production": "none", "finance": "none", "reports": "basic",
-        "users": "full", "commerce": "none",
+        "users": "full", "commerce": "none", "audit": "none", "delivery": "none",
     },
     SubscriptionPlan.CODE_PRODUCTION: {
         "dashboard": "full", "inventory": "full", "procurement": "full", "production": "full",
         "sales": "full", "expenses": "full", "finance": "none", "reports": "full",
-        "users": "full", "commerce": "none",
+        "users": "full", "commerce": "none", "audit": "none", "delivery": "none",
     },
-    SubscriptionPlan.CODE_BUSINESS_PRO: {module: "full" for module, _ in PLAN_ENTITLEMENT_MODULES},
+    SubscriptionPlan.CODE_BUSINESS_PRO: {
+        module: ("none" if module in {"audit", "delivery"} else "full")
+        for module, _ in PLAN_ENTITLEMENT_MODULES
+    },
 }
 
 

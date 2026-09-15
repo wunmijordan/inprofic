@@ -203,3 +203,109 @@ class MarketStockDistributionTests(TestCase):
         self.assertEqual(good.total_produced, Decimal("0.00"))
         self.assertEqual(lot.quantity_available, Decimal("0.00"))
         self.assertEqual(lot.closed_reason, "reversed")
+
+class BaseMaterialProductionTests(TestCase):
+    def setUp(self):
+        from inventory.models import RawMaterial, RecipeItem
+
+        self.business = Business.objects.create(name="Base Kitchen", slug="base-kitchen")
+        self.rice = RawMaterial.raw_objects.create(
+            business=self.business,
+            name="Rice",
+            category=RawMaterial.CATEGORY_INGREDIENT,
+            purchase_unit="bag",
+            package_qty=Decimal("50"),
+            package_unit="kg",
+            usage_unit="kg",
+            usage_conversion_factor=Decimal("1"),
+            stock=Decimal("100"),
+            reorder_level=Decimal("10"),
+            cost_per_unit=Decimal("1000"),
+        )
+        self.good = FinishedGood.raw_objects.create(
+            business=self.business,
+            name="Jollof Rice",
+            unit="portion",
+            units_per_batch=Decimal("50"),
+            base_material=self.rice,
+            stock=Decimal("0"),
+            reorder_level=Decimal("0"),
+            selling_price=Decimal("2500"),
+        )
+        RecipeItem.objects.create(
+            finished_good=self.good,
+            raw_material=self.rice,
+            qty_per_batch=Decimal("5"),
+        )
+
+    def formset_data(self, *, base_qty="15"):
+        return {
+            "items-TOTAL_FORMS": "1",
+            "items-INITIAL_FORMS": "0",
+            "items-MIN_NUM_FORMS": "0",
+            "items-MAX_NUM_FORMS": "1000",
+            "items-0-finished_good": str(self.good.pk),
+            "items-0-production_basis": OrderItem.BASIS_BASE_MATERIAL,
+            "items-0-base_material_quantity": base_qty,
+            "items-0-batch_qty": "0",
+            "items-0-piece_qty": "0",
+            "items-0-production_batch_qty": "0",
+            "items-0-production_piece_qty": "0",
+            "items-0-discount": "0",
+        }
+
+    def test_market_stock_order_can_be_sized_by_base_material(self):
+        order = Order(
+            business=self.business,
+            order_type="distribution",
+            is_market_stock=True,
+        )
+        formset = OrderItemFormSet(
+            self.formset_data(base_qty="15"),
+            instance=order,
+            market_stock=True,
+            order_type="distribution",
+        )
+
+        self.assertTrue(formset.is_valid(), formset.errors)
+        form = formset.forms[0]
+        self.assertEqual(form.cleaned_data["batch_qty"], Decimal("3"))
+        self.assertEqual(form.instance.production_basis, OrderItem.BASIS_BASE_MATERIAL)
+        self.assertEqual(form.instance.base_material_quantity, Decimal("15"))
+        self.assertEqual(form.instance.total_units, Decimal("150"))
+        self.assertEqual(form.instance.effective_production_batch_qty, Decimal("3"))
+
+    def test_base_material_keeps_fractional_run_precision(self):
+        order = Order(
+            business=self.business,
+            order_type="distribution",
+            is_market_stock=True,
+        )
+        formset = OrderItemFormSet(
+            self.formset_data(base_qty="7"),
+            instance=order,
+            market_stock=True,
+            order_type="distribution",
+        )
+
+        self.assertTrue(formset.is_valid(), formset.errors)
+        item = formset.forms[0].instance
+        expected_factor = Decimal("7") / Decimal("5")
+        self.assertEqual(item.effective_production_batch_qty, expected_factor)
+        self.assertEqual(item.total_units, expected_factor * Decimal("50"))
+
+    def test_customer_assigned_order_cannot_use_base_material_sizing(self):
+        order = Order(
+            business=self.business,
+            order_type="distribution",
+            is_market_stock=False,
+        )
+        formset = OrderItemFormSet(
+            self.formset_data(base_qty="15"),
+            instance=order,
+            market_stock=False,
+            order_type="distribution",
+        )
+
+        self.assertFalse(formset.is_valid())
+        self.assertIn("production_basis", formset.forms[0].errors)

@@ -1,0 +1,36 @@
+{% extends "commerce/storefront_page_base.html" %}
+{% block title %}My account · {{ store_business.name }}{% endblock %}
+{% block content %}
+<main class="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div><p class="text-[10px] font-bold uppercase tracking-[.18em] text-stone-400">{{ store_business.name }} customer profile</p><h1 class="mt-1 font-display text-3xl font-semibold text-stone-900">Hi, {{ storefront_customer.name }}</h1><p class="mt-2 text-sm text-stone-500">This account and its history belong only to this storefront.</p></div>
+    <form method="post" action="{% url 'storefront_customer_logout' store_business.slug %}">{% csrf_token %}<button class="rounded-xl border border-stone-300 bg-white px-4 py-2 text-xs font-semibold text-stone-700">Sign out</button></form>
+  </div>
+  <div class="mt-6 grid gap-5 lg:grid-cols-[.8fr_1.2fr]">
+    <section class="rounded-2xl border border-stone-200 bg-white p-5">
+      <h2 class="font-semibold text-stone-900">Saved profile</h2>
+      {% if customer_error %}<div class="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{{ customer_error }}</div>{% endif %}
+      <form method="post" class="mt-4 space-y-3">{% csrf_token %}
+        <label class="block text-xs font-semibold text-stone-600">Name<input name="name" required value="{{ storefront_customer.name }}" class="mt-1.5 h-10 w-full rounded-lg border border-stone-300 px-3 text-sm font-normal"></label>
+        <label class="block text-xs font-semibold text-stone-600">Email<input disabled value="{{ storefront_customer.email }}" class="mt-1.5 h-10 w-full rounded-lg border border-stone-200 bg-stone-50 px-3 text-sm font-normal text-stone-500"></label>
+        <label class="block text-xs font-semibold text-stone-600">Phone<input name="phone" value="{{ storefront_customer.phone }}" class="mt-1.5 h-10 w-full rounded-lg border border-stone-300 px-3 text-sm font-normal"></label>
+        <label class="block text-xs font-semibold text-stone-600">Default address<textarea name="default_address" rows="3" class="mt-1.5 w-full rounded-lg border border-stone-300 px-3 py-2 text-sm font-normal">{{ storefront_customer.default_address }}</textarea></label>
+        <label class="block text-xs font-semibold text-stone-600">New password <span class="font-normal text-stone-400">(leave blank to keep current)</span><input name="new_password" type="password" autocomplete="new-password" class="mt-1.5 h-10 w-full rounded-lg border border-stone-300 px-3 text-sm font-normal"></label>
+        <button class="w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style="background:var(--brand)">Save profile</button>
+      </form>
+    </section>
+    <section class="rounded-2xl border border-stone-200 bg-white p-5">
+      <div class="flex items-center justify-between gap-3"><h2 class="font-semibold text-stone-900">Purchase history</h2><a href="{% url 'storefront' store_business.slug %}" class="text-xs font-semibold underline" style="color:var(--brand)">Shop again</a></div>
+      <div class="mt-4 divide-y divide-stone-100">
+        {% for checkout in customer_checkouts %}
+        <article class="py-4 first:pt-0">
+          <div class="flex flex-wrap items-start justify-between gap-2"><div><span class="font-mono text-xs font-semibold" style="color:var(--brand)">{{ checkout.public_number }}</span><div class="mt-1 text-xs text-stone-500">{{ checkout.created_at|date:"M j, Y · g:i A" }} · {{ checkout.get_status_display }}</div></div><strong class="text-sm text-stone-900">{{ store_business.currency_symbol }}{{ checkout.total|floatformat:2 }}</strong></div>
+          <div class="mt-2 text-xs leading-5 text-stone-600">{% for item in checkout.items.all %}{{ item.finished_good.name }} × {{ item.quantity }}{% if not forloop.last %} · {% endif %}{% endfor %}</div>
+          <div class="mt-3 flex flex-wrap gap-2"><a href="{% url 'storefront_checkout' store_business.slug checkout.public_id %}" class="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] font-semibold text-stone-700">Open checkout</a>{% if checkout.materialized_intake_id %}<a href="{% url 'storefront_order_status' store_business.slug checkout.materialized_intake.public_id %}" class="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] font-semibold text-stone-700">Order status</a>{% endif %}{% if checkout.customer_delivery %}<a href="{% url 'storefront_delivery_tracking' store_business.slug checkout.customer_delivery.public_id %}" class="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-[11px] font-semibold text-sky-800">Track delivery</a>{% endif %}</div>
+        </article>
+        {% empty %}<div class="py-10 text-center text-sm text-stone-400">No purchases are attached to this profile yet. Guest purchases made before sign-in remain guest records.</div>{% endfor %}
+      </div>
+    </section>
+  </div>
+</main>
+{% endblock %}

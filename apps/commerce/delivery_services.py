@@ -1,0 +1,723 @@
+from __future__ import annotations
+
+import uuid
+from decimal import Decimal, InvalidOperation
+from math import asin, cos, radians, sin, sqrt
+
+from django.core.exceptions import ValidationError
+from django.core.validators import URLValidator
+from django.db import transaction
+from django.db.models import Q
+from django.utils import timezone
+
+from accounts.services import business_has_module
+from core.services import audit
+
+from .models import (
+    CommerceIntake,
+    CommerceNotification,
+    DeliveryArea,
+    DeliveryAssignment,
+    DeliveryDriver,
+    DeliveryEvent,
+    DeliveryIssue,
+    DeliveryOrigin,
+    DeliveryProviderAccount,
+    DeliveryQuote,
+    DeliveryRateBand,
+    DeliverySettings,
+)
+from .notification_services import queue_commerce_notification
+
+
+def _decimal(value, label):
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ValidationError(f"Enter a valid {label}.") from exc
+
+
+def _haversine_km(lat1, lon1, lat2, lon2):
+    lat1, lon1, lat2, lon2 = map(lambda v: radians(float(v)), (lat1, lon1, lat2, lon2))
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+    return Decimal(str(6371.0088 * 2 * asin(sqrt(a)))).quantize(Decimal("0.01"))
+
+
+def delivery_available(business):
+    if not business_has_module(business, "delivery"):
+        return False
+    settings = DeliverySettings.raw_objects.filter(business=business).first()
+    return bool(settings and settings.enabled)
+
+
+def _default_origin(business):
+    origin = DeliveryOrigin.raw_objects.filter(business=business, active=True, is_default=True).first()
+    return origin or DeliveryOrigin.raw_objects.filter(business=business, active=True).first()
+
+
+def _rate_band(business, distance, area=None):
+    if area and area.rate_band_id and area.rate_band.active:
+        band = area.rate_band
+        if distance < band.min_distance_km or (band.max_distance_km is not None and distance > band.max_distance_km):
+            raise ValidationError(f"{area.name} is outside its configured delivery distance band.")
+        return band
+    return DeliveryRateBand.raw_objects.filter(
+        business=business,
+        active=True,
+        min_distance_km__lte=distance,
+    ).filter(
+        Q(max_distance_km__isnull=True) | Q(max_distance_km__gte=distance)
+    ).order_by("sort_order", "min_distance_km", "id").first()
+
+
+def _destination(*, business, origin, area_id=None, latitude=None, longitude=None):
+    area = None
+    if area_id:
+        area = DeliveryArea.raw_objects.filter(
+            business=business, pk=area_id, active=True
+        ).select_related("rate_band").first()
+        if not area:
+            raise ValidationError("Choose a valid delivery area.")
+        if latitude in (None, ""):
+            latitude = area.latitude
+        if longitude in (None, ""):
+            longitude = area.longitude
+    latitude_value = _decimal(latitude, "destination latitude") if latitude not in (None, "") else None
+    longitude_value = _decimal(longitude, "destination longitude") if longitude not in (None, "") else None
+    if (latitude_value is None) != (longitude_value is None):
+        raise ValidationError("Provide both destination latitude and longitude, or neither.")
+    if latitude_value is not None and not (-90 <= latitude_value <= 90 and -180 <= longitude_value <= 180):
+        raise ValidationError("Destination coordinates are outside the valid range.")
+    return area, latitude_value, longitude_value
+
+
+def _native_quote_data(*, business, origin, area, latitude, longitude, subtotal):
+    if origin.latitude is None or origin.longitude is None:
+        raise ValidationError("Configure coordinates on the delivery origin before using INPROFIC distance rates.")
+    if latitude is None or longitude is None:
+        raise ValidationError("Choose a configured area or provide destination coordinates.")
+    distance = _haversine_km(origin.latitude, origin.longitude, latitude, longitude)
+    band = _rate_band(business, distance, area=area)
+    if not band:
+        raise ValidationError("This destination is outside the configured delivery coverage.")
+    if subtotal < band.minimum_order:
+        raise ValidationError(
+            f"Minimum order for this delivery area is {business.currency_symbol}{band.minimum_order:,.2f}."
+        )
+    fee = (Decimal(band.base_fee) + Decimal(band.per_km_fee) * distance).quantize(Decimal("0.01"))
+    return {
+        "distance": distance,
+        "fee": fee,
+        "eta_min": band.eta_min_minutes,
+        "eta_max": band.eta_max_minutes,
+        "payload": {"pricing": "inprofic_distance_band", "rate_band_id": band.pk},
+    }
+
+
+def _glovo_quote_data(*, account, destination_address, latitude, longitude, subtotal, area):
+    from .delivery_providers import ProviderDispatchError, quote_glovo_delivery
+
+    if not account or account.provider_code != DeliveryProviderAccount.PROVIDER_GLOVO:
+        return None
+    if not account.use_live_quotes or not account.is_configured_for_quote:
+        return None
+    try:
+        result = quote_glovo_delivery(
+            account,
+            destination_address=destination_address,
+            latitude=latitude,
+            longitude=longitude,
+        )
+    except ProviderDispatchError:
+        return None
+    if area and area.rate_band_id and subtotal < area.rate_band.minimum_order:
+        raise ValidationError(
+            f"Minimum order for this delivery area is {account.business.currency_symbol}{area.rate_band.minimum_order:,.2f}."
+        )
+    return {
+        "distance": result["distance_km"],
+        "fee": result["fee"],
+        "eta_min": result["eta_min_minutes"],
+        "eta_max": result["eta_max_minutes"],
+        "expires_at": result["expires_at"],
+        "provider_reference": result["quote_id"],
+        "payload": {"provider": "glovo_laas_v2", "response": result["response"]},
+    }
+
+
+def _persist_quote(*, business, actor, group_id, selection_source, origin, area, address, latitude, longitude,
+                   subtotal, provider, provider_account, data, expires_at):
+    return DeliveryQuote.raw_objects.create(
+        business=business,
+        created_by=actor,
+        quote_group_id=group_id,
+        selection_source=selection_source,
+        origin=origin,
+        area=area,
+        destination_address=address[:255],
+        destination_latitude=latitude,
+        destination_longitude=longitude,
+        distance_km=data["distance"],
+        subtotal=subtotal,
+        fee=data["fee"],
+        total=subtotal + data["fee"],
+        eta_min_minutes=data["eta_min"],
+        eta_max_minutes=data["eta_max"],
+        provider=provider,
+        provider_account=provider_account,
+        provider_quote_reference=data.get("provider_reference", ""),
+        provider_payload=data.get("payload", {}),
+        expires_at=data.get("expires_at") or expires_at,
+    )
+
+
+def create_delivery_quote_options(*, business, subtotal, destination_address, area_id=None, latitude=None, longitude=None,
+                                  actor=None):
+    """Create the delivery methods currently available for one destination.
+
+    Hybrid is a routing mode, never a courier. Every persisted option resolves
+    to either ``inhouse`` or ``third_party`` so execution, tracking and audit
+    records always name the transport method that will actually carry the job.
+    """
+    if not business_has_module(business, "delivery"):
+        raise ValidationError("Delivery is not included in this business plan.")
+    settings, _ = DeliverySettings.raw_objects.get_or_create(business=business, defaults={"created_by": actor})
+    if not settings.enabled:
+        raise ValidationError("Delivery is not enabled for this business.")
+
+    subtotal = _decimal(subtotal, "order subtotal").quantize(Decimal("0.01"))
+    if subtotal < 0:
+        raise ValidationError("Order subtotal cannot be negative.")
+    origin = _default_origin(business)
+    if not origin:
+        raise ValidationError("Configure a delivery origin before quoting delivery.")
+    area, lat, lon = _destination(
+        business=business, origin=origin, area_id=area_id, latitude=latitude, longitude=longitude
+    )
+    address = (destination_address or (area.name if area else "")).strip()
+    if not address:
+        raise ValidationError("Enter the delivery address.")
+    group_id = uuid.uuid4()
+    base_expires = timezone.now() + timezone.timedelta(minutes=settings.quote_valid_minutes)
+    options = []
+    errors = []
+
+    def add_inhouse(selection_source):
+        try:
+            data = _native_quote_data(
+                business=business, origin=origin, area=area, latitude=lat, longitude=lon, subtotal=subtotal
+            )
+        except ValidationError as exc:
+            errors.extend(exc.messages)
+            return
+        options.append(_persist_quote(
+            business=business, actor=actor, group_id=group_id, selection_source=selection_source,
+            origin=origin, area=area, address=address, latitude=lat, longitude=lon, subtotal=subtotal,
+            provider=DeliverySettings.PROVIDER_INHOUSE, provider_account=None, data=data, expires_at=base_expires,
+        ))
+
+    def add_external(selection_source):
+        account = settings.default_provider_account
+        if not account or not account.active:
+            errors.append("The external delivery provider is not configured.")
+            return
+        if account.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO:
+            data = _glovo_quote_data(
+                account=account, destination_address=address, latitude=lat, longitude=lon, subtotal=subtotal, area=area
+            )
+            if not data:
+                errors.append("Glovo could not provide a live quote for this destination.")
+                return
+        else:
+            # Provider-neutral/manual couriers can still use the tenant's own
+            # customer-facing rate bands until that plug-in supplies live rates.
+            try:
+                data = _native_quote_data(
+                    business=business, origin=origin, area=area, latitude=lat, longitude=lon, subtotal=subtotal
+                )
+            except ValidationError as exc:
+                errors.extend(exc.messages)
+                return
+            data["payload"] = {**data.get("payload", {}), "provider": account.provider_code, "live_quote": False}
+        options.append(_persist_quote(
+            business=business, actor=actor, group_id=group_id, selection_source=selection_source,
+            origin=origin, area=area, address=address, latitude=lat, longitude=lon, subtotal=subtotal,
+            provider=DeliverySettings.PROVIDER_THIRD_PARTY, provider_account=account, data=data, expires_at=base_expires,
+        ))
+
+    if settings.default_provider == DeliverySettings.PROVIDER_INHOUSE:
+        add_inhouse(DeliveryQuote.SELECT_PLATFORM)
+    elif settings.default_provider == DeliverySettings.PROVIDER_THIRD_PARTY:
+        add_external(DeliveryQuote.SELECT_PLATFORM)
+    else:
+        source = (
+            DeliveryQuote.SELECT_CUSTOMER
+            if settings.hybrid_routing_policy == DeliverySettings.HYBRID_ROUTE_CUSTOMER
+            else DeliveryQuote.SELECT_DISPATCHER
+            if settings.hybrid_routing_policy == DeliverySettings.HYBRID_ROUTE_DISPATCHER
+            else DeliveryQuote.SELECT_PLATFORM
+        )
+        add_inhouse(source)
+        add_external(source)
+
+    if not options:
+        raise ValidationError(errors[0] if errors else "No delivery method is available for this destination.")
+    return settings, options
+
+
+def select_delivery_quote(settings, options):
+    """Return the pre-payment quote selected by tenant routing policy, if any."""
+    if len(options) == 1:
+        return options[0]
+    if settings.default_provider != DeliverySettings.PROVIDER_HYBRID:
+        return options[0]
+    policy = settings.hybrid_routing_policy
+    if policy == DeliverySettings.HYBRID_ROUTE_CUSTOMER:
+        return None
+    inhouse = next((q for q in options if q.provider == DeliverySettings.PROVIDER_INHOUSE), None)
+    external = next((q for q in options if q.provider == DeliverySettings.PROVIDER_THIRD_PARTY), None)
+    if policy == DeliverySettings.HYBRID_ROUTE_LOWEST:
+        return min(options, key=lambda q: (q.fee, q.eta_max_minutes, q.pk))
+    if policy == DeliverySettings.HYBRID_ROUTE_FASTEST:
+        return min(options, key=lambda q: (q.eta_max_minutes, q.fee, q.pk))
+    if policy == DeliverySettings.HYBRID_ROUTE_GLOVO_FIRST:
+        return external or inhouse
+    # Dispatcher-choice and in-house-first both charge the stable in-house rate
+    # when available. Dispatch may later switch methods subject to the visible
+    # post-payment policy, without increasing the customer's paid fee.
+    return inhouse or external
+
+
+def create_delivery_quote(**kwargs):
+    """Backward-compatible single quote API for non-interactive callers."""
+    settings, options = create_delivery_quote_options(**kwargs)
+    return select_delivery_quote(settings, options) or options[0]
+
+
+def serialize_delivery_quote(quote):
+    provider_label = "In-house delivery" if quote.provider == DeliverySettings.PROVIDER_INHOUSE else (
+        quote.provider_account.get_provider_code_display() if quote.provider_account_id else "Delivery partner"
+    )
+    return {
+        "quote_id": str(quote.public_id),
+        "quote_group_id": str(quote.quote_group_id),
+        "provider": quote.provider,
+        "provider_label": provider_label,
+        "distance_km": str(quote.distance_km),
+        "fee": f"{quote.fee:.2f}",
+        "total": f"{quote.total:.2f}",
+        "eta_min_minutes": quote.eta_min_minutes,
+        "eta_max_minutes": quote.eta_max_minutes,
+        "expires_at": quote.expires_at.isoformat(),
+    }
+
+
+def validate_delivery_quote(*, business, public_id, subtotal):
+    if not business_has_module(business, "delivery"):
+        raise ValidationError("Delivery is no longer included in this business plan.")
+    settings = DeliverySettings.raw_objects.filter(business=business, enabled=True).first()
+    if not settings:
+        raise ValidationError("Delivery is no longer enabled for this business.")
+    quote = DeliveryQuote.raw_objects.select_for_update().filter(
+        business=business, public_id=public_id
+    ).first()
+    if not quote:
+        raise ValidationError("Delivery quote was not found.")
+    if quote.provider == DeliverySettings.PROVIDER_HYBRID:
+        raise ValidationError("This legacy Hybrid quote must be refreshed before payment.")
+    if quote.status != DeliveryQuote.STATUS_ACTIVE or quote.expires_at <= timezone.now():
+        if quote.status == DeliveryQuote.STATUS_ACTIVE:
+            quote.status = DeliveryQuote.STATUS_EXPIRED
+            quote.save(update_fields=["status", "updated_at"])
+        raise ValidationError("Delivery quote has expired. Request a fresh quote.")
+    subtotal = Decimal(subtotal).quantize(Decimal("0.01"))
+    if Decimal(quote.subtotal).quantize(Decimal("0.01")) != subtotal:
+        raise ValidationError("The basket changed after the delivery quote. Request a fresh quote.")
+    return quote
+
+
+def _notify_rider_assignment(assignment, *, previous_driver_id=None):
+    driver = assignment.driver
+    if previous_driver_id and (not driver or driver.pk != previous_driver_id):
+        previous = DeliveryDriver.raw_objects.select_related("user").filter(
+            business=assignment.business, pk=previous_driver_id
+        ).first()
+        if previous and previous.user_id:
+            queue_commerce_notification(
+                business=assignment.business, recipient_user=previous.user,
+                event_type=CommerceNotification.EVENT_DELIVERY_ASSIGNED,
+                title=f"Delivery reassigned · {assignment.intake.public_number}",
+                message="This job is no longer assigned to you. Refresh My Deliveries before travelling.",
+                target_url="/delivery/rider/",
+                dedupe_key=f"delivery:{assignment.pk}:driver:{previous.pk}:unassigned:{assignment.driver_id or 'none'}",
+            )
+    if not driver or not driver.user_id or driver.pk == previous_driver_id:
+        return
+    queue_commerce_notification(
+        business=assignment.business,
+        recipient_user=driver.user,
+        event_type=CommerceNotification.EVENT_DELIVERY_ASSIGNED,
+        title=f"New delivery assigned · {assignment.intake.public_number}",
+        message=f"{assignment.intake.customer_name} · {assignment.intake.customer_address or (assignment.quote.destination_address if assignment.quote_id else '')}",
+        target_url="/delivery/rider/",
+        dedupe_key=f"delivery:{assignment.pk}:driver:{driver.pk}:assigned:{assignment.method_switch_count}",
+    )
+
+
+def _notify_rider_status(assignment, *, actor=None):
+    driver = assignment.driver
+    if not driver or not driver.user_id or (actor is not None and getattr(actor, "pk", None) == driver.user_id):
+        return
+    queue_commerce_notification(
+        business=assignment.business, recipient_user=driver.user,
+        event_type=CommerceNotification.EVENT_DELIVERY_STATUS,
+        title=f"Delivery update · {assignment.intake.public_number}",
+        message=f"{assignment.get_status_display()}{' · ' + assignment.status_note if assignment.status_note else ''}",
+        target_url="/delivery/rider/",
+        dedupe_key=f"delivery:{assignment.pk}:driver:{driver.pk}:status:{assignment.status}:{assignment.events.count()}",
+    )
+
+
+def _notify_dispatch(assignment, event_type, title, message, dedupe_suffix):
+    queue_commerce_notification(
+        business=assignment.business,
+        event_type=event_type,
+        title=title,
+        message=message,
+        target_url="/delivery/",
+        dedupe_key=f"delivery:{assignment.pk}:{dedupe_suffix}",
+    )
+
+
+@transaction.atomic
+def ensure_delivery_assignment(intake, *, actor=None):
+    if not intake.delivery_quote_id:
+        return None
+    existing = DeliveryAssignment.raw_objects.filter(business=intake.business, intake=intake).first()
+    if existing:
+        return existing
+    if not business_has_module(intake.business, "delivery"):
+        raise ValidationError("Delivery is no longer included in this business plan.")
+    settings = DeliverySettings.raw_objects.filter(business=intake.business, enabled=True).first()
+    if not settings:
+        raise ValidationError("Delivery is no longer enabled for this business.")
+    quote = DeliveryQuote.raw_objects.select_for_update().get(pk=intake.delivery_quote_id, business=intake.business)
+    if quote.provider == DeliverySettings.PROVIDER_HYBRID:
+        raise ValidationError("Delivery must resolve to In-house or an external provider before dispatch.")
+    assignment = DeliveryAssignment.raw_objects.create(
+        business=intake.business,
+        created_by=actor,
+        intake=intake,
+        quote=quote,
+        origin=quote.origin,
+        provider=quote.provider,
+        provider_account=quote.provider_account,
+        status=DeliveryAssignment.STATUS_PENDING,
+        eta_at=timezone.now() + timezone.timedelta(minutes=quote.eta_max_minutes),
+    )
+    DeliveryEvent.raw_objects.create(
+        business=intake.business,
+        created_by=actor,
+        assignment=assignment,
+        status=assignment.status,
+        note="Delivery created from paid commerce checkout.",
+    )
+    quote.status = DeliveryQuote.STATUS_USED
+    quote.save(update_fields=["status", "updated_at"])
+    audit(
+        intake.business, actor, "delivery_create", assignment,
+        f"Delivery created for {intake.public_number}",
+        {"order": intake.public_number, "fee": str(intake.delivery_fee), "provider": assignment.provider, "provider_account": assignment.provider_account_id},
+    )
+    _notify_dispatch(
+        assignment,
+        CommerceNotification.EVENT_DELIVERY_CREATED,
+        f"Delivery ready for dispatch · {intake.public_number}",
+        f"{intake.customer_name} · paid delivery fee {intake.business.currency_symbol}{intake.delivery_fee:,.2f}",
+        "created",
+    )
+    if assignment.provider_account_id and assignment.provider_account.auto_dispatch:
+        from .delivery_providers import ProviderDispatchError, dispatch_assignment_to_provider
+        try:
+            dispatch_assignment_to_provider(assignment, actor=actor)
+            assignment.refresh_from_db()
+        except ProviderDispatchError as exc:
+            DeliveryEvent.raw_objects.create(
+                business=intake.business,
+                created_by=actor,
+                assignment=assignment,
+                status=assignment.status,
+                note=f"Provider auto-dispatch failed; manual dispatch is still available. {str(exc)[:180]}",
+                metadata={"provider_account": assignment.provider_account_id, "error": str(exc)},
+            )
+            audit(
+                intake.business, actor, "delivery_provider_dispatch_failed", assignment,
+                f"Provider auto-dispatch failed for {intake.public_number}",
+                {"provider_account": assignment.provider_account_id, "error": str(exc)},
+            )
+            _notify_dispatch(
+                assignment,
+                CommerceNotification.EVENT_DELIVERY_PROVIDER,
+                f"Delivery provider needs attention · {intake.public_number}",
+                str(exc),
+                f"provider-failed:{timezone.now().strftime('%Y%m%d%H%M')}",
+            )
+    return assignment
+
+
+@transaction.atomic
+def update_delivery_status(*, assignment, status, actor=None, note="", driver=None, clear_driver=False,
+                           proof_note="", proof_reference="", external_reference="", external_tracking_url=""):
+    allowed = {value for value, _ in DeliveryAssignment.STATUS_CHOICES}
+    if status not in allowed:
+        raise ValidationError("Choose a valid delivery status.")
+    assignment = DeliveryAssignment.raw_objects.select_for_update().select_related("driver__user", "intake", "business").get(
+        pk=assignment.pk, business=assignment.business
+    )
+    previous = assignment.status
+    previous_driver_id = assignment.driver_id
+    transitions = {
+        DeliveryAssignment.STATUS_PENDING: {DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_READY, DeliveryAssignment.STATUS_CANCELLED},
+        DeliveryAssignment.STATUS_ASSIGNED: {DeliveryAssignment.STATUS_READY, DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_CANCELLED},
+        DeliveryAssignment.STATUS_READY: {DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_CANCELLED},
+        DeliveryAssignment.STATUS_PICKED_UP: {DeliveryAssignment.STATUS_OUT_FOR_DELIVERY, DeliveryAssignment.STATUS_FAILED, DeliveryAssignment.STATUS_RETURNED},
+        DeliveryAssignment.STATUS_OUT_FOR_DELIVERY: {DeliveryAssignment.STATUS_DELIVERED, DeliveryAssignment.STATUS_FAILED, DeliveryAssignment.STATUS_RETURNED},
+        DeliveryAssignment.STATUS_FAILED: {DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_RETURNED, DeliveryAssignment.STATUS_CANCELLED},
+        DeliveryAssignment.STATUS_RETURNED: set(),
+        DeliveryAssignment.STATUS_DELIVERED: set(),
+        DeliveryAssignment.STATUS_CANCELLED: set(),
+    }
+    if status != previous and status not in transitions.get(previous, set()):
+        raise ValidationError(
+            f"Delivery cannot move from {assignment.get_status_display()} to {dict(DeliveryAssignment.STATUS_CHOICES).get(status, status)}."
+        )
+    settings = DeliverySettings.raw_objects.filter(business=assignment.business).first()
+    if not business_has_module(assignment.business, "delivery"):
+        raise ValidationError("Delivery is no longer included in this business plan.")
+    if driver is not None:
+        if driver.business_id != assignment.business_id or not driver.active:
+            raise ValidationError("Choose an active delivery driver from this business.")
+        if assignment.provider == DeliverySettings.PROVIDER_INHOUSE and driver.provider != DeliveryDriver.PROVIDER_INHOUSE:
+            raise ValidationError("Choose an in-house driver for an in-house delivery.")
+        if assignment.provider == DeliverySettings.PROVIDER_THIRD_PARTY and driver.provider != DeliveryDriver.PROVIDER_THIRD_PARTY:
+            raise ValidationError("Choose a third-party courier for an external-provider delivery.")
+    effective_driver = None if clear_driver else (driver if driver is not None else assignment.driver)
+    dispatch_states = {DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_OUT_FOR_DELIVERY}
+    if status in dispatch_states and assignment.provider == DeliverySettings.PROVIDER_INHOUSE and not effective_driver:
+        raise ValidationError("Assign an active driver before moving an in-house delivery into dispatch.")
+    effective_external_reference = (external_reference or assignment.external_reference or "").strip()
+    if status in dispatch_states and assignment.provider == DeliverySettings.PROVIDER_THIRD_PARTY and not (effective_driver or effective_external_reference or assignment.provider_order_id):
+        raise ValidationError("Add a courier/provider reference before dispatch.")
+    if status == DeliveryAssignment.STATUS_DELIVERED and settings and settings.require_proof_of_delivery and not (
+        (proof_note or assignment.proof_note).strip() or (proof_reference or assignment.proof_reference).strip()
+    ):
+        raise ValidationError("Proof of delivery is required before marking this delivery as delivered.")
+    assignment.status = status
+    assignment.status_note = (note or "")[:255]
+    if clear_driver:
+        assignment.driver = None
+    elif driver is not None:
+        assignment.driver = driver
+    if external_reference:
+        assignment.external_reference = external_reference[:160]
+    if external_tracking_url:
+        external_tracking_url = external_tracking_url.strip()[:500]
+        URLValidator(schemes=["http", "https"])(external_tracking_url)
+        assignment.external_tracking_url = external_tracking_url
+    if proof_note:
+        assignment.proof_note = proof_note[:255]
+    if proof_reference:
+        assignment.proof_reference = proof_reference[:255]
+    now = timezone.now()
+    if status in {DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_OUT_FOR_DELIVERY} and not assignment.picked_up_at:
+        assignment.picked_up_at = now
+    if status == DeliveryAssignment.STATUS_DELIVERED:
+        assignment.delivered_at = now
+    assignment.save()
+    assignment.refresh_from_db()
+    DeliveryEvent.raw_objects.create(
+        business=assignment.business,
+        created_by=actor,
+        assignment=assignment,
+        status=status,
+        note=assignment.status_note,
+        metadata={"previous_status": previous, "driver_id": assignment.driver_id, "external_reference": assignment.external_reference, "proof_reference": assignment.proof_reference},
+    )
+    audit(
+        assignment.business, actor, "delivery_status", assignment,
+        f"Delivery {assignment.public_id} changed from {previous} to {status}",
+        {"previous_status": previous, "status": status, "note": assignment.status_note},
+    )
+    if assignment.driver_id and assignment.driver_id != previous_driver_id:
+        assignment = DeliveryAssignment.raw_objects.select_related("driver__user", "intake", "quote").get(pk=assignment.pk)
+        _notify_rider_assignment(assignment, previous_driver_id=previous_driver_id)
+    if status != previous:
+        _notify_dispatch(
+            assignment,
+            CommerceNotification.EVENT_DELIVERY_STATUS,
+            f"Delivery {assignment.get_status_display()} · {assignment.intake.public_number}",
+            assignment.status_note or assignment.intake.customer_name,
+            f"status:{status}:{assignment.events.count()}",
+        )
+        _notify_rider_status(assignment, actor=actor)
+    return assignment
+
+
+def _method_quote_for_assignment(assignment, target_provider):
+    intake = assignment.intake
+    subtotal = sum((row.line_total for row in intake.items.all()), Decimal("0")).quantize(Decimal("0.01"))
+    quote = assignment.quote or intake.delivery_quote
+    settings, options = create_delivery_quote_options(
+        business=assignment.business,
+        subtotal=subtotal,
+        destination_address=intake.customer_address or (quote.destination_address if quote else ""),
+        area_id=quote.area_id if quote else None,
+        latitude=quote.destination_latitude if quote else None,
+        longitude=quote.destination_longitude if quote else None,
+        actor=None,
+    )
+    target = next((row for row in options if row.provider == target_provider), None)
+    if not target:
+        label = "In-house" if target_provider == DeliverySettings.PROVIDER_INHOUSE else "delivery partner"
+        raise ValidationError(f"{label} delivery is not currently available for this destination.")
+    return settings, target
+
+
+def switch_delivery_method(*, assignment, target_provider, actor=None, manager_approved=False):
+    """Switch a paid Hybrid delivery before pickup without changing customer charge."""
+    if target_provider not in {DeliverySettings.PROVIDER_INHOUSE, DeliverySettings.PROVIDER_THIRD_PARTY}:
+        raise ValidationError("Choose In-house or the configured delivery partner.")
+    if not business_has_module(assignment.business, "delivery"):
+        raise ValidationError("Delivery is no longer included in this business plan.")
+    current = DeliveryAssignment.raw_objects.select_related("intake", "quote", "provider_account", "business").get(pk=assignment.pk)
+    settings = DeliverySettings.raw_objects.filter(business=current.business, enabled=True).first()
+    if not settings or settings.default_provider != DeliverySettings.PROVIDER_HYBRID:
+        raise ValidationError("Delivery-method switching is available only while Hybrid delivery is enabled.")
+    if current.status not in {DeliveryAssignment.STATUS_PENDING, DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_READY} or current.picked_up_at:
+        raise ValidationError("Delivery method can only be switched before pickup.")
+    if current.provider == target_provider:
+        return current
+    if settings.hybrid_switch_policy == DeliverySettings.SWITCH_LOCKED:
+        raise ValidationError("This business locks the delivery method after payment.")
+
+    _settings, target_quote = _method_quote_for_assignment(current, target_provider)
+    paid_fee = Decimal(current.intake.delivery_fee or 0).quantize(Decimal("0.01"))
+    new_cost = Decimal(target_quote.fee).quantize(Decimal("0.01"))
+    if settings.hybrid_switch_policy == DeliverySettings.SWITCH_EQUAL_OR_LOWER and new_cost > paid_fee:
+        raise ValidationError("This switch would cost more than the customer's paid delivery fee and is blocked by policy.")
+    if settings.hybrid_switch_policy == DeliverySettings.SWITCH_APPROVAL_ABSORBS and new_cost > paid_fee and not manager_approved:
+        raise ValidationError("A manager must approve this higher-cost switch. The customer will not be charged extra.")
+
+    if current.provider == DeliverySettings.PROVIDER_THIRD_PARTY and current.provider_order_id:
+        from .delivery_providers import cancel_assignment_with_provider
+        cancel_assignment_with_provider(current, actor=actor)
+
+    previous_provider = current.provider
+    previous_account_id = current.provider_account_id
+    previous_driver_id = current.driver_id
+    with transaction.atomic():
+        current = DeliveryAssignment.raw_objects.select_for_update().get(pk=current.pk)
+        current.quote = target_quote
+        current.origin = target_quote.origin
+        current.provider = target_provider
+        current.provider_account = target_quote.provider_account if target_provider == DeliverySettings.PROVIDER_THIRD_PARTY else None
+        current.driver = None
+        current.status = DeliveryAssignment.STATUS_PENDING
+        current.status_note = "Delivery method switched before pickup."
+        current.provider_order_id = ""
+        current.provider_status = ""
+        current.provider_payload = {}
+        current.external_reference = ""
+        current.external_tracking_url = ""
+        current.method_switch_count += 1
+        current.last_method_switched_at = timezone.now()
+        current.eta_at = timezone.now() + timezone.timedelta(minutes=target_quote.eta_max_minutes)
+        current.save()
+        DeliveryEvent.raw_objects.create(
+            business=current.business,
+            created_by=actor,
+            assignment=current,
+            status=current.status,
+            note=current.status_note,
+            metadata={
+                "event": "method_switch",
+                "from_provider": previous_provider,
+                "to_provider": target_provider,
+                "from_provider_account_id": previous_account_id,
+                "to_provider_account_id": current.provider_account_id,
+                "customer_paid_fee": str(paid_fee),
+                "new_provider_cost": str(new_cost),
+                "business_absorbed_difference": str(max(Decimal("0"), new_cost - paid_fee)),
+                "manager_approved": bool(manager_approved),
+            },
+        )
+        target_quote.status = DeliveryQuote.STATUS_USED
+        target_quote.save(update_fields=["status", "updated_at"])
+        audit(
+            current.business, actor, "delivery_method_switch", current,
+            f"Delivery {current.public_id} switched from {previous_provider} to {target_provider}",
+            {"paid_fee": str(paid_fee), "new_cost": str(new_cost), "manager_approved": bool(manager_approved)},
+        )
+    if previous_driver_id:
+        _notify_rider_assignment(current, previous_driver_id=previous_driver_id)
+    _notify_dispatch(
+        current,
+        CommerceNotification.EVENT_DELIVERY_SWITCH,
+        f"Delivery method changed · {current.intake.public_number}",
+        f"{dict(DeliverySettings.PROVIDER_CHOICES).get(previous_provider)} → {dict(DeliverySettings.PROVIDER_CHOICES).get(target_provider)}. Customer fee unchanged.",
+        f"switch:{current.method_switch_count}",
+    )
+    if current.provider_account_id and current.provider_account.auto_dispatch:
+        from .delivery_providers import ProviderDispatchError, dispatch_assignment_to_provider
+        try:
+            current = dispatch_assignment_to_provider(current, actor=actor)
+        except ProviderDispatchError as exc:
+            _notify_dispatch(
+                current,
+                CommerceNotification.EVENT_DELIVERY_PROVIDER,
+                f"Provider dispatch needs attention · {current.intake.public_number}",
+                str(exc),
+                f"switch-provider-failed:{current.method_switch_count}",
+            )
+    return current
+
+
+def raise_delivery_issue(*, assignment, driver, category, details, actor=None):
+    if assignment.business_id != driver.business_id or assignment.driver_id != driver.pk:
+        raise ValidationError("You can only report issues for deliveries currently assigned to you.")
+    if category not in {value for value, _ in DeliveryIssue.CATEGORY_CHOICES}:
+        raise ValidationError("Choose a valid delivery issue category.")
+    details = (details or "").strip()
+    if len(details) < 5:
+        raise ValidationError("Describe the issue so dispatch staff can act on it.")
+    issue = DeliveryIssue.raw_objects.create(
+        business=assignment.business,
+        created_by=actor,
+        assignment=assignment,
+        reporter_driver=driver,
+        category=category,
+        details=details,
+    )
+    DeliveryEvent.raw_objects.create(
+        business=assignment.business,
+        created_by=actor,
+        assignment=assignment,
+        status=assignment.status,
+        note=f"Rider issue: {issue.get_category_display()} — {details[:180]}",
+        metadata={"event": "rider_issue", "issue_id": issue.pk, "category": category},
+    )
+    audit(
+        assignment.business, actor, "delivery_issue", issue,
+        f"Rider issue raised for {assignment.intake.public_number}",
+        {"delivery_id": str(assignment.public_id), "category": category},
+    )
+    _notify_dispatch(
+        assignment,
+        CommerceNotification.EVENT_DELIVERY_ISSUE,
+        f"Rider issue · {assignment.intake.public_number}",
+        f"{driver.name}: {issue.get_category_display()} — {details[:220]}",
+        f"issue:{issue.pk}",
+    )
+    return issue

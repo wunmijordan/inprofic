@@ -1,27 +1,39 @@
 {% extends "base.html" %}
 {% load core_extras %}
 {% block content %}
-<h2 class="text-xl font-semibold font-display text-[#8f172d] mb-4">{% if obj %}Edit Product{% else %}Add Product{% endif %}</h2>
-<div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg shadow-[0_2px_8px_#000000d2] p-5 max-w-2xl">
+<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Product setup</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit Product{% else %}Add Product{% endif %}</h2><p class="mt-1 max-w-3xl text-sm text-stone-500">Set the selling unit, pricing, stock behavior and—when made in-house—the recipe used for production.</p></div>
+<div class="cf-form-shell">
+<div class="cf-form-body">
   <form method="post">
     {% csrf_token %}
     {% if form.non_field_errors %}<div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-3">{{ form.non_field_errors }}</div>{% endif %}
-    {% if form.source_type %}<div class="rounded-lg border border-[#E7DFCC] bg-white p-3 mb-3">{% include "_field.html" with field=form.source_type %}<p class="text-[11px] text-stone-500">{{ vertical_ui.product_sources.purchased_for_resale }} items are received through Procurement and can be published to both the in-premise and external storefronts without entering the production chain.</p></div>{% endif %}
-    {% include "_field.html" with field=form.name %}
-    <div class="grid grid-cols-3 gap-3">
-      {% include "_field.html" with field=form.unit %}
-      {% include "_field.html" with field=form.selling_price %}
-      {% include "_field.html" with field=form.reorder_level %}
-    </div>
-    {% include "_field.html" with field=form.stock %}
-    {% if vertical_ui.uses_production %}
-      <div data-production-only {% if not show_production_fields %}class="hidden"{% endif %}>{% include "_field.html" with field=form.units_per_batch %}</div>
+    <section class="cf-form-section mb-4">
+      <div class="cf-form-section-title mb-3">Product details</div>
+      {% if form.source_type %}<div class="rounded-xl border border-[#E7DFCC] bg-[#FAF8F1] p-3 mb-3">{% include "_field.html" with field=form.source_type %}<p class="text-[11px] leading-5 text-stone-500">{{ vertical_ui.product_sources.purchased_for_resale }} items are received through Procurement and can be sold from both storefronts without entering production.</p></div>{% endif %}
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+        {% include "_field.html" with field=form.name %}
+        {% include "_field.html" with field=form.product_category %}
+      </div>
+      <p class="-mt-1 mb-3 text-[11px] text-stone-500">Need another storefront grouping? <a href="{% url 'product_categories' %}" class="font-semibold text-[#8f172d] hover:underline">Manage product categories</a>. Category is independent from whether the product is made in-house or procured for resale.</p>
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+        {% include "_field.html" with field=form.unit %}
+        {% include "_field.html" with field=form.selling_price %}
+        {% include "_field.html" with field=form.reorder_level %}
+      </div>
+      {% include "_field.html" with field=form.stock %}
+      {% if vertical_ui.uses_production %}
+        <div data-production-only {% if not show_production_fields %}class="hidden"{% endif %}>
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">{% include "_field.html" with field=form.units_per_batch %}{% include "_field.html" with field=form.base_material %}</div>
+          <p class="-mt-1 mb-2 text-[11px] leading-5 text-stone-500">Base material is optional. When set, stock production can be planned from the amount of this material available—for example 15 kg of rice or 25 kg of flour. It must be included in the recipe below.</p>
+        </div>
       {% if obj %}<p class="text-[11px] text-stone-400 -mt-2 mb-3">Total made all-time: <span class="font-mono">{{ obj.total_produced|num }}</span> {{ obj.unit }} (updates automatically as orders complete)</p>{% endif %}
-    {% else %}
-      <p class="text-[11px] text-stone-500 -mt-1 mb-3">After setup, add stock through Procurement so each supplier arrival, quantity, and unit cost remains traceable.</p>
-    {% endif %}
+      {% else %}
+        <p class="text-[11px] text-stone-500 -mt-1 mb-3">After setup, add stock through Procurement so each supplier arrival, quantity, and unit cost remains traceable.</p>
+      {% endif %}
+    </section>
 
-    <span class="block text-xs font-medium text-stone-600 mb-1 mt-4">Channel Selling Prices</span>
+    <section class="cf-form-section mb-4">
+    <span class="cf-form-section-title block mb-1">Channel selling prices</span>
     <p class="text-[11px] text-stone-400 mb-2">Optional channel-specific prices. If a channel is left blank, the default Selling Price above is used.</p>
     {{ channel_price_formset.management_form }}
     {% if channel_price_formset.non_form_errors %}
@@ -43,17 +55,18 @@
                 {{ f.price }}
                 {% for error in f.price.errors %}<span class="block text-[11px] text-rose-600 mt-0.5">{{ error }}</span>{% endfor %}
               </td>
-              <td class="px-2 py-1.5 text-center">{% if f.instance.pk %}{{ f.DELETE }}{% endif %}</td>
+              <td class="px-2 py-1.5 text-center">{% if f.instance.pk %}<span class="hidden">{{ f.DELETE }}</span><button type="button" data-existing-formset-remove onclick="markExistingFormsetRowDeleted(this)" class="rounded px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50">Remove</button>{% endif %}</td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
     </div>
+    </section>
 
     {% if vertical_ui.uses_production %}
-    <div data-production-chain {% if not show_production_fields %}class="hidden"{% endif %}>
-    <span class="block text-xs font-medium text-stone-600 mb-1 mt-2">{{ vertical_ui.recipe_label }} ({{ vertical_ui.recipe_item_label }} quantities per batch)</span>
+    <section class="cf-form-section {% if not show_production_fields %}hidden{% endif %}" data-production-chain>
+    <span class="cf-form-section-title block mb-1">{{ vertical_ui.recipe_label }} · quantities per batch</span>
     <p class="text-[11px] text-stone-400 mb-1">Quantity is defined against the registered batch yield above and entered in each material's <strong>usage unit</strong>. Mark <strong>Flexible</strong> only where the {{ vertical_ui.recipe_label|lower }} permits an approval-time quantity adjustment.</p>
     {{ formset.management_form }}
     {% if formset.non_form_errors %}
@@ -71,10 +84,10 @@
               <td class="px-2 py-1.5">{{ f.id }}{{ f.raw_material }}</td>
               <td class="px-2 py-1.5">{{ f.qty_per_batch }}</td>
               <td class="px-2 py-1.5 text-left text-xs text-stone-500 font-mono unit-display"></td>
-              <td class="px-2 py-1.5 text-center text-xs text-stone-600">{{ f.flexible_usage }}</td>
+              <td class="px-2 py-1.5 text-center text-xs text-stone-600"><label class="inline-flex items-center gap-2 cursor-pointer"><span class="cf-switch">{{ f.flexible_usage }}<span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span><span class="text-[10px] text-stone-500">Adjust at approval</span></label></td>
               <td class="px-2 py-1.5 text-center text-xs text-rose-600">
                 {% if f.instance.pk %}
-                <label>{{ f.DELETE }}</label>
+                <span class="hidden">{{ f.DELETE }}</span><button type="button" data-existing-formset-remove onclick="markExistingFormsetRowDeleted(this)" class="rounded px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50">Remove</button>
                 {% endif %}
               </td>
             </tr>
@@ -85,7 +98,7 @@
       <button type="button" onclick="addFormsetRow('recipe_items','recipe-rows')" class="w-full text-xs text-[#8f172d] font-medium py-2 hover:bg-[#F0EAD9]">+ Add {{ vertical_ui.recipe_item_label }}</button>
     </div>
 
-    <span class="block text-xs font-medium text-stone-600 mb-1 mt-5">{{ vertical_ui.production_inputs_label }}</span>
+    <span class="cf-form-section-title block mb-1 mt-5">{{ vertical_ui.production_inputs_label }}</span>
     <p class="text-[11px] text-stone-400 mb-1">These are consumed per batch but sit outside the main {{ vertical_ui.recipe_label|lower }} — for example packaging, labels, fuel, or other per-production supplies. Quantities use each material's usage unit.</p>
     {{ production_formset.management_form }}
     {% if production_formset.non_form_errors %}
@@ -105,7 +118,7 @@
               <td class="px-2 py-1.5 text-left text-xs text-stone-500 font-mono unit-display"></td>
               <td class="px-2 py-1.5 text-center text-xs text-rose-600">
               {% if f.instance.pk %}
-              <label>{{ f.DELETE }}</label>
+              <span class="hidden">{{ f.DELETE }}</span><button type="button" data-existing-formset-remove onclick="markExistingFormsetRowDeleted(this)" class="rounded px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50">Remove</button>
               {% endif %}
               </td>
             </tr>
@@ -115,15 +128,16 @@
       </div>
       <button type="button" onclick="addFormsetRow('production_materials','production-material-rows')" class="w-full text-xs text-[#8f172d] font-medium py-2 hover:bg-[#F0EAD9]">+ Add Production Input</button>
     </div>
-    </div>
+    </section>
     {% endif %}
 
-    <div class="flex justify-end gap-2 mt-4">
+    <div class="flex flex-wrap justify-end gap-2 mt-5">
       <a href="{% url 'inventory' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a>
-      {% if not obj %}<button type="submit" name="save_add_new" value="1" class="px-3.5 py-2 text-sm rounded-md font-medium border border-[#8f172d] bg-white text-[#8f172d] hover:bg-[#FFF5F4]">Save &amp; Add New</button>{% endif %}
+      {% if not obj %}<button type="submit" name="save_add_new" value="1" class="px-3.5 py-2 text-sm rounded-md font-medium border border-[#8f172d] bg-white text-[#8f172d] hover:bg-[#FFF5F4]">Save &amp; add new</button>{% endif %}
       <button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save</button>
     </div>
   </form>
+</div>
 </div>
 
 {% if vertical_ui.uses_production %}{{ raw_material_units|json_script:"raw-material-usage-units" }}
@@ -158,6 +172,22 @@
   function refreshAllUsageUnits() {
     refreshUsageUnits('recipe-rows');
     refreshUsageUnits('production-material-rows');
+    syncBaseMaterialChoices();
+  }
+
+  function syncBaseMaterialChoices() {
+    const baseSelect = document.getElementById('id_base_material');
+    if (!baseSelect) return;
+    const selected = baseSelect.value;
+    const recipeIds = new Set(
+      Array.from(document.querySelectorAll('#recipe-rows select[name$="-raw_material"]'))
+        .map((select) => select.value)
+        .filter(Boolean)
+    );
+    Array.from(baseSelect.options).forEach((option) => {
+      if (!option.value) return;
+      option.disabled = !recipeIds.has(option.value) && option.value !== selected;
+    });
   }
 
   document.addEventListener('change', (event) => {
@@ -170,6 +200,7 @@
         unitCell.textContent =
           rawMaterialUsageUnits[String(event.target.value)] || '';
       }
+      if (event.target.matches('#recipe-rows select[name$="-raw_material"]')) syncBaseMaterialChoices();
     }
   });
 

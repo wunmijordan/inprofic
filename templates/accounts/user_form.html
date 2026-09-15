@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
-<h2 class="text-xl font-semibold font-display text-[#8f172d] mb-4">{% if obj %}Edit user{% else %}Add user{% endif %}</h2>
-<div class="max-w-2xl bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-5">
-<form method="post">{% csrf_token %}
-<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-{% for field in form %}<label class="block"><span class="block text-xs font-medium text-stone-600 mb-1">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="text-xs text-rose-600">{{ field.errors|striptags }}</span>{% endif %}{% if field.help_text %}<span class="text-[10px] text-stone-400">{{ field.help_text }}</span>{% endif %}</label>{% endfor %}
+<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">People & access</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit user{% else %}Add user{% endif %}</h2><p class="mt-1 text-sm text-stone-500">Set the person’s details, role and sign-in access.</p></div>
+<div class="cf-form-shell max-w-3xl">
+  <div class="cf-form-header"><h3 class="font-display text-lg font-semibold">User details</h3><p class="mt-1 text-xs text-stone-500">Contact details and access choices can be updated later.</p></div>
+  <form method="post" class="cf-form-body">{% csrf_token %}
+    {% if form.non_field_errors %}<div class="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{{ form.non_field_errors|striptags }}</div>{% endif %}
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">{% for field in form %}{% include "_field.html" with field=field %}{% endfor %}</div>
+    <div class="mt-6 flex justify-end gap-2"><a href="{% url 'users_list' %}" class="rounded-xl px-4 py-2.5 text-sm text-stone-500 hover:bg-stone-100">Cancel</a><button class="rounded-xl bg-[#8f172d] px-5 py-2.5 text-sm font-semibold text-white">Save user</button></div>
+  </form>
 </div>
-<div class="flex justify-end gap-2 mt-5"><a href="{% url 'users_list' %}" class="px-3 py-2 text-sm text-stone-500">Cancel</a><button class="px-4 py-2 rounded-md bg-[#8f172d] text-white text-sm">Save user</button></div>
-</form></div>
 {% endblock %}

@@ -191,8 +191,23 @@ class OrderNumberSequence(BusinessOwnedModel):
 
 
 class OrderItem(TimestampedModel):
+    BASIS_PRODUCT_QUANTITY = "product_quantity"
+    BASIS_BASE_MATERIAL = "base_material"
+    PRODUCTION_BASIS_CHOICES = [
+        (BASIS_PRODUCT_QUANTITY, "Product quantity"),
+        (BASIS_BASE_MATERIAL, "Base material"),
+    ]
+
     order = models.ForeignKey(Order, related_name="items", on_delete=models.CASCADE)
     finished_good = models.ForeignKey("inventory.FinishedGood", on_delete=models.PROTECT)
+    production_basis = models.CharField(
+        max_length=24, choices=PRODUCTION_BASIS_CHOICES, default=BASIS_PRODUCT_QUANTITY,
+        help_text="Choose whether this production run is sized by product quantity or by the product's base material.",
+    )
+    base_material_quantity = models.DecimalField(
+        max_digits=14, decimal_places=4, default=0, blank=True,
+        help_text="Quantity of the product's selected base material to use for this production run.",
+    )
     batch_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     piece_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     production_batch_qty = models.DecimalField(
@@ -211,8 +226,24 @@ class OrderItem(TimestampedModel):
         return f"{self.finished_good.name} — {self.total_units} units"
 
     @property
+    def base_material_batch_factor(self):
+        if self.production_basis != self.BASIS_BASE_MATERIAL or not self.finished_good_id:
+            return None
+        if not self.finished_good.base_material_id:
+            return None
+        recipe_row = self.finished_good.recipe_items.filter(
+            raw_material_id=self.finished_good.base_material_id
+        ).first()
+        if recipe_row is None or recipe_row.qty_per_batch <= 0:
+            return None
+        return (self.base_material_quantity or Decimal("0")) / recipe_row.qty_per_batch
+
+    @property
     def total_units(self):
         upb = self.finished_good.units_per_batch or Decimal("1")
+        factor = self.base_material_batch_factor
+        if factor is not None:
+            return factor * upb
         return self.batch_qty * upb + self.piece_qty
 
     @property
@@ -221,7 +252,10 @@ class OrderItem(TimestampedModel):
 
     @property
     def effective_production_batch_qty(self):
-        return self.production_batch_qty if self.has_explicit_production_plan else self.batch_qty
+        if self.has_explicit_production_plan:
+            return self.production_batch_qty
+        factor = self.base_material_batch_factor
+        return factor if factor is not None else self.batch_qty
 
     @property
     def effective_production_piece_qty(self):

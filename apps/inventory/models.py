@@ -101,6 +101,51 @@ class RawMaterial(BusinessOwnedModel):
         return self.cost_per_unit * self.total_conversion_factor
 
 
+class ProductCategory(BusinessOwnedModel):
+    """Business-defined merchandising category for sellable products.
+
+    This is intentionally independent from FinishedGood.source_type so a
+    business can keep the operational made-in-house/resale distinction while
+    grouping products for storefront discovery (Meals, Drinks, Pastries, etc.).
+    """
+    name = models.CharField(max_length=100)
+    slug = models.SlugField(max_length=100)
+    sort_order = models.PositiveIntegerField(default=0)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["sort_order", "name", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["business", "name"], name="unique_product_category_name_per_business"),
+            models.UniqueConstraint(fields=["business", "slug"], name="unique_product_category_slug_per_business"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class RawMaterialMeasurementChange(BusinessOwnedModel):
+    """Immutable evidence of a material measurement-basis change.
+
+    ``conversion_ratio`` means: one OLD usage unit equals this many NEW usage
+    units. Current balances and live operational definitions are converted;
+    completed historical movements/cost records remain frozen and this row
+    records the interpretation boundary.
+    """
+    raw_material = models.ForeignKey(RawMaterial, on_delete=models.PROTECT, related_name="measurement_changes")
+    conversion_ratio = models.DecimalField(max_digits=20, decimal_places=8, default=1)
+    reason = models.CharField(max_length=255)
+    old_measurement = models.JSONField(default=dict)
+    new_measurement = models.JSONField(default=dict)
+    converted_records = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.raw_material.name} measurement change — {self.created_at:%Y-%m-%d}"
+
+
 class FinishedGood(BusinessOwnedModel):
     SOURCE_MADE_IN_HOUSE = "made_in_house"
     SOURCE_PURCHASED_FOR_RESALE = "purchased_for_resale"
@@ -114,10 +159,21 @@ class FinishedGood(BusinessOwnedModel):
         help_text="Whether this sellable product is made by the business or bought from a supplier for resale.",
     )
     name = models.CharField(max_length=120)
+    product_category = models.ForeignKey(
+        ProductCategory, null=True, blank=True, on_delete=models.SET_NULL, related_name="products",
+        help_text="Optional business-defined storefront category, e.g. Meals, Drinks, Pastries or Accessories.",
+    )
     unit = models.CharField(max_length=20, help_text="loaf, plate, box…")
     units_per_batch = models.DecimalField(max_digits=12, decimal_places=2, default=1,
         help_text="How many individual units one production batch makes, e.g. 41 loaves per batch. "
                    "Recipe quantities are per BATCH, not per unit. Leave at 1 if you don't produce in batches.")
+    base_material = models.ForeignKey(
+        "RawMaterial", null=True, blank=True, on_delete=models.PROTECT, related_name="base_for_products",
+        help_text=(
+            "Optional. Choose the main recipe material that can be used to size a production run, "
+            "for example rice in a kitchen or flour in a bakery."
+        ),
+    )
     stock = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, default=0,
         help_text="Optional - Physical Store (shelf) Stock.")
     total_produced = models.DecimalField(max_digits=14, decimal_places=2, default=0,

@@ -11,28 +11,23 @@
       <h2 class="font-semibold mb-3">Settlement currency</h2>{% include '_field.html' with field=form.currency %}
     </section>
     <section class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-5">
-      <div class="flex items-center gap-2 mb-3">{{ form.paystack_enabled }}<label for="{{ form.paystack_enabled.id_for_label }}" class="font-semibold">Enable Paystack</label></div>
-      <p class="mb-3 text-xs text-stone-500">Used for hosted/card checkout and, when selected below, automated bank transfer. Paystack Terminal can also power the in-premise card POS.</p>
+      {% include "commerce/_settings_toggle.html" with field=form.paystack_enabled description="Use Paystack for hosted/card checkout and, when selected below, automated bank transfer. Paystack Terminal can also power the in-premise card POS." emphasis=True %}
       <div class="grid md:grid-cols-2 gap-3">{% include '_field.html' with field=form.paystack_secret_key %}{% include '_field.html' with field=form.paystack_account %}</div>
     </section>
     <section class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-5">
-      <div class="flex items-center gap-2 mb-3">{{ form.monnify_enabled }}<label for="{{ form.monnify_enabled.id_for_label }}" class="font-semibold">Enable Monnify</label></div>
-      <p class="mb-3 text-xs text-stone-500">Used for hosted checkout and, when selected below, one-time bank-transfer accounts that Monnify confirms automatically.</p>
+      {% include "commerce/_settings_toggle.html" with field=form.monnify_enabled description="Use Monnify for hosted checkout and, when selected below, one-time bank-transfer accounts that Monnify confirms automatically." %}
       <div class="grid md:grid-cols-2 gap-3">{% include '_field.html' with field=form.monnify_api_key %}{% include '_field.html' with field=form.monnify_secret_key %}{% include '_field.html' with field=form.monnify_contract_code %}{% include '_field.html' with field=form.monnify_base_url %}{% include '_field.html' with field=form.monnify_account %}</div>
     </section>
     <section class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-5">
-      <div class="flex items-center gap-2 mb-3">{{ form.bank_transfer_enabled }}<label for="{{ form.bank_transfer_enabled.id_for_label }}" class="font-semibold">Enable automated bank transfer</label></div>
-      <p class="mb-3 text-xs text-stone-500">Storefront and connected-channel transfers are confirmed automatically by the selected payment provider. Customers receive a temporary account and do not need to submit a transfer claim.</p>
+      {% include "commerce/_settings_toggle.html" with field=form.bank_transfer_enabled description="Offer confirmed bank transfer on the storefront and connected sales channels. Customers receive a temporary account and do not need to submit a transfer claim." %}
       <div class="grid md:grid-cols-2 gap-3">{% include '_field.html' with field=form.bank_transfer_provider %}<div id="monnify-transfer-bank">{% include '_field.html' with field=form.monnify_transfer_bank_code %}</div>{% include '_field.html' with field=form.bank_cash_account %}</div>
     </section>
     <section class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-5">
-      <div class="flex items-center gap-2 mb-3">{{ form.paystack_terminal_enabled }}<label for="{{ form.paystack_terminal_enabled.id_for_label }}" class="font-semibold">Enable in-premise Paystack Terminal</label></div>
-      <p class="mb-3 text-xs text-stone-500">For staff-operated walk-in sales only. INPROFIC pushes the amount to the configured physical Paystack Terminal and posts the verified payment into the selected Finance account.</p>
+      {% include "commerce/_settings_toggle.html" with field=form.paystack_terminal_enabled description="For staff-operated walk-in sales. INPROFIC sends the amount to the selected Paystack Terminal and records the confirmed payment in the chosen Finance account." %}
       <div class="grid md:grid-cols-2 gap-3">{% include '_field.html' with field=form.paystack_terminal_id %}{% include '_field.html' with field=form.paystack_terminal_customer_email %}{% include '_field.html' with field=form.paystack_terminal_account %}</div>
     </section>
     <section class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-5">
-      <div class="flex items-center gap-2 mb-3">{{ form.cash_enabled }}<label for="{{ form.cash_enabled.id_for_label }}" class="font-semibold">Enable staff POS cash</label></div>
-      <p class="mb-3 text-xs text-stone-500">Cash is available only for authorised staff using the in-premise POS; it is not offered to customers on the public storefront.</p>
+      {% include "commerce/_settings_toggle.html" with field=form.cash_enabled description="Offer cash only to authorised staff using the in-premise POS. Cash is never offered to customers on the public storefront." %}
       <div class="grid md:grid-cols-2 gap-3">{% include '_field.html' with field=form.cash_account %}{% include '_field.html' with field=form.cash_instructions %}</div>
     </section>
     <button class="px-4 py-2.5 bg-[#8f172d] text-white rounded-md text-sm">Save payment settings</button>

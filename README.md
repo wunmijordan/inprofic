@@ -36,8 +36,19 @@ what was borrowed and what was deliberately left out).
   transaction, with a shortage warning you can override.
 - **Reports** — CSV export for stock, procurement, production, sales, plus
   a full JSON backup.
-- Login required on every page (Django's built-in auth), with a
+- **Delivery** — plan-gated delivery setup with in-house riders, true interchangeable Hybrid routing, external
+  providers and a built-in Glovo LaaS v2 plug-in, with live delivery-fee quoting before payment,
+  customer tracking, proof-of-delivery records and delivery timelines.
+- **Audit Workspace** — plan-gated read-only cross-module evidence review for
+  external auditors, with auditor queries/flags and response tracking for
+  admins or permitted audit reviewers.
+- **In-Premise POS** — a dedicated cashier storefront role can land directly
+  in the counter screen and log out without entering the wider workspace; POS
+  can also be granted as a supplemental per-user permission without replacing a staff member's primary role.
+- Login required on every protected page (Django's built-in auth), with a
   `created_by` trail on every record.
+- **Delivery Rider workspace** — rider-only assignments, customer/contact details, allowed status actions, proof of delivery, issue reporting and targeted alerts without normal business-module access.
+- **Storefront customer profiles** — optional, tenant-scoped accounts that save contact/address details and purchase history while guest checkout and public tracking remain available.
 
 ### Units — the three-layer chain
 
@@ -47,6 +58,18 @@ recipe actually consumes** (usage unit — kg, g, spoon, cap, with a
 conversion factor you set). Stock and cost are tracked internally in the
 fine usage unit; the Add/Edit form lets you enter both in the purchase
 unit instead (e.g. "3 bags", "₦9,000/bag") and does the conversion for you.
+
+### Product categories and measurement changes
+
+Sellable products can be assigned to business-defined product categories such as
+Meals, Drinks, Accessories or Bulk Packs. This category is separate from whether
+a product is made in-house or purchased for resale, and it is exposed through the
+hosted storefront, in-premise POS and product API.
+
+Raw material measurement edits use a controlled conversion workflow. Current
+stock, cost and live recipe/input definitions are converted atomically; completed
+historical movements and frozen cost snapshots remain intact so audit evidence is
+not rewritten.
 
 ### Batches
 
@@ -185,6 +208,6 @@ and the shared production command, see
 
 ## What's next
 
-See `CLAUDE.md` §7 for what was deliberately left out for now (real
-multi-location routing, permission tiers, Postgres) and how to add it later
-without a rewrite.
+See `CLAUDE.md` §7 and the docs folder for extension notes. New operational
+references include `docs/DELIVERY_GLOVO_PROVIDER.md` and
+`docs/AUDIT_WORKSPACE.md`.

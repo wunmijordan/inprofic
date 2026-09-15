@@ -7,9 +7,9 @@
 {% block content %}
 <style>
   [x-cloak] { display: none !important; }
-  .dashboard-surface { border: 1px solid #E7DFCC; background: rgba(255,255,255,.9); box-shadow: var(--st-card-shadow); }
+  .dashboard-surface { border: 1px solid var(--ui-border); background: var(--ui-surface); box-shadow: var(--ui-shadow); }
   .dashboard-kpi { transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease; }
-  .dashboard-kpi:hover { transform: translateY(-2px); border-color: #D9CFB4; box-shadow: 0 12px 28px rgba(77,28,37,.08); }
+  .dashboard-kpi:hover { transform: translateY(-2px); border-color: color-mix(in srgb,var(--ui-accent) 28%,var(--ui-border)); box-shadow: var(--ui-shadow-raised); }
   @media (prefers-reduced-motion: reduce) { .dashboard-kpi { transition: none; } .dashboard-kpi:hover { transform: none; } }
 </style>
 <div x-data="{ dashboardView: new URLSearchParams(window.location.search).has('stock_item') ? 'stock' : 'overview' }">
@@ -546,10 +546,10 @@
           <div id="financial-chart-caption" class="text-xs text-stone-500 mt-0.5">Daily Sales, Cash Outflow and Net Cash Flow</div>
         </div>
         <div class="flex items-center gap-1 rounded-lg bg-[#F5EFE0] border border-[#E7DFCC] p-1" role="group" aria-label="Financial chart period">
-          <button type="button" class="financial-period-btn px-2.5 py-1 text-[10px] rounded-md bg-[#8f172d] hover:bg-[#4D1C25] hover:text-white text-white" data-period="week">Week</button>
-          <button type="button" class="financial-period-btn px-2.5 py-1 text-[10px] rounded-md text-stone-600 hover:bg-[#4D1C25] hover:text-white" data-period="month">Month</button>
-          <button type="button" class="financial-period-btn px-2.5 py-1 text-[10px] rounded-md text-stone-600 hover:bg-[#4D1C25] hover:text-white" data-period="quarter">Quarter</button>
-          <button type="button" class="financial-period-btn px-2.5 py-1 text-[10px] rounded-md text-stone-600 hover:bg-[#4D1C25] hover:text-white" data-period="year">Year</button>
+          <button type="button" class="financial-period-btn px-2.5 py-1 text-[10px] rounded-md bg-[#8f172d] hover:bg-[#4D1C25] hover:text-white text-white" data-period="week" aria-pressed="true">Week</button>
+          <button type="button" class="financial-period-btn px-2.5 py-1 text-[10px] rounded-md text-stone-600 hover:bg-[#4D1C25] hover:text-white" data-period="month" aria-pressed="false">Month</button>
+          <button type="button" class="financial-period-btn px-2.5 py-1 text-[10px] rounded-md text-stone-600 hover:bg-[#4D1C25] hover:text-white" data-period="quarter" aria-pressed="false">Quarter</button>
+          <button type="button" class="financial-period-btn px-2.5 py-1 text-[10px] rounded-md text-stone-600 hover:bg-[#4D1C25] hover:text-white" data-period="year" aria-pressed="false">Year</button>
         </div>
       </div>
       <div class="relative h-[240px] md:h-[300px] w-full">
@@ -1145,6 +1145,7 @@ document.addEventListener('DOMContentLoaded', function () {
         btn.classList.toggle('bg-[#8f172d]', active);
         btn.classList.toggle('text-white', active);
         btn.classList.toggle('text-stone-600', !active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
 
       return;
@@ -1246,6 +1247,7 @@ document.addEventListener('DOMContentLoaded', function () {
       btn.classList.toggle('bg-[#8f172d]', active);
       btn.classList.toggle('text-white', active);
       btn.classList.toggle('text-stone-600', !active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
   }
 

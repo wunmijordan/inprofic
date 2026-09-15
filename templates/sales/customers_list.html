@@ -11,8 +11,8 @@
 </tr></thead><tbody>
 {% for c in customers %}<tr class="border-t border-[#E7DFCC]">
 <td class="px-3 py-2 font-medium">{{ c.name }}</td><td class="px-3 py-2">{{ c.phone|default:"—" }}</td><td class="px-3 py-2">{{ c.region|default:"—" }}</td><td class="px-3 py-2">{{ c.customer_group|default:"—" }}</td><td class="px-3 py-2 text-right font-mono">{{ c.credit_limit|money:biz.currency_symbol }}</td><td class="px-3 py-2 text-right font-mono">{{ c.outstanding_balance|money:biz.currency_symbol }}</td>
-<td class="px-3 py-2">{% if c.active %}<span class="px-2 py-0.5 rounded-full text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200">Active</span>{% else %}<span class="px-2 py-0.5 rounded-full text-[11px] bg-stone-100 text-stone-500 border border-stone-200">Archived</span>{% endif %}</td>
-<td class="px-3 py-2 text-right">{% if module_permissions.sales.edit %}<a href="{% url 'customer_edit' c.pk %}" class="text-[#8f172d] hover:underline text-xs mr-2">Edit</a><form method="post" action="{% url 'customer_toggle_active' c.pk %}" class="inline">{% csrf_token %}<button class="text-xs text-stone-400 hover:text-[#8f172d]">{% if c.active %}Archive{% else %}Activate{% endif %}</button></form>{% endif %}</td>
+<td class="px-3 py-2">{% if c.active %}<span class="px-2 py-0.5 rounded-full text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200">Available</span>{% else %}<span class="px-2 py-0.5 rounded-full text-[11px] bg-stone-100 text-stone-500 border border-stone-200">Archived</span>{% endif %}</td>
+<td class="px-3 py-2 text-right">{% if module_permissions.sales.edit %}<a href="{% url 'customer_edit' c.pk %}" class="text-[#8f172d] hover:underline text-xs mr-2">Edit</a><form method="post" action="{% url 'customer_toggle_active' c.pk %}" class="inline">{% csrf_token %}<button class="text-xs text-stone-400 hover:text-[#8f172d]">{% if c.active %}Archive{% else %}Restore{% endif %}</button></form>{% endif %}</td>
 </tr>{% empty %}<tr><td colspan="8" class="px-3 py-10 text-center text-sm text-stone-400 italic">No customers yet.</td></tr>{% endfor %}
 </tbody></table></div>
 {% endblock %}

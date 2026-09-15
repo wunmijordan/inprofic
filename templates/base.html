@@ -1,12 +1,14 @@
 {% load core_extras static %}
 <!doctype html>
-<html lang="en">
+<html lang="en" data-tenant="{{ biz.pk|default:'global' }}" data-tenant-accent="{{ biz.accent_color|default:'#D14900' }}" data-tenant-background="{{ biz.background_color|default:'#050733' }}" style="--tenant-background:{{ biz.background_color|default:'#050733' }};--tenant-background-contrast:{{ biz.background_text_color|default:'#FFFFFF' }};--tenant-button:{{ biz.accent_color|default:'#D14900' }};--tenant-button-contrast:{{ biz.button_text_color|default:'#FFFFFF' }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% if biz %}{{ biz.name }} · {% endif %}INPROFIC</title>
   <link rel="icon" type="image/png" href="{% static 'core/brand/inprofic-mark.png' %}">
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
+  <link rel="stylesheet" href="{% static 'core/css/workspace.css' %}">
+  <script src="{% static 'core/js/workspace.js' %}"></script>
   {% include "pwa/head.html" %}
   {% block head_scripts %}{% endblock %}
   <style>
@@ -22,7 +24,22 @@
     [x-cloak] { display: none !important; }
     .field-client-invalid { border-color: #e11d48 !important; box-shadow: 0 0 0 1px rgba(225,29,72,.15); }
     .field-has-error input, .field-has-error select, .field-has-error textarea { border-color: #e11d48 !important; }
-    :root { --st-card-shadow: 0 2px 8px #000000d2; --st-modal-shadow: 0 18px 48px rgba(0,0,0,.42); }
+    .cf-field input:not([type="checkbox"]):not([type="radio"]), .cf-field select, .cf-field textarea { min-height:2.6rem; border-radius:.75rem !important; transition:border-color .15s ease, box-shadow .15s ease, background .15s ease; }
+    .cf-field textarea { min-height:5.5rem; }
+    .cf-field input:focus, .cf-field select:focus, .cf-field textarea:focus { box-shadow:0 0 0 3px color-mix(in srgb,var(--tenant-button) 15%,transparent) !important; }
+    .cf-switch { position:relative; display:inline-flex; height:1.65rem; width:3rem; align-items:center; }
+    .cf-switch > input[type="checkbox"] { position:absolute !important; inset:0 !important; z-index:2; width:100% !important; height:100% !important; margin:0 !important; cursor:pointer; opacity:0 !important; }
+    .cf-switch-track { position:absolute; inset:0; border-radius:999px; background:#d6d3d1; box-shadow:inset 0 0 0 1px rgba(87,83,78,.12); transition:background .18s ease; }
+    .cf-switch-thumb { position:absolute; left:.2rem; top:.2rem; width:1.25rem; height:1.25rem; border-radius:999px; background:white; box-shadow:0 2px 6px rgba(0,0,0,.22); transition:transform .18s ease; }
+    .cf-switch > input[type="checkbox"]:checked + .cf-switch-track { background:var(--tenant-button); }
+    .cf-switch > input[type="checkbox"]:checked + .cf-switch-track .cf-switch-thumb { transform:translateX(1.35rem); }
+    .cf-switch > input[type="checkbox"]:focus-visible + .cf-switch-track { outline:3px solid color-mix(in srgb,var(--tenant-button) 20%,transparent); outline-offset:2px; }
+    .cf-form-shell { max-width:72rem; border:1px solid #E7DFCC; border-radius:1.5rem; background:#FFFDF8; box-shadow:0 18px 45px rgba(33,29,26,.10); overflow:hidden; }
+    .cf-form-header { padding:1.25rem 1.25rem 1rem; border-bottom:1px solid #E7DFCC; background:linear-gradient(135deg,#FFFDF8,#F7F0DF); }
+    .cf-form-body { padding:1.25rem; }
+    .cf-form-section { border:1px solid #E7DFCC; border-radius:1rem; background:#fff; padding:1rem; }
+    .cf-form-section-title { font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.13em; color:#78716c; }
+    :root { --st-card-shadow: var(--ui-shadow); --st-modal-shadow: var(--ui-shadow-raised); }
     .st-card-shadow,
     main :where(article, section, form)[class~="border"]:is([class~="rounded-lg"], [class~="rounded-xl"], [class~="rounded-2xl"], [class~="rounded-3xl"]),
     main div[class~="border"]:is([class~="rounded-lg"], [class~="rounded-xl"], [class~="rounded-2xl"], [class~="rounded-3xl"]):is([class~="bg-white"], [class~="bg-[#FFFDF8]"], [class~="bg-[#F5EFE0]"]),
@@ -70,7 +87,8 @@
     }
   </style>
 </head>
-<body class="min-h-screen flex" style="--tenant-background: {{ biz.background_color|default:'#050733' }}; --tenant-background-contrast: {{ biz.background_text_color|default:'#FFFFFF' }}; --tenant-button: {{ biz.accent_color|default:'#D14900' }}; --tenant-button-contrast: {{ biz.button_text_color|default:'#FFFFFF' }}">
+<body class="min-h-screen flex">
+  <div class="page-progress" aria-hidden="true"></div>
 
   {% if is_live_tester %}<div class="fixed right-3 top-3 z-[120] rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-900 shadow-lg" title="Demo access can browse and open forms, but cannot save changes.">Demo · read only</div>{% endif %}
 
@@ -86,7 +104,7 @@
       {% if available_businesses|length > 1 %}
       <form action="{% url 'switch_business' %}" method="post" class="mt-3">
         {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
-        <select name="business_id" onchange="this.form.submit()" aria-label="Active business" class="w-full rounded border border-white/20 bg-white/10 px-2 py-1 text-[11px]">
+        <select name="business_id" onchange="this.form.submit()" aria-label="Current business" class="w-full rounded border border-white/20 bg-white/10 px-2 py-1 text-[11px]">
           {% for business in available_businesses %}<option class="text-stone-900" value="{{ business.pk }}" {% if business.pk == biz.pk %}selected{% endif %}>{{ business.name }}</option>{% endfor %}
         </select>
       </form>
@@ -113,7 +131,7 @@
       {% if available_businesses|length > 1 %}
       <form action="{% url 'switch_business' %}" method="post" class="shrink-0 px-4 py-3">
         {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
-        <select name="business_id" onchange="this.form.submit()" aria-label="Active business" class="w-full rounded border border-white/20 bg-white/10 px-2 py-1 text-xs">
+        <select name="business_id" onchange="this.form.submit()" aria-label="Current business" class="w-full rounded border border-white/20 bg-white/10 px-2 py-1 text-xs">
           {% for business in available_businesses %}<option class="text-stone-900" value="{{ business.pk }}" {% if business.pk == biz.pk %}selected{% endif %}>{{ business.name }}</option>{% endfor %}
         </select>
       </form>
@@ -129,7 +147,31 @@
   </div>
   {% endif %}
 
-  <main class="desktop-main flex-1 min-w-0 p-4 md:p-8 {% if user.is_authenticated %}mt-14 md:mt-0{% endif %}">
+  <main class="workspace-main desktop-main flex-1 min-w-0 p-4 md:p-6 {% if user.is_authenticated %}mt-14 md:mt-0{% endif %}" data-route="{{ request.resolver_match.url_name|default:'' }}">
+    <div class="workspace-content">
+    {% if user.is_authenticated %}
+      <div class="workspace-utility-bar mb-3 flex items-center justify-between gap-3">
+        <div>
+          {% if show_workspace_back %}
+          <button type="button" class="workspace-back" onclick="if(history.length > 1){history.back()}else{location.href='{% url 'dashboard' %}'}" aria-label="Go back">
+            <svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.8" aria-hidden="true"><path d="m15 18-6-6 6-6"/><path d="M9 12h10"/></svg>
+            Back
+          </button>
+          {% endif %}
+        </div>
+        <div class="relative" data-appearance-root>
+          <button type="button" class="workspace-icon-button" data-appearance-toggle aria-controls="workspace-appearance-panel" aria-expanded="false">
+            <svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.8" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-1-.1-1.6-.3-2.4A5.5 5.5 0 0 1 14.4 3.3C13.6 3.1 13 3 12 3Z"/></svg>
+            Appearance
+          </button>
+          <div id="workspace-appearance-panel" data-appearance-panel hidden class="appearance-popover absolute right-0 z-50 mt-2 w-80 rounded-lg p-3">
+            <p class="text-[10px] font-bold uppercase tracking-[.14em] text-stone-500">Workspace theme</p>
+            {% include "_appearance_controls.html" %}
+            {% if can_manage_business %}<a href="{% url 'business_settings' %}#workspace-appearance" class="mt-3 block text-xs font-semibold text-[#8f172d]">Open appearance settings</a>{% endif %}
+          </div>
+        </div>
+      </div>
+    {% endif %}
     {% if messages %}
       <div class="mb-4 space-y-2">
         {% for message in messages %}
@@ -138,9 +180,10 @@
       </div>
     {% endif %}
     {% block content %}{% endblock %}
+    </div>
   </main>
 
-  {% if user.is_authenticated and module_permissions.commerce.view %}
+  {% if user.is_authenticated and module_permissions.commerce.view or user.is_authenticated and module_permissions.delivery.view or user.is_authenticated and module_permissions.delivery_rider.view %}
   <aside id="commerce-notification-dock"
          class="fixed bottom-3 z-[80] hidden overflow-hidden rounded-2xl border border-stone-200 bg-[#FFFDF8] shadow-[0_20px_55px_rgba(33,29,26,.32)]"
          style="right:.75rem;width:min(19rem,calc(100vw - 1.5rem));"
@@ -154,10 +197,10 @@
         <span class="absolute -right-1 -top-1 h-2.5 w-2.5 animate-pulse rounded-full bg-amber-400 ring-2 ring-white/80"></span>
       </span>
       <button type="button" id="commerce-notification-expand" class="min-w-0 flex-1 text-left" aria-expanded="false" aria-controls="commerce-notification-body">
-        <span class="block text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-300">Commerce activity</span>
+        <span class="block text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-300">Commerce & delivery activity</span>
         <span class="block truncate text-sm font-semibold"><span id="commerce-notification-count">0</span> unread alert<span id="commerce-notification-plural">s</span></span>
       </button>
-      <button type="button" id="commerce-notification-minimize" class="rounded-lg p-2 text-stone-300 transition hover:bg-white/10 hover:text-white" aria-label="Minimize commerce alerts">
+      <button type="button" id="commerce-notification-minimize" class="rounded-lg p-2 text-stone-300 transition hover:bg-white/10 hover:text-white" aria-label="Minimize activity alerts">
         <svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
       </button>
     </div>
@@ -599,6 +642,17 @@
     // as the visual template. Number fields follow the Production Order form
     // convention and start at 0. A newly-added row can also be removed safely
     // without changing Django's form indexes.
+    function markExistingFormsetRowDeleted(button) {
+      const row = button?.closest('tr');
+      if (!row) return;
+      const deleteInput = row.querySelector('input[name$="-DELETE"]');
+      if (!deleteInput) return;
+      deleteInput.checked = true;
+      // Keep the row's saved ID and values enabled so Django can identify the
+      // record being removed; DELETE tells the formset to ignore the values.
+      row.classList.add('hidden');
+    }
+
     function addFormsetRow(prefix, containerId) {
       const totalForms = document.getElementById(`id_${prefix}-TOTAL_FORMS`);
       const container = document.getElementById(containerId);
@@ -666,7 +720,7 @@
         const deleteLabel = deleteInput.closest('label');
         if (deleteLabel) deleteLabel.classList.add('hidden');
 
-        actionCell.querySelectorAll('[data-remove-new-formset-row]').forEach((el) => el.remove());
+        actionCell.querySelectorAll('[data-remove-new-formset-row], [data-existing-formset-remove]').forEach((el) => el.remove());
         const removeButton = document.createElement('button');
         removeButton.type = 'button';
         removeButton.dataset.removeNewFormsetRow = '1';

@@ -593,3 +593,23 @@ POST /api/v1/storefronts/{business_slug}/orders/{order_id}/payments/current/clai
 ```
 
 For every new or migrated website: create `/checkouts`, pay using the checkout UUID, poll until verified settlement returns an `order_id`, then begin order tracking.
+
+
+## Delivery quotes and category grouping
+
+Product API responses include the business-defined category where present, so
+external storefronts should group products by the supplied category value rather
+than hardcoding menu groups. Made-in-house and purchased-for-resale remain source
+properties, not category replacements.
+
+For delivery orders, request or render the INPROFIC delivery quote before
+initializing payment. The quoted delivery fee must be included in the checkout
+amount. A paid checkout can then materialize one order and one delivery
+assignment. The delivery assignment may remain in-house, hybrid/manual, or be
+dispatched through the configured Glovo LaaS v2 plug-in provider when the tenant enables
+a provider account.
+
+
+### Delivery rider and storefront-customer boundaries
+
+Delivery Rider is a purpose-specific staff access surface: rider-only users can see and act only on assignments linked to their own active in-house driver record. Delivery alerts reuse the durable Commerce notification transport but support targeted rider recipients. Public storefront customers remain guests by default; optional `StorefrontCustomer` profiles are tenant-scoped, separate from staff users, and store purchase history without making registration a checkout requirement. Hybrid delivery means in-house and the configured provider remain interchangeable per order under the tenant’s routing and customer-visible post-payment switch policy.

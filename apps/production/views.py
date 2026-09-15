@@ -60,13 +60,14 @@ def _price_map():
     """
     goods = list(FinishedGood.objects.filter(
         source_type=FinishedGood.SOURCE_MADE_IN_HOUSE
-    ).prefetch_related("channel_prices"))
+    ).select_related("base_material").prefetch_related("channel_prices", "recipe_items"))
     products = {}
     for g in goods:
         channel_prices = {
             str(row.channel): f"{row.price}"
             for row in g.channel_prices.all()
         }
+        base_recipe = next((row for row in g.recipe_items.all() if row.raw_material_id == g.base_material_id), None)
         products[str(g.pk)] = {
             "name": g.name,
             # Keep the three layers separate for the form's display resolver:
@@ -75,6 +76,14 @@ def _price_map():
             "channel_prices": channel_prices,
             "stock_tracked": g.stock is not None,
             "physical_store_valid": g.stock is not None and g.reorder_level is not None and g.reorder_level > 0,
+            "units_per_batch": f"{g.units_per_batch or Decimal('1')}",
+            "unit": g.unit,
+            "base_material": ({
+                "id": g.base_material_id,
+                "name": g.base_material.name,
+                "unit": g.base_material.usage_unit,
+                "qty_per_batch": f"{base_recipe.qty_per_batch}",
+            } if g.base_material_id and base_recipe and base_recipe.qty_per_batch > 0 else None),
         }
     customer_overrides = {}
     for row in CustomerProductPrice.objects.select_related("customer").all():
@@ -124,8 +133,8 @@ def order_form(request, pk=None):
                 order.customer_region = ""
                 order.customer_group = ""
             elif order.customer:
-                # A selected master customer remains authoritative for the
-                # historical customer snapshot and customer-specific pricing.
+                # A selected saved customer supplies the customer details and
+                # customer-specific pricing kept with this order.
                 order.customer_name = order.customer.name
                 order.customer_region = order.customer.region
                 order.customer_group = order.customer.customer_group
@@ -227,6 +236,8 @@ def order_recreate(request, pk):
         for item in source.items.select_related("finished_good"):
             OrderItem.objects.create(
                 order=new_order, finished_good=item.finished_good,
+                production_basis=item.production_basis,
+                base_material_quantity=item.base_material_quantity,
                 batch_qty=item.batch_qty, piece_qty=item.piece_qty,
                 production_batch_qty=item.production_batch_qty,
                 production_piece_qty=item.production_piece_qty,

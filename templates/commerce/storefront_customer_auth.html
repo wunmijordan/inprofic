@@ -1,0 +1,24 @@
+{% extends "commerce/storefront_page_base.html" %}
+{% block title %}{% if mode == 'register' %}Create account{% else %}Sign in{% endif %} · {{ store_business.name }}{% endblock %}
+{% block content %}
+<main class="mx-auto max-w-lg px-4 py-10 sm:px-6">
+  <div class="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
+    <p class="text-[10px] font-bold uppercase tracking-[.18em] text-stone-400">Optional customer profile</p>
+    <h1 class="mt-2 font-display text-2xl font-semibold text-stone-900">{% if mode == 'register' %}Create your {{ store_business.name }} profile{% else %}Sign in to {{ store_business.name }}{% endif %}</h1>
+    <p class="mt-2 text-sm leading-6 text-stone-500">A profile saves your details and purchase history for this business only. You can always order and track deliveries as a guest.</p>
+    {% if customer_error %}<div class="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{{ customer_error }}</div>{% endif %}
+    <form method="post" class="mt-6 space-y-4">{% csrf_token %}
+      {% if mode == 'register' %}
+      <label class="block text-xs font-semibold text-stone-600">Name<input name="name" required autocomplete="name" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 px-3 text-sm font-normal"></label>
+      <label class="block text-xs font-semibold text-stone-600">Phone<input name="phone" autocomplete="tel" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 px-3 text-sm font-normal"></label>
+      <label class="block text-xs font-semibold text-stone-600">Default delivery address<textarea name="address" rows="2" autocomplete="street-address" class="mt-1.5 w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm font-normal"></textarea></label>
+      {% endif %}
+      <label class="block text-xs font-semibold text-stone-600">Email<input name="email" type="email" required autocomplete="email" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 px-3 text-sm font-normal"></label>
+      <label class="block text-xs font-semibold text-stone-600">Password<input name="password" type="password" required autocomplete="{% if mode == 'register' %}new-password{% else %}current-password{% endif %}" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 px-3 text-sm font-normal"></label>
+      {% if mode == 'register' %}<label class="block text-xs font-semibold text-stone-600">Confirm password<input name="password_confirm" type="password" required autocomplete="new-password" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 px-3 text-sm font-normal"></label>{% endif %}
+      <button class="w-full rounded-xl px-4 py-3 text-sm font-semibold text-white" style="background:var(--brand)">{% if mode == 'register' %}Create profile{% else %}Sign in{% endif %}</button>
+    </form>
+    <p class="mt-5 text-center text-xs text-stone-500">{% if mode == 'register' %}Already have a profile? <a class="font-semibold underline" href="{% url 'storefront_customer_login' store_business.slug %}">Sign in</a>{% else %}Want saved history? <a class="font-semibold underline" href="{% url 'storefront_customer_register' store_business.slug %}">Create a profile</a>{% endif %}</p>
+  </div>
+</main>
+{% endblock %}

@@ -161,6 +161,7 @@ def cancel_unpaid_checkout(checkout, *, reason=""):
 def create_checkout(
     *, business, source, customer, items, idempotency_key, external_order_id="",
     order_mode=None, ordering_mode=None, service_mode="", table_reference="",
+    delivery_quote_id=None, storefront_customer=None,
 ):
     """Validate and snapshot a basket without creating CommerceIntake.
 
@@ -183,6 +184,9 @@ def create_checkout(
         business=business, sales_channel=order_mode, ordering_mode=ordering_mode
     )
     customer = customer or {}
+    if storefront_customer is not None:
+        if storefront_customer.business_id != business.pk or not storefront_customer.active:
+            raise ValidationError("The signed-in customer profile does not belong to this storefront.")
     customer_name = (customer.get("name") or "").strip()
     if not customer_name:
         raise ValidationError("Customer name is required.")
@@ -301,6 +305,16 @@ def create_checkout(
     # is normally pre-order becomes stock only when every item is bought-in
     # resale stock and therefore has nothing to manufacture.
     effective_fulfilment_mode = fulfilment_mode
+    delivery_quote = None
+    delivery_fee = Decimal("0")
+    if delivery_quote_id:
+        from .delivery_services import validate_delivery_quote
+        delivery_quote = validate_delivery_quote(
+            business=business, public_id=delivery_quote_id, subtotal=total
+        )
+        delivery_fee = Decimal(delivery_quote.fee)
+        total += delivery_fee
+
     if fulfilment_mode == CommerceIntake.MODE_PREORDER and not any(row[5] > 0 for row in prepared):
         effective_fulfilment_mode = CommerceIntake.MODE_STOCK
 
@@ -312,6 +326,7 @@ def create_checkout(
             idempotency_key=idempotency_key,
             ordering_mode=effective_fulfilment_mode,
             sales_channel=sales_channel,
+            storefront_customer=storefront_customer,
             customer_name=customer_name,
             customer_phone=(customer.get("phone") or "").strip(),
             customer_email=(customer.get("email") or "").strip(),
@@ -320,6 +335,8 @@ def create_checkout(
             table_reference=(table_reference or "").strip(),
             currency=currency,
             amount=total,
+            delivery_quote=delivery_quote,
+            delivery_fee=delivery_fee,
             reservation_expires_at=expires_at,
         )
     except IntegrityError:
@@ -391,6 +408,9 @@ def serialize_checkout(checkout):
         "order_mode": checkout.sales_channel,
         "fulfilment_mode": checkout.ordering_mode,
         "amount": f"{checkout.amount:.2f}",
+        "subtotal": f"{(checkout.amount - checkout.delivery_fee):.2f}",
+        "delivery_fee": f"{checkout.delivery_fee:.2f}",
+        "delivery_quote_id": str(checkout.delivery_quote.public_id) if checkout.delivery_quote_id else None,
         "currency": checkout.currency,
         "reservation_expires_at": checkout.reservation_expires_at.isoformat() if checkout.reservation_expires_at else None,
         "order_id": str(intake.public_id) if intake else None,
@@ -491,12 +511,15 @@ def materialize_paid_checkout(checkout, *, actor=None, allow_expired_recovery=Fa
         idempotency_key=f"checkout:{checkout.public_id}",
         ordering_mode=checkout.ordering_mode,
         sales_channel=checkout.sales_channel,
+        storefront_customer=checkout.storefront_customer,
         customer_name=checkout.customer_name,
         customer_phone=checkout.customer_phone,
         customer_email=checkout.customer_email,
         customer_address=checkout.customer_address,
         service_mode=checkout.service_mode,
         table_reference=checkout.table_reference,
+        delivery_quote=checkout.delivery_quote,
+        delivery_fee=checkout.delivery_fee,
         payment_state=CommerceIntake.PAYMENT_CONFIRMED,
     )
     CommerceIntakeItem.objects.bulk_create([
@@ -528,6 +551,9 @@ def materialize_paid_checkout(checkout, *, actor=None, allow_expired_recovery=Fa
     # recovery wrapper so a verified payment is retained for review.
     auto_process_paid_intake(intake, user=actor)
     intake.refresh_from_db()
+    if intake.delivery_quote_id:
+        from .delivery_services import ensure_delivery_assignment
+        ensure_delivery_assignment(intake, actor=actor)
     return intake, True
 
 

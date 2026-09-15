@@ -5,7 +5,7 @@
     <h2 class="text-xl font-semibold font-display text-[#8f172d]">Dispense Operational Supply</h2>
     <p class="text-sm text-stone-500 mt-1">Use this for gloves, cleaning supplies and other procured materials that are not consumed automatically by {% if vertical_ui.uses_production %}a production {{ vertical_ui.recipe_label|lower }}{% else %}a sale or product receipt{% endif %}.</p>
   </div>
-  <form method="post" class="bg-white border border-[#E7DFCC] rounded-xl p-5 space-y-4">
+  <form method="post" class="cf-form-shell cf-form-body space-y-4">
     {% csrf_token %}
     {% if form.non_field_errors %}<div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3">{{ form.non_field_errors }}</div>{% endif %}
     <div class="grid sm:grid-cols-2 gap-3">

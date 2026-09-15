@@ -1,12 +1,14 @@
 {% load static %}
 <!doctype html>
-<html lang="en">
+<html lang="en" data-tenant="global" data-tenant-accent="#D14900" data-tenant-background="#050733" style="--tenant-background:#050733;--tenant-background-contrast:#fff;--tenant-button:#D14900;--tenant-button-contrast:#fff">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Create your INPROFIC workspace</title>
   <link rel="icon" type="image/png" href="{% static 'core/brand/inprofic-mark.png' %}">
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
+  <link rel="stylesheet" href="{% static 'core/css/workspace.css' %}">
+  <script src="{% static 'core/js/workspace.js' %}"></script>
   {% include "pwa/head.html" %}
   <style>
     @font-face { font-family:'Inter'; src:url('{% static "core/fonts/Inter-Regular.ttf" %}') format('truetype'); font-weight:400; font-style:normal; font-display:swap; }
@@ -17,7 +19,7 @@
 </head>
 <body>
   <main class="min-h-screen flex items-center justify-center p-4">
-    <div class="w-full max-w-2xl bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl shadow-lg p-6">
+    <div class="w-full max-w-2xl bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-6" style="box-shadow:var(--ui-shadow-raised)">
       <img src="{% static 'core/brand/inprofic-logo-on-light.png' %}" alt="INPROFIC" class="h-9 w-auto max-w-full" width="2097" height="361">
       <div class="text-[10px] tracking-[0.2em] uppercase text-[#C69A3E]">Create a business workspace</div>
       <h1 class="text-2xl font-semibold font-display text-[#d14900] mt-4">Set up your business</h1>

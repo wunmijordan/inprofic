@@ -6,22 +6,25 @@ from uuid import uuid4
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.hashers import check_password, make_password
+from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_http_methods, require_POST
 
 from accounts.services import can_use_commerce_storefront, is_business_admin
 from core.models import Business
 from core.verticals import vertical_config
-from inventory.models import FinishedGood
+from inventory.models import FinishedGood, ProductCategory
 from .forms import CommerceIntegrationForm, CommerceSettingsForm, StorefrontProductForm
 from .models import (
     CommerceCheckoutSession, CommerceIntegration, CommerceIntake, CommercePayment,
-    CommercePaymentReceipt, CommerceSettings, StorefrontProduct,
+    CommercePaymentReceipt, CommerceSettings, StorefrontCustomer, StorefrontProduct, DeliveryArea, DeliveryAssignment, DeliverySettings,
 )
 from .services import ChannelMinimumError, accept_intake, create_intake, switch_intake_to_preorder
 from .checkout_services import (
@@ -170,10 +173,70 @@ def intake_accept(request, public_id):
     return redirect("commerce_dashboard")
 
 
+CUSTOMER_SESSION_KEY = "inprofic_storefront_customers"
+
+
+def _customer_session_map(request):
+    value = request.session.get(CUSTOMER_SESSION_KEY) or {}
+    return value if isinstance(value, dict) else {}
+
+
+def _storefront_customer(request, business):
+    public_id = _customer_session_map(request).get(str(business.pk))
+    if not public_id:
+        return None
+    customer = StorefrontCustomer.raw_objects.filter(
+        business=business, public_id=public_id, active=True
+    ).first()
+    if customer:
+        return customer
+    mapping = _customer_session_map(request).copy()
+    mapping.pop(str(business.pk), None)
+    request.session[CUSTOMER_SESSION_KEY] = mapping
+    request.session.modified = True
+    return None
+
+
+def _sign_in_storefront_customer(request, business, customer):
+    mapping = _customer_session_map(request).copy()
+    mapping[str(business.pk)] = str(customer.public_id)
+    request.session[CUSTOMER_SESSION_KEY] = mapping
+    request.session.modified = True
+
+
+def _storefront_customer_enabled(business):
+    settings = _settings_for(business)
+    return bool(_commerce_enabled(business) and settings.hosted_storefront_enabled)
+
+
 def _public_products(business):
     return StorefrontProduct.raw_objects.filter(
         business=business, published=True
-    ).select_related("finished_good__business").prefetch_related("finished_good__channel_prices")
+    ).select_related(
+        "finished_good__business", "finished_good__product_category"
+    ).prefetch_related("finished_good__channel_prices")
+
+
+def _public_catalog_data(business):
+    from .delivery_services import delivery_available
+
+    products = list(_public_products(business))
+    category_ids = {p.finished_good.product_category_id for p in products if p.finished_good.product_category_id}
+    categories = list(
+        ProductCategory.raw_objects.filter(business=business, active=True, pk__in=category_ids)
+        .order_by("sort_order", "name", "id")
+    ) if category_ids else []
+    delivery_enabled = delivery_available(business)
+    delivery_areas = list(
+        DeliveryArea.raw_objects.filter(business=business, active=True)
+        .select_related("rate_band").order_by("name", "id")
+    ) if delivery_enabled else []
+    return {
+        "products": products,
+        "product_categories": categories,
+        "delivery_enabled": delivery_enabled,
+        "delivery_areas": delivery_areas,
+    }
 
 
 def _public_catalog(request, business, settings, *, order_now_mode=False):
@@ -181,10 +244,11 @@ def _public_catalog(request, business, settings, *, order_now_mode=False):
     return render(request, "commerce/storefront.html", {
         "store_business": business,
         "commerce_settings": settings,
-        "products": _public_products(business),
+        **_public_catalog_data(business),
         "order_now_mode": order_now_mode,
         "commerce_channels": vertical_config(business)["commerce_channels"],
         "storefront_copy": storefront_copy,
+        "storefront_customer": _storefront_customer(request, business),
         "checkout_key": uuid4().hex,
     })
 
@@ -259,6 +323,7 @@ def storefront_order(request,business_slug):
     if not _commerce_enabled(business) or not (settings.hosted_storefront_enabled or settings.order_now_link_enabled):
         return render(request,"404.html",status=404)
     try:
+        storefront_customer = _storefront_customer(request, business)
         customer_phone = (request.POST.get("phone") or "").strip()
         customer_email = (request.POST.get("email") or "").strip()
         if not customer_phone:
@@ -283,6 +348,7 @@ def storefront_order(request,business_slug):
             if product is None:
                 raise ValidationError("One of the selected products is no longer available.")
             items.append({"storefront_product": product, "quantity": quantity})
+        delivery_quote_id = request.POST.get("delivery_quote_id") or None
         checkout, _ = create_checkout(
             business=business,
             source=CommerceIntake.SOURCE_STOREFRONT,
@@ -295,17 +361,20 @@ def storefront_order(request,business_slug):
             },
             items=items,
             idempotency_key=request.POST.get("checkout_key") or f"hosted-{uuid4().hex}",
-            service_mode=request.POST.get("service_mode", ""),
+            service_mode="delivery" if delivery_quote_id else request.POST.get("service_mode", ""),
             table_reference=request.POST.get("table_reference", ""),
+            delivery_quote_id=delivery_quote_id,
+            storefront_customer=storefront_customer,
         )
         return redirect("storefront_checkout", business_slug=business.slug, checkout_id=checkout.public_id)
     except (ValidationError, InvalidOperation, TypeError, ValueError) as exc:
         return render(request,"commerce/storefront.html",{
             "store_business":business,
             "commerce_settings":_settings_for(business),
-            "products":_public_products(business),
+            **_public_catalog_data(business),
             "commerce_channels":vertical_config(business)["commerce_channels"],
             "storefront_copy":vertical_config(business)["storefront"],
+            "storefront_customer": _storefront_customer(request, business),
             "order_now_mode":request.POST.get("catalog_mode") == "order_now",
             "order_error":_validation_message(exc),
             "checkout_key":uuid4().hex,
@@ -325,6 +394,28 @@ def storefront_checkout(request, business_slug, checkout_id):
     )
 
 
+def _delivery_payload(intake):
+    if not intake:
+        return None
+    assignment = DeliveryAssignment.raw_objects.filter(
+        business=intake.business, intake=intake
+    ).select_related("driver", "quote").first()
+    if not assignment:
+        return None
+    return {
+        "id": str(assignment.public_id),
+        "status": assignment.status,
+        "status_label": assignment.get_status_display(),
+        "provider": assignment.provider,
+        "driver": assignment.driver.name if assignment.driver_id else None,
+        "eta_at": assignment.eta_at.isoformat() if assignment.eta_at else None,
+        "delivered_at": assignment.delivered_at.isoformat() if assignment.delivered_at else None,
+        "tracking_path": f"/shop/{intake.business.slug}/deliveries/{assignment.public_id}/",
+        "external_tracking_url": assignment.external_tracking_url or None,
+        "fee": f"{intake.delivery_fee:.2f}",
+    }
+
+
 @require_http_methods(["GET"])
 def storefront_checkout_status(request, business_slug, checkout_id):
     """Small public polling response for a checkout's unguessable tracking link."""
@@ -341,6 +432,7 @@ def storefront_checkout_status(request, business_slug, checkout_id):
         "receipt_path": payment_data.get("receipt_path") if payment_data else None,
         "order_id": str(intake.public_id) if intake else None,
         "order_number": intake.public_number if intake else None,
+        "delivery": _delivery_payload(intake),
         "updated_at": checkout.updated_at.isoformat(),
     })
 
@@ -406,6 +498,127 @@ def storefront_checkout_claim(request, business_slug, checkout_id):
         )
 
 
+@require_http_methods(["GET", "POST"])
+def storefront_customer_register(request, business_slug):
+    business = get_object_or_404(Business, slug=business_slug)
+    if not _storefront_customer_enabled(business):
+        return render(request, "404.html", status=404)
+    if _storefront_customer(request, business):
+        return redirect("storefront_customer_account", business_slug=business.slug)
+    error = ""
+    if request.method == "POST":
+        name = (request.POST.get("name") or "").strip()
+        email = (request.POST.get("email") or "").strip().lower()
+        phone = (request.POST.get("phone") or "").strip()
+        address = (request.POST.get("address") or "").strip()
+        password = request.POST.get("password") or ""
+        confirm = request.POST.get("password_confirm") or ""
+        try:
+            if not name:
+                raise ValidationError("Name is required.")
+            validate_email(email)
+            if password != confirm:
+                raise ValidationError("Passwords do not match.")
+            validate_password(password)
+            if StorefrontCustomer.raw_objects.filter(business=business, email=email).exists():
+                raise ValidationError("An account with this email already exists for this storefront. Sign in instead.")
+            customer = StorefrontCustomer.raw_objects.create(
+                business=business, name=name, email=email, phone=phone, default_address=address,
+                password_hash=make_password(password),
+            )
+            _sign_in_storefront_customer(request, business, customer)
+            return redirect("storefront_customer_account", business_slug=business.slug)
+        except ValidationError as exc:
+            error = _validation_message(exc)
+    return render(request, "commerce/storefront_customer_auth.html", {
+        **_public_storefront_context(business), "mode": "register", "customer_error": error,
+    })
+
+
+@require_http_methods(["GET", "POST"])
+def storefront_customer_login(request, business_slug):
+    business = get_object_or_404(Business, slug=business_slug)
+    if not _storefront_customer_enabled(business):
+        return render(request, "404.html", status=404)
+    if _storefront_customer(request, business):
+        return redirect("storefront_customer_account", business_slug=business.slug)
+    error = ""
+    if request.method == "POST":
+        email = (request.POST.get("email") or "").strip().lower()
+        password = request.POST.get("password") or ""
+        customer = StorefrontCustomer.raw_objects.filter(business=business, email=email, active=True).first()
+        if not customer or not check_password(password, customer.password_hash):
+            error = "Email or password is incorrect for this storefront."
+        else:
+            customer.last_login_at = timezone.now()
+            customer.save(update_fields=["last_login_at", "updated_at"])
+            _sign_in_storefront_customer(request, business, customer)
+            return redirect("storefront_customer_account", business_slug=business.slug)
+    return render(request, "commerce/storefront_customer_auth.html", {
+        **_public_storefront_context(business), "mode": "login", "customer_error": error,
+    })
+
+
+@require_POST
+def storefront_customer_logout(request, business_slug):
+    business = get_object_or_404(Business, slug=business_slug)
+    mapping = _customer_session_map(request).copy()
+    mapping.pop(str(business.pk), None)
+    request.session[CUSTOMER_SESSION_KEY] = mapping
+    request.session.modified = True
+    return redirect("storefront", business_slug=business.slug)
+
+
+@require_http_methods(["GET", "POST"])
+def storefront_customer_account(request, business_slug):
+    business = get_object_or_404(Business, slug=business_slug)
+    if not _storefront_customer_enabled(business):
+        return render(request, "404.html", status=404)
+    customer = _storefront_customer(request, business)
+    if not customer:
+        return redirect("storefront_customer_login", business_slug=business.slug)
+    error = ""
+    if request.method == "POST":
+        name = (request.POST.get("name") or "").strip()
+        phone = (request.POST.get("phone") or "").strip()
+        address = (request.POST.get("default_address") or "").strip()
+        password = request.POST.get("new_password") or ""
+        try:
+            if not name:
+                raise ValidationError("Name is required.")
+            customer.name = name
+            customer.phone = phone
+            customer.default_address = address
+            update_fields = ["name", "phone", "default_address", "updated_at"]
+            if password:
+                validate_password(password)
+                customer.password_hash = make_password(password)
+                update_fields.append("password_hash")
+            customer.save(update_fields=update_fields)
+            messages.success(request, "Your storefront profile was updated.")
+            return redirect("storefront_customer_account", business_slug=business.slug)
+        except ValidationError as exc:
+            error = _validation_message(exc)
+    checkouts = list(
+        CommerceCheckoutSession.raw_objects.filter(business=business, storefront_customer=customer)
+        .select_related("materialized_intake")
+        .prefetch_related("items__finished_good")
+        .order_by("-created_at")[:60]
+    )
+    delivery_by_intake = {
+        row.intake_id: row
+        for row in DeliveryAssignment.raw_objects.filter(
+            business=business, intake_id__in=[c.materialized_intake_id for c in checkouts if c.materialized_intake_id]
+        ).select_related("intake")
+    }
+    for checkout in checkouts:
+        checkout.customer_delivery = delivery_by_intake.get(checkout.materialized_intake_id)
+    return render(request, "commerce/storefront_customer_account.html", {
+        **_public_storefront_context(business), "storefront_customer": customer,
+        "customer_checkouts": checkouts, "customer_error": error,
+    })
+
+
 def _api_business_and_auth(request,business_slug,write=False):
     business=get_object_or_404(Business,slug=business_slug)
     settings=_settings_for(business)
@@ -422,7 +635,7 @@ def api_products(request,business_slug):
     if not ok:return JsonResponse({"detail":"Commerce API unavailable."},status=404)
     rows=[]
     channel_labels = vertical_config(business)["commerce_channels"]
-    for p in StorefrontProduct.raw_objects.filter(business=business,published=True).select_related("finished_good__business").prefetch_related("finished_good__channel_prices"):
+    for p in StorefrontProduct.raw_objects.filter(business=business,published=True).select_related("finished_good__business", "finished_good__product_category").prefetch_related("finished_good__channel_prices"):
         order_modes=[]
         mode_config = [
             ("physical_store", p.allow_stock_order, p.min_quantity),
@@ -457,8 +670,14 @@ def api_products(request,business_slug):
         image_url = p.public_image_url
         if image_url and "://" not in image_url:
             image_url = request.build_absolute_uri(f"/{image_url.lstrip('/')}")
-        rows.append({"id":str(p.public_id),"name":p.display_name,"description":p.description,"image":image_url,"image_url":image_url,"unit":p.finished_good.unit,"available_now":str(available_physical_stock(p.finished_good)),"order_modes":order_modes,"ordering_modes":submitted_modes,"min_quantity":str(p.min_quantity),"preorder_min_quantity":str(p.preorder_min_quantity),"distribution_min_quantity":str(p.distribution_min_quantity),"max_quantity":str(p.max_quantity) if p.max_quantity is not None else None,"preorder_lead_time":p.preorder_lead_time,"stock_price":str(p.finished_good.selling_price_for("physical_store")),"preorder_price":str(p.finished_good.selling_price_for("online")),"distribution_price":str(p.finished_good.selling_price_for("distribution"))})
-    return JsonResponse({"business":business.name,"business_slug":business.slug,"service":business.get_vertical_display(),"products":rows})
+        rows.append({"id":str(p.public_id),"name":p.display_name,"category":({"id": p.finished_good.product_category_id, "name": p.finished_good.product_category.name, "slug": p.finished_good.product_category.slug} if p.finished_good.product_category_id and p.finished_good.product_category.active else None),"description":p.description,"image":image_url,"image_url":image_url,"unit":p.finished_good.unit,"available_now":str(available_physical_stock(p.finished_good)),"order_modes":order_modes,"ordering_modes":submitted_modes,"min_quantity":str(p.min_quantity),"preorder_min_quantity":str(p.preorder_min_quantity),"distribution_min_quantity":str(p.distribution_min_quantity),"max_quantity":str(p.max_quantity) if p.max_quantity is not None else None,"preorder_lead_time":p.preorder_lead_time,"stock_price":str(p.finished_good.selling_price_for("physical_store")),"preorder_price":str(p.finished_good.selling_price_for("online")),"distribution_price":str(p.finished_good.selling_price_for("distribution"))})
+    categories = [
+        {"id": category.pk, "name": category.name, "slug": category.slug}
+        for category in ProductCategory.raw_objects.filter(
+            business=business, active=True, products__storefront_product__published=True
+        ).distinct().order_by("sort_order", "name", "id")
+    ]
+    return JsonResponse({"business":business.name,"business_slug":business.slug,"service":business.get_vertical_display(),"categories":categories,"products":rows})
 
 
 @csrf_exempt
@@ -500,10 +719,11 @@ def api_checkouts(request, business_slug):
             ordering_mode=data.get("ordering_mode"),
             external_order_id=str(data.get("external_order_id") or ""),
             customer=customer,
-            service_mode=str(data.get("service_mode") or ""),
+            service_mode="delivery" if data.get("delivery_quote_id") else str(data.get("service_mode") or ""),
             table_reference=str(data.get("table_reference") or ""),
             items=items,
             idempotency_key=request.headers.get("Idempotency-Key", ""),
+            delivery_quote_id=data.get("delivery_quote_id") or None,
         )
         payload = serialize_checkout(checkout)
         payload["created"] = created
@@ -574,7 +794,7 @@ def api_order_detail(request,business_slug,public_id):
             key: normalized[key]
             for key in ("payment_id", "method", "status", "amount", "currency", "reference", "amount_paid", "balance", "verified_at")
         }
-    return JsonResponse({"id":str(intake.public_id),"number":intake.public_number,"status":intake.status,"order_mode":intake.sales_channel,"fulfilment_mode":intake.ordering_mode,"ordering_mode":intake.ordering_mode,"payment_state":intake.payment_state,"payment":compact_payment,"fulfilment_state":intake.fulfilment_state,"total":str(intake.total),"items":[{"product":row.finished_good.name,"requested":str(row.requested_quantity),"stock_fulfilled":str(row.accepted_stock_quantity),"production":str(row.production_quantity),"price":str(row.unit_price)} for row in intake.items.all()]})
+    return JsonResponse({"id":str(intake.public_id),"number":intake.public_number,"status":intake.status,"order_mode":intake.sales_channel,"fulfilment_mode":intake.ordering_mode,"ordering_mode":intake.ordering_mode,"payment_state":intake.payment_state,"payment":compact_payment,"fulfilment_state":intake.fulfilment_state,"subtotal":str(intake.total - intake.delivery_fee),"delivery_fee":str(intake.delivery_fee),"delivery":_delivery_payload(intake),"total":str(intake.total),"items":[{"product":row.finished_good.name,"requested":str(row.requested_quantity),"stock_fulfilled":str(row.accepted_stock_quantity),"production":str(row.production_quantity),"price":str(row.unit_price)} for row in intake.items.all()]})
 
 
 @require_http_methods(["POST"])
@@ -616,7 +836,7 @@ def storefront_order_status(request, business_slug, public_id):
     return render(
         request,
         "commerce/storefront_status.html",
-        {**_public_storefront_context(business), "intake": intake},
+        {**_public_storefront_context(business), "intake": intake, "delivery": DeliveryAssignment.raw_objects.filter(business=business, intake=intake).select_related("driver", "quote").first()},
     )
 
 
@@ -669,8 +889,9 @@ def connector_orders(request, business_slug, integration_id):
             items=items,
             external_order_id=str(data.get("external_order_id") or ""),
             idempotency_key=idem,
-            service_mode=str(data.get("service_mode") or ""),
+            service_mode="delivery" if data.get("delivery_quote_id") else str(data.get("service_mode") or ""),
             table_reference=str(data.get("table_reference") or ""),
+            delivery_quote_id=data.get("delivery_quote_id") or None,
         )
         payload = serialize_checkout(checkout)
         payload.update({
@@ -763,7 +984,7 @@ def _staff_pos_products(business):
         filters["allow_stock_order"] = True
     products = list(
         StorefrontProduct.raw_objects.filter(**filters)
-        .select_related("finished_good__business")
+        .select_related("finished_good__business", "finished_good__product_category")
         .prefetch_related("finished_good__channel_prices")
         .order_by("public_name", "finished_good__name")
     )
@@ -862,8 +1083,13 @@ def storefront_pos(request):
             if checkout is not None:
                 cancel_unpaid_checkout(checkout, reason=f"Staff POS payment initiation failed: {_validation_message(exc)}")
             error = _validation_message(exc)
+    pos_categories = sorted(
+        {p.finished_good.product_category for p in products if p.finished_good.product_category_id},
+        key=lambda category: (category.sort_order, category.name.lower(), category.pk),
+    )
     return render(request, "commerce/storefront_pos.html", {
         "products": products,
+        "product_categories": pos_categories,
         "payment_methods": methods,
         "pos_key": uuid4().hex,
         "pos_error": error,

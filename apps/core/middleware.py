@@ -138,7 +138,7 @@ EXEMPT_PREFIXES = (
     "/accounts/login", "/accounts/logout", "/accounts/signup",
     "/business/settings", "/business/switch", "/admin", "/static", "/media/", "/shop/",
     "/health/", "/ops/", "/manifest.webmanifest", "/service-worker.js", "/pwa/",
-    "/api/v1/storefronts/", "/api/v1/connectors/",
+    "/api/v1/storefronts/", "/api/v1/connectors/", "/api/v1/delivery/providers/",
     "/users/plans/payment/callback/", "/users/plans/payment/webhook/",
 )
 
@@ -209,6 +209,19 @@ class LoginRequiredMiddleware:
             if not getattr(request, "business", None):
                 from django.shortcuts import render
                 return render(request, "accounts/no_business_access.html", status=403)
+            # Purpose-specific users land directly in their isolated workspace
+            # rather than receiving broad Dashboard access just to have a home.
+            if request.path.rstrip("/") == "/dashboard":
+                business = getattr(request, "business", None)
+                if not user_has_permission(request.user, business, "dashboard", "view"):
+                    if user_has_permission(request.user, business, "audit", "view"):
+                        return redirect("audit_workspace")
+                    if user_has_permission(request.user, business, "pos", "view"):
+                        return redirect("commerce_storefront_pos")
+                    if user_has_permission(request.user, business, "delivery_rider", "view"):
+                        return redirect("delivery_rider_dashboard")
+                    if user_has_permission(request.user, business, "delivery", "view"):
+                        return redirect("delivery_dashboard")
             module = _module_for_path(request.path)
             action = _action_for_request(request)
             if not user_has_permission(request.user, getattr(request, "business", None), module, action):
@@ -218,6 +231,9 @@ class LoginRequiredMiddleware:
 
 
 MODULE_RULES = [
+    ("/audit", "audit"),
+    ("/delivery/rider", "delivery_rider"),
+    ("/delivery", "delivery"),
     ("/commerce/storefront-pos", "pos"),
     ("/inventory", "inventory"),
     ("/procurement", "procurement"),
@@ -240,6 +256,8 @@ def _module_for_path(path):
 def _action_for_request(request):
     # A read receipt only changes the current user's alert acknowledgement;
     # commerce viewers do not need broad commerce-edit permission for it.
+    if request.path.startswith("/audit/query/") and request.path.rstrip("/") == "/audit/query":
+        return "view"
     if request.path.startswith("/commerce/notifications/"):
         return "view"
     if request.method != "POST":

@@ -3,7 +3,7 @@
 The editable 16:9 product deck is available as
 [`INPROFIC_Pitch_Deck.pptx`](INPROFIC_Pitch_Deck.pptx). Its 15 slides cover the
 problem, connected operating model, INPROFIC acronym, five verticals,
-inventory, procurement, production, commerce, finance, controls, reporting,
+inventory, procurement, production, commerce, delivery, finance, controls, Audit Workspace, reporting,
 architecture, subscriptions, Founder-managed promotions, safe live demos and value proposition.
 
 All slide content is built from editable PowerPoint text boxes, shapes and
@@ -28,3 +28,6 @@ python scripts/build_pitch_deck.py
 ```
 
 The builder overwrites only `docs/INPROFIC_Pitch_Deck.pptx`.
+
+
+The deck now mentions plan-gated Delivery, true in-house/Glovo Hybrid routing, the rider-only delivery workspace and alerts, optional tenant-scoped storefront customer profiles, Glovo LaaS v2 live quotes/dispatch/tracking, the isolated Audit Workspace, auditor query handling, product categories, and the dedicated POS-only role plus supplemental POS permission.

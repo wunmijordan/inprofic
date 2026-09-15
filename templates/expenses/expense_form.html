@@ -23,60 +23,155 @@
 <form method="post" class="space-y-4">
   {% csrf_token %}
   {{ formset.management_form }}
-  {% if formset.non_form_errors %}<div class="max-w-5xl rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{{ formset.non_form_errors }}</div>{% endif %}
-  <div id="expense-rows" class="space-y-3 max-w-6xl">
-    {% for form in formset %}
-    <section class="expense-row rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4 shadow-sm" {% if forloop.first %}data-formset-row{% endif %}>
-      <div class="mb-3 flex items-center justify-between gap-3"><h3 class="text-sm font-semibold text-stone-700">Expense <span class="expense-row-number">{{ forloop.counter }}</span></h3><div><span class="hidden">{{ form.DELETE }}</span><button type="button" data-remove-expense-row class="rounded px-2 py-1 text-xs text-rose-700 hover:bg-rose-50">Remove</button></div></div>
-      {% if form.non_field_errors %}<div class="mb-3 rounded-md border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">{{ form.non_field_errors }}</div>{% endif %}
-      <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {% include "_field.html" with field=form.date %}
-        {% include "_field.html" with field=form.category %}
-        <div class="xl:col-span-2">{% include "_field.html" with field=form.description %}</div>
-        {% include "_field.html" with field=form.amount %}
-        {% include "_field.html" with field=form.vendor %}
-        {% include "_field.html" with field=form.payment_status %}
-        {% include "_field.html" with field=form.payment_method %}
-        <div class="xl:col-span-2">{% include "_field.html" with field=form.account %}</div>
-        <div class="xl:col-span-2">{% include "_field.html" with field=form.notes %}</div>
+  {% if formset.non_form_errors %}<div class="max-w-6xl rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{{ formset.non_form_errors }}</div>{% endif %}
+
+  <div class="max-w-full rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] shadow-sm overflow-hidden">
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7DFCC] bg-[#FAF6EA] px-4 py-3">
+      <div>
+        <p class="text-sm font-semibold text-stone-700">Expense entry</p>
+        <p class="text-xs text-stone-500">Add only the rows you need. Use “More” for vendor and notes.</p>
       </div>
-    </section>
-    {% endfor %}
+      <span id="expense-entry-count" class="rounded-full border border-[#D9CFB4] bg-white px-2.5 py-1 text-xs text-stone-500">1 row</span>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table id="expense-table" class="w-full text-sm" style="min-width:1180px">
+        <thead class="bg-[#F0EAD9] text-xs text-stone-500">
+          <tr>
+            <th class="w-12 px-2 py-2 text-center">#</th>
+            <th class="w-36 px-2 py-2 text-left">Date</th>
+            <th class="w-40 px-2 py-2 text-left">Category</th>
+            <th class="min-w-[240px] px-2 py-2 text-left">Description</th>
+            <th class="w-36 px-2 py-2 text-left">Amount</th>
+            <th class="w-32 px-2 py-2 text-left">Status</th>
+            <th class="w-32 px-2 py-2 text-left">Method</th>
+            <th class="px-2 py-2 text-left" style="min-width:190px">Cash / bank account</th>
+            <th class="w-32 px-2 py-2"></th>
+          </tr>
+        </thead>
+        {% for form in formset %}
+        <tbody class="expense-row border-t border-[#E7DFCC]" {% if forloop.first %}data-formset-row{% endif %}>
+          <tr class="align-top hover:bg-[#FFFCF5]">
+            <td class="px-2 py-2 text-center text-xs font-semibold text-stone-400">
+              <span class="expense-row-number">{{ forloop.counter }}</span>
+              <span class="hidden">{{ form.DELETE }}</span>
+            </td>
+            <td class="px-2 py-2">{{ form.date }}{% for error in form.date.errors %}<div class="expense-field-error mt-1 text-[11px] text-rose-600">{{ error }}</div>{% endfor %}</td>
+            <td class="px-2 py-2">{{ form.category }}{% for error in form.category.errors %}<div class="expense-field-error mt-1 text-[11px] text-rose-600">{{ error }}</div>{% endfor %}</td>
+            <td class="px-2 py-2">{{ form.description }}{% for error in form.description.errors %}<div class="expense-field-error mt-1 text-[11px] text-rose-600">{{ error }}</div>{% endfor %}</td>
+            <td class="px-2 py-2">{{ form.amount }}{% for error in form.amount.errors %}<div class="expense-field-error mt-1 text-[11px] text-rose-600">{{ error }}</div>{% endfor %}</td>
+            <td class="px-2 py-2">{{ form.payment_status }}{% for error in form.payment_status.errors %}<div class="expense-field-error mt-1 text-[11px] text-rose-600">{{ error }}</div>{% endfor %}</td>
+            <td class="px-2 py-2">{{ form.payment_method }}{% for error in form.payment_method.errors %}<div class="expense-field-error mt-1 text-[11px] text-rose-600">{{ error }}</div>{% endfor %}</td>
+            <td class="px-2 py-2">{{ form.account }}{% for error in form.account.errors %}<div class="expense-field-error mt-1 text-[11px] text-rose-600">{{ error }}</div>{% endfor %}</td>
+            <td class="px-2 py-2 text-right whitespace-nowrap">
+              <button type="button" data-toggle-expense-details class="rounded px-2 py-1 text-xs font-medium text-stone-500 hover:bg-[#F0EAD9] hover:text-[#8f172d]">More</button>
+              <button type="button" data-remove-expense-row class="rounded px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50">Remove</button>
+            </td>
+          </tr>
+          {% if form.non_field_errors %}
+          <tr class="expense-row-error bg-rose-50"><td colspan="9" class="px-3 py-2 text-xs text-rose-700">{{ form.non_field_errors }}</td></tr>
+          {% endif %}
+          <tr class="expense-extra {% if not form.vendor.errors and not form.notes.errors %}hidden{% endif %} bg-[#FAF8F1]">
+            <td></td>
+            <td colspan="8" class="px-3 py-3">
+              <div class="grid gap-3 md:grid-cols-2">
+                <div>
+                  <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-stone-400" for="{{ form.vendor.id_for_label }}">Vendor / payee <span class="normal-case font-normal">(optional)</span></label>
+                  {{ form.vendor }}
+                  {% for error in form.vendor.errors %}<div class="expense-field-error mt-1 text-[11px] text-rose-600">{{ error }}</div>{% endfor %}
+                </div>
+                <div>
+                  <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-stone-400" for="{{ form.notes.id_for_label }}">Notes <span class="normal-case font-normal">(optional)</span></label>
+                  {{ form.notes }}
+                  {% for error in form.notes.errors %}<div class="expense-field-error mt-1 text-[11px] text-rose-600">{{ error }}</div>{% endfor %}
+                </div>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+        {% endfor %}
+      </table>
+    </div>
   </div>
-  <div class="max-w-6xl flex flex-wrap items-center justify-between gap-3">
-    <button type="button" id="add-expense-row" class="rounded-md border border-[#D9CFB4] bg-white px-3.5 py-2 text-sm font-medium text-[#8f172d] hover:bg-[#F0EAD9]">+ Add another expense</button>
+
+  <div class="max-w-full flex flex-wrap items-center justify-between gap-3">
+    <button type="button" id="add-expense-row" class="rounded-md border border-[#D9CFB4] bg-white px-3.5 py-2 text-sm font-medium text-[#8f172d] hover:bg-[#F0EAD9]">+ Add expense</button>
     <div class="flex flex-wrap justify-end gap-2"><a href="{% url 'expenses_list' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a><button type="submit" name="save_add_new" value="1" class="px-3.5 py-2 text-sm rounded-md font-medium border border-[#8f172d] text-[#8f172d] bg-white hover:bg-[#FFF5F4]">Save &amp; add more</button><button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save expenses</button></div>
   </div>
 </form>
 <script>
 (() => {
-  const container = document.getElementById('expense-rows');
+  const table = document.getElementById('expense-table');
   const total = document.getElementById('id_expenses-TOTAL_FORMS');
   const add = document.getElementById('add-expense-row');
+  const count = document.getElementById('expense-entry-count');
+  const template = table?.querySelector('[data-formset-row]');
   const today = new Date().toISOString().slice(0, 10);
-  function renumber(){ let visible = 0; container.querySelectorAll('.expense-row').forEach((row) => { if (row.classList.contains('hidden')) return; visible += 1; const node = row.querySelector('.expense-row-number'); if (node) node.textContent = visible; }); }
-  add?.addEventListener('click', () => {
-    const template = container.querySelector('[data-formset-row]');
-    if (!template || !total) return;
-    const index = Number(total.value || 0);
-    const row = template.cloneNode(true);
-    row.removeAttribute('data-formset-row');
-    row.querySelectorAll('input, select, textarea, label').forEach((el) => {
-      ['name','id','for'].forEach(attr => {
+
+  function visibleRows() {
+    return Array.from(table?.querySelectorAll('.expense-row') || []).filter((row) => !row.classList.contains('hidden'));
+  }
+  function refreshRows() {
+    const rows = visibleRows();
+    rows.forEach((row, index) => {
+      const node = row.querySelector('.expense-row-number');
+      if (node) node.textContent = index + 1;
+    });
+    if (count) count.textContent = `${rows.length} expense${rows.length === 1 ? '' : 's'}`;
+  }
+  function replaceIndex(root, index) {
+    root.querySelectorAll('[name], [id], label[for]').forEach((el) => {
+      ['name', 'id', 'for'].forEach((attr) => {
         const value = el.getAttribute(attr);
         if (value) el.setAttribute(attr, value.replace(/-\d+-/, `-${index}-`));
       });
-      if (el.matches('input, select, textarea')) {
-        if (el.type === 'checkbox') el.checked = false;
-        else if (el.tagName === 'SELECT') el.selectedIndex = 0;
-        else if (el.type === 'number') el.value = '0';
-        else el.value = el.type === 'date' ? today : '';
-      }
     });
-    row.querySelectorAll('.text-rose-600, .text-rose-700').forEach(node => { if (!node.querySelector('input')) node.remove(); });
-    container.appendChild(row); total.value = index + 1; renumber(); row.querySelector('input, select, textarea')?.focus();
+  }
+  function resetNewRow(row) {
+    row.querySelectorAll('.expense-field-error, .expense-row-error').forEach((node) => node.remove());
+    row.querySelector('.expense-extra')?.classList.add('hidden');
+    const setValue = (suffix, value) => {
+      const field = row.querySelector(`[name$="-${suffix}"]`);
+      if (field) field.value = value;
+    };
+    setValue('date', today);
+    setValue('category', 'other');
+    setValue('description', '');
+    setValue('amount', '0');
+    setValue('payment_status', 'paid');
+    setValue('payment_method', 'Transfer');
+    setValue('account', '');
+    setValue('vendor', '');
+    setValue('notes', '');
+    const deleted = row.querySelector('input[name$="-DELETE"]');
+    if (deleted) deleted.checked = false;
+    row.querySelectorAll('input, select, textarea, button').forEach((control) => { control.disabled = false; });
+  }
+
+  add?.addEventListener('click', () => {
+    if (!template || !total || !table) return;
+    const index = Number(total.value || 0);
+    const row = template.cloneNode(true);
+    row.removeAttribute('data-formset-row');
+    replaceIndex(row, index);
+    resetNewRow(row);
+    table.appendChild(row);
+    total.value = index + 1;
+    refreshRows();
+    row.querySelector('input[name$="-description"]')?.focus();
   });
-  container?.addEventListener('click', (event) => {
+
+  table?.addEventListener('click', (event) => {
+    const details = event.target.closest('[data-toggle-expense-details]');
+    if (details) {
+      const row = details.closest('.expense-row');
+      const extra = row?.querySelector('.expense-extra');
+      if (extra) {
+        extra.classList.toggle('hidden');
+        details.textContent = extra.classList.contains('hidden') ? 'More' : 'Less';
+      }
+      return;
+    }
     const remove = event.target.closest('[data-remove-expense-row]');
     if (!remove) return;
     const row = remove.closest('.expense-row');
@@ -85,10 +180,11 @@
     row?.querySelectorAll('input, select, textarea, button').forEach((control) => {
       if (control !== deleted && control !== remove) control.disabled = true;
     });
-    if (row) row.classList.add('hidden');
-    renumber();
+    row?.classList.add('hidden');
+    refreshRows();
   });
-  renumber();
+
+  refreshRows();
 })();
 </script>
 {% endif %}

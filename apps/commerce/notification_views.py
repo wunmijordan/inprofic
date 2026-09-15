@@ -2,6 +2,7 @@ import json
 from uuid import UUID
 
 from django.http import JsonResponse
+from django.db.models import Q
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
@@ -11,18 +12,35 @@ from .models import CommerceNotification, CommerceNotificationRead, CommerceSett
 from .realtime import publish_user_notifications_changed
 
 
+def _access_profile(request):
+    if not (request.user.is_authenticated and getattr(request, "business", None)):
+        return {"commerce": False, "delivery": False, "rider": False}
+    return {
+        "commerce": user_has_permission(request.user, request.business, "commerce", "view"),
+        "delivery": user_has_permission(request.user, request.business, "delivery", "view"),
+        "rider": user_has_permission(request.user, request.business, "delivery_rider", "view"),
+    }
+
+
 def _authorized(request):
-    return bool(
-        request.user.is_authenticated
-        and getattr(request, "business", None)
-        and user_has_permission(request.user, request.business, "commerce", "view")
-    )
+    return any(_access_profile(request).values())
 
 
 def _unread(request):
+    access = _access_profile(request)
+    if not any(access.values()):
+        return CommerceNotification.raw_objects.none()
+    visible = Q(recipient_user=request.user)
+    if access["commerce"]:
+        # Commerce staff see ordinary commerce activity plus delivery activity so
+        # paid-order handoffs are not lost between teams.
+        visible |= Q(recipient_user__isnull=True)
+    elif access["delivery"]:
+        visible |= Q(recipient_user__isnull=True, event_type__in=CommerceNotification.DELIVERY_EVENTS)
+    # Rider-only users intentionally see only direct alerts addressed to them.
     return CommerceNotification.raw_objects.filter(
         business=request.business
-    ).exclude(reads__user=request.user)
+    ).filter(visible).exclude(reads__user=request.user)
 
 
 @never_cache

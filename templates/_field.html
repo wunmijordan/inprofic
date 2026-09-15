@@ -1,6 +1,17 @@
-<label class="block mb-3 {% if field.errors %}field-has-error{% endif %}">
-  <span class="block text-xs font-medium text-stone-600 mb-1">{{ field.label }}</span>
-  {{ field }}
-  {% if field.help_text %}<span class="block text-[11px] text-stone-400 mt-0.5">{{ field.help_text }}</span>{% endif %}
-  {% for error in field.errors %}<span class="block text-[11px] text-rose-600 mt-0.5">{{ error }}</span>{% endfor %}
+{% if field.field.widget.input_type == "checkbox" %}
+<label class="cf-toggle-field mb-3 flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-[#E7DFCC] bg-white px-3.5 py-3 transition hover:border-[#D9CFB4] hover:bg-[#FFFCF5] {% if field.errors %}field-has-error{% endif %}">
+  <span class="min-w-0">
+    <span class="block text-sm font-semibold text-stone-700">{{ field.label }}</span>
+    {% if field.help_text %}<span class="mt-0.5 block text-[11px] leading-5 text-stone-500">{{ field.help_text }}</span>{% endif %}
+    {% for error in field.errors %}<span class="mt-1 block text-[11px] text-rose-600">{{ error }}</span>{% endfor %}
+  </span>
+  <span class="cf-switch shrink-0">{{ field }}<span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span>
 </label>
+{% else %}
+<label class="cf-field block mb-3 {% if field.errors %}field-has-error{% endif %}">
+  <span class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500">{{ field.label }}</span>
+  {{ field }}
+  {% if field.help_text %}<span class="mt-1 block text-[11px] leading-5 text-stone-500">{{ field.help_text }}</span>{% endif %}
+  {% for error in field.errors %}<span class="mt-1 block text-[11px] text-rose-600">{{ error }}</span>{% endfor %}
+</label>
+{% endif %}

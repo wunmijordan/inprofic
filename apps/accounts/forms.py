@@ -6,8 +6,8 @@ from .services import ensure_permissions, is_business_admin, seed_business_roles
 
 CLS = "w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 focus:border-[#8f172d]"
 
-# POS is intentionally role-owned. It does not appear in the per-user override matrix.
-USER_OVERRIDE_MODULES = tuple((m, label) for m, label in RoleModulePermission.MODULE_CHOICES if m != "pos")
+# POS can be a dedicated cashier-only role or a supplemental per-user permission on an existing role.
+USER_OVERRIDE_MODULES = tuple(RoleModulePermission.MODULE_CHOICES)
 
 
 class BusinessSignupForm(forms.Form):
@@ -78,6 +78,8 @@ class UserForm(forms.ModelForm):
         self.fields["role"].queryset = qs
         for f in self.fields.values():
             f.widget.attrs["class"] = CLS
+        self.fields["is_active"].label = "Can sign in"
+        self.fields["is_active"].help_text = "Turn this off to pause this user's access without deleting their account."
         if membership:
             self.fields["role"].initial = membership.role_id
 
@@ -144,6 +146,9 @@ class RoleForm(forms.ModelForm):
 
     def __init__(self, *args, actor=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["active"].label = "Role available"
+        self.fields["active"].help_text = "Turn this off to stop assigning and using this role while keeping it saved."
+        self.fields["visible_to_admin"].label = "Business admins can assign this role"
         # Only the global superuser may create/keep a role hidden from the
         # Business Admin. Anyone else never even sees the field, so a role
         # they create or edit always stays at the model default (visible).
@@ -274,6 +279,8 @@ class MarketingPromoCampaignForm(forms.ModelForm):
         self.fields["promotion"].label_from_instance = lambda obj: f"{obj.target_label} — {obj.reason}"
         self.fields["content_html"].required = True
         self.fields["content_html"].help_text = "Use the editor below. Only INPROFIC's bundled fonts and safe text formatting are retained."
+        self.fields["active"].label = "Show campaign"
+        self.fields["active"].help_text = "Turn this off to keep the campaign saved without showing it to visitors."
         for name, field in self.fields.items():
             if name != "content_html":
                 field.widget.attrs.setdefault("class", CLS)

@@ -174,7 +174,7 @@
     permissionButton.disabled = false;
     permissionButton.textContent = localSubscription ? 'Disable on this device' : 'Enable background alerts';
     permissionStatus.textContent = localSubscription
-      ? 'Background Web Push is active on this device. Visible pages continue using the faster in-app/WebSocket alert path.'
+      ? 'Background Web Push is enabled on this device. Visible pages continue using the faster in-app/WebSocket alert path.'
       : 'Background alerts are not enabled on this device.';
   }
   async function enablePush() {

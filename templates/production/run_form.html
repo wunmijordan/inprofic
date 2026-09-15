@@ -1,36 +1,28 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="max-w-5xl">
-  <div class="flex justify-between items-end mb-4">
-    <div>
-      <h2 class="text-xl font-semibold font-display text-[#8f172d]">{% if run %}Edit{% else %}New{% endif %} Shared Production Run</h2>
-      <p class="text-sm text-stone-500 mt-1">Group several customer/store orders into one coordinated production exercise. Each order keeps its own exact quantities and proportional {{ vertical_ui.recipe_label|lower }} usage.</p>
-    </div>
-    <a href="{% url 'production_runs' %}" class="text-sm text-stone-500">Back to runs</a>
+  <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Production planning</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if run %}Edit{% else %}New{% endif %} Shared Production Run</h2><p class="mt-1 max-w-3xl text-sm text-stone-500">Bring several pending orders into one coordinated production session while each order keeps its own quantities and material requirements.</p></div>
+    <a href="{% url 'production_runs' %}" class="rounded-xl px-3 py-2 text-sm text-stone-500 hover:bg-stone-100">Back to runs</a>
   </div>
 
-  <div class="rounded-lg border border-sky-200 bg-sky-50 p-4 mb-4 text-sm text-sky-900">
-    <b>How this works:</b> select any Pending orders that already exist, save the run, then add new customer orders from the run page if needed. A 50-piece order for a product whose registered batch yields 110 pieces still consumes only 50/110 of that product's batch {{ vertical_ui.recipe_label|lower }}. The run simply combines those proportional requirements for one approval/release.
-  </div>
+  <div class="mb-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900"><strong>How it works:</strong> select existing pending orders, save the run, then add more orders from the run page if needed. INPROFIC keeps each order's own recipe scale—including any Base material sizing already chosen—and combines the required materials when the run is approved.</div>
 
-  <form method="post">{% csrf_token %}
-    <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-4 mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div><label class="text-xs font-medium text-stone-600">Date</label>{{ form.date }}{{ form.date.errors }}</div>
-      <div><label class="text-xs font-medium text-stone-600">Run number</label>{{ form.run_number }}{{ form.run_number.errors }}</div>
-      <div class="md:col-span-2">
-        <label class="text-xs font-medium text-stone-600">Existing pending orders to include</label>
-        <div class="mt-1">{{ form.orders }}</div><p class="text-[10px] text-stone-400 mt-1">Select one or more pending orders from the dropdown list. Hold Ctrl (Windows/Linux) or Cmd (Mac) to select multiple existing orders.</p>
-        {% if form.orders.help_text %}<p class="text-[11px] text-stone-500 mt-1">{{ form.orders.help_text }}</p>{% endif %}
-        {{ form.orders.errors }}
-      </div>
-      <div class="md:col-span-2"><label class="text-xs font-medium text-stone-600">Notes</label>{{ form.notes }}{{ form.notes.errors }}</div>
+  <form method="post" class="cf-form-shell">{% csrf_token %}
+    <div class="cf-form-body space-y-5">
+      {% if form.non_field_errors %}<div class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{{ form.non_field_errors|striptags }}</div>{% endif %}
+      <section class="cf-form-section">
+        <div class="cf-form-section-title mb-3">Run details</div>
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {% include "_field.html" with field=form.date %}
+          {% include "_field.html" with field=form.run_number %}
+          <div class="md:col-span-2">{% include "_field.html" with field=form.orders %}<p class="-mt-2 text-[11px] leading-5 text-stone-500">Choose one or more pending orders. On a desktop, use Ctrl or Cmd while selecting more than one.</p></div>
+          <div class="md:col-span-2">{% include "_field.html" with field=form.notes %}</div>
+        </div>
+      </section>
+      <div class="rounded-2xl border border-[#E7DFCC] bg-stone-50 p-4 text-xs leading-5 text-stone-600"><strong>No extra material quantities are needed here.</strong> Each selected order already carries its own recipe and production size. Flexible recipe items remain adjustable during approval where the product allows it.</div>
+      <div class="flex justify-end"><button type="submit" class="rounded-xl bg-[#8f172d] px-5 py-2.5 text-sm font-semibold text-white">Save shared run</button></div>
     </div>
-
-    <div class="rounded-lg border border-[#E7DFCC] bg-stone-50 p-4 mb-4 text-xs text-stone-600">
-      <b>No common-material quantities are entered here.</b> INPROFIC uses each selected/new order's existing product {{ vertical_ui.recipe_label|lower }} and production plan exactly as it would for individual approval, then sums the proportional requirements across the run. Flexible {{ vertical_ui.recipe_item_label|lower }} quantities remain adjustable at run approval.
-    </div>
-
-    <button type="submit" class="px-4 py-2 rounded-md bg-[#8f172d] text-white text-sm font-medium">Save Shared Run</button>
   </form>
 </div>
 {% endblock %}

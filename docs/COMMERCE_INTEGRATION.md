@@ -32,6 +32,16 @@ stock balances or finance records. Direct writes could bypass price snapshots,
 material release, batch costing, expiry, stock allocation, receivables and audit
 rules.
 
+Delivery follows the same rule. A website may request a delivery quote and pay
+the full checkout amount, but delivery assignments are created only after trusted
+payment verification. The delivery engine then owns in-house, hybrid, manual
+third-party and optional Glovo LaaS v2 live-quote/dispatch without allowing the storefront
+to create operational delivery records directly.
+
+Product categories are part of the public product contract. They are business-defined
+records and do not replace the source distinction between made-in-house and
+purchased-for-resale products.
+
 ## Supported ways to plug INPROFIC into another website
 
 ### 1. Hosted storefront
@@ -427,3 +437,8 @@ Gateway webhook URLs point directly to INPROFIC, not the website:
 /api/v1/storefronts/{business_slug}/payments/paystack/webhook
 /api/v1/storefronts/{business_slug}/payments/monnify/webhook
 ```
+
+
+### Delivery rider and storefront-customer boundaries
+
+Delivery Rider is a purpose-specific staff access surface: rider-only users can see and act only on assignments linked to their own active in-house driver record. Delivery alerts reuse the durable Commerce notification transport but support targeted rider recipients. Public storefront customers remain guests by default; optional `StorefrontCustomer` profiles are tenant-scoped, separate from staff users, and store purchase history without making registration a checkout requirement. Hybrid delivery means in-house and the configured provider remain interchangeable per order under the tenant’s routing and customer-visible post-payment switch policy.

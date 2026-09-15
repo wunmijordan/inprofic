@@ -215,3 +215,41 @@ class AuditLog(BusinessOwnedModel):
     metadata = models.JSONField(default=dict, blank=True)
     class Meta:
         ordering = ["-created_at", "-id"]
+
+
+class AuditQuery(BusinessOwnedModel):
+    STATUS_OPEN = "open"
+    STATUS_REVIEWING = "reviewing"
+    STATUS_ANSWERED = "answered"
+    STATUS_CLOSED = "closed"
+    STATUS_CHOICES = [
+        (STATUS_OPEN, "Open"),
+        (STATUS_REVIEWING, "Under review"),
+        (STATUS_ANSWERED, "Answered"),
+        (STATUS_CLOSED, "Closed"),
+    ]
+    SEVERITY_LOW = "low"
+    SEVERITY_MEDIUM = "medium"
+    SEVERITY_HIGH = "high"
+    SEVERITY_CHOICES = [(SEVERITY_LOW, "Low"), (SEVERITY_MEDIUM, "Medium"), (SEVERITY_HIGH, "High")]
+
+    module = models.CharField(max_length=40)
+    record_label = models.CharField(max_length=180, blank=True, default="")
+    record_model = models.CharField(max_length=120, blank=True, default="")
+    record_id = models.CharField(max_length=80, blank=True, default="")
+    subject = models.CharField(max_length=160)
+    message = models.TextField()
+    severity = models.CharField(max_length=10, choices=SEVERITY_CHOICES, default=SEVERITY_MEDIUM)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=STATUS_OPEN)
+    response = models.TextField(blank=True, default="")
+    assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="assigned_audit_queries")
+    answered_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="answered_audit_queries")
+    answered_at = models.DateTimeField(null=True, blank=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["status", "-created_at", "-id"]
+        indexes = [models.Index(fields=["business", "status", "created_at"], name="audit_query_status_idx")]
+
+    def __str__(self):
+        return f"{self.subject} — {self.get_status_display()}"

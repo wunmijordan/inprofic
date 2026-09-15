@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
-<h2 class="text-xl font-semibold font-display text-[#8f172d] mb-4">{% if obj %}Edit{% else %}New{% endif %} {{ vertical_ui.orders|slice:":-1" }}</h2>
-<div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg shadow-[0_2px_8px_#000000d2] p-5 max-w-2xl">
+<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Production planning</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit{% else %}New{% endif %} {{ vertical_ui.orders|slice:":-1" }}</h2><p class="mt-1 max-w-3xl text-sm text-stone-500">Plan customer demand or stock production, then let INPROFIC calculate the material requirement from the product recipe.</p></div>
+<div class="cf-form-shell">
+<div class="cf-form-body">
   {% if formset.non_field_errors %}
     <div class="text-sm bg-rose-50 text-rose-700 border border-rose-200 rounded-md px-3 py-2 mb-3">{{ formset.non_field_errors }}</div>
   {% endif %}
@@ -34,22 +35,16 @@
     </div>
 
     {% include "_field.html" with field=form.date %}
-    <div id="distribution-market-wrap" class="hidden mb-3 rounded-md border border-sky-200 bg-sky-50/70 px-3 py-3">
-      <label class="flex items-start gap-2 cursor-pointer {% if form.is_market_stock.errors %}field-has-error{% endif %}">
-        {{ form.is_market_stock }}
-        <span>
-          <span class="block text-xs font-medium text-sky-900">{{ form.is_market_stock.label }}</span>
-          <span class="block text-[11px] text-sky-700 mt-0.5">Use this for Distribution production intended for marketing or future demand. Completion adds saleable output to separate, expiry-aware Distribution Market Stock; it does not create a customer sale, receivable, payment, or Physical Store balance.</span>
-          {% for error in form.is_market_stock.errors %}<span class="block text-[11px] text-rose-600 mt-0.5">{{ error }}</span>{% endfor %}
-        </span>
-      </label>
+    <div id="distribution-market-wrap" class="hidden mb-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
+      {% include "_field.html" with field=form.is_market_stock %}
+      <p class="-mt-2 text-[11px] leading-5 text-sky-700">Use this for Distribution production intended for future demand. Completed saleable output enters Distribution Market Stock without creating a customer sale or payment at this stage.</p>
     </div>
     <div id="customer-fields" class="grid grid-cols-1 gap-3">
       {% include "_field.html" with field=form.customer %}
-      <p id="customer-master-hint" class="text-[11px] text-stone-400">Customer contact, region, group, credit terms and history are maintained in the Customer master. The order keeps a snapshot of the customer's name/region/group for historical documents.</p>
+      <p id="customer-master-hint" class="text-[11px] text-stone-400">Customer contact, region, group, credit terms and history are maintained in the Customer list. The order keeps the customer details used at the time of the order.</p>
       <div id="online-customer-snapshot" class="hidden rounded-md border border-[#E7DFCC] bg-stone-50/60 p-3">
         <div class="text-xs font-medium text-stone-600 mb-1">Optional online customer details</div>
-        <p class="text-[11px] text-stone-400 mb-3">Use these when the online buyer is not in the Customer list. All three may be left blank. If a Customer-list record is selected above, that master record takes precedence.</p>
+        <p class="text-[11px] text-stone-400 mb-3">Use these when the online buyer is not in the Customer list. All three may be left blank. If a Customer-list record is selected above, that saved customer record takes precedence.</p>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {% include "_field.html" with field=form.customer_name %}
           {% include "_field.html" with field=form.customer_region %}
@@ -63,26 +58,29 @@
       <div id="customer-payment-account-wrap">{% include "_field.html" with field=form.customer_payment_account %}</div>
     </div>
 
-    <span class="block text-xs font-medium text-stone-600 mb-1">Products</span>
-    <p class="text-[11px] text-stone-400 mb-1">For customer orders, <b>Ordered</b> is what the customer requested and is what gets invoiced. Use <b>Produce</b> only when you intentionally want a round production run/offcut; leave both Produce fields at 0 to make exactly the order. Planned offcut is allocated at completion between Physical Store stock and/or an interested Distribution/Online customer. Price fills from customer price, channel price, then default price.</p>
+    <div class="mt-5 mb-2 flex flex-wrap items-end justify-between gap-3"><div><span class="cf-form-section-title">Products & production size</span><p class="mt-1 max-w-4xl text-[11px] leading-5 text-stone-500">For customer orders, enter the requested product quantity. For unassigned stock production, you can optionally size a row from the product's <b>Base material</b>—for example 15 kg of rice or 25 kg of flour—and INPROFIC will calculate the matching recipe scale and expected output.</p></div></div>
     {{ formset.management_form }}
     <div class="border border-[#E7DFCC] rounded-md overflow-hidden">
       <div class="overflow-x-auto">
-        <table class="w-full min-w-[900px] text-sm">
+        <table class="w-full min-w-[1260px] text-sm">
           <thead class="bg-[#F0EAD9] text-stone-600 text-xs"><tr>
-            <th class="text-left px-2 py-1.5">Product</th>
-            <th class="text-right px-2 py-1.5 w-20">Ordered<br>batches</th>
-            <th class="text-right px-2 py-1.5 w-20">Ordered<br>pieces</th>
-            <th class="text-right px-2 py-1.5 w-20 production-plan-col">Produce<br>batches</th>
-            <th class="text-right px-2 py-1.5 w-20 production-plan-col">Produce<br>pieces</th>
-            <th class="text-right px-2 py-1.5 w-24">Discount</th>
-            <th class="text-right px-2 py-1.5 w-28">Price/Unit</th>
-            <th class="w-10"></th>
+            <th class="text-left px-2 py-2 min-w-[190px]">Product</th>
+            <th class="text-left px-2 py-2 w-36 base-basis-col">Production basis</th>
+            <th class="text-left px-2 py-2 w-44 base-basis-col">Base material quantity</th>
+            <th class="text-right px-2 py-2 w-20">Batches</th>
+            <th class="text-right px-2 py-2 w-20">Pieces</th>
+            <th class="text-right px-2 py-2 w-20 production-plan-col">Produce<br>batches</th>
+            <th class="text-right px-2 py-2 w-20 production-plan-col">Produce<br>pieces</th>
+            <th class="text-right px-2 py-2 w-24">Discount</th>
+            <th class="text-right px-2 py-2 w-32">Price/Unit</th>
+            <th class="w-16"></th>
           </tr></thead>
           <tbody id="order-rows">
             {% for f in formset %}
             <tr {% if forloop.first %}data-formset-row{% endif %} class="border-t border-[#E7DFCC]" data-row>
-              <td class="px-2 py-1.5">{{ f.id }}{{ f.finished_good }}{% for error in f.finished_good.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}{% for error in f.non_field_errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
+              <td class="px-2 py-2">{{ f.id }}{{ f.finished_good }}{% for error in f.finished_good.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}{% for error in f.non_field_errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
+              <td class="px-2 py-2 base-basis-col">{{ f.production_basis }}{% for error in f.production_basis.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
+              <td class="px-2 py-2 base-basis-col">{{ f.base_material_quantity }}<div class="base-material-hint mt-1 text-[10px] leading-4 text-stone-400">Select a product to see its base material.</div>{% for error in f.base_material_quantity.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
               <td class="px-2 py-1.5">{{ f.batch_qty }}{% for error in f.batch_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
               <td class="px-2 py-1.5">{{ f.piece_qty }}{% for error in f.piece_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
               <td class="px-2 py-1.5 production-plan-col">{{ f.production_batch_qty }}{% for error in f.production_batch_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
@@ -91,7 +89,7 @@
               <td class="px-2 py-1.5 text-right text-xs text-stone-500 font-mono price-display">—</td>
               <td class="px-2 py-1.5 text-center">
                 {% if f.instance.pk %}
-                <label class="cursor-pointer text-rose-500 hover:text-rose-700" title="Remove">{{ f.DELETE }}</label>
+                <span class="hidden">{{ f.DELETE }}</span><button type="button" data-existing-formset-remove onclick="markExistingFormsetRowDeleted(this)" class="rounded px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50">Remove</button>
                 {% endif %}
               </td>
             </tr>
@@ -109,6 +107,7 @@
       <button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">{% if obj %}Save changes{% else %}Create order{% endif %}</button>
     </div>
   </form>
+</div>
 </div>
 {{ prices|json_script:"fg-prices" }}
 <script>
@@ -146,12 +145,12 @@
       if (onlineSnapshot) onlineSnapshot.style.display = type === 'online' ? 'block' : 'none';
       if (customerSelect) customerSelect.required = type === 'distribution' && !isMarketStock;
       if (masterHint) masterHint.textContent = type === 'online'
-        ? 'Selecting a Customer-list record is optional for Online orders. When selected, customer-specific pricing and the master name/region/group snapshot continue to apply.'
+        ? 'Selecting a Customer-list record is optional for Online orders. When selected, customer-specific pricing and the saved customer details continue to apply.'
         : 'Assigned Distribution orders retain the Customer-list requirement, including customer-specific pricing and customer history.';
       hint.textContent = isMarketStock
         ? 'Unassigned Distribution production — completed saleable units enter general finished-goods stock for later marketing and sale. No customer or payment is recorded now.'
         : type === 'online'
-        ? 'Online customer order — customer name, region and group may be omitted. Pricing still resolves customer agreement (when a master customer is selected), then Online channel price, then default price.'
+        ? 'Online customer order — customer name, region and group may be omitted. Pricing still resolves customer agreement (when a saved customer is selected), then Online channel price, then default price.'
         : 'Distribution order — select a Customer-list record. A Received payment can be recorded now; a Receivable has no payment method/account until Finance records the payment.';
       toggleCustomerPaymentFields();
     } else {
@@ -167,13 +166,21 @@
       }
       hint.textContent = '{{ vertical_ui.stock_location|escapejs }} replenishment — not a direct sale. Replenishment enters available stock. A non-stock purpose does not enter stock and requires a specific purpose. Any paid sale is recorded only in the Sales form.';
     }
+    const baseSizingAvailable = type === 'physical_store' || isMarketStock;
+    document.querySelectorAll('.base-basis-col').forEach((el) => {
+      el.style.display = baseSizingAvailable ? '' : 'none';
+    });
     document.querySelectorAll('.production-plan-col').forEach((el) => {
       el.style.display = type === 'physical_store' ? 'none' : '';
     });
+    if (!baseSizingAvailable) {
+      document.querySelectorAll('#order-rows select[name$="-production_basis"]').forEach((el) => { el.value = 'product_quantity'; });
+    }
     if (type === 'physical_store') {
       document.querySelectorAll('#order-rows input[name$="-production_batch_qty"], #order-rows input[name$="-production_piece_qty"]').forEach((el) => { el.value = '0'; });
     }
     syncProductChoices();
+    refreshBaseMaterialRows();
   }
 
   document.querySelector('[name="production_destination"]')?.addEventListener('change', toggleOrderType);
@@ -216,7 +223,7 @@
       select.appendChild(placeholder);
       ids.forEach((id) => {
         const row = PRICES[id];
-        if ((storeOnly && !row.physical_store_valid) || (marketStock && !row.stock_tracked)) return;
+        if (storeOnly && !row.physical_store_valid) return;
         const option = document.createElement('option');
         option.value = id;
         option.textContent = row.name;
@@ -228,6 +235,69 @@
       }
     });
     refreshPrices();
+    refreshBaseMaterialRows();
+  }
+
+  function baseSizingAvailable() {
+    const channel = currentChannel();
+    return channel === 'physical_store' || (channel === 'distribution' && Boolean(document.querySelector('[name="is_market_stock"]')?.checked));
+  }
+
+  function updateBaseMaterialRow(row) {
+    const productSelect = row.querySelector('select[name$="-finished_good"]');
+    const basisSelect = row.querySelector('select[name$="-production_basis"]');
+    const baseInput = row.querySelector('input[name$="-base_material_quantity"]');
+    const batchInput = row.querySelector('input[name$="-batch_qty"]');
+    const pieceInput = row.querySelector('input[name$="-piece_qty"]');
+    const productionBatchInput = row.querySelector('input[name$="-production_batch_qty"]');
+    const productionPieceInput = row.querySelector('input[name$="-production_piece_qty"]');
+    const hint = row.querySelector('.base-material-hint');
+    if (!productSelect || !basisSelect || !baseInput) return;
+
+    const product = PRICES[productSelect.value];
+    const base = product?.base_material || null;
+    const baseOption = Array.from(basisSelect.options).find((option) => option.value === 'base_material');
+    if (baseOption) baseOption.disabled = !base;
+    if (!baseSizingAvailable()) basisSelect.value = 'product_quantity';
+    if (basisSelect.value === 'base_material' && !base) basisSelect.value = 'product_quantity';
+
+    const usingBase = basisSelect.value === 'base_material' && Boolean(base);
+    baseInput.disabled = !usingBase;
+    baseInput.classList.toggle('bg-stone-100', !usingBase);
+    [batchInput, pieceInput].forEach((input) => {
+      if (!input) return;
+      input.readOnly = usingBase;
+      input.classList.toggle('bg-stone-100', usingBase);
+    });
+
+    if (!base) {
+      if (hint) hint.textContent = product ? 'No base material is set for this product.' : 'Select a product to see its base material.';
+      return;
+    }
+    if (!usingBase) {
+      if (hint) hint.textContent = `${base.name}: ${base.qty_per_batch} ${base.unit} per standard batch.`;
+      return;
+    }
+
+    const qty = Math.max(0, Number(baseInput.value || 0));
+    const recipeQty = Number(base.qty_per_batch || 0);
+    const unitsPerBatch = Number(product.units_per_batch || 1);
+    const factor = recipeQty > 0 ? qty / recipeQty : 0;
+    // Base-material sizing is calculated from the entered material quantity on save.
+    // Keep the normal batch/piece fields at zero so their existing decimal limits
+    // never reduce the precision of an input-driven production run.
+    if (batchInput) batchInput.value = '0';
+    if (pieceInput) pieceInput.value = '0';
+    if (productionBatchInput) productionBatchInput.value = '0';
+    if (productionPieceInput) productionPieceInput.value = '0';
+    const expected = factor * unitsPerBatch;
+    if (hint) hint.textContent = qty > 0
+      ? `${qty.toLocaleString()} ${base.unit} ${base.name} → about ${expected.toLocaleString(undefined, {maximumFractionDigits: 2})} ${product.unit}.`
+      : `${base.name}: ${base.qty_per_batch} ${base.unit} per standard batch.`;
+  }
+
+  function refreshBaseMaterialRows() {
+    document.querySelectorAll('#order-rows tr[data-row]').forEach(updateBaseMaterialRow);
   }
 
   function priceFor(goodId) {
@@ -284,19 +354,32 @@
       // Django's generic formset cloner clears inputs. Order quantities and
       // discounts are intentionally zero-based, so new rows should be valid
       // without forcing the user to type 0 into every numeric cell.
-      ['batch_qty', 'piece_qty', 'production_batch_qty', 'production_piece_qty', 'discount'].forEach((suffix) => {
+      ['batch_qty', 'piece_qty', 'production_batch_qty', 'production_piece_qty', 'discount', 'base_material_quantity'].forEach((suffix) => {
         const input = row.querySelector(`input[name$="-${suffix}"]`);
         if (input && input.value === '') input.value = '0';
       });
       const select = row.querySelector('select[name$="-finished_good"]');
+      const basis = row.querySelector('select[name$="-production_basis"]');
+      const baseQty = row.querySelector('input[name$="-base_material_quantity"]');
       if (select && !select.dataset.wired) {
         select.dataset.wired = '1';
-        select.addEventListener('change', refreshPrices);
+        select.addEventListener('change', () => { refreshPrices(); updateBaseMaterialRow(row); });
       }
+      if (basis && !basis.dataset.wired) {
+        basis.dataset.wired = '1';
+        basis.addEventListener('change', () => updateBaseMaterialRow(row));
+      }
+      if (baseQty && !baseQty.dataset.wired) {
+        baseQty.dataset.wired = '1';
+        baseQty.addEventListener('input', () => updateBaseMaterialRow(row));
+      }
+      updateBaseMaterialRow(row);
     });
     const type = currentChannel();
+    document.querySelectorAll('.base-basis-col').forEach((el) => { el.style.display = baseSizingAvailable() ? '' : 'none'; });
     document.querySelectorAll('.production-plan-col').forEach((el) => { el.style.display = type === 'physical_store' ? 'none' : ''; });
     refreshPrices();
+    refreshBaseMaterialRows();
   }
   document.querySelectorAll('input[name="order_type"]').forEach(el => el.addEventListener('change', () => { toggleOrderType(); refreshPrices(); }));
   document.querySelector('[name="customer"]')?.addEventListener('change', refreshPrices);

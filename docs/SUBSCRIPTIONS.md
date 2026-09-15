@@ -20,8 +20,12 @@ Existing businesses are **not** automatically enrolled by the subscription migra
 | Reports | Basic | Full | Full |
 | Users | Full | Full | Full |
 | Commerce | — | — | Full |
+| Delivery | Founder toggle | Founder toggle | Founder toggle |
+| Audit Workspace | Founder toggle | Founder toggle | Founder toggle |
 
 Every plan has one 30-day trial period. A tenant can switch the plan used during that trial without restarting the 30-day clock.
+
+Delivery and Audit Workspace are seeded as disabled on every plan. The Founder Console decides which plan can use either add-on, and that plan row becomes the hard commercial ceiling before role permissions are considered.
 
 STARTER Basic Reports currently means the Reports landing page plus Stock CSV and dated Sales CSV. Excel, procurement/production/finance/adjustment exports and full JSON backup require the `reports_full` feature granted by PRODUCTION/BUSINESS PRO.
 

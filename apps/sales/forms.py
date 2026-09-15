@@ -24,6 +24,11 @@ class CustomerForm(StyledModelForm):
             "notes": forms.Textarea(attrs={"rows": 2}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["active"].label = "Available for use"
+        self.fields["active"].help_text = "Turn this off to archive the customer without removing their history."
+
     def clean_name(self):
         name = (self.cleaned_data.get("name") or "").strip()
         if not name:

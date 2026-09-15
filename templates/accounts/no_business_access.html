@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="max-w-lg mx-auto mt-12 bg-white border border-amber-200 rounded-lg p-6">
-  <h1 class="text-xl font-semibold font-display">No active business access</h1>
-  <p class="text-sm text-stone-600 mt-2">Your sign-in is valid, but it is not attached to an active business workspace. Ask a Business Admin to restore your membership.</p>
+  <h1 class="text-xl font-semibold font-display">No business access</h1>
+  <p class="text-sm text-stone-600 mt-2">Your sign-in is valid, but it is not attached to a business workspace you can currently access. Ask a Business Admin to restore your membership.</p>
   <form action="{% url 'logout' %}" method="post" class="mt-4">{% csrf_token %}<button class="px-4 py-2 rounded bg-stone-800 text-white text-sm">Sign out</button></form>
 </div>
 {% endblock %}

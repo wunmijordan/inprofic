@@ -4,8 +4,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="INPROFIC connects inventory, procurement, production, sales, finance and online ordering in one business workspace.">
+  <meta name="description" content="INPROFIC connects inventory, procurement, production, delivery, audit, POS, sales, finance and online ordering in one business workspace.">
   <title>INPROFIC · From stock to sale, in one place</title>
+  <script>document.documentElement.classList.add('js')</script>
   <link rel="icon" type="image/png" href="{% static 'core/brand/inprofic-mark.png' %}">
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
   {% include "pwa/head.html" %}
@@ -33,6 +34,9 @@
     .process-flow::before { content:""; position:absolute; left:1.95rem; top:2rem; bottom:2rem; width:2px; background:linear-gradient(180deg,transparent,var(--accent) 18%,var(--accent) 82%,transparent); background-size:100% 180%; animation:flow-line 4.5s ease-in-out infinite; opacity:.3; }
     .flow-step { position:relative; transition:transform .22s ease,background-color .22s ease; }
     .flow-step:hover { transform:translateX(4px); background:#fff; }
+    #faq [data-faq-toggle] { display:none; }
+    .js #faq [data-faq-toggle] { display:inline-flex; }
+    .js #faq [data-faq-list][data-expanded="false"] > details:nth-child(n+4) { display:none; }
     @keyframes ambient-drift { from{transform:translate3d(-3%,0,0) scale(.96)} to{transform:translate3d(8%,-7%,0) scale(1.08)} }
     @keyframes preview-float { 0%,100%{transform:translateY(0) rotate(-.15deg)} 50%{transform:translateY(-8px) rotate(.15deg)} }
     @keyframes bridge-rise { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
@@ -95,7 +99,7 @@
       <div>
         <p class="text-xs font-bold uppercase tracking-[.24em] text-[#e7bd65]">Production to commerce</p>
         <h1 class="mt-5 max-w-3xl font-display text-4xl font-semibold leading-[1.04] sm:text-6xl">Know what you have, what you’re making, and what every sale is worth.</h1>
-        <p class="mt-6 max-w-2xl text-base leading-7 text-white/70 sm:text-lg">INPROFIC brings stock, purchasing, recipes and formulas, production, sales, expenses, finance, reports and online orders into one calm workspace—shaped around how your business actually operates.</p>
+        <p class="mt-6 max-w-2xl text-base leading-7 text-white/70 sm:text-lg">INPROFIC brings stock, purchasing, recipes and formulas, production, sales, delivery, audit evidence, expenses, finance, reports and online orders into one calm workspace—shaped around how your business actually operates.</p>
         <div class="mt-8 flex flex-wrap gap-3">
           <a href="{% url 'signup' %}" class="rounded-xl bg-[#d14900] px-5 py-3 text-sm font-bold text-white shadow-[0_14px_35px_rgba(209,73,0,.34)] hover:brightness-110">Create your workspace</a>
           <a href="#capabilities" class="rounded-xl border border-white/20 bg-white/5 px-5 py-3 text-sm font-semibold hover:bg-white/10">Explore INPROFIC</a>
@@ -112,7 +116,7 @@
           <div class="mt-3 rounded-2xl border border-stone-200 bg-white p-4">
             <div class="flex items-center gap-3"><span class="h-3 w-3 rounded-full bg-emerald-500"></span><div class="flex-1"><p class="text-sm font-semibold">Purchase received</p><p class="text-xs text-stone-400">Stock and cost updated together</p></div><span class="text-xs text-stone-400">Now</span></div>
             <div class="my-3 h-px bg-stone-100"></div>
-            <div class="flex items-center gap-3"><span class="h-3 w-3 rounded-full bg-amber-500"></span><div class="flex-1"><p class="text-sm font-semibold">Online payment awaiting review</p><p class="text-xs text-stone-400">Persistent team alert</p></div><span class="text-xs text-stone-400">2m</span></div>
+            <div class="flex items-center gap-3"><span class="h-3 w-3 rounded-full bg-amber-500"></span><div class="flex-1"><p class="text-sm font-semibold">Paid order handed to operations</p><p class="text-xs text-stone-400">Stock or production moves forward automatically</p></div><span class="text-xs text-stone-400">2m</span></div>
           </div>
         </div>
       </div>
@@ -121,10 +125,11 @@
 
   <main class="relative z-10">
     <section class="relative z-30 mx-auto -mt-12 max-w-6xl px-5 sm:px-8">
-      <div class="bridge-card soft-card grid gap-px overflow-hidden rounded-2xl border border-stone-200 bg-stone-200 sm:grid-cols-3">
+      <div class="bridge-card soft-card grid gap-px overflow-hidden rounded-2xl border border-stone-200 bg-stone-200 sm:grid-cols-2 lg:grid-cols-4">
         <div class="bg-white p-5 text-center"><strong class="font-display text-xl text-[#d14900]">One source of truth</strong><p class="mt-1 text-xs text-stone-500">Stock, orders and money stay connected.</p></div>
-        <div class="bg-white p-5 text-center"><strong class="font-display text-xl text-[#d14900]">Built for five verticals</strong><p class="mt-1 text-xs text-stone-500">The language and workflow fit the service.</p></div>
         <div class="bg-white p-5 text-center"><strong class="font-display text-xl text-[#d14900]">Payment-first commerce</strong><p class="mt-1 text-xs text-stone-500">Verified payment precedes order intake.</p></div>
+        <div class="bg-white p-5 text-center"><strong class="font-display text-xl text-[#d14900]">Plan-gated delivery</strong><p class="mt-1 text-xs text-stone-500">In-house riders, true hybrid routing or Glovo LaaS dispatch.</p></div>
+        <div class="bg-white p-5 text-center"><strong class="font-display text-xl text-[#d14900]">Audit workspace</strong><p class="mt-1 text-xs text-stone-500">External auditors review, flag and query evidence safely.</p></div>
       </div>
     </section>
 
@@ -207,14 +212,24 @@
           <p class="mt-2 text-sm leading-6 text-stone-500">See cash accounts, money movements, receivables, payables and expenses with audit-preserving corrections.</p>
         </article>
         <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
-          <span class="text-2xl">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(209, 0, 146)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-report">
-              <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M8 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h5.697" /><path d="M18 14v4h4" /><path d="M18 11v-4a2 2 0 0 0 -2 -2h-2" /><path d="M8 5a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2" />
-              <path d="M14 18a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" /><path d="M8 11h4" /><path d="M8 15h3" />
-            </svg>
-          </span>
+          <span class="text-2xl">↗</span>
           <h3 class="mt-4 font-display text-xl font-semibold">Reports & backup</h3>
           <p class="mt-2 text-sm leading-6 text-stone-500">Understand stock, sales, procurement, production and financial performance, with practical exports and backup tools.</p>
+        </article>
+        <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
+          <span class="text-2xl">🚚</span>
+          <h3 class="mt-4 font-display text-xl font-semibold">Delivery operations</h3>
+          <p class="mt-2 text-sm leading-6 text-stone-500">Quote delivery fees before payment, run a rider workspace for in-house jobs, keep in-house and Glovo genuinely interchangeable in Hybrid mode, and optionally use Glovo LaaS for live quotes, paid-order dispatch, tracking and status sync.</p>
+        </article>
+        <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
+          <span class="text-2xl">🔎</span>
+          <h3 class="mt-4 font-display text-xl font-semibold">Audit Workspace</h3>
+          <p class="mt-2 text-sm leading-6 text-stone-500">Give external auditors a read-only, tenant-scoped evidence workspace with flags, queries and exportable audit packs.</p>
+        </article>
+        <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
+          <span class="text-2xl">🧾</span>
+          <h3 class="mt-4 font-display text-xl font-semibold">Dedicated in-premise POS</h3>
+          <p class="mt-2 text-sm leading-6 text-stone-500">Cashier-only users can land straight in the counter storefront, sell safely, and log out without entering the wider workspace.</p>
         </article>
       </div>
     </section>
@@ -236,8 +251,8 @@
 
     <section class="mx-auto grid max-w-7xl gap-12 px-5 py-24 sm:px-8 lg:grid-cols-2">
       <div class="rounded-[2rem] border border-stone-200 bg-white p-6 shadow-[0_20px_60px_rgba(43,36,31,.1)] sm:p-8">
-        <p class="text-xs font-bold uppercase tracking-[.2em] text-[#d14900]">Sell beyond the counter</p><h2 class="mt-3 font-display text-3xl font-semibold">A storefront and website connections, linked to operations.</h2><p class="mt-4 text-sm leading-7 text-stone-500">Publish a branded catalogue, accept multi-product baskets, offer channel-specific prices and let customers return to saved tracking links. Or connect your own website directly to INPROFIC.</p>
-        <ul class="mt-6 space-y-3 text-sm"><li>✓ Public checkout accepts automatically confirmed payments</li><li>✓ Full payment is confirmed before an order enters INPROFIC</li><li>✓ Paystack, Monnify and automatic bank-transfer confirmation</li><li>✓ Staff-only in-premise cash / POS-terminal workflow</li><li>✓ Persistent staff notifications for commerce activity</li><li>✓ Each business keeps its checkouts, order numbers and activity history separate</li></ul>
+        <p class="text-xs font-bold uppercase tracking-[.2em] text-[#d14900]">Sell beyond the counter</p><h2 class="mt-3 font-display text-3xl font-semibold">A storefront and website connections, linked to operations.</h2><p class="mt-4 text-sm leading-7 text-stone-500">Publish a branded catalogue grouped by business-defined product categories, accept multi-product baskets, quote delivery before payment, offer channel-specific prices and let customers return to saved order and delivery tracking links. Or connect your own website directly to INPROFIC.</p>
+        <ul class="mt-6 space-y-3 text-sm"><li>✓ Public checkout accepts automatically confirmed payments</li><li>✓ Full payment and delivery fee are confirmed before an order enters INPROFIC</li><li>✓ Paystack, Monnify and automatic bank-transfer confirmation</li><li>✓ Staff-only in-premise cash / POS-terminal workflow</li><li>✓ Optional delivery engine with in-house riders, true Hybrid routing, external providers and Glovo LaaS live-quote/dispatch</li><li>✓ Rider-only workspace with assignment alerts, status updates, POD and issue reporting</li><li>✓ Guest checkout stays open; optional tenant-scoped customer accounts save profiles and purchase history</li><li>✓ Product categories flow to POS, hosted storefront and the product API</li><li>✓ Each business keeps its checkouts, order numbers, dispatches and activity history separate</li></ul>
       </div>
       <div class="flex flex-col justify-center">
         <p class="text-xs font-bold uppercase tracking-[.2em] text-[#d14900]">A safer chain of events</p>
@@ -275,6 +290,55 @@
       </div>
     </section>
 
+    <section id="faq" class="mx-auto max-w-7xl px-5 py-24 sm:px-8">
+      <div class="mx-auto max-w-3xl text-center">
+        <p class="text-xs font-bold uppercase tracking-[.22em] text-[#d14900]">Questions, answered</p>
+        <h2 class="mt-3 font-display text-3xl font-semibold sm:text-5xl">How INPROFIC fits the way you work.</h2>
+        <p class="mt-4 leading-7 text-stone-500">From purchasing and production to storefronts, staff access and reporting, these are the questions businesses most often need answered before bringing their operation into one place.</p>
+      </div>
+      <div class="mt-10 grid items-start gap-4 lg:grid-cols-2" data-faq-grid>
+        <div class="space-y-4" data-faq-list data-expanded="false">
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm" open><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">What kinds of businesses can use INPROFIC?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">INPROFIC supports bakeries, restaurants and food service, general production businesses, wholesalers and retailers. The wording, selling channels and available workflows adjust to the service you choose.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can I track raw materials in bags, cartons, kilograms, grams, litres or other units?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Purchase units and usage units can be different. INPROFIC converts what you buy into the finer unit your recipes or formulas actually consume.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">What if I buy only part of a bag, carton or other purchase unit?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Fractional purchases are supported. Enter the quantity bought and the total amount paid; INPROFIC works out the equivalent whole-unit cost and updates stock valuation correctly.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can products have recipes or formulas?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Made-in-house products can define the materials used per production batch, including ingredients, packaging and other production inputs. Those relationships drive material planning and costing.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can production be planned from a key ingredient such as rice or flour?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. A made-in-house product can optionally nominate one recipe item as its Base material. For stock production, you can enter how much of that material you want to use and INPROFIC calculates the matching production size and the quantities of the other recipe materials.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can I still plan production by batches or product quantity?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Base-material sizing is optional. The existing product-quantity and batch workflow remains available and works exactly as before.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Does INPROFIC track expected output, wastage and actual yield?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Production completion records gross output, rejected or wasted units and saleable output, and shows the difference and yield against the production target.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can I produce stock without assigning it to a customer first?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Market-stock and store-replenishment production can be created without a customer. Completed output becomes available for later sale through the appropriate channel.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">What happens when a customer pays for something that must still be made?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Once payment is confirmed, the order moves into Intake and a pending production order is prepared. Staff then continue the normal production process; payment does not automatically start or complete production.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">What happens when a customer pays for an item already in stock?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Available stock is reserved while payment is pending. Once payment is confirmed, the reservation is committed and stock is deducted automatically, without a second manual acceptance step.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can I sell products my business did not make?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Production businesses can mark a sellable item as purchased for resale—for example bottled drinks in a restaurant. Those products are received through Procurement and can be sold alongside made-in-house products without entering production.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can one sale contain both stocked and made-to-order items?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. A mixed basket can deduct stocked items after payment while sending made-to-order items into Intake for staff-controlled production.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can I record several purchases or expenses at once?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Procurement supports multi-item purchase orders, and Expenses supports compact bulk entry so several records can be saved together without repeating the whole process.</p></details>
+        </div>
+        <div class="space-y-4" data-faq-list data-expanded="false">
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Does Procurement update both quantity and cost?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Receiving a purchase updates the relevant stock balance and the latest cost used for valuation and production costing, with purchase history retained for reference.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can different selling channels have different prices?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Products can have channel-specific prices, and selected customers can also have agreed product prices where needed. The channel wording follows the type of business.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Is there an in-premise point of sale?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Authorised staff can use a full-page selling screen on a touchscreen, laptop or desktop. It supports product search, cart quantities, customer/order context and cash or supported electronic payments.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Do POS staff need full Commerce access?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">No. In-Premise POS has its own role permission with View and Edit choices. A cashier-only user goes straight to the counter storefront and can log out from that screen.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can delivery be handled inside INPROFIC?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Delivery is plan-gated. Businesses can run their own rider fleet, use Glovo LaaS v2, or use true Hybrid routing where both remain available per order. Rider assignments, customer-visible switching policy, tracking, POD, exception alerts and provider webhook updates stay inside one delivery timeline.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can external auditors query records?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Auditors can raise questions from the Audit Workspace, while business admins and other permitted audit reviewers can respond and close those items without giving the auditor normal operational edit access.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can customers order from an external storefront?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Businesses can publish a storefront with product images, availability, channel prices and checkout, or connect their own website to the commerce flow.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">How are online payments handled?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Supported payment methods can include Paystack, Monnify and confirmed bank transfer. INPROFIC waits for trusted payment confirmation before committing a paid order.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">What about cash payments at the counter?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">An authorised POS officer can mark Cash received only after the money is physically in hand. That confirmation then follows the same stock or production handoff as other confirmed payments.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Does INPROFIC handle credit sales and customer balances?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Customer records can carry credit limits and payment terms, and unpaid sales remain visible until payment is recorded through Finance.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can I track cash, bank and card balances?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Finance accounts connect money received and paid to sales, purchases, expenses and other recorded movements so balances can be reconciled.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">What reports are available?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Reporting can bring together inventory, purchasing, production, sales, expenses and financial performance. The depth of reporting available depends on the chosen plan.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can staff have different levels of access?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Roles can control View and Edit access by area, with selected individual adjustments where appropriate. Business admins can manage ordinary team access while protected roles remain restricted.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can INPROFIC alert staff about commerce activity?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Commerce activity can appear in the in-app notification tray, with supported device notifications available when enabled.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can I install INPROFIC like an app?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Supported browsers can install the workspace to the device home screen for quicker access, while the same account remains available through the web.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can I start small and add more later?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Plans control which areas are available, and eligible promotions can apply to selected plans, every plan, monthly payment, yearly payment or both. New workspaces begin with a trial.</p></details>
+        </div>
+      </div>
+      <div class="mt-8 text-center">
+        <button type="button" data-faq-toggle aria-expanded="false" class="inline-flex items-center gap-2 rounded-full border border-stone-300 bg-white px-5 py-2.5 text-sm font-semibold text-stone-800 shadow-sm transition hover:border-[#d14900] hover:text-[#d14900]">
+          <span data-faq-toggle-label>Show all questions</span>
+          <svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current transition" stroke-width="2" data-faq-toggle-icon aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+      </div>
+    </section>
+
     <section class="mx-auto max-w-5xl px-5 py-24 text-center sm:px-8">
       <p class="text-xs font-bold uppercase tracking-[.22em] text-[#d14900]">Ready when you are</p><h2 class="mt-3 font-display text-4xl font-semibold sm:text-5xl">Give every item, order and payment a connected story.</h2><p class="mx-auto mt-4 max-w-2xl leading-7 text-stone-500">Create a workspace for your business, choose the service that fits, and grow into the modules you need.</p>
       <div class="mt-8 flex flex-wrap justify-center gap-3"><a href="{% url 'signup' %}" class="rounded-xl bg-[#d14900] px-6 py-3 text-sm font-bold text-white shadow-lg">Start free</a><a href="{% url 'login' %}" class="rounded-xl border border-stone-300 bg-white px-6 py-3 text-sm font-semibold">Sign in to INPROFIC</a></div>
@@ -306,5 +370,26 @@
     stage.addEventListener('mouseenter', () => clearInterval(timer)); stage.addEventListener('mouseleave', start); stage.addEventListener('focusin', () => clearInterval(timer)); stage.addEventListener('focusout', start); start();
   })();
   </script>{% endif %}
+  <script>
+  (() => {
+    const faq = document.getElementById('faq');
+    const toggle = faq?.querySelector('[data-faq-toggle]');
+    const lists = [...(faq?.querySelectorAll('[data-faq-list]') || [])];
+    if (!toggle || !lists.length) return;
+    const label = toggle.querySelector('[data-faq-toggle-label]');
+    const icon = toggle.querySelector('[data-faq-toggle-icon]');
+    toggle.addEventListener('click', () => {
+      const expanded = toggle.getAttribute('aria-expanded') !== 'true';
+      toggle.setAttribute('aria-expanded', String(expanded));
+      lists.forEach(list => {
+        list.dataset.expanded = String(expanded);
+        if (!expanded) list.querySelectorAll('details:nth-child(n+4)').forEach(item => item.open = false);
+      });
+      if (label) label.textContent = expanded ? 'Show fewer questions' : 'Show all questions';
+      if (icon) icon.style.transform = expanded ? 'rotate(180deg)' : '';
+      if (!expanded) faq.scrollIntoView({behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start'});
+    });
+  })();
+  </script>
 </body>
 </html>

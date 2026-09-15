@@ -5,7 +5,7 @@
     <div><h2 class="text-xl font-semibold font-display text-[#8f172d]">{{ title }}</h2><p class="text-sm text-stone-500 mt-1">{{ intro }}</p></div>
     <a href="{% url 'market_stock' %}" class="text-sm text-[#8f172d] hover:underline">Market Stock</a>
   </div>
-  <form method="post" class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-5 space-y-3 shadow-sm">
+  <form method="post" class="cf-form-shell cf-form-body space-y-4">
     {% csrf_token %}
     {% if form.non_field_errors %}<div class="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{{ form.non_field_errors }}</div>{% endif %}
     {% for field in form %}{% include "_field.html" with field=field %}{% endfor %}

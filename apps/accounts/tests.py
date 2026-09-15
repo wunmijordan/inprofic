@@ -12,7 +12,7 @@ from core.models import Business
 from .models import (
     BusinessFeatureAccess, BusinessModuleAccess, BusinessSubscription, CustomUser,
     RoleModulePermission, SubscriptionPayment, SubscriptionPaymentSettings,
-    SubscriptionPlanModule, SubscriptionPromotion, MarketingPromoCampaign, SubscriptionService, UserBusiness,
+    SubscriptionPlanModule, SubscriptionPromotion, MarketingPromoCampaign, SubscriptionService, UserBusiness, UserModulePermission,
 )
 from .services import business_has_module, can_use_commerce_storefront, is_live_tester, seed_business_roles, user_has_permission
 from .subscription_services import (
@@ -763,9 +763,31 @@ class FounderPaymentSettingsTests(TestCase):
         )
 
         self.assertTrue(can_use_commerce_storefront(staff, self.business))
+        self.assertFalse(user_has_permission(staff, self.business, "dashboard", "view"))
         self.assertFalse(user_has_permission(staff, self.business, "commerce", "view"))
         self.assertFalse(user_has_permission(staff, self.business, "commerce", "edit"))
         self.assertFalse(membership.role.key == CustomUser.ROLE_BUSINESS_ADMIN)
+
+
+    def test_pos_can_be_supplemental_without_replacing_primary_role(self):
+        roles = seed_business_roles(self.business)
+        staff = CustomUser.objects.create_user(
+            username="manager.with.pos", password="safe-password-123", fullname="Manager With POS"
+        )
+        membership = UserBusiness.objects.create(
+            user=staff, business=self.business, role=roles[CustomUser.ROLE_MANAGER], active=True,
+        )
+        UserModulePermission.objects.update_or_create(
+            membership=membership, module="pos", defaults={"can_view": True, "can_edit": True}
+        )
+        BusinessModuleAccess.objects.update_or_create(
+            business=self.business, module="commerce", defaults={"enabled": True}
+        )
+
+        self.assertEqual(membership.role.key, CustomUser.ROLE_MANAGER)
+        self.assertTrue(user_has_permission(staff, self.business, "dashboard", "view"))
+        self.assertTrue(user_has_permission(staff, self.business, "pos", "view"))
+        self.assertTrue(can_use_commerce_storefront(staff, self.business))
 
 
 

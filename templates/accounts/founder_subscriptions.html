@@ -86,7 +86,7 @@
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
         <h2 class="font-semibold">Plan promotions</h2>
-        <p class="mt-1 text-xs leading-5 text-stone-500">Run time-bound launch, seasonal or lifecycle promotions without changing the founder-set base price. The public marketing page and business plan screens show the base price struck through while a promotion is active, and each payment snapshots the promotion actually used.</p>
+        <p class="mt-1 text-xs leading-5 text-stone-500">Run time-bound launch, seasonal or lifecycle promotions without changing the founder-set base price. The public marketing page and business plan screens show the base price struck through while a promotion is running, and each payment snapshots the promotion actually used.</p>
       </div>
       <span class="rounded-full bg-orange-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#b94300]">Base price preserved</span>
     </div>
@@ -104,23 +104,25 @@
     </form>
     <div class="mt-5 overflow-x-auto rounded-lg border border-[#E7DFCC] bg-white">
       <table class="w-full text-xs"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Plan / reason</th><th>Discount</th><th>Billing</th><th>Window</th><th>Status</th><th></th></tr></thead><tbody>
-      {% for promo in promotions %}<tr class="border-t"><td class="p-2"><div class="font-semibold">{{ promo.target_label }}</div><div class="text-stone-500">{{ promo.reason }}</div></td><td class="p-2 text-center font-mono">{% if promo.discount_type == 'percent' %}{{ promo.discount_value|floatformat:-2 }}%{% else %}{{ promo.discount_value|money:"₦" }}{% endif %}</td><td class="p-2 text-center text-stone-500">{{ promo.billing_cycle_label }}</td><td class="p-2 text-center text-stone-500">{{ promo.starts_at|date:"j M Y H:i" }}<br>→ {{ promo.ends_at|date:"j M Y H:i" }}</td><td class="p-2 text-center">{% if promo.active and promo.starts_at <= now and promo.ends_at > now %}<span class="text-emerald-700">Active</span>{% elif promo.active and promo.starts_at > now %}<span class="text-amber-700">Scheduled</span>{% elif promo.active %}<span class="text-stone-500">Expired</span>{% else %}<span class="text-stone-400">Ended</span>{% endif %}</td><td class="p-2 text-right">{% if promo.active and promo.ends_at > now %}<form method="post">{% csrf_token %}<input type="hidden" name="promotion_id" value="{{ promo.pk }}"><button name="action" value="deactivate_promotion" class="text-rose-700 underline">End now</button></form>{% endif %}</td></tr>{% empty %}<tr><td colspan="6" class="p-4 text-center text-stone-500">No promotions configured yet.</td></tr>{% endfor %}
+      {% for promo in promotions %}<tr class="border-t"><td class="p-2"><div class="font-semibold">{{ promo.target_label }}</div><div class="text-stone-500">{{ promo.reason }}</div></td><td class="p-2 text-center font-mono">{% if promo.discount_type == 'percent' %}{{ promo.discount_value|floatformat:-2 }}%{% else %}{{ promo.discount_value|money:"₦" }}{% endif %}</td><td class="p-2 text-center text-stone-500">{{ promo.billing_cycle_label }}</td><td class="p-2 text-center text-stone-500">{{ promo.starts_at|date:"j M Y H:i" }}<br>→ {{ promo.ends_at|date:"j M Y H:i" }}</td><td class="p-2 text-center">{% if promo.active and promo.starts_at <= now and promo.ends_at > now %}<span class="text-emerald-700">Running</span>{% elif promo.active and promo.starts_at > now %}<span class="text-amber-700">Scheduled</span>{% elif promo.active %}<span class="text-stone-500">Expired</span>{% else %}<span class="text-stone-400">Ended</span>{% endif %}</td><td class="p-2 text-right">{% if promo.active and promo.ends_at > now %}<form method="post">{% csrf_token %}<input type="hidden" name="promotion_id" value="{{ promo.pk }}"><button name="action" value="deactivate_promotion" class="text-rose-700 underline">End now</button></form>{% endif %}</td></tr>{% empty %}<tr><td colspan="6" class="p-4 text-center text-stone-500">No promotions configured yet.</td></tr>{% endfor %}
       </tbody></table>
     </div>
   </section>
 
-  <section id="marketing-promo-campaigns" data-founder-section="promotions" class="mb-7 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
+  <section id="marketing-promo-campaigns" data-founder-section="promotions" class="campaign-studio mb-7 overflow-hidden rounded-xl border border-[#E7DFCC] bg-[#FFFDF8]">
+    <div class="border-b border-[#E7DFCC] bg-[#FAF8F1] p-5">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
         <h2 class="font-semibold">Marketing promo stage</h2>
         <p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">Turn any scheduled plan promotion into a high-impact animated banner directly beneath the public marketing header. The whole banner links to the plan cards, and it automatically disappears when its linked promotion ends. Upload an image or MP4/WebM/MOV video, then style the copy here without editing code.</p>
       </div>
       <span class="rounded-full bg-[#050733] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white">Founder authored</span>
-    </div>
+    </div></div>
 
-    <form method="post" enctype="multipart/form-data" class="mt-4 grid gap-4 lg:grid-cols-[1fr_1.1fr]">{% csrf_token %}
+    <form method="post" enctype="multipart/form-data" class="grid gap-0 lg:grid-cols-[.82fr_1.18fr]">{% csrf_token %}
       <input type="hidden" name="campaign_id" value="{% if campaign_instance %}{{ campaign_instance.pk }}{% endif %}">
-      <div class="space-y-3">
+      <div class="space-y-3 border-b border-[#E7DFCC] p-5 lg:border-b-0 lg:border-r">
+        <p class="text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">Campaign settings</p>
         {% for error in campaign_form.non_field_errors %}<div class="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{{ error }}</div>{% endfor %}
         {% include '_field.html' with field=campaign_form.name %}
         {% include '_field.html' with field=campaign_form.promotion %}
@@ -133,8 +135,8 @@
         {% include '_field.html' with field=campaign_form.active %}
       </div>
 
-      <div>
-        <label class="mb-1 block text-sm font-medium">Campaign copy</label>
+      <div class="p-5">
+        <div class="mb-2 flex items-center justify-between gap-2"><div><p class="text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">Live creative studio</p><label class="mt-1 block text-sm font-semibold">Campaign copy</label></div><span class="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">Safe HTML</span></div>
         {{ campaign_form.content_html }}
         {% for error in campaign_form.content_html.errors %}<div class="mb-2 text-xs text-rose-700">{{ error }}</div>{% endfor %}
         <div class="overflow-hidden rounded-xl border border-[#D9CFB4] bg-white">
@@ -164,7 +166,7 @@
       </div>
     </form>
 
-    <div class="mt-5 overflow-x-auto rounded-lg border border-[#E7DFCC] bg-white">
+    <div class="m-5 mt-0 overflow-x-auto rounded-lg border border-[#E7DFCC] bg-white">
       <table class="w-full text-xs"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Creative</th><th class="p-2 text-left">Promotion</th><th>Media</th><th>Priority</th><th>Status</th><th></th></tr></thead><tbody>
       {% for campaign in marketing_campaigns %}<tr class="border-t"><td class="p-2"><div class="font-semibold">{{ campaign.name }}</div><div class="text-stone-500">{{ campaign.get_animation_style_display }} · {{ campaign.get_theme_display }}</div></td><td class="p-2"><div>{{ campaign.promotion.target_label }}</div><div class="text-stone-500">{{ campaign.promotion.reason }}</div></td><td class="p-2 text-center">{{ campaign.media_kind|title }}</td><td class="p-2 text-center font-mono">{{ campaign.priority }}</td><td class="p-2 text-center">{% if campaign.active and campaign.promotion.active and campaign.promotion.starts_at <= now and campaign.promotion.ends_at > now %}<span class="text-emerald-700">Live</span>{% elif campaign.active %}<span class="text-amber-700">Waiting / expired promo</span>{% else %}<span class="text-stone-400">Hidden</span>{% endif %}</td><td class="p-2 text-right whitespace-nowrap"><a href="?campaign={{ campaign.pk }}#marketing-promo-campaigns" class="mr-2 text-[#8f172d] underline">Edit</a>{% if campaign.active %}<form method="post" class="inline">{% csrf_token %}<input type="hidden" name="campaign_id" value="{{ campaign.pk }}"><button name="action" value="deactivate_marketing_campaign" class="text-rose-700 underline">Hide</button></form>{% endif %}</td></tr>{% empty %}<tr><td colspan="6" class="p-4 text-center text-stone-500">No marketing promo creative configured yet.</td></tr>{% endfor %}
       </tbody></table>

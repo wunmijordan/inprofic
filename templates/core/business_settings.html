@@ -1,10 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="max-w-3xl">
+<div class="max-w-4xl">
   <h2 class="text-xl font-semibold font-display text-[#8f172d]">Business Settings</h2>
   <p class="text-sm text-stone-500 mt-1 mb-5">Brand this workspace and choose the vocabulary and service details that match how {{ biz.name }} operates.</p>
 
-  <form method="post" enctype="multipart/form-data" id="business-settings-form" class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg shadow-sm p-5">
+  <section id="workspace-appearance" class="mb-5 rounded-lg border border-[#E7DFCC] bg-white p-4">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div><p class="text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">Personal preference</p><h3 class="mt-1 font-semibold">Workspace appearance</h3><p class="mt-1 max-w-2xl text-xs leading-5 text-stone-500">Choose how INPROFIC looks on this device. These choices do not alter the tenant’s saved two-colour brand or another staff member’s workspace.</p></div>
+      <span class="rounded-full bg-stone-100 px-2.5 py-1 text-[10px] font-semibold text-stone-500">Saved on this device</span>
+    </div>
+    <div class="mt-4 max-w-xl">{% include "_appearance_controls.html" %}</div>
+  </section>
+
+  <form method="post" enctype="multipart/form-data" id="business-settings-form" class="cf-form-shell">
+    <div class="cf-form-header"><p class="text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">Tenant branding</p><h3 class="mt-1 font-semibold">Business identity & service</h3></div>
+    <div class="cf-form-body">
     {% csrf_token %}
     {% if form.non_field_errors %}<div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-3">{{ form.non_field_errors }}</div>{% endif %}
     <div class="grid sm:grid-cols-2 gap-x-4">
@@ -25,14 +35,14 @@
       <div class="sm:col-span-2 rounded-md border border-[#E7DFCC] bg-white p-3 mb-3">
         {% include "_field.html" with field=form.storefront_logo %}
       </div>
-      <div id="restaurant-settings" class="sm:col-span-2 rounded-md border border-[#E7DFCC] bg-[#F5EFE0] p-3 mb-3">
-        <label class="flex items-start gap-2 text-sm">{{ form.restaurant_table_service }}<span><strong>Table service</strong><span class="block text-xs text-stone-500">Require a table or service reference for dine-in sales.</span></span></label>
-        {% if form.restaurant_table_service.errors %}<div class="text-xs text-rose-600 mt-1">{{ form.restaurant_table_service.errors|join:", " }}</div>{% endif %}
+      <div id="restaurant-settings" class="sm:col-span-2 rounded-xl border border-[#E7DFCC] bg-[#F5EFE0] p-3 mb-3">
+        {% include "_field.html" with field=form.restaurant_table_service %}
       </div>
     </div>
     <div class="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900"><strong>Public link notice:</strong> changing this address updates your storefront and connected website links. Update any shared or connected links immediately after saving.</div>
-    <p class="text-xs text-stone-500 mb-4">Changing the service adjusts labels and workflow capability; it does not rewrite or delete existing inventory, orders, sales, or finance data. Wholesale and retail use direct product procurement and stock sales, so Production is safely hidden and blocked while either service is active.</p>
+    <p class="text-xs text-stone-500 mb-4">Changing the service adjusts labels and workflow capability; it does not rewrite or delete existing inventory, orders, sales, or finance data. Wholesale and retail use direct product procurement and stock sales, so Production is safely hidden and blocked while either service is selected.</p>
     <button class="px-4 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save preferences</button>
+    </div>
   </form>
 
   <section class="mt-5 bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-5">

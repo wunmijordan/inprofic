@@ -44,9 +44,9 @@ def configured() -> bool:
     )
 
 
-def _eligible_subscription_ids(business, subscriptions):
-    """Resolve commerce-view permission for all subscribed users in bounded queries."""
-    if not subscriptions or not business_has_module(business, "commerce"):
+def _eligible_subscription_ids(business, subscriptions, module):
+    """Resolve one module's view permission for all subscribed users in bounded queries."""
+    if not subscriptions or not business_has_module(business, module):
         return set()
 
     user_ids = {subscription.user_id for subscription in subscriptions}
@@ -57,9 +57,7 @@ def _eligible_subscription_ids(business, subscriptions):
     }
     memberships = list(
         UserBusiness.objects.filter(
-            business=business,
-            active=True,
-            user_id__in=user_ids - superuser_ids,
+            business=business, active=True, user_id__in=user_ids - superuser_ids,
         ).select_related("role")
     )
     membership_by_user = {membership.user_id: membership for membership in memberships}
@@ -67,15 +65,13 @@ def _eligible_subscription_ids(business, subscriptions):
     role_access = {
         permission.role_id: permission.can_view
         for permission in RoleModulePermission.objects.filter(
-            role_id__in=role_ids,
-            module="commerce",
+            role_id__in=role_ids, module=module,
         )
     }
     user_access = {
         permission.membership_id: permission.can_view
         for permission in UserModulePermission.objects.filter(
-            membership_id__in=[membership.pk for membership in memberships],
-            module="commerce",
+            membership_id__in=[membership.pk for membership in memberships], module=module,
         )
     }
 
@@ -84,11 +80,7 @@ def _eligible_subscription_ids(business, subscriptions):
         override = user_access.get(membership.pk)
         if override is True or (override is None and role_access.get(membership.role_id, False)):
             allowed.add(user_id)
-    return {
-        subscription.pk
-        for subscription in subscriptions
-        if subscription.user_id in allowed
-    }
+    return {subscription.pk for subscription in subscriptions if subscription.user_id in allowed}
 
 
 def _enqueue_notifications(limit=30):
@@ -138,15 +130,27 @@ def _enqueue_notifications(limit=30):
             CommercePushSubscription.objects.filter(business=business, active=True)
             .select_related("user")
         )
-        allowed_subscription_ids = _eligible_subscription_ids(business, subscriptions)
-        if not allowed_subscription_ids:
-            continue
-        rows = [
-            CommercePushDelivery(notification=notice, subscription=subscription)
-            for notice in bucket["notices"]
-            for subscription in subscriptions
-            if subscription.pk in allowed_subscription_ids
-        ]
+        commerce_subscription_ids = _eligible_subscription_ids(business, subscriptions, "commerce")
+        delivery_subscription_ids = _eligible_subscription_ids(business, subscriptions, "delivery")
+        rider_subscription_ids = _eligible_subscription_ids(business, subscriptions, "delivery_rider")
+        any_delivery_ids = commerce_subscription_ids | delivery_subscription_ids
+        any_activity_ids = any_delivery_ids | rider_subscription_ids
+        rows = []
+        for notice in bucket["notices"]:
+            if notice.recipient_user_id:
+                allowed_ids = {
+                    subscription.pk for subscription in subscriptions
+                    if subscription.user_id == notice.recipient_user_id and subscription.pk in any_activity_ids
+                }
+            elif notice.event_type in CommerceNotification.DELIVERY_EVENTS:
+                allowed_ids = any_delivery_ids
+            else:
+                allowed_ids = commerce_subscription_ids
+            rows.extend(
+                CommercePushDelivery(notification=notice, subscription=subscription)
+                for subscription in subscriptions
+                if subscription.pk in allowed_ids
+            )
         if rows:
             CommercePushDelivery.objects.bulk_create(rows, ignore_conflicts=True, batch_size=250)
             created += len(rows)

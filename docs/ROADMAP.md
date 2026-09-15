@@ -495,3 +495,17 @@ The ordering is deliberate: **first make INPROFIC know what should be
 produced, then make it explain how efficiently it was produced, then make it
 control fulfilment and financial consequences, and only afterward add scale
 and external integrations.**
+
+
+## Implemented in this release
+
+- Product categories exposed across Inventory, POS, hosted storefront and product API.
+- Controlled measurement-change workflow for current-balance conversion without rewriting historical records.
+- Plan-gated Delivery with in-house, hybrid, external-provider and Glovo LaaS v2 live-quote/OAuth/webhook paths.
+- Plan-gated Audit Workspace with external auditor role, read-only evidence views, Excel export and query/response handling.
+- Dedicated POS-only access flow that sends cashier-only users directly to the in-premise storefront, plus supplemental POS permission for staff who retain another primary role.
+
+
+### Delivery rider and storefront-customer boundaries
+
+Delivery Rider is a purpose-specific staff access surface: rider-only users can see and act only on assignments linked to their own active in-house driver record. Delivery alerts reuse the durable Commerce notification transport but support targeted rider recipients. Public storefront customers remain guests by default; optional `StorefrontCustomer` profiles are tenant-scoped, separate from staff users, and store purchase history without making registration a checkout requirement. Hybrid delivery means in-house and the configured provider remain interchangeable per order under the tenant’s routing and customer-visible post-payment switch policy.

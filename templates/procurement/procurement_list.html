@@ -16,44 +16,119 @@
 {% if not orders %}
   <div class="text-center py-10 text-sm text-stone-400 italic">No Purchase Orders yet.</div>
 {% else %}
-<div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg shadow-[0_2px_8px_#000000d2] mb-8 overflow-x-auto overflow-y-auto max-h-[28rem]">
+{% regroup orders by date as order_groups %}
+<div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg shadow-[0_2px_8px_#000000d2] mb-8 overflow-x-auto overflow-y-auto max-h-[32rem]">
   <table class="min-w-max w-full text-sm">
-    <thead class="bg-[#F0EAD9] text-stone-600 text-md text-middle"><tr>
-      <th class="px-3 py-2">Date</th><th class="px-3 py-2">Supplier</th><th class="px-3 py-2">Products</th><th class="px-3 py-2">Qty / Unit</th><th class="px-3 py-2">Total</th><th class="px-3 py-2">Status</th><th class="px-3 py-2">Payment</th><th class="px-3 py-2">Logged by</th><th class="w-28"></th>
+    <thead class="bg-[#F0EAD9] text-stone-600 text-md text-middle sticky top-0 z-10"><tr>
+      <th class="px-3 py-2 text-left">Supplier</th>
+      <th class="px-3 py-2 text-left">Items</th>
+      <th class="px-3 py-2 text-right">Total</th>
+      <th class="px-3 py-2">Order</th>
+      <th class="px-3 py-2">Payment</th>
+      <th class="px-3 py-2 text-left">Logged by</th>
+      <th class="w-32"></th>
     </tr></thead>
+    {% for group in order_groups %}
     <tbody>
-      {% for p in orders %}
-      <tr class="border-t border-[#E7DFCC]">
-        <td class="px-3 py-2 font-mono text-xs">{{ p.date }}</td>
-        <td class="px-3 py-2">{{ p.supplier|default:"—" }}</td>
-        <td class="px-3 py-2 text-xs text-stone-500">
-          {% for i in p.items.all %}
-          <div>{{ i.item_name }} x{{ i.qty|num }} {{ i.stock_unit }}</div>
-          <span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium border {% if i.finished_good_id %}bg-emerald-100{% else %}bg-pink-200{% endif %} text-stone-600 border-stone-200">{{ i.item_category }}</span>
-          {% empty %}—{% endfor %}
+      <tr class="border-t border-[#D9CFB4] bg-[#FAF6EA]">
+        <td colspan="7" class="px-3 py-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="font-semibold text-[#8f172d]">{{ group.grouper|date:"D, j M Y" }}</span>
+            <span class="rounded-full border border-[#D9CFB4] bg-white px-2 py-0.5 text-[11px] text-stone-500">{{ group.list|length }} purchase order{{ group.list|length|pluralize }}</span>
+          </div>
         </td>
-        <td class="px-3 py-2 text-right text-xs font-mono">
-          {% for i in p.items.all %}
-          <div class="text-stone-600">{{ i.qty|num }} {{ i.stock_unit }}</div>
-          <div class="text-[10px] text-stone-400">{{ i.unit_cost|money:biz.currency_symbol }} / {{ i.stock_unit }}</div>
-          {% empty %}—{% endfor %}
+      </tr>
+      {% for p in group.list %}
+      <tr class="border-t border-[#EFE8D7] align-middle hover:bg-[#FFFCF5]">
+        <td class="px-3 py-2">
+          <div class="font-medium text-stone-700">{{ p.supplier|default:"Unnamed supplier" }}</div>
+          <div class="text-[10px] font-mono text-stone-400">PO #{{ p.pk }}</div>
         </td>
-        <td class="px-3 py-2 text-right font-mono">{{ p.total|money:biz.currency_symbol }}</td>
-        <td class="px-3 py-2"><span class="inline-block px-2 py-0.5 rounded-full text-[11px] font-medium border capitalize {% if p.status == 'received' %}bg-emerald-50 text-emerald-800 border-emerald-300{% else %}bg-amber-50 text-amber-800 border-amber-300{% endif %}">{{ p.get_status_display }}</span></td>
-        <td class="px-3 py-2 text-xs">{% if p.payment_status == 'paid' %}<span class="text-emerald-700">Paid</span>{% elif p.payment_status == 'partial' %}<span class="text-amber-700">Partially Paid</span>{% else %}<span class="text-rose-700">Unpaid</span>{% endif %}</td>
+        <td class="px-3 py-2" style="min-width:15rem;max-width:23rem">
+          {% with item_count=p.items.all|length first_item=p.items.all|first %}
+            {% if first_item %}
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="font-medium text-stone-700 truncate" style="max-width:14rem">{{ first_item.item_name }}</span>
+                <span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium border {% if first_item.finished_good_id %}bg-emerald-100{% else %}bg-pink-200{% endif %} text-stone-600 border-stone-200">{{ first_item.item_category }}</span>
+                {% if item_count > 1 %}<span class="text-[11px] text-stone-400">+{{ item_count|add:"-1" }} more</span>{% endif %}
+              </div>
+              <button type="button" data-po-items-open="po-items-{{ p.pk }}" class="mt-1 text-xs font-medium text-[#8f172d] hover:underline">View {{ item_count }} item{{ item_count|pluralize }}</button>
+            {% else %}
+              <span class="text-stone-400">—</span>
+            {% endif %}
+          {% endwith %}
+        </td>
+        <td class="px-3 py-2 text-right font-mono font-medium">{{ p.total|money:biz.currency_symbol }}</td>
+        <td class="px-3 py-2 text-center"><span class="inline-block px-2 py-0.5 rounded-full text-[11px] font-medium border capitalize {% if p.status == 'received' %}bg-emerald-50 text-emerald-800 border-emerald-300{% else %}bg-amber-50 text-amber-800 border-amber-300{% endif %}">{{ p.get_status_display }}</span></td>
+        <td class="px-3 py-2 text-xs text-center">{% if p.payment_status == 'paid' %}<span class="text-emerald-700">Paid</span>{% elif p.payment_status == 'partial' %}<span class="text-amber-700">Partially Paid</span>{% else %}<span class="text-rose-700">Unpaid</span>{% endif %}</td>
         <td class="px-3 py-2 text-xs text-stone-500">{{ p.created_by.username|default:"—" }}</td>
         <td class="px-3 py-2 text-right whitespace-nowrap">
           {% if p.status != 'received' %}
           {% if module_permissions.procurement.edit %}<form action="{% url 'po_receive' p.pk %}" method="post" class="inline" onsubmit="return confirm('Mark received and add stock?');">{% csrf_token %}<button class="text-stone-400 hover:text-emerald-600 mr-2">Receive</button></form>{% endif %}
-          {% if module_permissions.procurement.edit %}<a href="{% url 'po_edit' p.pk %}" class="text-stone-400 hover:text-[#8f172d] mr-2">Edit</a>
-          {% endif %}
-          <a href="{% url 'po_invoice' p.pk %}" class="text-stone-400 hover:text-[#8f172d] mr-2">Download PDF</a>{% endif %}
+          {% if module_permissions.procurement.edit %}<a href="{% url 'po_edit' p.pk %}" class="text-stone-400 hover:text-[#8f172d] mr-2">Edit</a>{% endif %}
+          <a href="{% url 'po_invoice' p.pk %}" class="text-stone-400 hover:text-[#8f172d] mr-2">PDF</a>{% endif %}
           {% if module_permissions.procurement.edit %}<form action="{% url 'po_delete' p.pk %}" method="post" class="inline" onsubmit="return confirm('Delete this purchase order?');">{% csrf_token %}<button class="text-stone-400 hover:text-rose-600">Delete</button></form>{% endif %}
         </td>
       </tr>
       {% endfor %}
     </tbody>
+    {% endfor %}
   </table>
 </div>
+
+{% for p in orders %}
+<dialog id="po-items-{{ p.pk }}" class="po-items-dialog w-[min(94vw,44rem)] rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-0 shadow-2xl">
+  <div class="border-b border-[#E7DFCC] bg-[#F8F2E4] px-5 py-4">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <p class="text-[11px] uppercase tracking-wide text-stone-400">Purchase order #{{ p.pk }}</p>
+        <h3 class="mt-0.5 text-lg font-semibold text-[#8f172d]">{{ p.supplier|default:"Unnamed supplier" }}</h3>
+        <p class="mt-1 text-xs text-stone-500">{{ p.date|date:"D, j M Y" }} · {{ p.items.all|length }} item{{ p.items.all|length|pluralize }}</p>
+      </div>
+      <form method="dialog"><button class="rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-xs text-stone-600 hover:bg-stone-50">Close</button></form>
+    </div>
+  </div>
+  <div class="max-h-[60vh] overflow-auto p-4">
+    <div class="overflow-x-auto rounded-lg border border-[#E7DFCC]">
+      <table class="min-w-full text-sm">
+        <thead class="bg-[#F0EAD9] text-xs text-stone-500"><tr><th class="px-3 py-2 text-left">Item</th><th class="px-3 py-2 text-right">Quantity</th><th class="px-3 py-2 text-right">Whole-unit cost</th><th class="px-3 py-2 text-right">Line total</th></tr></thead>
+        <tbody>
+          {% for i in p.items.all %}
+          <tr class="border-t border-[#E7DFCC]">
+            <td class="px-3 py-2"><div class="font-medium text-stone-700">{{ i.item_name }}</div><span class="mt-0.5 inline-block rounded-full border border-stone-200 px-2 py-0.5 text-[10px] text-stone-500 {% if i.finished_good_id %}bg-emerald-50{% else %}bg-pink-50{% endif %}">{{ i.item_category }}</span></td>
+            <td class="px-3 py-2 text-right font-mono">{{ i.qty|num }} {{ i.stock_unit }}</td>
+            <td class="px-3 py-2 text-right font-mono">{{ i.unit_cost|money:biz.currency_symbol }} / {{ i.stock_unit }}</td>
+            <td class="px-3 py-2 text-right font-mono font-medium">{{ i.line_total|money:biz.currency_symbol }}</td>
+          </tr>
+          {% empty %}<tr><td colspan="4" class="px-3 py-8 text-center text-stone-400">No items recorded.</td></tr>{% endfor %}
+        </tbody>
+        <tfoot class="border-t border-[#D9CFB4] bg-[#FAF6EA]"><tr><td colspan="3" class="px-3 py-2 text-right font-semibold text-stone-600">Order total</td><td class="px-3 py-2 text-right font-mono font-semibold text-[#8f172d]">{{ p.total|money:biz.currency_symbol }}</td></tr></tfoot>
+      </table>
+    </div>
+  </div>
+</dialog>
+{% endfor %}
+<style>
+.po-items-dialog::backdrop{background:rgba(28,25,23,.48);backdrop-filter:blur(2px)}
+.po-items-dialog[open]{animation:poDialogIn .14s ease-out}
+@keyframes poDialogIn{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+</style>
+<script>
+(() => {
+  document.addEventListener('click', (event) => {
+    const opener = event.target.closest('[data-po-items-open]');
+    if (opener) {
+      const dialog = document.getElementById(opener.dataset.poItemsOpen);
+      if (dialog) { if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', ''); }
+      return;
+    }
+    if (event.target?.tagName === 'DIALOG' && event.target.classList.contains('po-items-dialog')) {
+      const rect = event.target.getBoundingClientRect();
+      const outside = event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom;
+      if (outside) event.target.close();
+    }
+  });
+})();
+</script>
 {% endif %}
 {% endblock %}

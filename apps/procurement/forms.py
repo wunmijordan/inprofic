@@ -145,7 +145,7 @@ class PurchaseOrderItemForm(StyledModelForm):
         else:
             selected = None
         if not selected:
-            self.add_error("item", "Select an item belonging to the active business.")
+            self.add_error("item", "Select an item belonging to the current business.")
 
         qty = cleaned.get("qty")
         purchase_total = cleaned.get("unit_cost")

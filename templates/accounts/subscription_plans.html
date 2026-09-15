@@ -31,7 +31,7 @@
       {% endif %}
       <div class="mt-4 space-y-1.5 text-sm">{% for m in plan.module_entitlements.all %}<div class="flex justify-between"><span>{{ m.get_module_display }}</span><span class="font-medium {% if m.enabled %}text-emerald-700{% else %}text-stone-400{% endif %}">{% if m.enabled %}{% if m.level == 'basic' %}Basic{% else %}✓{% endif %}{% else %}—{% endif %}</span></div>{% endfor %}</div>
       {% if card.payment_locked %}
-      <button type="button" disabled class="block w-full text-center mt-5 px-4 py-2 rounded-md bg-stone-100 text-stone-400 border border-stone-200 text-sm font-medium cursor-not-allowed">{% if subscription.founder_lifetime %}Lifetime access active{% else %}Renewal opens in final 7 days{% endif %}</button>
+      <button type="button" disabled class="block w-full text-center mt-5 px-4 py-2 rounded-md bg-stone-100 text-stone-400 border border-stone-200 text-sm font-medium cursor-not-allowed">{% if subscription.founder_lifetime %}Lifetime access included{% else %}Renewal opens in final 7 days{% endif %}</button>
       {% else %}
       <a href="{% url 'subscription_payment_plan' plan.code %}" class="block text-center mt-5 px-4 py-2 rounded-md {% if card.is_current %}bg-[#F5EFE0] text-[#8f172d] border border-[#D9CFB4]{% else %}bg-[#8f172d] text-white{% endif %} text-sm font-medium">{% if card.is_current %}Pay / renew{% else %}Choose / change{% endif %}</a>
       {% endif %}

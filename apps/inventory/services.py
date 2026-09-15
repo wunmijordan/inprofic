@@ -2,15 +2,163 @@ from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.db.models import F
+from django.utils import timezone
 
 from .models import (
     DistributionReturn,
     FinishedGood,
     InventoryLocation,
+    OperationalSupplyDispense,
+    ProductionMaterial,
+    RawMaterial,
+    RawMaterialMeasurementChange,
+    RecipeItem,
+    StockAdjustment,
     MarketStockLot,
     MarketStockMovement,
     StockMovement,
 )
+
+
+def _scaled(value, factor, decimal_places, *, divide=False):
+    if value is None:
+        return None
+    result = Decimal(value) / factor if divide else Decimal(value) * factor
+    quantum = Decimal("1").scaleb(-decimal_places)
+    return result.quantize(quantum)
+
+
+def _scale_queryset(queryset, fields, factor, *, divide_fields=()):
+    """Scale decimal fields in bounded batches and return converted row count."""
+    model = queryset.model
+    divide_fields = set(divide_fields)
+    names = list(fields)
+    count = 0
+    batch = []
+    for obj in queryset.iterator(chunk_size=500):
+        for name in names:
+            value = getattr(obj, name)
+            if value is None:
+                continue
+            field = model._meta.get_field(name)
+            scaled = _scaled(value, factor, field.decimal_places, divide=name in divide_fields)
+            if Decimal(value) != 0 and scaled == 0:
+                raise ValidationError(
+                    f"The measurement conversion would round a live {model._meta.verbose_name} quantity to zero. "
+                    "Choose a finer usage unit or a conversion ratio that the current quantity precision can represent."
+                )
+            setattr(obj, name, scaled)
+        batch.append(obj)
+        if len(batch) >= 500:
+            model._base_manager.bulk_update(batch, names, batch_size=500)
+            count += len(batch)
+            batch.clear()
+    if batch:
+        model._base_manager.bulk_update(batch, names, batch_size=500)
+        count += len(batch)
+    return count
+
+
+@transaction.atomic
+def change_raw_material_measurement(*, business, material, new_measurement, conversion_ratio, reason, actor=None):
+    """Convert the current operational measurement basis without rewriting history.
+
+    ``conversion_ratio`` is NEW usage units per one OLD usage unit. Current
+    stock/reorder quantities and live recipe/input definitions are converted.
+    Completed movements, procurement receipts, approved production usage and
+    frozen cost lines remain untouched; the measurement-change row is the
+    explicit boundary auditors use to interpret records on either side.
+    """
+    from core.services import audit
+    from procurement.models import RawMaterialCostSnapshot
+    from production.models import ProductionRunMaterial
+
+    locked = RawMaterial.raw_objects.select_for_update().get(pk=material.pk, business=business)
+    old = {
+        "purchase_unit": locked.purchase_unit,
+        "package_qty": str(locked.package_qty),
+        "package_unit": locked.package_unit,
+        "usage_unit": locked.usage_unit,
+        "usage_conversion_factor": str(locked.usage_conversion_factor),
+        "stock": str(locked.stock),
+        "reorder_level": str(locked.reorder_level),
+        "usage_unit_cost": str(locked.cost_per_unit),
+    }
+    new = {
+        "purchase_unit": (new_measurement.get("purchase_unit") or "").strip(),
+        "package_qty": str(new_measurement.get("package_qty") or Decimal("1")),
+        "package_unit": (new_measurement.get("package_unit") or "").strip(),
+        "usage_unit": (new_measurement.get("usage_unit") or "").strip(),
+        "usage_conversion_factor": str(new_measurement.get("usage_conversion_factor") or Decimal("1")),
+    }
+    ratio = Decimal(conversion_ratio or 1)
+    if ratio <= 0:
+        raise ValidationError("Measurement conversion ratio must be greater than zero.")
+    usage_changed = old["usage_unit"] != new["usage_unit"]
+    if not usage_changed:
+        ratio = Decimal("1")
+
+    converted = {"historical_records_rewritten": 0}
+    if ratio != 1:
+        locked.stock = _scaled(locked.stock, ratio, RawMaterial._meta.get_field("stock").decimal_places)
+        locked.reorder_level = _scaled(locked.reorder_level, ratio, RawMaterial._meta.get_field("reorder_level").decimal_places)
+        locked.cost_per_unit = _scaled(locked.cost_per_unit, ratio, RawMaterial._meta.get_field("cost_per_unit").decimal_places, divide=True)
+
+        converted["recipe_items"] = _scale_queryset(
+            RecipeItem.objects.filter(raw_material=locked), ["qty_per_batch"], ratio
+        )
+        converted["production_materials"] = _scale_queryset(
+            ProductionMaterial.objects.filter(raw_material=locked), ["qty_per_batch"], ratio
+        )
+        converted["draft_production_run_materials"] = _scale_queryset(
+            ProductionRunMaterial.raw_objects.filter(
+                business=business, raw_material=locked, production_run__status="draft"
+            ),
+            ["planned_quantity", "actual_quantity"], ratio,
+        )
+
+    locked.purchase_unit = new["purchase_unit"]
+    locked.package_qty = Decimal(new["package_qty"])
+    locked.package_unit = new["package_unit"]
+    locked.usage_unit = new["usage_unit"]
+    locked.usage_conversion_factor = Decimal(new["usage_conversion_factor"])
+    locked.save(update_fields=[
+        "purchase_unit", "package_qty", "package_unit", "usage_unit",
+        "usage_conversion_factor", "stock", "reorder_level", "cost_per_unit", "updated_at",
+    ])
+
+    # Future production-cost lookups need a cost snapshot expressed in the new
+    # usage basis. Existing procurement/cost snapshots remain immutable.
+    RawMaterialCostSnapshot.raw_objects.create(
+        business=business,
+        created_by=actor,
+        raw_material=locked,
+        effective_date=timezone.localdate(),
+        purchase_order_item=None,
+        purchase_unit_cost=(locked.cost_per_unit * locked.total_conversion_factor).quantize(Decimal("0.01")),
+        usage_unit_cost=locked.cost_per_unit,
+        supplier="Measurement basis conversion",
+    )
+
+    new.update({
+        "stock": str(locked.stock),
+        "reorder_level": str(locked.reorder_level),
+        "usage_unit_cost": str(locked.cost_per_unit),
+    })
+    change = RawMaterialMeasurementChange.raw_objects.create(
+        business=business, created_by=actor, raw_material=locked, conversion_ratio=ratio,
+        reason=(reason or "").strip()[:255], old_measurement=old, new_measurement=new,
+        converted_records=converted,
+    )
+    audit(
+        business, actor, "measurement_change", locked,
+        f"Measurement basis changed for {locked.name}",
+        {
+            "change_id": change.pk, "ratio": str(ratio), "old": old, "new": new,
+            "converted_records": converted, "historical_records_preserved": True,
+        },
+    )
+    return locked, change
 
 
 def default_location(business):

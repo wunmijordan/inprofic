@@ -21,7 +21,7 @@
     .product-card img { transition: transform .55s cubic-bezier(.2,.8,.2,1); }
     .product-card:hover img { transform: scale(1.045); }
     .line-clamp-2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-    .channel-filter[aria-pressed="true"] { background: var(--brand); color: white; border-color: var(--brand); box-shadow: 0 8px 24px color-mix(in srgb, var(--brand) 22%, transparent); }
+    .channel-filter[aria-pressed="true"], .category-filter[aria-pressed="true"] { background: var(--brand); color: white; border-color: var(--brand); box-shadow: 0 8px 24px color-mix(in srgb, var(--brand) 22%, transparent); }
     dialog::backdrop { background: rgba(25,20,17,.68); backdrop-filter: blur(5px); }
     @media (prefers-reduced-motion: reduce) { .product-card, .product-card img { transition: none; } }
     @media (max-width: 640px) { dialog[open] { margin: auto 0 0; width: 100%; max-width: none; border-radius: 1.5rem 1.5rem 0 0; } }
@@ -42,7 +42,7 @@
           {% if store_business.storefront_logo %}<img src="{{ store_business.storefront_logo.url }}" alt="{{ store_business.name }} logo" class="h-11 w-11 shrink-0 rounded-xl border border-white/20 bg-white/95 object-contain p-1 shadow-sm">{% endif %}
           <span class="min-w-0"><span class="block truncate font-display text-xl font-semibold sm:text-2xl">{{ store_business.name }}</span><span class="mt-0.5 block text-[10px] font-bold uppercase tracking-[.22em] text-white/55">{{ storefront_copy.range_label }}</span></span>
         </a>
-        <div class="flex items-center gap-2"><button type="button" id="open-order-history" class="hidden rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold backdrop-blur transition hover:bg-white/20">Track orders</button><span class="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold backdrop-blur">{% if order_now_mode %}Order now{% else %}Browse &amp; order{% endif %}</span></div>
+        <div class="flex items-center gap-2"><button type="button" id="open-order-history" class="hidden rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold backdrop-blur transition hover:bg-white/20">Track orders</button>{% if storefront_customer %}<a href="{% url 'storefront_customer_account' store_business.slug %}" class="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold backdrop-blur transition hover:bg-white/20">{{ storefront_customer.name|truncatechars:18 }}</a>{% else %}<a href="{% url 'storefront_customer_login' store_business.slug %}" class="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold backdrop-blur transition hover:bg-white/20">Sign in</a>{% endif %}<span class="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold backdrop-blur">{% if order_now_mode %}Order now{% else %}Browse &amp; order{% endif %}</span></div>
       </nav>
       <div class="mt-8 max-w-xl sm:mt-10">
         <p class="text-[11px] font-bold uppercase tracking-[.22em] text-white/65">{{ storefront_copy.eyebrow }}</p>
@@ -67,6 +67,8 @@
       </div>
     </section>
 
+    {% if product_categories %}<section class="mt-4 flex items-center gap-2 overflow-x-auto pb-1" aria-label="Filter by product category"><span class="shrink-0 text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">Categories</span><button type="button" class="category-filter shrink-0 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold transition" data-category="all" aria-pressed="true">All</button>{% for category in product_categories %}<button type="button" class="category-filter shrink-0 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold transition" data-category="{{ category.pk }}" aria-pressed="false">{{ category.name }}</button>{% endfor %}<button type="button" class="category-filter shrink-0 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold transition" data-category="uncategorised" aria-pressed="false">Uncategorised</button></section>{% endif %}
+
     {% if order_error %}<div class="mt-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert"><strong>We could not send that order.</strong> {{ order_error }}</div>{% endif %}
 
     <section class="mt-10">
@@ -77,7 +79,7 @@
 
       <div id="catalogue-grid" class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {% for p in products %}
-        <article class="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white" data-product-card data-product-id="{{ p.public_id }}" data-product-name="{{ p.display_name }}" data-unit="{{ p.finished_good.unit }}" data-search="{{ p.display_name|lower }} {{ p.description|lower }}" data-modes="{% if p.allow_stock_order %} physical_store{% endif %}{% if p.allow_online_order %} online{% endif %}{% if p.allow_distribution_order %} distribution{% endif %}" data-min-physical_store="{{ p.min_quantity }}" data-min-online="{{ p.preorder_min_quantity }}" data-min-distribution="{{ p.distribution_min_quantity }}" data-price-physical_store="{{ p.stock_price }}" data-price-online="{{ p.preorder_price }}" data-price-distribution="{{ p.distribution_price }}" data-max="{% if p.max_quantity %}{{ p.max_quantity }}{% endif %}">
+        <article class="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white" data-product-card data-product-id="{{ p.public_id }}" data-product-name="{{ p.display_name }}" data-category="{% if p.finished_good.product_category_id %}{{ p.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-unit="{{ p.finished_good.unit }}" data-search="{{ p.display_name|lower }} {{ p.description|lower }}" data-modes="{% if p.allow_stock_order %} physical_store{% endif %}{% if p.allow_online_order %} online{% endif %}{% if p.allow_distribution_order %} distribution{% endif %}" data-min-physical_store="{{ p.min_quantity }}" data-min-online="{{ p.preorder_min_quantity }}" data-min-distribution="{{ p.distribution_min_quantity }}" data-price-physical_store="{{ p.stock_price }}" data-price-online="{{ p.preorder_price }}" data-price-distribution="{{ p.distribution_price }}" data-max="{% if p.max_quantity %}{{ p.max_quantity }}{% endif %}">
           <div class="relative aspect-[16/10] overflow-hidden bg-stone-100">
             {% if p.public_image_url %}<img src="{{ p.public_image_url }}" alt="{{ p.display_name }}" class="h-full w-full object-cover" loading="lazy">
             {% else %}<div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-stone-100 via-[#efe8dc] to-stone-200"><div class="flex h-20 w-20 items-center justify-center rounded-full border border-white/80 bg-white/55 shadow-inner backdrop-blur"><svg viewBox="0 0 24 24" class="h-8 w-8 fill-none stroke-stone-400" stroke-width="1.35"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg></div></div>{% endif %}
@@ -89,6 +91,7 @@
             </div>
           </div>
           <div class="flex flex-1 flex-col p-4">
+            <div class="mb-2"><span class="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-500">{% if p.finished_good.product_category %}{{ p.finished_good.product_category.name }}{% else %}Uncategorised{% endif %}</span></div>
             <h3 class="font-display text-lg font-semibold leading-tight text-stone-900">{{ p.display_name }}</h3>
             <p class="line-clamp-2 mt-1.5 min-h-[2rem] text-xs leading-4 text-stone-500">{{ p.description|default:"Choose from the ordering options below." }}</p>
             <div class="mt-3 space-y-1.5 border-y border-stone-100 py-2.5 text-[11px]">
@@ -121,15 +124,16 @@
       <button type="button" id="close-basket" class="flex h-9 w-9 items-center justify-center rounded-full border border-stone-200 bg-white text-xl text-stone-500 shadow-sm hover:text-stone-900" aria-label="Close basket">×</button>
     </div>
     <form id="basket-form" method="post" action="{% url 'storefront_order' store_business.slug %}" class="px-5 pb-7 pt-5 sm:px-7 sm:pb-8">{% csrf_token %}
-      <input type="hidden" name="checkout_key" value="{{ checkout_key }}"><input type="hidden" name="catalog_mode" value="{% if order_now_mode %}order_now{% else %}storefront{% endif %}">
+      <input type="hidden" name="checkout_key" value="{{ checkout_key }}"><input type="hidden" name="delivery_quote_id" id="delivery-quote-id" value=""><input type="hidden" name="catalog_mode" value="{% if order_now_mode %}order_now{% else %}storefront{% endif %}">
       <div id="basket-items" class="divide-y divide-stone-100 rounded-2xl border border-stone-200 bg-white"></div>
       <p id="basket-mode-error" class="mt-3 hidden rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900" role="alert"></p>
       <div class="mt-6 grid gap-3 sm:grid-cols-2">
-        <label class="text-xs font-semibold text-stone-600">Name <span class="text-rose-600">*</span><input required name="customer_name" autocomplete="name" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"></label>
-        <label class="text-xs font-semibold text-stone-600">Phone <span class="text-rose-600">*</span><input required name="phone" autocomplete="tel" inputmode="tel" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"></label>
-        <label class="text-xs font-semibold text-stone-600 sm:col-span-2">Email <span class="font-normal text-stone-400">(optional)</span><input name="email" type="email" autocomplete="email" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"></label>
-        <label class="text-xs font-semibold text-stone-600 sm:col-span-2">Delivery or contact address<textarea name="address" rows="2" autocomplete="street-address" class="mt-1.5 w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"></textarea></label>
+        <label class="text-xs font-semibold text-stone-600">Name <span class="text-rose-600">*</span><input required name="customer_name" autocomplete="name" value="{% if storefront_customer %}{{ storefront_customer.name }}{% endif %}" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"></label>
+        <label class="text-xs font-semibold text-stone-600">Phone <span class="text-rose-600">*</span><input required name="phone" autocomplete="tel" inputmode="tel" value="{% if storefront_customer %}{{ storefront_customer.phone }}{% endif %}" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"></label>
+        <label class="text-xs font-semibold text-stone-600 sm:col-span-2">Email <span class="font-normal text-stone-400">(optional)</span><input name="email" type="email" autocomplete="email" value="{% if storefront_customer %}{{ storefront_customer.email }}{% endif %}" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"></label>
+        <label class="text-xs font-semibold text-stone-600 sm:col-span-2">Delivery or contact address<textarea id="checkout-address" name="address" rows="2" autocomplete="street-address" class="mt-1.5 w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100">{% if storefront_customer %}{{ storefront_customer.default_address }}{% endif %}</textarea></label>
       </div>
+      {% if delivery_enabled %}<section class="mt-5 rounded-2xl border border-stone-200 bg-white p-4"><label class="flex cursor-pointer items-start gap-3"><input id="request-delivery" type="checkbox" class="mt-1 h-4 w-4 rounded border-stone-300"><span><strong class="block text-sm text-stone-900">Deliver this order</strong><span class="text-xs leading-5 text-stone-500">A live distance-based quote is locked into checkout before payment.</span></span></label><div id="delivery-fields" class="mt-4 hidden"><label class="block text-xs font-semibold text-stone-600">Delivery area<select id="delivery-area" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal"><option value="">Choose an area</option>{% for area in delivery_areas %}<option value="{{ area.pk }}">{{ area.name }}{% if area.rate_band %} · {{ area.rate_band.name }}{% endif %}</option>{% endfor %}</select></label>{% if not delivery_areas %}<p class="mt-2 text-xs text-amber-700">Delivery is enabled, but this business has not published a delivery area yet.</p>{% endif %}<div id="delivery-quote-status" class="mt-3 rounded-xl bg-stone-50 px-3 py-2.5 text-xs leading-5 text-stone-500">Choose an area and ordering option to get a live quote.</div><div id="delivery-method-options" class="mt-3 hidden space-y-2"></div><div id="delivery-switch-policy" class="mt-3 hidden rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs leading-5 text-sky-900"></div></div></section>{% endif %}
       <div class="mt-6"><p class="text-xs font-semibold text-stone-600">Choose one ordering option for this basket</p><div class="mt-2 grid gap-2">
         <button type="submit" name="order_mode" value="physical_store" data-checkout-mode="physical_store" class="channel-submit flex items-center justify-between rounded-xl border border-stone-200 bg-white px-3.5 py-3 text-left text-sm shadow-sm transition hover:border-stone-400 disabled:cursor-not-allowed disabled:opacity-45"><span><strong class="block text-stone-900">{{ commerce_channels.physical_store }}</strong><small class="mode-note text-stone-500">{{ storefront_copy.immediate_order }}</small></span><strong class="mode-total shrink-0 text-stone-900"></strong></button>
         <button type="submit" name="order_mode" value="online" data-checkout-mode="online" class="channel-submit flex items-center justify-between rounded-xl border border-stone-200 bg-white px-3.5 py-3 text-left text-sm shadow-sm transition hover:border-stone-400 disabled:cursor-not-allowed disabled:opacity-45"><span><strong class="block text-stone-900">{{ commerce_channels.online }}</strong><small class="mode-note text-stone-500">{% if store_business.uses_production and not p.finished_good.is_purchased_for_resale %}{{ storefront_copy.prepared_order }}{% else %}{{ storefront_copy.immediate_order }}{% endif %}</small></span><strong class="mode-total shrink-0 text-stone-900"></strong></button>
@@ -156,6 +160,7 @@
       const search = document.getElementById('catalogue-search');
       const cards = Array.from(document.querySelectorAll('[data-product-card]'));
       const filters = Array.from(document.querySelectorAll('.channel-filter'));
+      const categoryFilters = Array.from(document.querySelectorAll('.category-filter'));
       const empty = document.getElementById('catalogue-empty');
       const reset = document.getElementById('catalogue-reset');
       const dialog = document.getElementById('basket-dialog');
@@ -172,6 +177,14 @@
       const basketStorageKey = 'storetrack:storefront-basket:{{ store_business.slug|escapejs }}';
       const historyStorageKey = 'storetrack:storefront-order-history:{{ store_business.slug|escapejs }}';
       let activeChannel = 'all';
+      let activeCategory = 'all';
+      const deliveryToggle = document.getElementById('request-delivery');
+      const deliveryFields = document.getElementById('delivery-fields');
+      const deliveryArea = document.getElementById('delivery-area');
+      const deliveryAddress = document.getElementById('checkout-address');
+      const deliveryQuoteId = document.getElementById('delivery-quote-id');
+      const deliveryQuoteStatus = document.getElementById('delivery-quote-status'); const deliveryMethodOptions = document.getElementById('delivery-method-options'); const deliverySwitchPolicy = document.getElementById('delivery-switch-policy');
+      let deliveryQuoteSignature = '';
       function readOrderHistory() {
         try {
           const value = JSON.parse(localStorage.getItem(historyStorageKey) || '[]');
@@ -209,7 +222,8 @@
         cards.forEach(card => {
           const matchesText = !query || card.dataset.search.includes(query);
           const matchesChannel = activeChannel === 'all' || card.dataset.modes.split(/\s+/).includes(activeChannel);
-          const show = matchesText && matchesChannel;
+          const matchesCategory = activeCategory === 'all' || card.dataset.category === activeCategory;
+          const show = matchesText && matchesChannel && matchesCategory;
           card.classList.toggle('hidden', !show); if (show) visible += 1;
         });
         empty.classList.toggle('hidden', visible !== 0 || cards.length === 0);
@@ -220,9 +234,15 @@
         filters.forEach(item => item.setAttribute('aria-pressed', item === button ? 'true' : 'false'));
         applyFilters();
       }));
+      categoryFilters.forEach(button => button.addEventListener('click', function () {
+        activeCategory = button.dataset.category;
+        categoryFilters.forEach(item => item.setAttribute('aria-pressed', item === button ? 'true' : 'false'));
+        applyFilters();
+      }));
       reset.addEventListener('click', function () {
-        search.value = ''; activeChannel = 'all';
+        search.value = ''; activeChannel = 'all'; activeCategory = 'all';
         filters.forEach(item => item.setAttribute('aria-pressed', item.dataset.channel === 'all' ? 'true' : 'false'));
+        categoryFilters.forEach(item => item.setAttribute('aria-pressed', item.dataset.category === 'all' ? 'true' : 'false'));
         applyFilters(); search.focus();
       });
       function productFromCard(card) {
@@ -276,6 +296,12 @@
         modeError.textContent = anyAvailable ? '' : 'These products do not share an ordering option. Remove one item or create separate checkouts.';
         modeError.classList.toggle('hidden', anyAvailable);
       }
+      function basketSubtotal(mode) { let total = 0; basket.forEach(product => { total += product.quantity * Number(product.prices[mode] || 0); }); return total; }
+      function deliverySignature(mode) { return JSON.stringify({mode, area: deliveryArea?.value || '', address: deliveryAddress?.value.trim() || '', items: Array.from(basket.values()).map(p => [p.id, p.quantity, p.prices[mode]])}); }
+      function invalidateDeliveryQuote(message) { if (deliveryQuoteId) deliveryQuoteId.value = ''; deliveryQuoteSignature = ''; if (deliveryMethodOptions) { deliveryMethodOptions.replaceChildren(); deliveryMethodOptions.classList.add('hidden'); } if (deliverySwitchPolicy) { deliverySwitchPolicy.textContent=''; deliverySwitchPolicy.classList.add('hidden'); } if (deliveryQuoteStatus && deliveryToggle?.checked) deliveryQuoteStatus.textContent = message || 'Basket or destination changed. A fresh quote will be calculated at checkout.'; }
+      if (deliveryToggle) deliveryToggle.addEventListener('change', () => { deliveryFields.classList.toggle('hidden', !deliveryToggle.checked); invalidateDeliveryQuote(deliveryToggle.checked ? 'Choose an area and ordering option to get a live quote.' : ''); });
+      deliveryArea?.addEventListener('change', () => invalidateDeliveryQuote());
+      deliveryAddress?.addEventListener('input', () => invalidateDeliveryQuote());
       function renderBasket() {
         basketItems.replaceChildren();
         basket.forEach(product => {
@@ -285,16 +311,16 @@
           const unit = document.createElement('span'); unit.className = 'mt-0.5 block text-xs text-stone-400'; unit.textContent = `Measured in ${product.unit}`;
           copy.append(name, unit);
           const input = document.createElement('input'); input.type = 'number'; input.inputMode = 'decimal'; input.step = '0.01'; input.min = '0.01'; if (product.max) input.max = product.max; input.value = product.quantity; input.setAttribute('aria-label', `Quantity for ${product.name}`); input.className = 'h-10 w-24 rounded-xl border border-stone-300 px-2.5 text-sm outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100';
-          input.addEventListener('input', () => { product.quantity = Number(input.value || 0); saveBasket(); refreshModes(); });
+          input.addEventListener('input', () => { product.quantity = Number(input.value || 0); invalidateDeliveryQuote(); saveBasket(); refreshModes(); });
           const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'flex h-9 w-9 items-center justify-center rounded-full text-lg text-stone-400 hover:bg-rose-50 hover:text-rose-700'; remove.setAttribute('aria-label', `Remove ${product.name}`); remove.textContent = '×';
-          remove.addEventListener('click', () => { basket.delete(product.id); setAddedState(product, false); renderBasket(); if (!basket.size) dialog.close(); });
+          remove.addEventListener('click', () => { basket.delete(product.id); invalidateDeliveryQuote(); setAddedState(product, false); renderBasket(); if (!basket.size) dialog.close(); });
           row.append(copy, input, remove); basketItems.append(row);
         });
         basketCount.textContent = basket.size; basketDock.classList.toggle('hidden', basket.size === 0); saveBasket(); refreshModes();
       }
       document.querySelectorAll('.add-product').forEach(button => button.addEventListener('click', function () {
         const card = button.closest('[data-product-card]'); const id = card.dataset.productId;
-        if (!basket.has(id)) { const product = productFromCard(card); basket.set(id, product); setAddedState(product, true); }
+        if (!basket.has(id)) { const product = productFromCard(card); basket.set(id, product); invalidateDeliveryQuote(); setAddedState(product, true); }
         renderBasket();
       }));
       document.getElementById('open-basket').addEventListener('click', () => { renderBasket(); dialog.showModal(); });
@@ -305,12 +331,46 @@
         try { localStorage.removeItem(historyStorageKey); } catch (error) {}
         historyDialog.close(); renderOrderHistory();
       });
-      basketForm.addEventListener('submit', function (event) {
-        if (!basket.size || !event.submitter || event.submitter.disabled) { event.preventDefault(); return; }
+      basketForm.addEventListener('submit', async function (event) {
+        const submitter = event.submitter;
+        if (!basket.size || !submitter || submitter.disabled) { event.preventDefault(); return; }
         basketForm.querySelectorAll('.generated-basket-field').forEach(field => field.remove());
         basket.forEach(product => {
           [['product_id', product.id], ['quantity', product.quantity]].forEach(([name, value]) => { const input = document.createElement('input'); input.type = 'hidden'; input.name = name; input.value = value; input.className = 'generated-basket-field'; basketForm.append(input); });
         });
+        if (!deliveryToggle?.checked) { if (deliveryQuoteId) deliveryQuoteId.value = ''; return; }
+        const mode = submitter.dataset.checkoutMode;
+        const signature = deliverySignature(mode);
+        if (deliveryQuoteId?.value && deliveryQuoteSignature === signature) return;
+        event.preventDefault();
+        if (!deliveryArea?.value) { deliveryQuoteStatus.textContent = 'Choose a delivery area before continuing.'; return; }
+        if (!deliveryAddress?.value.trim()) { deliveryQuoteStatus.textContent = 'Enter the delivery address before continuing.'; deliveryAddress.focus(); return; }
+        submitter.disabled = true;
+        deliveryQuoteStatus.textContent = 'Calculating live delivery distance, fee and ETA…';
+        const payload = new FormData(); payload.append('csrfmiddlewaretoken', basketForm.querySelector('[name="csrfmiddlewaretoken"]').value); payload.append('subtotal', basketSubtotal(mode).toFixed(2)); payload.append('address', deliveryAddress.value.trim()); payload.append('area_id', deliveryArea.value);
+        try {
+          const response = await fetch('{% url "storefront_delivery_quote" store_business.slug %}', {method:'POST', body:payload, headers:{Accept:'application/json'}});
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.detail || 'Delivery quote could not be created.');
+          if (data.switch_policy_text && deliverySwitchPolicy) { deliverySwitchPolicy.textContent = data.switch_policy_text; deliverySwitchPolicy.classList.remove('hidden'); }
+          const useQuote = (option) => {
+            deliveryQuoteId.value = option.quote_id; deliveryQuoteSignature = signature;
+            deliveryQuoteStatus.textContent = `${option.provider_label}: {{ store_business.currency_symbol }}${Number(option.fee).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} · ${option.distance_km} km · ETA ${option.eta_min_minutes}–${option.eta_max_minutes} min · total {{ store_business.currency_symbol }}${Number(option.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}. Quote locked — continuing to checkout…`;
+            submitter.querySelector('.mode-total').textContent = `{{ store_business.currency_symbol }}${Number(option.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+            basketForm.requestSubmit(submitter);
+          };
+          if (data.selection_required) {
+            deliveryQuoteStatus.textContent = 'Choose how you want this order delivered. Your selected fee is locked before payment.';
+            deliveryMethodOptions.replaceChildren(); deliveryMethodOptions.classList.remove('hidden');
+            (data.options || []).forEach(option => {
+              const button = document.createElement('button'); button.type='button'; button.className='flex w-full items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white px-3 py-3 text-left text-xs hover:border-stone-400';
+              const copy = document.createElement('span'); const title = document.createElement('strong'); title.className='block text-stone-900'; title.textContent=option.provider_label; const meta=document.createElement('span'); meta.className='mt-0.5 block text-stone-500'; meta.textContent=`${option.distance_km} km · ETA ${option.eta_min_minutes}–${option.eta_max_minutes} min`; copy.append(title,meta);
+              const fee=document.createElement('strong'); fee.className='shrink-0 text-stone-900'; fee.textContent=`{{ store_business.currency_symbol }}${Number(option.fee).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`; button.append(copy,fee); button.addEventListener('click',()=>useQuote(option)); deliveryMethodOptions.append(button);
+            });
+            return;
+          }
+          useQuote(data);
+        } catch (error) { invalidateDeliveryQuote(error.message); } finally { submitter.disabled = false; }
       });
       window.addEventListener('pageshow', function (event) {
         if (!event.persisted) return;

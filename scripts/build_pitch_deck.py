@@ -132,11 +132,11 @@ def build():
     # 1 — Cover
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     slide.background.fill.solid(); slide.background.fill.fore_color.rgb = rgb(NAVY)
-    rect(slide, 8.75, -0.4, 5.2, 8.2, "0B0D45", True)
+    rect(slide, 8.75, 0.02, 4.55, 7.46, "0B0D45", True)
     slide.shapes.add_picture(str(LOGO_ON_DARK), Inches(0.8), Inches(0.65), width=Inches(3.15))
     rect(slide, 0.8, 1.55, 1.2, 0.08, ORANGE)
     text(slide, "From inventory to commerce—\none connected operation.", 0.8, 2.0, 7.2, 1.65, 34, WHITE, True)
-    text(slide, "A production-aware commercial management system for businesses that buy, make, stock, sell and account for value.", 0.82, 4.1, 6.9, 1.0, 16, "C7C8DD")
+    text(slide, "A production-aware commercial management system for businesses that buy, make, stock, sell, deliver, audit and account for value.", 0.82, 4.1, 6.9, 1.0, 16, "C7C8DD")
     text(slide, "PRODUCT PITCH DECK", 0.82, 6.65, 3.0, 0.25, 10, GOLD, True)
     slide.shapes.add_picture(
         str(BRAND_DIR / "inprofic-mark-on-dark.png"),
@@ -155,14 +155,14 @@ def build():
     steps = [("PROCURE", "Supplier orders\nand arrivals"), ("STOCK", "Materials and\nfinished goods"), ("PRODUCE", "Plans, batches,\nQC and yield"), ("SELL", "Counter, online\nand distribution"), ("ACCOUNT", "Cash, credit,\nexpenses and margin")]
     x = 0.7
     for index, (heading, body) in enumerate(steps):
-        rect(slide, x, 2.05, 2.15, 2.45, "111347", True, "292B62")
+        rect(slide, x, 2.05, 1.75, 2.45, "111347", True, "292B62")
         text(slide, f"0{index + 1}", x + 0.2, 2.28, 0.4, 0.25, 11, GOLD, True)
-        text(slide, heading, x + 0.2, 2.84, 1.75, 0.35, 15, WHITE, True)
-        text(slide, body, x + 0.2, 3.38, 1.75, 0.65, 11, "C7C8DD")
+        text(slide, heading, x + 0.2, 2.84, 1.35, 0.35, 15, WHITE, True)
+        text(slide, body, x + 0.2, 3.38, 1.35, 0.65, 11, "C7C8DD")
         if index < len(steps) - 1:
-            arrow(slide, x + 2.18, 3.06, 0.42)
-        x += 2.5
-    text(slide, "Each event updates the next layer without losing the business, customer, product or audit context.", 1.25, 5.4, 10.8, 0.55, 18, WHITE, True, align=PP_ALIGN.CENTER)
+            arrow(slide, x + 1.78, 3.06, 0.30)
+        x += 2.05
+    text(slide, "Each event updates the next layer without losing the business, customer, product, delivery or audit context.", 1.25, 5.4, 10.8, 0.55, 18, WHITE, True, align=PP_ALIGN.CENTER)
 
     # 4 — Acronym
     slide = base_slide(prs, "The name carries the operating model.", "Why INPROFIC", number=4)
@@ -206,7 +206,7 @@ def build():
     # 8 — Sales/commerce
     slide = base_slide(prs, "Commerce validates demand before it touches operations.", "Sell across channels", number=8)
     card(slide, "Physical Store", "Immediate stock-aware selling for walk-ins and direct transactions.", 0.72, 1.62, 3.75, 1.72)
-    card(slide, "Online", "Published catalogues, baskets, channel pricing, payment and saved order tracking.", 4.78, 1.62, 3.75, 1.72, GOLD)
+    card(slide, "Online", "Published catalogues, baskets, channel pricing, guest checkout, optional tenant-scoped customer profiles and saved order tracking.", 4.78, 1.62, 3.75, 1.72, GOLD)
     card(slide, "Distribution", "Bulk minimums, customer/channel price rules, credit and planned production routes.", 8.84, 1.62, 3.75, 1.72, GREEN)
     text(slide, "PAYMENT-FIRST CHECKOUT", 0.74, 4.0, 3.3, 0.3, 12, ORANGE, True)
     stages = ["Validate basket", "Snapshot price", "Verify payment", "Create intake once", "Accept into operations"]
@@ -214,7 +214,7 @@ def build():
         x = 0.74 + i * 2.45
         pill(slide, stage, x, 4.62, 2.02)
         if i < 4: arrow(slide, x + 2.05, 4.63, 0.34)
-    text(slide, "Hosted storefront • Order Now link • Headless API • Signed platform connector", 1.2, 5.65, 10.9, 0.5, 17, NAVY, True, align=PP_ALIGN.CENTER)
+    text(slide, "Hosted storefront • Customer profiles optional • Product categories • POS-only/supplemental access • Headless API", 1.2, 5.65, 10.9, 0.5, 17, NAVY, True, align=PP_ALIGN.CENTER)
 
     # 9 — Finance
     slide = base_slide(prs, "The financial record follows the operational event.", "Finance without reconstruction", dark=True, number=9)
@@ -230,23 +230,23 @@ def build():
     # 10 — Controls
     slide = base_slide(prs, "Controls are part of the workflow, not an afterthought.", "Trust and accountability", number=10)
     card(slide, "Tenant isolation", "Every business-owned record stays scoped to the active workspace; posted business IDs are never trusted.", 0.72, 1.65, 3.75, 3.35)
-    card(slide, "Role-aware access", "Business Admins, configurable roles and module permissions govern visibility; the Founder-only Demo role can explore live workflows without writes.", 4.78, 1.65, 3.75, 3.35, GOLD)
+    card(slide, "Role-aware access", "Business Admins, configurable roles and per-user overrides govern visibility; POS-only staff, delivery riders and external auditors enter purpose-built workspaces.", 4.78, 1.65, 3.75, 3.35, GOLD)
     card(slide, "Audit-preserving history", "Creator trails, movement records, immutable price/usage snapshots and reversal states retain what actually happened.", 8.84, 1.65, 3.75, 3.35, GREEN)
     text(slide, "Built to answer: who did what, for which business, to which stock and money record—and how was it corrected?", 1.1, 5.55, 11.1, 0.65, 18, NAVY, True, align=PP_ALIGN.CENTER)
 
     # 11 — Reporting
     slide = base_slide(prs, "Operational reporting stays close to the source data.", "Decision support", dark=True, number=11)
-    reports = ["Inventory health", "Procurement spend", "Production performance", "Sales & channels", "Finance movements", "CSV / XLSX / JSON backup"]
+    reports = ["Inventory health", "Procurement spend", "Production performance", "Sales & channels", "Finance movements", "Delivery timeline", "Audit queries", "CSV / XLSX / JSON backup"]
     for i, report in enumerate(reports):
-        x = 0.78 + (i % 3) * 4.12
-        y = 1.62 + (i // 3) * 2.15
-        rect(slide, x, y, 3.72, 1.7, "111347", True, "292B62")
-        text(slide, f"↗  {report}", x + 0.25, y + 0.38, 3.2, 0.35, 16, WHITE, True)
-        text(slide, "Same business scope and status logic as the operating screen.", x + 0.25, y + 0.94, 3.15, 0.42, 10.5, "C7C8DD")
+        x = 0.78 + (i % 4) * 3.04
+        y = 1.62 + (i // 4) * 2.15
+        rect(slide, x, y, 2.72, 1.7, "111347", True, "292B62")
+        text(slide, f"↗  {report}", x + 0.25, y + 0.38, 2.2, 0.35, 16, WHITE, True)
+        text(slide, "Same business scope and status logic as the operating screen.", x + 0.25, y + 0.94, 2.15, 0.42, 10.5, "C7C8DD")
 
     # 12 — Platform architecture
     slide = base_slide(prs, "Practical architecture, deployable without lock-in.", "Platform", number=12)
-    layers = [("EXPERIENCE", "Django server-rendered workspace • public storefront • API and connector boundaries"), ("OPERATING CORE", "Accounts • Inventory • Procurement • Production • Sales • Expenses • Commerce • Reports"), ("DATA & FILES", "PostgreSQL/Supabase or SQLite • Cloudflare R2 or local media • WhiteNoise static assets"), ("RUNTIME", "PythonAnywhere WSGI or Render ASGI/Daphne • WebSocket notifications • health and scheduled jobs")]
+    layers = [("EXPERIENCE", "Django server-rendered workspace • public storefront • API and connector boundaries"), ("OPERATING CORE", "Accounts • Inventory • Procurement • Production • Sales • Expenses • Commerce • Delivery • Audit • Reports"), ("DATA & FILES", "PostgreSQL/Supabase or SQLite • Cloudflare R2 or local media • WhiteNoise static assets"), ("RUNTIME", "PythonAnywhere WSGI or Render ASGI/Daphne • WebSocket notifications • health and scheduled jobs")]
     for i, (heading, body) in enumerate(layers):
         y = 1.55 + i * 1.22
         rect(slide, 1.1, y, 11.1, 0.93, WHITE, True, LINE)
@@ -256,7 +256,7 @@ def build():
 
     # 13 — Commercial model
     slide = base_slide(prs, "A modular path from first control to full operations.", "Subscription model", dark=True, number=13)
-    plans = [("STARTER", "Core workspace and Basic Reports", "Begin with visibility"), ("PRODUCTION", "Production capabilities and Full Reports", "Control making and yield"), ("BUSINESS PRO", "All modules, including Finance and Commerce", "Run the connected business")]
+    plans = [("STARTER", "Core workspace and Basic Reports", "Begin with visibility"), ("PRODUCTION", "Production capabilities and Full Reports", "Control making and yield"), ("BUSINESS PRO", "All core modules, plus Founder-toggled Delivery and Audit Workspace", "Run the connected business")]
     for i, (name, includes, promise) in enumerate(plans):
         x = 0.72 + i * 4.06
         rect(slide, x, 1.65, 3.72, 3.8, "111347", True, ORANGE if i == 2 else "292B62")
@@ -264,11 +264,11 @@ def build():
         rect(slide, x + 0.3, 2.63, 0.75, 0.06, ORANGE if i == 2 else GOLD)
         text(slide, includes, x + 0.3, 3.0, 3.05, 0.95, 13, "C7C8DD")
         text(slide, promise, x + 0.3, 4.55, 3.0, 0.35, 12, GOLD, True)
-    text(slide, "30-day trial • founder-controlled pricing & timed promos • animated public campaign creative • monthly/yearly billing", 1.1, 6.15, 11.2, 0.42, 15, WHITE, True, align=PP_ALIGN.CENTER)
+    text(slide, "30-day trial • founder-controlled pricing • plan-gated Delivery and Audit add-ons • monthly/yearly billing", 1.1, 6.15, 11.2, 0.42, 15, WHITE, True, align=PP_ALIGN.CENTER)
 
     # 14 — Value
     slide = base_slide(prs, "Why INPROFIC wins the operating conversation.", "Value proposition", number=14)
-    values = [("CONNECTED", "Operational and financial truth in the same workflow."), ("SPECIFIC", "Production nuance without forcing every business into generic ERP language."), ("AUDITABLE", "Stock, payments and corrections retain accountable history."), ("ADAPTABLE", "Five verticals, modular entitlements, Founder-managed promo campaigns and two supported deployment paths."), ("COMMERCE-READY", "Validated, payment-first demand flows safely into operations."), ("PRACTICAL", "Server-rendered, approachable and designed for day-to-day teams.")]
+    values = [("CONNECTED", "Operational and financial truth in the same workflow."), ("SPECIFIC", "Production nuance without forcing every business into generic ERP language."), ("AUDITABLE", "Stock, payments, delivery events, record-bound auditor queries and corrections retain accountable history."), ("ADAPTABLE", "Five verticals, product categories, modular entitlements, in-house rider operations, true Hybrid routing and Glovo LaaS v2."), ("COMMERCE-READY", "Validated, payment-first demand flows safely into operations."), ("PRACTICAL", "Server-rendered, approachable and designed for day-to-day teams.")]
     for i, (heading, body) in enumerate(values):
         x = 0.72 + (i % 3) * 4.06
         y = 1.55 + (i // 3) * 2.15
@@ -280,7 +280,7 @@ def build():
     slide.shapes.add_picture(str(LOGO_ON_DARK), Inches(0.8), Inches(0.68), width=Inches(2.55))
     text(slide, "Know the stock.\nControl the work.\nFollow the money.\nServe the customer.", 0.8, 1.65, 7.5, 3.25, 38, WHITE, True)
     rect(slide, 0.82, 5.25, 2.1, 0.08, ORANGE)
-    text(slide, "Inventory • Procurement • Production • Finance • Commerce", 0.82, 5.72, 7.2, 0.42, 15, GOLD, True)
+    text(slide, "Inventory • Procurement • Production • Finance • Commerce • Delivery • Audit", 0.82, 5.72, 7.2, 0.42, 15, GOLD, True)
     rect(slide, 9.25, 1.35, 3.05, 4.75, "111347", True, "292B62")
     text(slide, "THE NEXT STEP", 9.65, 1.85, 2.25, 0.25, 11, GOLD, True, align=PP_ALIGN.CENTER)
     text(slide, "Put one real business workflow through INPROFIC—from purchase or order to stock, fulfilment and finance.", 9.65, 2.65, 2.25, 1.75, 18, WHITE, True, align=PP_ALIGN.CENTER)

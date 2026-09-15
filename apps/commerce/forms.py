@@ -20,7 +20,7 @@ class CommerceSettingsForm(forms.ModelForm):
             "connector_enabled", "storefront_headline", "storefront_hero_image",
             "storefront_hero_image_position", "public_note",
             "notifications_enabled", "notify_order_activity",
-            "notify_payment_activity", "notification_sound_enabled",
+            "notify_payment_activity", "notify_delivery_activity", "notification_sound_enabled",
             "notification_desktop_enabled", "insufficient_stock_policy",
             "checkout_reservation_minutes",
         ]
@@ -44,6 +44,7 @@ class CommerceSettingsForm(forms.ModelForm):
             "notifications_enabled": "Commerce activity alerts",
             "notify_order_activity": "New checkout and order alerts",
             "notify_payment_activity": "Payment activity alerts",
+            "notify_delivery_activity": "Delivery activity & exception alerts",
             "notification_sound_enabled": "Notification sound",
             "notification_desktop_enabled": "Browser & PWA alerts",
         }
@@ -100,6 +101,8 @@ class CommerceIntegrationForm(forms.ModelForm):
         fields = ["name", "integration_type", "allowed_origin", "active"]
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
+        self.fields["active"].label = "Connection enabled"
+        self.fields["active"].help_text = "Turn this off to pause this connection without deleting its settings."
         for f in self.fields.values():
             if isinstance(f.widget, forms.CheckboxInput): f.widget.attrs["class"]="h-4 w-4 accent-[#8f172d]"
             else: f.widget.attrs["class"] = CLS
@@ -129,13 +132,18 @@ class CommercePaymentConfigurationForm(forms.ModelForm):
 
     def __init__(self, *args, business, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["paystack_enabled"].label = "Paystack"
+        self.fields["monnify_enabled"].label = "Monnify"
+        self.fields["bank_transfer_enabled"].label = "Confirmed bank transfer"
+        self.fields["paystack_terminal_enabled"].label = "Paystack Terminal"
+        self.fields["cash_enabled"].label = "Cash at the in-premise POS"
         accounts = CashAccount.raw_objects.filter(business=business, active=True).order_by("name")
         for name in ("paystack_account", "monnify_account", "bank_cash_account", "paystack_terminal_account", "cash_account"):
             self.fields[name].queryset = accounts
             self.fields[name].required = False
         for name, field in self.fields.items():
             if isinstance(field.widget, forms.CheckboxInput):
-                field.widget.attrs["class"] = "h-4 w-4 accent-[#8f172d]"
+                field.widget.attrs["class"] = "sr-only peer"
             else:
                 field.widget.attrs["class"] = CLS
         for name in self.SECRET_FIELDS:

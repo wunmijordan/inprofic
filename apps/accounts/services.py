@@ -33,8 +33,22 @@ ROLE_DEFAULTS = {
         "finance": (True, True), "reports": (True, True), "users": (True, False), "commerce": (False, False),
     },
     CustomUser.ROLE_POS_OPERATOR: {
-        "dashboard": (True, False),
+        # POS-only staff should not need general Dashboard access. When this is
+        # their only effective permission, login lands them directly in the
+        # in-premise storefront/POS and the POS screen exposes its own logout.
         "pos": (True, True),
+    },
+    # External auditors are deliberately isolated from the operating app.
+    # Their workspace reads tenant-scoped evidence internally without granting
+    # ordinary Inventory/Finance/Procurement/etc. navigation.
+    CustomUser.ROLE_AUDITOR: {
+        "audit": (True, False),
+    },
+    CustomUser.ROLE_DELIVERY_COORDINATOR: {
+        "delivery": (True, True),
+    },
+    CustomUser.ROLE_DELIVERY_RIDER: {
+        "delivery_rider": (True, True),
     },
     CustomUser.ROLE_BUSINESS_ADMIN: {m: (True, True) for m, _ in RoleModulePermission.MODULE_CHOICES},
     # Demo can open normal operational add/edit workflows so the live UI can be
@@ -255,12 +269,12 @@ def ensure_permissions(membership):
 def seed_business_modules(business, source=BusinessModuleAccess.SOURCE_DEFAULT):
     """Provision today's full module set behind the future plan boundary."""
     for module, _label in RoleModulePermission.MODULE_CHOICES:
-        if module == "pos":
+        if module in {"pos", "delivery_rider"}:
             continue
         BusinessModuleAccess.objects.get_or_create(
             business=business,
             module=module,
-            defaults={"enabled": module != "commerce", "source": source},
+            defaults={"enabled": module not in {"commerce", "audit", "delivery"}, "source": source},
         )
     invalidate_business_access_cache(business)
 
@@ -275,14 +289,17 @@ def business_has_module(business, module):
     """
     if not business:
         return False
+    # Rider access is a purpose-specific surface inside the plan-gated Delivery
+    # module, not a separate commercial entitlement.
+    entitlement_module = "delivery" if module == "delivery_rider" else module
     subscription = business_subscription_for(business)
-    if subscription and not subscription.is_effectively_active and module != "dashboard":
+    if subscription and not subscription.is_effectively_active and entitlement_module != "dashboard":
         return False
     # Production is a vertical capability as well as a plan entitlement.
     # Wholesale and retail keep any historical production data intact, but do
     # not expose or authorize the production workflow while using a stock-first
     # vertical.
-    if module == "production" and not business.uses_production:
+    if entitlement_module == "production" and not business.uses_production:
         return False
     cache = _request_cache()
     access_key = ("business_module_access", business.pk)
@@ -294,7 +311,7 @@ def business_has_module(business, module):
         )
         if cache is not None:
             cache[access_key] = module_access
-    enabled = module_access.get(module)
+    enabled = module_access.get(entitlement_module)
     return enabled is not False
 
 

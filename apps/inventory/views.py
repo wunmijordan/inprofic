@@ -20,6 +20,7 @@ from .forms import (
     MarketStockReleaseForm,
     MarketStockTransferForm,
     ProductionMaterialFormSet,
+    ProductCategoryForm,
     RawMaterialForm,
     RecipeItemFormSet,
 )
@@ -31,6 +32,7 @@ from .models import (
     MarketStockMovement,
     OperationalSupplyDispense,
     ProductionMaterial,
+    ProductCategory,
     RawMaterial,
     RecipeItem,
     StockMovement,
@@ -44,6 +46,7 @@ from core.pdf_fonts import (
     PDF_MONO_MEDIUM_FONT,
 )
 from .services import (
+    change_raw_material_measurement,
     default_location,
     reconcile_expired_market_lot,
     record_distribution_return,
@@ -127,7 +130,7 @@ def operational_supply_dispense(request):
 
 @login_required
 def inventory(request):
-    finished_goods = FinishedGood.objects.select_related("business")
+    finished_goods = FinishedGood.objects.select_related("business", "product_category")
     if request.business.uses_production:
         finished_goods = finished_goods.prefetch_related(
             "production_batches__reconciliation_out",
@@ -488,13 +491,35 @@ def raw_material_form(request, pk=None):
     if request.method == "POST":
         form = RawMaterialForm(request.POST, instance=obj, business=request.business)
         if form.is_valid():
-            m = form.save(commit=False)
-            m.business = request.business
-            if obj is None:
-                m.created_by = request.user
-            m.save()
-            audit(request.business, request.user, "create" if obj is None else "update", m, f"Raw material {m.name} saved")
-            messages.success(request, "Raw material saved.")
+            if obj is not None and getattr(form, "measurement_definition_changed", False):
+                m, _change = change_raw_material_measurement(
+                    business=request.business,
+                    material=obj,
+                    new_measurement={
+                        "purchase_unit": form.cleaned_data.get("purchase_unit"),
+                        "package_qty": form.cleaned_data.get("package_qty"),
+                        "package_unit": form.cleaned_data.get("package_unit"),
+                        "usage_unit": form.cleaned_data.get("usage_unit"),
+                        "usage_conversion_factor": form.cleaned_data.get("usage_conversion_factor"),
+                    },
+                    conversion_ratio=form.cleaned_data.get("usage_unit_change_factor") or Decimal("1"),
+                    reason=form.cleaned_data.get("measurement_change_reason", ""),
+                    actor=request.user,
+                )
+                # Keep ordinary descriptive edits, while stock/cost/reorder are
+                # intentionally preserved by the controlled conversion service.
+                m.name = form.cleaned_data["name"]
+                m.category = form.cleaned_data["category"]
+                m.save(update_fields=["name", "category", "updated_at"])
+                messages.success(request, "Material measurement basis converted safely and the change was added to the audit trail.")
+            else:
+                m = form.save(commit=False)
+                m.business = request.business
+                if obj is None:
+                    m.created_by = request.user
+                m.save()
+                audit(request.business, request.user, "create" if obj is None else "update", m, f"Raw material {m.name} saved")
+                messages.success(request, "Raw material saved.")
             return redirect("raw_material_add" if "save_add_new" in request.POST else "inventory")
     else:
         form = RawMaterialForm(instance=obj, business=request.business)
@@ -508,6 +533,46 @@ def raw_material_delete(request, pk):
         obj.delete()
         messages.success(request, "Removed.")
     return redirect("inventory")
+
+
+@login_required
+def product_category_list(request):
+    form = ProductCategoryForm(request.POST or None, business=request.business)
+    if request.method == "POST" and form.is_valid():
+        category = form.save(commit=False)
+        category.business = request.business
+        category.created_by = request.user
+        category.save()
+        audit(request.business, request.user, "create", category, f"Product category {category.name} created")
+        messages.success(request, "Product category added.")
+        return redirect("product_categories")
+    return render(request, "inventory/product_categories.html", {
+        "categories": ProductCategory.objects.filter(business=request.business).prefetch_related("products"),
+        "form": form,
+    })
+
+
+@login_required
+def product_category_edit(request, pk):
+    category = get_object_or_404(ProductCategory, pk=pk)
+    form = ProductCategoryForm(request.POST or None, instance=category, business=request.business)
+    if request.method == "POST" and form.is_valid():
+        category = form.save()
+        audit(request.business, request.user, "update", category, f"Product category {category.name} updated")
+        messages.success(request, "Product category updated.")
+        return redirect("product_categories")
+    return render(request, "inventory/product_category_form.html", {"form": form, "category": category})
+
+
+@login_required
+@require_POST
+def product_category_toggle(request, pk):
+    category = get_object_or_404(ProductCategory, pk=pk)
+    category.active = not category.active
+    category.save(update_fields=["active", "updated_at"])
+    audit(request.business, request.user, "update", category, f"Product category {category.name} {'enabled' if category.active else 'disabled'}")
+    messages.success(request, f"{category.name} {'enabled' if category.active else 'disabled'}.")
+    return redirect("product_categories")
 
 
 @login_required
@@ -532,7 +597,22 @@ def finished_good_form(request, pk=None):
             form_kwargs={"business": request.business},
         )
         production_forms_valid = not show_production_fields or (formset.is_valid() and production_formset.is_valid())
-        if form.is_valid() and production_forms_valid and channel_price_formset.is_valid():
+        form_valid = form.is_valid()
+        if form_valid and production_forms_valid and show_production_fields:
+            base_material = form.cleaned_data.get("base_material")
+            if base_material is not None:
+                recipe_material_ids = {
+                    row.cleaned_data["raw_material"].pk
+                    for row in formset.forms
+                    if getattr(row, "cleaned_data", None)
+                    and not row.cleaned_data.get("DELETE")
+                    and row.cleaned_data.get("raw_material")
+                    and (row.cleaned_data.get("qty_per_batch") or Decimal("0")) > 0
+                }
+                if base_material.pk not in recipe_material_ids:
+                    form.add_error("base_material", "Choose a material that is included in the recipe with a quantity greater than zero.")
+                    form_valid = False
+        if form_valid and production_forms_valid and channel_price_formset.is_valid():
             good = form.save(commit=False)
             good.business = request.business
             if obj is None:

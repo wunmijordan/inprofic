@@ -12,6 +12,7 @@ from .models import (
     FinishedGood,
     FinishedGoodChannelPrice,
     ProductionMaterial,
+    ProductCategory,
     RawMaterial,
     RecipeItem,
 )
@@ -73,6 +74,20 @@ class RawMaterialForm(StyledModelForm):
         required=False, initial=0,
         help_text="What one purchase unit costs, e.g. price per bag.",
     )
+    measurement_change_confirm = forms.BooleanField(
+        required=False,
+        label="Apply the controlled measurement conversion",
+        help_text="Required when editing how this material is measured. Current stock and live recipe/input quantities are converted consistently; completed historical records stay frozen and the change is logged.",
+    )
+    measurement_change_reason = forms.CharField(
+        required=False, max_length=255, label="Reason for measurement change",
+        help_text="Required for traceability, e.g. supplier pack change, standardisation, or corrected unit setup.",
+    )
+    usage_unit_change_factor = forms.DecimalField(
+        required=False, max_digits=20, decimal_places=8, min_value=Decimal("0.00000001"),
+        label="Old-to-new usage unit ratio",
+        help_text="Only needed when the usage unit changes. Enter how many NEW usage units equal 1 OLD usage unit; e.g. kg → g = 1000, g → kg = 0.001.",
+    )
 
     class Meta:
         model = RawMaterial
@@ -83,6 +98,20 @@ class RawMaterialForm(StyledModelForm):
 
     def __init__(self, *args, business=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.original_measurement = None
+        if self.instance and self.instance.pk:
+            current = RawMaterial.raw_objects.get(pk=self.instance.pk, business_id=self.instance.business_id)
+            self.original_measurement = {
+                "purchase_unit": current.purchase_unit,
+                "package_qty": current.package_qty,
+                "package_unit": current.package_unit,
+                "usage_unit": current.usage_unit,
+                "usage_conversion_factor": current.usage_conversion_factor,
+            }
+        else:
+            self.fields.pop("measurement_change_confirm", None)
+            self.fields.pop("measurement_change_reason", None)
+            self.fields.pop("usage_unit_change_factor", None)
         if business:
             vocabulary = vertical_config(business)
             self.fields["usage_unit"].help_text = (
@@ -133,6 +162,26 @@ class RawMaterialForm(StyledModelForm):
             raise forms.ValidationError("Must be greater than zero.")
         return v
 
+    def clean(self):
+        cleaned = super().clean()
+        if not self.original_measurement:
+            return cleaned
+        fields = ("purchase_unit", "package_qty", "package_unit", "usage_unit", "usage_conversion_factor")
+        changed = any(cleaned.get(field) != self.original_measurement.get(field) for field in fields)
+        self.measurement_definition_changed = changed
+        if not changed:
+            return cleaned
+        if not cleaned.get("measurement_change_confirm"):
+            self.add_error("measurement_change_confirm", "Confirm the controlled conversion before changing a material measurement basis.")
+        if not (cleaned.get("measurement_change_reason") or "").strip():
+            self.add_error("measurement_change_reason", "Give a reason for this measurement change.")
+        usage_changed = cleaned.get("usage_unit") != self.original_measurement.get("usage_unit")
+        if usage_changed and not cleaned.get("usage_unit_change_factor"):
+            self.add_error("usage_unit_change_factor", "Enter how many new usage units equal one old usage unit.")
+        if not usage_changed:
+            cleaned["usage_unit_change_factor"] = Decimal("1")
+        return cleaned
+
     def save(self, commit=True):
         instance = super().save(commit=False)
         package_qty = self.cleaned_data.get("package_qty") or Decimal("1")
@@ -152,7 +201,7 @@ class RawMaterialForm(StyledModelForm):
 class FinishedGoodForm(StyledModelForm):
     class Meta:
         model = FinishedGood
-        fields = ["source_type", "name", "unit", "units_per_batch", "stock", "reorder_level", "selling_price"]
+        fields = ["source_type", "name", "product_category", "unit", "units_per_batch", "base_material", "stock", "reorder_level", "selling_price"]
 
     def __init__(self, *args, business=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -160,6 +209,28 @@ class FinishedGoodForm(StyledModelForm):
         self.fields["stock"].required = False
         self.fields["reorder_level"].required = False
         self.fields["selling_price"].required = False
+        self.fields["product_category"].required = False
+        if business:
+            category_qs = ProductCategory.raw_objects.filter(business=business)
+            current_category_id = getattr(self.instance, "product_category_id", None)
+            if current_category_id:
+                category_qs = category_qs.filter(Q(active=True) | Q(pk=current_category_id))
+            else:
+                category_qs = category_qs.filter(active=True)
+            self.fields["product_category"].queryset = category_qs.order_by("sort_order", "name")
+        else:
+            self.fields["product_category"].queryset = ProductCategory.objects.none()
+        self.fields["product_category"].help_text = "Optional. Categories are business-defined and used to group products in both storefronts; product source remains separate."
+        if "base_material" in self.fields:
+            self.fields["base_material"].required = False
+            self.fields["base_material"].queryset = RawMaterial.objects.filter(
+                category=RawMaterial.CATEGORY_INGREDIENT
+            ).order_by("name")
+            self.fields["base_material"].label = "Base material"
+            self.fields["base_material"].help_text = (
+                "Optional. Choose a main recipe material if you sometimes size production by how much of that material you want to use. "
+                "It must also appear in the recipe below."
+            )
         if business:
             labels = vertical_config(business)["product_sources"]
             if business.uses_production:
@@ -171,6 +242,7 @@ class FinishedGoodForm(StyledModelForm):
                 self.fields["source_type"].help_text = "Purchased-for-resale products are stocked through Procurement and never sent into recipes or production orders."
             else:
                 self.fields.pop("source_type")
+                self.fields.pop("base_material", None)
                 self.instance.source_type = FinishedGood.SOURCE_PURCHASED_FOR_RESALE
         if business and not business.uses_production:
             self.fields.pop("units_per_batch")
@@ -189,7 +261,46 @@ class FinishedGoodForm(StyledModelForm):
             cleaned["stock"] = Decimal("0")
         if stock_tracked and cleaned.get("reorder_level") is None:
             cleaned["reorder_level"] = Decimal("0")
+        if source == FinishedGood.SOURCE_PURCHASED_FOR_RESALE:
+            cleaned["base_material"] = None
         return cleaned
+
+
+class ProductCategoryForm(StyledModelForm):
+    def __init__(self, *args, business=None, **kwargs):
+        self.business = business
+        super().__init__(*args, **kwargs)
+
+    class Meta:
+        model = ProductCategory
+        fields = ["name", "slug", "sort_order", "active"]
+        help_texts = {
+            "slug": "Stable storefront/API identifier, e.g. meals, drinks, pastries.",
+            "sort_order": "Lower numbers appear first in storefront grouping.",
+        }
+
+    def clean_slug(self):
+        from django.utils.text import slugify
+        value = slugify(self.cleaned_data.get("slug") or self.cleaned_data.get("name") or "")
+        if not value:
+            raise forms.ValidationError("Enter a category name or slug.")
+        if self.business:
+            qs = ProductCategory.raw_objects.filter(business=self.business, slug=value)
+            if self.instance.pk:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise forms.ValidationError("Another category already uses this identifier.")
+        return value
+
+    def clean_name(self):
+        value = (self.cleaned_data.get("name") or "").strip()
+        if self.business and value:
+            qs = ProductCategory.raw_objects.filter(business=self.business, name__iexact=value)
+            if self.instance.pk:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise forms.ValidationError("A category with this name already exists.")
+        return value
 
 
 class FinishedGoodChannelPriceForm(StyledModelForm):

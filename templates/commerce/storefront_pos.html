@@ -1,12 +1,14 @@
 {% load static core_extras %}
 <!doctype html>
-<html lang="en">
+<html lang="en" data-tenant="{{ biz.pk|default:'global' }}" data-tenant-accent="{{ biz.accent_color|default:'#D14900' }}" data-tenant-background="{{ biz.background_color|default:'#050733' }}" style="--tenant-background:{{ biz.background_color|default:'#050733' }};--tenant-background-contrast:{{ biz.background_text_color|default:'#FFFFFF' }};--tenant-button:{{ biz.accent_color|default:'#D14900' }};--tenant-button-contrast:{{ biz.button_text_color|default:'#FFFFFF' }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ pos_ui.title }} · {{ biz.name }} · INPROFIC</title>
   <link rel="icon" type="image/png" href="{% static 'core/brand/inprofic-mark.png' %}">
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
+  <link rel="stylesheet" href="{% static 'core/css/workspace.css' %}">
+  <script src="{% static 'core/js/workspace.js' %}"></script>
   <style>
     @font-face{font-family:Inter;src:url('{% static "core/fonts/Inter-Regular.ttf" %}') format('truetype');font-weight:400;font-display:swap}
     @font-face{font-family:Inter;src:url('{% static "core/fonts/Inter-SemiBold.ttf" %}') format('truetype');font-weight:600 700;font-display:swap}
@@ -16,23 +18,35 @@
     .product-card[data-hidden="true"]{display:none}.cart-row[hidden]{display:none}@media(min-width:1024px){.pos-main{height:calc(100vh - 73px);overflow:hidden}.pos-fill{height:100%}}
   </style>
 </head>
-<body class="min-h-screen" style="--tenant-background:{{ biz.background_color|default:'#050733' }};--tenant-button:{{ biz.accent_color|default:'#D14900' }}">
-  <header class="sticky top-0 z-40 border-b border-white/10 text-white shadow-lg" style="background:var(--tenant-background)">
+<body class="min-h-screen">
+  <div class="page-progress" aria-hidden="true"></div>
+  <header class="pos-header sticky top-0 z-40 border-b border-white/10 shadow-lg" style="background:var(--tenant-background);color:var(--tenant-background-contrast)">
     <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
       <div class="flex min-w-0 items-center gap-3">
+        {% if module_permissions.dashboard.view %}
         <a href="{% url 'dashboard' %}" class="rounded-xl bg-white/10 p-2 transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-2" aria-label="Back to INPROFIC dashboard">
           <svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2"><path d="m15 18-6-6 6-6"/><path d="M9 12h11"/></svg>
         </a>
-        <div class="min-w-0"><p class="truncate text-[10px] font-bold uppercase tracking-[.2em] text-amber-300">{{ pos_ui.eyebrow }} · {{ pos_channel_label }}</p><h1 class="truncate font-display text-xl font-semibold sm:text-2xl">{{ pos_ui.title }}</h1></div>
+        {% endif %}
+        <div class="min-w-0"><p class="truncate text-[10px] font-bold uppercase tracking-[.2em] text-amber-300">{% if not module_permissions.dashboard.view and module_permissions.pos.view %}Storefront-only access · {% endif %}{{ pos_ui.eyebrow }} · {{ pos_channel_label }}</p><h1 class="truncate font-display text-xl font-semibold sm:text-2xl">{{ pos_ui.title }}</h1></div>
       </div>
       <div class="flex items-center gap-2">
+        <div class="relative" data-appearance-root>
+          <button type="button" class="pos-appearance-trigger rounded-xl border border-white/20 bg-white/10 p-2 hover:bg-white/20" data-appearance-toggle aria-controls="pos-appearance-panel" aria-expanded="false" title="Appearance" aria-label="Appearance">
+            <svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.8"><path d="M12 3a9 9 0 1 0 9 9c0-1-.1-1.6-.3-2.4A5.5 5.5 0 0 1 14.4 3.3C13.6 3.1 13 3 12 3Z"/></svg>
+          </button>
+          <div id="pos-appearance-panel" data-appearance-panel hidden class="pos-appearance-panel appearance-popover z-50 rounded-lg p-4 text-left">
+            <p class="text-[10px] font-bold uppercase tracking-[.14em] text-stone-500">Counter appearance</p>
+            {% include "_appearance_controls.html" %}
+          </div>
+        </div>
         {% if module_permissions.commerce.view %}<a href="{% url 'commerce_dashboard' %}" class="hidden rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold transition hover:bg-white/20 sm:block">Commerce</a>{% endif %}
-        <a href="{% url 'dashboard' %}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate-900 transition hover:bg-stone-100">Main App</a>
+        {% if module_permissions.dashboard.view %}<a href="{% url 'dashboard' %}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate-900 transition hover:bg-stone-100">Main app</a>{% else %}<a href="{% url 'logout' %}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate-900 transition hover:bg-stone-100">Log out</a>{% endif %}
       </div>
     </div>
   </header>
 
-  <main class="pos-main mx-auto max-w-7xl px-3 py-4 sm:px-5 ">
+  <main class="pos-main mx-auto max-w-7xl px-3 py-4 sm:px-5" data-route="commerce_storefront_pos">
     {% if messages %}<div class="mb-3 space-y-2">{% for message in messages %}<div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ message }}</div>{% endfor %}</div>{% endif %}
     {% if pos_error %}<div class="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{{ pos_error }}</div>{% endif %}
     {% if active_checkout and active_payment %}
@@ -45,13 +59,13 @@
       <section class="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
         <div class="border-b border-stone-200 p-4 sm:p-5">
           <div class="flex flex-wrap items-end justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-wider text-stone-400">{{ pos_ui.catalog_label }}</p><p class="mt-1 max-w-2xl text-sm text-stone-500">{{ pos_ui.intro }}</p></div><div class="rounded-full bg-stone-100 px-3 py-1.5 text-xs font-semibold text-stone-600"><span id="visible-product-count">{{ products|length }}</span> available</div></div>
-          <label class="relative mt-4 block"><span class="sr-only">Search</span><svg viewBox="0 0 24 24" class="pointer-events-none absolute left-3 top-3 h-5 w-5 fill-none stroke-stone-400" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="pos-search" type="search" style="padding-left:2.5rem" autocomplete="off" placeholder="{{ pos_ui.search_placeholder }}" class="h-11 w-full rounded-xl border border-stone-300 bg-stone-50 pr-4 text-sm outline-none transition focus:border-stone-500 focus:bg-white focus:ring-2 focus:ring-stone-200"></label>
+          <label class="relative mt-4 block"><span class="sr-only">Search</span><svg viewBox="0 0 24 24" class="pointer-events-none absolute left-3 top-3 h-5 w-5 fill-none stroke-stone-400" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="pos-search" type="search" style="padding-left:2.5rem" autocomplete="off" placeholder="{{ pos_ui.search_placeholder }}" class="h-11 w-full rounded-xl border border-stone-300 bg-stone-50 pr-4 text-sm outline-none transition focus:border-stone-500 focus:bg-white focus:ring-2 focus:ring-stone-200"></label>{% if product_categories %}<div class="pos-scroll mt-3 flex gap-2 overflow-x-auto pb-2" role="group" aria-label="Product categories"><button type="button" data-pos-category="all" aria-pressed="true" class="pos-category shrink-0 rounded-full border border-stone-200 bg-stone-900 px-3 py-1.5 text-xs font-semibold text-white">All categories</button>{% for category in product_categories %}<button type="button" data-pos-category="{{ category.pk }}" aria-pressed="false" class="pos-category shrink-0 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-600">{{ category.name }}</button>{% endfor %}<button type="button" data-pos-category="uncategorised" aria-pressed="false" class="pos-category shrink-0 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-600">Uncategorised</button></div>{% endif %}
         </div>
         <div class="pos-scroll min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
           <div id="product-grid" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-2">
             {% for product in products %}
-              <article class="product-card group rounded-2xl border border-stone-200 bg-[#FFFDF8] p-4 transition hover:border-stone-400 shadow-sm " data-name="{{ product.display_name|lower }}" data-product="{{ product.public_id }}" data-price="{{ product.pos_price }}" data-min="{{ product.pos_min_quantity }}">
-                <div class="flex gap-3">{% if product.public_image_url %}<img src="{{ product.public_image_url }}" alt="" class="h-20 w-20 shrink-0 rounded-xl object-cover">{% else %}<div class="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-2xl font-semibold text-stone-300">{{ product.display_name|slice:':1' }}</div>{% endif %}<div class="min-w-0 flex-1"><h3 class="text-sm font-semibold text-stone-900">{{ product.display_name }}</h3><p class="mt-1 font-mono text-base font-semibold text-[#8f172d]">{{ product.pos_price|money:biz.currency_symbol }}</p><p class="mt-1 text-[11px] text-stone-500">Stock: {{ product.pos_available|floatformat:-2 }} {{ product.finished_good.unit }}{% if product.pos_min_quantity > 1 %} · Min {{ product.pos_min_quantity|floatformat:-2 }}{% endif %}</p></div></div>
+              <article class="product-card group rounded-2xl border border-stone-200 bg-[#FFFDF8] p-4 transition hover:border-stone-400 shadow-sm " data-name="{{ product.display_name|lower }}" data-category="{% if product.finished_good.product_category_id %}{{ product.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-product="{{ product.public_id }}" data-price="{{ product.pos_price }}" data-min="{{ product.pos_min_quantity }}">
+                <div class="flex gap-3">{% if product.public_image_url %}<img src="{{ product.public_image_url }}" alt="" class="h-20 w-20 shrink-0 rounded-xl object-cover">{% else %}<div class="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-2xl font-semibold text-stone-300">{{ product.display_name|slice:':1' }}</div>{% endif %}<div class="min-w-0 flex-1"><span class="mb-1 inline-block rounded-full bg-stone-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-stone-500">{% if product.finished_good.product_category %}{{ product.finished_good.product_category.name }}{% else %}Uncategorised{% endif %}</span><h3 class="text-sm font-semibold text-stone-900">{{ product.display_name }}</h3><p class="mt-1 font-mono text-base font-semibold text-[#8f172d]">{{ product.pos_price|money:biz.currency_symbol }}</p><p class="mt-1 text-[11px] text-stone-500">Stock: {{ product.pos_available|floatformat:-2 }} {{ product.finished_good.unit }}{% if product.pos_min_quantity > 1 %} · Min {{ product.pos_min_quantity|floatformat:-2 }}{% endif %}</p></div></div>
                 <div class="mt-3 flex items-center gap-2"><button type="button" data-add="{{ product.public_id }}" class="flex-1 rounded-xl bg-stone-800 px-3 py-2.5 text-sm font-semibold text-white transition  focus:outline-none focus:ring-2 ">Add</button><input aria-label="Quantity for {{ product.display_name }}" name="qty_{{ product.public_id }}" data-qty="{{ product.public_id }}" type="number" min="0" step="0.01" value="0" class="h-10 w-20 rounded-xl border border-stone-300 bg-white px-2 text-right font-mono text-sm outline-none focus:border-stone-500"></div>
               </article>
             {% empty %}<div class="col-span-full rounded-2xl border border-dashed border-stone-300 p-10 text-center text-sm text-stone-500">{{ pos_ui.empty_label }}</div>{% endfor %}
@@ -71,7 +85,7 @@
             <label class="text-xs font-semibold text-stone-600">{{ pos_ui.customer_label }}<input name="customer_name" value="{{ pos_ui.customer_default }}" class="mt-1.5 h-10 w-full rounded-xl border border-stone-300 px-3 text-sm font-normal outline-none focus:border-stone-500"></label>
             <div class="grid grid-cols-2 gap-2"><label class="text-xs font-semibold text-stone-600">Phone<input name="customer_phone" class="mt-1.5 h-10 w-full rounded-xl border border-stone-300 px-3 text-sm font-normal"></label><label class="text-xs font-semibold text-stone-600">Email<input name="customer_email" type="email" class="mt-1.5 h-10 w-full rounded-xl border border-stone-300 px-3 text-sm font-normal"></label></div>
             <fieldset><legend class="text-xs font-semibold text-stone-600">Payment method</legend><div class="mt-2 grid gap-2">{% for method in payment_methods %}<label class="cursor-pointer"><input type="radio" name="method" value="{{ method.code }}" {% if forloop.first %}checked{% endif %} class="peer sr-only"><span class="flex items-center justify-between rounded-xl border border-stone-200 p-3 text-sm transition peer-checked:border-[#8f172d] peer-checked:bg-[#8f172d] peer-checked:text-white"><span class="font-medium">{{ method.label }}</span><span class="h-2.5 w-2.5 rounded-full bg-stone-300 peer-checked:bg-[#8f172d]"></span></span></label>{% empty %}<div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Configure cash or a supported terminal in Commerce payment settings.</div>{% endfor %}</div></fieldset>
-            <label id="cash-confirm-wrap" class="flex items-start gap-3 rounded-xl border border-stone-200 bg-stone-50 p-3 text-xs leading-5 text-stone-600"><input type="checkbox" name="cash_received" class="mt-1 accent-[#D14900]"><span><strong class="text-stone-800">Cash physically received</strong><br>Required only for cash. Card-terminal sales wait for automatic payment confirmation.</span></label>
+            <label id="cash-confirm-wrap" class="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-stone-200 bg-stone-50 p-3 text-xs leading-5 text-stone-600"><span><strong class="text-stone-800">Cash received</strong><br>Turn this on only after the cash is physically in hand. Card-terminal sales wait for automatic payment confirmation.</span><span class="cf-switch shrink-0"><input type="checkbox" name="cash_received"><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label>
             <button id="checkout-button" {% if not payment_methods or not products %}disabled{% endif %} class="mt-1 w-full rounded-xl bg-[#D14900] px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 disabled:cursor-not-allowed disabled:opacity-50">{{ pos_ui.checkout_label }}</button>
           </div>
         </div>
@@ -84,6 +98,8 @@
 (() => {
   const search = document.getElementById('pos-search');
   const cards = [...document.querySelectorAll('.product-card')];
+  const categoryButtons = [...document.querySelectorAll('[data-pos-category]')];
+  let activeCategory = 'all';
   const cartLines = document.getElementById('cart-lines');
   const empty = document.getElementById('cart-empty');
   const totalNode = document.getElementById('cart-total');
@@ -106,7 +122,9 @@
   document.addEventListener('click', e => { const add=e.target.closest('[data-add]'); if(add){change(add.dataset.add,1);return;} const inc=e.target.closest('[data-cart-inc]'); if(inc){change(inc.dataset.cartInc,1);return;} const dec=e.target.closest('[data-cart-dec]'); if(dec){change(dec.dataset.cartDec,-1);} });
   document.querySelectorAll('[data-qty]').forEach(i => i.addEventListener('change',renderCart));
   document.getElementById('clear-cart')?.addEventListener('click',()=>{document.querySelectorAll('[data-qty]').forEach(i=>i.value=0);renderCart();});
-  search?.addEventListener('input',()=>{const q=search.value.trim().toLowerCase();let visible=0;cards.forEach(c=>{const hide=q&&!c.dataset.name.includes(q);c.dataset.hidden=hide?'true':'false';if(!hide)visible++;});visibleNode.textContent=visible;});
+  function filterProducts(){const q=search?.value.trim().toLowerCase()||'';let visible=0;cards.forEach(c=>{const hideText=q&&!c.dataset.name.includes(q);const hideCategory=activeCategory!=='all'&&c.dataset.category!==activeCategory;const hide=hideText||hideCategory;c.dataset.hidden=hide?'true':'false';if(!hide)visible++;});visibleNode.textContent=visible;}
+  search?.addEventListener('input',filterProducts);
+  categoryButtons.forEach(button=>button.addEventListener('click',()=>{activeCategory=button.dataset.posCategory;categoryButtons.forEach(b=>{const active=b===button;b.setAttribute('aria-pressed',active?'true':'false');b.classList.toggle('bg-stone-900',active);b.classList.toggle('text-white',active);b.classList.toggle('bg-white',!active);b.classList.toggle('text-stone-600',!active);});filterProducts();}));
   renderCart();
 })();
 </script>

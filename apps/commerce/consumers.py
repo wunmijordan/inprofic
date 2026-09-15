@@ -50,6 +50,10 @@ class CommerceNotificationConsumer(AsyncJsonWebsocketConsumer):
         business = Business.objects.filter(pk=business_id).first()
         if business is None:
             return None
-        if not user_has_permission(user, business, "commerce", "view"):
+        if not any((
+            user_has_permission(user, business, "commerce", "view"),
+            user_has_permission(user, business, "delivery", "view"),
+            user_has_permission(user, business, "delivery_rider", "view"),
+        )):
             return None
         return business.pk, user.pk

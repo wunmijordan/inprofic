@@ -1,1 +1,11 @@
-{% extends "base.html" %}{% block content %}<div class="max-w-xl"><h2 class="text-xl font-semibold font-display text-[#8f172d] mb-1">Stock Adjustment</h2><p class="text-sm text-stone-500 mb-4">Use signed quantity: positive adds stock, negative removes stock.</p><form method="post" class="bg-white border border-[#E7DFCC] rounded-xl p-5 space-y-3">{% csrf_token %}{{ form.as_p }}<button class="px-4 py-2 rounded-md bg-[#8f172d] text-white">Post adjustment</button></form></div>{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-2xl">
+  <div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Inventory</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">Stock adjustment</h2><p class="mt-1 text-sm text-stone-500">Use a positive quantity to add stock or a negative quantity to reduce it.</p></div>
+  <form method="post" class="cf-form-shell"><div class="cf-form-body space-y-4">{% csrf_token %}
+    {% if form.non_field_errors %}<div class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{{ form.non_field_errors|striptags }}</div>{% endif %}
+    {% for field in form %}{% include "_field.html" with field=field %}{% endfor %}
+    <div class="flex justify-end"><button class="rounded-xl bg-[#8f172d] px-5 py-2.5 text-sm font-semibold text-white">Post adjustment</button></div>
+  </div></form>
+</div>
+{% endblock %}

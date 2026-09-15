@@ -14,7 +14,7 @@ finance describe one business flow rather than four isolated ledgers.
 It is **not yet a full manufacturing ERP**. It has a strong batch/recipe,
 procurement, inventory, sales and finance foundation, but production planning,
 MRP/material planning, WIP, scheduling, labour/overhead costing, formal QC
-release gates, and delivery/fulfilment are intentionally still on the roadmap.
+release gates. Delivery/last-mile fulfilment is now an entitlement-gated provider-neutral subsystem with an optional Glovo LaaS v2 plug-in.
 See `docs/ROADMAP.md` for the remaining evolution.
 
 Customer-facing ordering, external website/API routing, path-based tenant
@@ -549,3 +549,26 @@ Subscription billing is initiated inside INPROFIC. Paystack and Monnify are host
 Plans support monthly and yearly billing. The founder controls monthly price, yearly discount percentage, and additional-service discount percentage centrally. The annual discount applies to the complete 12-month subscription total after additional-service pricing is calculated.
 
 Commerce remains payment-provider neutral at the intake boundary. The four independently switchable public surfaces are the hosted storefront, Order Now link, headless API, and platform connector (all beneath the Commerce master switch and BusinessModuleAccess entitlement). Headless API is for a tenant-owned website/app actively calling INPROFIC; the connector endpoint is for third-party platforms/adapters pushing signed normalized order events into INPROFIC.
+
+
+## Audit and delivery boundaries
+
+Audit Workspace and Delivery are separate plan entitlement modules. Their
+`BusinessModuleAccess` rows are evaluated before user or role permissions, so
+founder plan toggles remain the commercial hard ceiling.
+
+External auditors are intentionally not granted ordinary operational module
+permissions. Audit Workspace performs tenant-scoped read-only queries internally
+and exposes evidence, exports and auditor query/response records through a
+specialized surface.
+
+Delivery remains provider-neutral. INPROFIC owns delivery quotes, delivery fee
+snapshots, assignments, events, proof of delivery and customer tracking.
+Provider accounts, including the seeded Glovo LaaS v2 account, add optional live provider quotes, OAuth parcel dispatch, tracking links and authorized webhook synchronization without making the rest of the system Glovo-specific.
+
+In-Premise POS is a separate `pos` permission. The system role `pos_operator` has no Dashboard permission and therefore lands directly in the full-page POS, while the same `pos` permission can also be granted as a supplemental per-user override to managers or other staff who should retain their primary role.
+
+
+### Delivery rider and storefront-customer boundaries
+
+Delivery Rider is a purpose-specific staff access surface: rider-only users can see and act only on assignments linked to their own active in-house driver record. Delivery alerts reuse the durable Commerce notification transport but support targeted rider recipients. Public storefront customers remain guests by default; optional `StorefrontCustomer` profiles are tenant-scoped, separate from staff users, and store purchase history without making registration a checkout requirement. Hybrid delivery means in-house and the configured provider remain interchangeable per order under the tenant’s routing and customer-visible post-payment switch policy.

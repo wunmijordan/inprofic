@@ -22,10 +22,10 @@
   </div>
 </div>
 <div id="material-category-tabs" class="flex flex-wrap gap-1.5 mb-4">
-  <button type="button" data-material-tab="ingredient" class="material-tab px-3 py-1.5 rounded-md text-xs font-medium border">{% if vertical_ui.uses_production %}{{ vertical_ui.recipe_item_label }}s{% else %}Consumable Supplies{% endif %} <span data-material-count="ingredient" class="ml-1 text-[10px] opacity-70"></span></button>
-  <button type="button" data-material-tab="packaging" class="material-tab px-3 py-1.5 rounded-md text-xs font-medium border">Packaging <span data-material-count="packaging" class="ml-1 text-[10px] opacity-70"></span></button>
-  <button type="button" data-material-tab="production_supply" class="material-tab px-3 py-1.5 rounded-md text-xs font-medium border">{% if vertical_ui.uses_production %}{{ vertical_ui.production_inputs_label }}{% else %}Handling / Storage Supplies{% endif %} <span data-material-count="production_supply" class="ml-1 text-[10px] opacity-70"></span></button>
-  <button type="button" data-material-tab="operational_supply" class="material-tab px-3 py-1.5 rounded-md text-xs font-medium border">Operational Supplies <span data-material-count="operational_supply" class="ml-1 text-[10px] opacity-70"></span></button>
+  <button type="button" data-material-tab="ingredient" aria-selected="true" class="material-tab px-3 py-1.5 rounded-md text-xs font-medium border">{% if vertical_ui.uses_production %}{{ vertical_ui.recipe_item_label }}s{% else %}Consumable Supplies{% endif %} <span data-material-count="ingredient" class="ml-1 text-[10px] opacity-70"></span></button>
+  <button type="button" data-material-tab="packaging" aria-selected="false" class="material-tab px-3 py-1.5 rounded-md text-xs font-medium border">Packaging <span data-material-count="packaging" class="ml-1 text-[10px] opacity-70"></span></button>
+  <button type="button" data-material-tab="production_supply" aria-selected="false" class="material-tab px-3 py-1.5 rounded-md text-xs font-medium border">{% if vertical_ui.uses_production %}{{ vertical_ui.production_inputs_label }}{% else %}Handling / Storage Supplies{% endif %} <span data-material-count="production_supply" class="ml-1 text-[10px] opacity-70"></span></button>
+  <button type="button" data-material-tab="operational_supply" aria-selected="false" class="material-tab px-3 py-1.5 rounded-md text-xs font-medium border">Operational Supplies <span data-material-count="operational_supply" class="ml-1 text-[10px] opacity-70"></span></button>
 </div>
 
 {% if not raw_materials %}
@@ -122,7 +122,7 @@
     <h2 class="text-xl font-semibold font-display text-[#8f172d]">{{ vertical_ui.product_label }}</h2>
     <p class="text-sm text-stone-500 mt-0.5">{% if vertical_ui.uses_production %}Items you sell, with their {{ vertical_ui.recipe_label|lower }} and batch size{% else %}Items you procure, receive into {{ vertical_ui.stock_location }}, and sell{% endif %}</p>
   </div>
-  <div class="flex flex-wrap gap-2">{% if vertical_ui.uses_production %}<a href="{% url 'market_stock' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100">Distribution Market Stock</a>{% endif %}{% if module_permissions.inventory.edit %}<a href="{% url 'operational_supply_dispense' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100">Dispense Operational Supply</a><a href="{% url 'finished_good_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ Add Product</a>{% endif %}</div>
+  <div class="flex flex-wrap gap-2">{% if vertical_ui.uses_production %}<a href="{% url 'market_stock' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100">Distribution Market Stock</a>{% endif %}{% if module_permissions.inventory.edit %}<a href="{% url 'operational_supply_dispense' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100">Dispense Operational Supply</a><a href="{% url 'product_categories' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-white text-[#8f172d] border border-[#D9CFB4] hover:bg-[#F0EAD9]">Product Categories</a><a href="{% url 'finished_good_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ Add Product</a>{% endif %}</div>
 </div>
 
 {% if not finished_goods %}
@@ -156,6 +156,7 @@
           >
             {{ g.name }}
           </button>
+          {% if g.product_category %}<div class="mt-1"><span class="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-medium text-stone-600">{{ g.product_category.name }}</span></div>{% endif %}
           {% if g.units_per_batch != 1 %}<div class="text-[10px] text-stone-400">{{ g.units_per_batch|num }} {{ g.unit }}/batch</div>{% endif %}
         </td>
         <td class="px-3 py-2 text-right">
@@ -241,9 +242,9 @@
         <span>Loading…</span>
       </div>
       <div class="flex shrink-0 items-center gap-1 rounded-xl bg-stone-50 border border-stone-200 p-1" role="group" aria-label="Chart period">
-        <button type="button" class="stock-period-btn px-2.5 py-1 text-xs rounded-md bg-[#8f172d] text-white" data-days="7">7 Days</button>
-        <button type="button" class="stock-period-btn px-2.5 py-1 text-xs rounded-md text-stone-600 hover:bg-stone-100" data-days="30">30 Days</button>
-        <button type="button" class="stock-period-btn px-2.5 py-1 text-xs rounded-md text-stone-600 hover:bg-stone-100" data-days="90">90 Days</button>
+        <button type="button" class="stock-period-btn px-2.5 py-1 text-xs rounded-md bg-[#8f172d] text-white" data-days="7" aria-pressed="true">7 Days</button>
+        <button type="button" class="stock-period-btn px-2.5 py-1 text-xs rounded-md text-stone-600 hover:bg-stone-100" data-days="30" aria-pressed="false">30 Days</button>
+        <button type="button" class="stock-period-btn px-2.5 py-1 text-xs rounded-md text-stone-600 hover:bg-stone-100" data-days="90" aria-pressed="false">90 Days</button>
       </div>
     </div>
 
@@ -347,6 +348,7 @@
       tab.classList.toggle('bg-white', !active);
       tab.classList.toggle('text-stone-600', !active);
       tab.classList.toggle('border-[#D9CFB4]', !active);
+      tab.setAttribute('aria-selected', active ? 'true' : 'false');
     });
   }
   materialTabs.forEach(tab => tab.addEventListener('click', () => updateMaterialTabs(tab.dataset.materialTab)));
@@ -423,6 +425,7 @@
       btn.classList.toggle('text-white', active);
       btn.classList.toggle('text-stone-600', !active);
       btn.classList.toggle('hover:bg-stone-100', !active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
     if (stockHistoryData) renderHistory();
   }

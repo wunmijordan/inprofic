@@ -131,10 +131,6 @@ def user_form(request, pk=None):
                 membership.active = user.is_active
                 membership.save(update_fields=["role", "active"])
                 ensure_permissions(membership)
-                # POS is role-owned. Any temporary direct override is migrated
-                # from the retired checkbox is cleared as soon as this user is
-                # explicitly edited, so the selected role becomes authoritative.
-                UserModulePermission.objects.filter(membership=membership, module="pos").delete()
             messages.success(request, "User updated." if obj else "User created.")
             return redirect("users_list")
     else:
@@ -157,7 +153,7 @@ def user_permissions(request, pk):
             return redirect("users_permissions", pk=membership.pk)
     else:
         form = PermissionMatrixForm(membership=membership)
-    rows = [(m, label, form[f"{m}_view"], form[f"{m}_edit"]) for m, label in RoleModulePermission.MODULE_CHOICES if m != "pos"]
+    rows = [(m, label, form[f"{m}_view"], form[f"{m}_edit"]) for m, label in RoleModulePermission.MODULE_CHOICES]
     return render(request, "accounts/user_permissions.html", {"membership": membership, "form": form, "rows": rows})
 
 

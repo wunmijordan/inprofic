@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-<h2 class="text-xl font-semibold font-display text-[#8f172d] mb-4">{% if obj %}Edit Customer{% else %}New Customer{% endif %}</h2>
-<div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg shadow-[0_2px_8px_#000000d2] p-5 max-w-5xl">
+<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Customers & pricing</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit Customer{% else %}New Customer{% endif %}</h2><p class="mt-1 text-sm text-stone-500">Keep contact, credit and agreed-price details together.</p></div>
+<div class="cf-form-shell max-w-5xl"><div class="cf-form-body">
 <form method="post" id="customer-form">{% csrf_token %}
 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
 {% include "_field.html" with field=form.name %}{% include "_field.html" with field=form.phone %}{% include "_field.html" with field=form.email %}{% include "_field.html" with field=form.region %}{% include "_field.html" with field=form.customer_group %}{% include "_field.html" with field=form.credit_limit %}{% include "_field.html" with field=form.payment_terms_days %}{% include "_field.html" with field=form.active %}
@@ -32,7 +32,7 @@
             <td class="px-2 py-1.5">{{ f.id }}{{ f.finished_good }}{% if f.finished_good.errors %}<div class="text-[11px] text-rose-600">{{ f.finished_good.errors|striptags }}</div>{% endif %}</td>
             <td class="px-2 py-1.5">{{ f.channel }}{% if f.channel.errors %}<div class="text-[11px] text-rose-600">{{ f.channel.errors|striptags }}</div>{% endif %}</td>
             <td class="px-2 py-1.5">{{ f.price }}{% if f.price.errors %}<div class="text-[11px] text-rose-600">{{ f.price.errors|striptags }}</div>{% endif %}</td>
-            <td class="px-2 py-1.5 text-center">{% if f.instance.pk %}<label class="cursor-pointer text-rose-500 hover:text-rose-700" title="Remove">{{ f.DELETE }}</label>{% endif %}</td>
+            <td class="px-2 py-1.5 text-center">{% if f.instance.pk %}<span class="hidden">{{ f.DELETE }}</span><button type="button" data-existing-formset-remove onclick="markExistingFormsetRowDeleted(this)" class="rounded px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50">Remove</button>{% endif %}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -43,5 +43,5 @@
 </div>
 
 <div class="flex justify-end gap-2 mt-4"><a href="{% url 'customer_list' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a><button class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white">Save Customer</button></div>
-</form></div>
+</form></div></div>
 {% endblock %}

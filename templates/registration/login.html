@@ -1,12 +1,14 @@
 {% load static %}
 <!doctype html>
-<html lang="en">
+<html lang="en" data-tenant="global" data-tenant-accent="#D14900" data-tenant-background="#050733" style="--tenant-background:#050733;--tenant-background-contrast:#fff;--tenant-button:#D14900;--tenant-button-contrast:#fff">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign in — INPROFIC</title>
   <link rel="icon" type="image/png" href="{% static 'core/brand/inprofic-mark.png' %}">
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
+  <link rel="stylesheet" href="{% static 'core/css/workspace.css' %}">
+  <script src="{% static 'core/js/workspace.js' %}"></script>
   {% include "pwa/head.html" %}
   <style>
     @font-face { font-family:'Inter'; src:url('{% static "core/fonts/Inter-Regular.ttf" %}') format('truetype'); font-weight:400; font-style:normal; font-display:swap; }
@@ -27,8 +29,8 @@
   </style>
 </head>
 <body>
-<div class="min-h-[80vh] flex items-center justify-center mt-6">
-  <div class="w-full max-w-sm bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl shadow-[0_2px_8px_#000000d2] p-6">
+<main class="min-h-screen flex items-center justify-center p-4">
+  <div class="w-full max-w-sm bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-6" style="box-shadow:var(--ui-shadow-raised)">
     <img src="{% static 'core/brand/inprofic-logo-on-light.png' %}" alt="INPROFIC" class="h-9 w-auto max-w-full" width="2097" height="361">
     <div class="text-[10px] tracking-[0.2em] uppercase text-[#C69A3E] mb-1">Production to commerce</div>
     <h1 class="text-xl font-semibold font-display text-[#d14900] mb-4">Sign In</h1>
@@ -40,18 +42,18 @@
       <input type="hidden" name="next" value="{{ next }}">
       <label class="block mb-3">
         <span class="block text-xs font-medium text-stone-600 mb-1">Username</span>
-        <input type="text" name="username" required autofocus class="w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#d14900]/30 focus:border-[#d14900] shadow-[inset_0_2px_4px_#000000d2]">
+        <input type="text" name="username" required autofocus autocomplete="username" class="w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#d14900]/30 focus:border-[#d14900]">
       </label>
       <label class="block mb-4">
         <span class="block text-xs font-medium text-stone-600 mb-1">Password</span>
-        <input type="password" name="password" required class="w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#d14900]/30 focus:border-[#d14900] shadow-[inset_0_-2px_4px_#000000d2]">
+        <input type="password" name="password" required autocomplete="current-password" class="w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#d14900]/30 focus:border-[#d14900]">
       </label>
-      <button type="submit" class="w-full bg-[#d14900] text-white rounded-md py-2 text-sm font-medium hover:bg-[#050733] shadow-[0_-2px_4px_#000000d2]">Sign In</button>
+      <button type="submit" class="w-full bg-[#d14900] text-white rounded-md py-2 text-sm font-medium hover:bg-[#050733]">Sign in</button>
     </form>
     <p class="text-xs text-center text-stone-500 mt-4">Starting a new business workspace? <a class="text-[#d14900] underline" href="{% url 'signup' %}">Sign up</a></p>
     <p class="mt-2 text-center text-xs"><a class="text-stone-400 underline underline-offset-2 hover:text-[#d14900]" href="{% url 'marketing_home' %}">Back to the INPROFIC overview</a></p>
   </div>
-</div>
+</main>
   {% include "pwa/install_prompt.html" %}
 </body>
 </html>

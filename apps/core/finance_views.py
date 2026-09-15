@@ -185,7 +185,7 @@ def cash_account_delete(request, pk):
         audit(request.business, request.user, "delete", None, f"Cash account deleted: {name}", {"account_id": account_id, "account_name": name})
         messages.success(request, f"{name} deleted.")
     except ProtectedError:
-        messages.error(request, "This account has linked financial records and cannot be deleted. Edit it and mark it inactive instead.")
+        messages.error(request, "This account has linked financial records and cannot be deleted. Edit it and make it unavailable for new transactions instead.")
     return redirect("finance_dashboard")
 
 

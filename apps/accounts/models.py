@@ -31,6 +31,9 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     ROLE_MD_DIRECTOR = "md_director"
     ROLE_BUSINESS_ADMIN = "business_admin"
     ROLE_POS_OPERATOR = "pos_operator"
+    ROLE_AUDITOR = "auditor"
+    ROLE_DELIVERY_COORDINATOR = "delivery_coordinator"
+    ROLE_DELIVERY_RIDER = "delivery_rider"
     # Backward-compatible internal key for the fixed, superuser-only Demo role.
     ROLE_LIVE_TESTER = "live_tester"
     ROLE_SUPERUSER = "superuser"
@@ -41,6 +44,9 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         (ROLE_MD_DIRECTOR, "MD / Director"),
         (ROLE_BUSINESS_ADMIN, "Business Admin"),
         (ROLE_POS_OPERATOR, "In-Premise POS"),
+        (ROLE_AUDITOR, "External Auditor"),
+        (ROLE_DELIVERY_COORDINATOR, "Delivery Coordinator"),
+        (ROLE_DELIVERY_RIDER, "Delivery Rider"),
         (ROLE_LIVE_TESTER, "Demo"),
         (ROLE_SUPERUSER, "Superuser"),
     )
@@ -110,6 +116,9 @@ class RoleModulePermission(models.Model):
         ("reports", "Reports"),
         ("users", "User Management"),
         ("commerce", "Commerce"),
+        ("delivery", "Delivery"),
+        ("delivery_rider", "Delivery Rider"),
+        ("audit", "Audit Workspace"),
         ("pos", "In-Premise POS"),
     ]
     role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name="module_permissions")

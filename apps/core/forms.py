@@ -37,6 +37,8 @@ class BusinessForm(forms.ModelForm):
             "Shown only beside your business name on the public storefront. "
             "A square or compact transparent PNG/WebP works best (maximum 4 MB)."
         )
+        self.fields["restaurant_table_service"].label = "Table service"
+        self.fields["restaurant_table_service"].help_text = "Require a table or service reference for dine-in sales."
         self.fields["restaurant_table_service"].widget.attrs["class"] = "h-4 w-4 accent-[#8f172d]"
 
     def clean_slug(self):

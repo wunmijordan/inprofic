@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-<h2 class="text-xl font-semibold font-display text-[#8f172d] mb-4">{% if obj %}Edit Purchase Order{% else %}New Purchase Order{% endif %}</h2>
-<div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg shadow-[0_2px_8px_#000000d2] p-5 max-w-2xl">
+<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Purchasing</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit Purchase Order{% else %}New Purchase Order{% endif %}</h2><p class="mt-1 max-w-2xl text-sm text-stone-500">Record what was bought, what it cost and how the supplier was paid.</p></div>
+<div class="cf-form-shell max-w-4xl"><div class="cf-form-body">
   <form method="post">
     {% csrf_token %}
     {% if form.non_field_errors %}<div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-3">{{ form.non_field_errors }}</div>{% endif %}
@@ -34,7 +34,7 @@
               <td class="px-2 py-1.5 text-right text-xs text-stone-400 font-mono current-cost-display">—</td>
               <td class="px-2 py-1.5 text-center text-xs text-rose-600">
                 {% if f.instance.pk %}
-                <label>{{ f.DELETE }}</label>
+                <span class="hidden">{{ f.DELETE }}</span><button type="button" data-existing-formset-remove onclick="markExistingFormsetRowDeleted(this)" class="rounded px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50">Remove</button>
                 {% endif %}
               </td>
             </tr>
@@ -102,4 +102,5 @@
   document.querySelector('[name="payment_status"]')?.addEventListener('change', toggleInitialPayment);
   toggleInitialPayment();
 </script>
+</div></div>
 {% endblock %}

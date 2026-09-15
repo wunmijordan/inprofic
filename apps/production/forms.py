@@ -137,23 +137,31 @@ class OrderForm(StyledModelForm):
 class OrderItemForm(StyledModelForm):
     class Meta:
         model = OrderItem
-        fields = ["finished_good", "batch_qty", "piece_qty", "production_batch_qty", "production_piece_qty", "discount"]
+        fields = ["finished_good", "production_basis", "base_material_quantity", "batch_qty", "piece_qty", "production_batch_qty", "production_piece_qty", "discount"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for name in ("batch_qty", "piece_qty", "production_batch_qty", "production_piece_qty", "discount"):
             self.fields[name].required = False
             self.fields[name].widget.attrs.update({"min": "0", "step": "0.01"})
+        self.fields["production_basis"].required = False
+        self.fields["production_basis"].label = "Production basis"
+        self.fields["base_material_quantity"].required = False
+        self.fields["base_material_quantity"].label = "Base material quantity"
+        self.fields["base_material_quantity"].widget.attrs.update({"min": "0", "step": "0.0001", "placeholder": "0"})
         self.fields["production_batch_qty"].label = "Produce batches"
         self.fields["production_piece_qty"].label = "Produce pieces"
 
     def clean(self):
         cleaned = super().clean()
-        for name in ("batch_qty", "piece_qty", "production_batch_qty", "production_piece_qty", "discount"):
+        for name in ("batch_qty", "piece_qty", "production_batch_qty", "production_piece_qty", "discount", "base_material_quantity"):
             if cleaned.get(name) is None:
                 cleaned[name] = Decimal("0")
-        if cleaned.get("finished_good") and cleaned["batch_qty"] <= 0 and cleaned["piece_qty"] <= 0:
-            self.add_error("piece_qty", "Enter at least one ordered batch or piece.")
+        basis = cleaned.get("production_basis") or OrderItem.BASIS_PRODUCT_QUANTITY
+        if cleaned.get("finished_good") and basis != OrderItem.BASIS_BASE_MATERIAL and cleaned["batch_qty"] <= 0 and cleaned["piece_qty"] <= 0:
+            self.add_error("piece_qty", "Enter at least one batch or piece.")
+        if basis == OrderItem.BASIS_BASE_MATERIAL and cleaned.get("finished_good") and cleaned["base_material_quantity"] <= 0:
+            self.add_error("base_material_quantity", "Enter how much base material you want to use.")
         return cleaned
 
 
@@ -195,6 +203,39 @@ class OrderItemFormSetBase(BaseInlineFormSet):
                 continue
             good = data["finished_good"]
             upb = good.units_per_batch or Decimal("1")
+            basis = data.get("production_basis") or OrderItem.BASIS_PRODUCT_QUANTITY
+            base_allowed = self.order_type == "physical_store" or (self.order_type == "distribution" and self.market_stock)
+            if basis == OrderItem.BASIS_BASE_MATERIAL:
+                if not base_allowed:
+                    form.add_error("production_basis", "Base material sizing is available for stock production that is not assigned to a customer.")
+                    continue
+                if not good.base_material_id:
+                    form.add_error("production_basis", "Choose a base material on this product before using Base material production.")
+                    continue
+                recipe_row = good.recipe_items.filter(raw_material_id=good.base_material_id).first()
+                if recipe_row is None or recipe_row.qty_per_batch <= 0:
+                    form.add_error("production_basis", "The product's base material must have a positive quantity in its recipe.")
+                    continue
+                base_qty = data.get("base_material_quantity") or Decimal("0")
+                if base_qty <= 0:
+                    form.add_error("base_material_quantity", "Enter how much base material you want to use.")
+                    continue
+                multiplier = base_qty / recipe_row.qty_per_batch
+                data["batch_qty"] = multiplier
+                data["piece_qty"] = Decimal("0")
+                data["production_batch_qty"] = Decimal("0")
+                data["production_piece_qty"] = Decimal("0")
+                form.instance.batch_qty = multiplier
+                form.instance.piece_qty = Decimal("0")
+                form.instance.production_batch_qty = Decimal("0")
+                form.instance.production_piece_qty = Decimal("0")
+                form.instance.production_basis = OrderItem.BASIS_BASE_MATERIAL
+                form.instance.base_material_quantity = base_qty
+            else:
+                data["production_basis"] = OrderItem.BASIS_PRODUCT_QUANTITY
+                data["base_material_quantity"] = Decimal("0")
+                form.instance.production_basis = OrderItem.BASIS_PRODUCT_QUANTITY
+                form.instance.base_material_quantity = Decimal("0")
             ordered = (data.get("batch_qty") or Decimal("0")) * upb + (data.get("piece_qty") or Decimal("0"))
             plan_batches = data.get("production_batch_qty") or Decimal("0")
             plan_pieces = data.get("production_piece_qty") or Decimal("0")
@@ -223,8 +264,8 @@ class ProductionCompletionForm(forms.Form):
     batch_number = forms.CharField(max_length=60, label="Batch number")
     expiry_date = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}), label="Expiry date")
     wastage_reason = forms.CharField(max_length=255, required=False, label="Wastage reason")
-    qc_status = forms.ChoiceField(choices=ProductionQualityCheck.STATUS_CHOICES, initial="pending", label="Quality status")
-    qc_notes = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}), label="QC notes")
+    qc_status = forms.ChoiceField(choices=ProductionQualityCheck.STATUS_CHOICES, initial="pending", label="Quality check")
+    qc_notes = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}), label="Quality notes")
     flag_shortage = forms.BooleanField(required=False, label="Flag production shortage for reconciliation")
     shortage_reason = forms.CharField(max_length=255, required=False, label="Shortage / reconciliation reason")
     excess_to_stock = forms.DecimalField(max_digits=14, decimal_places=2, min_value=0, required=False, initial=0, label="Excess to Physical Store stock")

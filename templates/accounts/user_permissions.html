@@ -1,9 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="mb-5"><h2 class="text-xl font-semibold font-display text-[#8f172d]">Permissions — {{ membership.user.fullname }}</h2><p class="text-xs text-stone-500 mt-1">Role: {{ membership.role.name }}. Edit ordinary per-user module overrides here. In-Premise POS access is intentionally managed from Roles & Access so cashier access stays role-based.</p></div>
-<form method="post" class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg overflow-hidden">{% csrf_token %}
-<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-[#F0EAD9] text-xs"><tr><th class="text-left px-4 py-3">Module</th><th class="text-center px-4 py-3">View</th><th class="text-center px-4 py-3">Edit</th></tr></thead>
-<tbody>{% for module,label,view,edit in rows %}<tr class="border-t border-[#E7DFCC]"><td class="px-4 py-3 font-medium">{{ label }}</td><td class="text-center">{{ view }}</td><td class="text-center">{{ edit }}</td></tr>{% endfor %}</tbody></table></div>
-<div class="flex justify-end p-4"><button class="px-4 py-2 rounded-md bg-[#8f172d] text-white text-sm">Save permissions</button></div>
+<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Roles & access</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">Permissions — {{ membership.user.fullname }}</h2><p class="mt-1 max-w-3xl text-sm text-stone-500">Role: {{ membership.role.name }}. Adjust ordinary per-user module access here. In-Premise POS remains managed from Roles & Access so cashier access stays role-based.</p></div>
+<form method="post" class="cf-form-shell max-w-4xl">{% csrf_token %}
+  <div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-[#F0EAD9] text-xs"><tr><th class="text-left px-4 py-3">Module</th><th class="text-center px-4 py-3">View</th><th class="text-center px-4 py-3">Edit</th></tr></thead><tbody>{% for module,label,view,edit in rows %}<tr class="border-t border-[#E7DFCC]"><td class="px-4 py-3 font-medium">{{ label }}</td><td class="px-4 py-3 text-center"><span class="cf-switch"><span class="sr-only">{{ label }} view access</span>{{ view }}<span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></td><td class="px-4 py-3 text-center"><span class="cf-switch"><span class="sr-only">{{ label }} edit access</span>{{ edit }}<span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></td></tr>{% endfor %}</tbody></table></div>
+  <div class="flex justify-end border-t border-[#E7DFCC] p-4"><button class="rounded-xl bg-[#8f172d] px-5 py-2.5 text-sm font-semibold text-white">Save permissions</button></div>
 </form>
 {% endblock %}
