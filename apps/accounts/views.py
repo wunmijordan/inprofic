@@ -2,6 +2,7 @@ from django.contrib import messages
 from django.contrib.auth import login as auth_login
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse
@@ -123,16 +124,23 @@ def user_form(request, pk=None):
     if request.method == "POST":
         form = UserForm(request.POST, instance=obj, business=request.business, actor=request.user, membership=membership)
         if form.is_valid():
-            with transaction.atomic():
-                user = form.save()
-                role = form.cleaned_data["role"]
-                membership, _ = UserBusiness.objects.get_or_create(user=user, business=request.business, defaults={"role": role, "active": user.is_active})
-                membership.role = role
-                membership.active = user.is_active
-                membership.save(update_fields=["role", "active"])
-                ensure_permissions(membership)
-            messages.success(request, "User updated." if obj else "User created.")
-            return redirect("users_list")
+            try:
+                was_active_member = bool(membership and membership.active and obj and obj.is_active)
+                if form.cleaned_data.get("is_active") and not was_active_member:
+                    from .subscription_services import assert_user_capacity
+                    assert_user_capacity(request.business, user=obj)
+                with transaction.atomic():
+                    user = form.save()
+                    role = form.cleaned_data["role"]
+                    membership, _ = UserBusiness.objects.get_or_create(user=user, business=request.business, defaults={"role": role, "active": user.is_active})
+                    membership.role = role
+                    membership.active = user.is_active
+                    membership.save(update_fields=["role", "active"])
+                    ensure_permissions(membership)
+                messages.success(request, "User updated." if obj else "User created.")
+                return redirect("users_list")
+            except ValidationError as exc:
+                form.add_error(None, exc)
     else:
         form = UserForm(instance=obj, business=request.business, actor=request.user, membership=membership)
     return render(request, "accounts/user_form.html", {"form": form, "obj": obj})
@@ -231,7 +239,7 @@ def subscription_plans(request):
     if not is_business_admin(request.user, request.business):
         return render(request, "403.html", status=403)
     from .models import BusinessSubscription, SubscriptionPlan
-    from .subscription_services import attach_active_promotions, ensure_default_plans, payment_is_locked
+    from .subscription_services import attach_active_promotions, ensure_default_plans, paid_trial_available, payment_is_locked
     ensure_default_plans()
     service = getattr(request.business, "subscription_service", None)
     subscription = service.subscription if service else BusinessSubscription.objects.filter(primary_business=request.business).select_related("plan").first()
@@ -252,9 +260,23 @@ def subscription_plans(request):
         }
         for plan in plans
     ]
+    trial_credentials_available = paid_trial_available(request.user)
+    can_start_paid_trial = trial_credentials_available and bool(
+        not subscription or (
+            subscription.status == BusinessSubscription.STATUS_ACTIVE
+            and subscription.plan.code == SubscriptionPlan.CODE_STARTER
+        )
+    )
     return render(request, "accounts/subscription_plans.html", {
         "subscription": subscription,
         "plan_cards": plan_cards,
+        "paid_trial_available": can_start_paid_trial,
+        "can_add_service": bool(
+            subscription and (
+                subscription.plan.additional_service_limit is None
+                or subscription.services.filter(is_primary=False).count() < subscription.plan.additional_service_limit
+            )
+        ),
     })
 
 
@@ -268,6 +290,9 @@ def subscription_payment(request, plan_code=None):
         ensure_default_plans,
         payment_amount,
         payment_is_locked,
+        cancel_paid_plan_trial,
+        paid_trial_available,
+        start_paid_plan_trial,
         start_trial_for_business,
     )
     if not is_business_admin(request.user, request.business):
@@ -277,7 +302,7 @@ def subscription_payment(request, plan_code=None):
     service = getattr(request.business, "subscription_service", None)
     subscription = service.subscription if service else BusinessSubscription.objects.filter(primary_business=request.business).select_related("plan").first()
     if not subscription:
-        subscription = start_trial_for_business(request.business, selected or plans[SubscriptionPlan.CODE_STARTER])
+        subscription = start_trial_for_business(request.business, plans[SubscriptionPlan.CODE_STARTER])
     selected = selected or subscription.plan
     selected.current_monthly_promotion = active_promotion_for_plan(
         selected, billing_cycle=SubscriptionPayment.CYCLE_MONTHLY
@@ -300,8 +325,25 @@ def subscription_payment(request, plan_code=None):
         if payment_settings.provider_enabled(code)
     ]
     if request.method == "POST":
+        action = request.POST.get("action") or ""
+        if action == "cancel_trial":
+            try:
+                cancel_paid_plan_trial(subscription)
+                messages.success(request, "Paid-plan trial cancelled. Your workspace is back on free Starter; no payment was taken.")
+            except ValidationError as exc:
+                messages.error(request, "; ".join(exc.messages))
+            return redirect("subscription_plans")
+        if action == "start_paid_trial":
+            try:
+                start_paid_plan_trial(subscription, selected, request.user)
+                messages.success(request, f"Your 30-day {selected.name} trial has started. You can cancel anytime and return to Starter.")
+            except ValidationError as exc:
+                messages.error(request, "; ".join(exc.messages))
+            return redirect("subscription_plans")
         if payment_locked:
-            if subscription.founder_lifetime:
+            if selected.code == SubscriptionPlan.CODE_STARTER:
+                messages.info(request, "Starter is free and does not require renewal or payment.")
+            elif subscription.founder_lifetime:
                 messages.info(request, "Your current plan has founder lifetime access; payment is disabled for it.")
             else:
                 messages.info(request, "Renewal for your current plan opens within 7 days of expiry.")
@@ -362,6 +404,7 @@ def subscription_payment(request, plan_code=None):
         "available_payment_providers": available_payment_providers,
         "payment_locked": payment_locked,
         "requires_change_warning": requires_change_warning,
+        "paid_trial_available": paid_trial_available(request.user),
     })
 
 
@@ -441,14 +484,17 @@ def subscription_add_service(request):
     if request.method == "POST":
         form = AddSubscriptionServiceForm(request.POST)
         if form.is_valid():
-            business = add_service_business(
-                subscription,
-                name=form.cleaned_data["business_name"],
-                service_type=form.cleaned_data["service_type"],
-                actor=request.user,
-            )
-            messages.success(request, f"{business.name} added as an additional service profile. Your next plan payment includes the discounted service add-on.")
-            return redirect("subscription_plans")
+            try:
+                business = add_service_business(
+                    subscription,
+                    name=form.cleaned_data["business_name"],
+                    service_type=form.cleaned_data["service_type"],
+                    actor=request.user,
+                )
+                messages.success(request, f"{business.name} added as an additional service profile. Your next plan payment includes the discounted service add-on.")
+                return redirect("subscription_plans")
+            except ValidationError as exc:
+                form.add_error(None, exc)
     else:
         form = AddSubscriptionServiceForm()
     return render(request, "accounts/subscription_service_form.html", {"form": form, "subscription": subscription})
@@ -592,10 +638,15 @@ def founder_subscriptions(request):
             parsed = []
             try:
                 for plan in plans_to_update:
-                    monthly = max(Decimal("0"), Decimal(request.POST.get(f"monthly_price_{plan.pk}") or "0"))
+                    monthly = Decimal("0") if plan.code == SubscriptionPlan.CODE_STARTER else max(Decimal("0"), Decimal(request.POST.get(f"monthly_price_{plan.pk}") or "0"))
                     yearly_discount = min(Decimal("100"), max(Decimal("0"), Decimal(request.POST.get(f"yearly_discount_{plan.pk}") or "0")))
                     addon_discount = min(Decimal("100"), max(Decimal("0"), Decimal(request.POST.get(f"addon_discount_{plan.pk}") or "0")))
-                    parsed.append((plan, monthly, yearly_discount, addon_discount))
+                    if plan.code == SubscriptionPlan.CODE_STARTER:
+                        user_limit, service_limit = 1, 0
+                    else:
+                        user_limit = None if request.POST.get(f"users_unlimited_{plan.pk}") == "on" else max(1, int(request.POST.get(f"user_limit_{plan.pk}") or 1))
+                        service_limit = None if request.POST.get(f"services_unlimited_{plan.pk}") == "on" else max(0, int(request.POST.get(f"service_limit_{plan.pk}") or 0))
+                    parsed.append((plan, monthly, yearly_discount, addon_discount, user_limit, service_limit))
             except (InvalidOperation, TypeError, ValueError):
                 messages.error(request, "Enter valid numeric pricing and discount values for every plan.")
                 return redirect("founder_subscriptions")
@@ -609,7 +660,7 @@ def founder_subscriptions(request):
                 ends_at__gt=timezone.now(),
             ).select_related("plan"))
             invalid = []
-            for plan, monthly, _yearly_discount, _addon_discount in parsed:
+            for plan, monthly, _yearly_discount, _addon_discount, _user_limit, _service_limit in parsed:
                 applicable = [promo for promo in fixed_promos if promo.applies_to_plan(plan)]
                 promo = max(applicable, key=lambda row: row.discount_value, default=None)
                 if promo and monthly <= promo.discount_value:
@@ -621,12 +672,17 @@ def founder_subscriptions(request):
                 )
                 return redirect("founder_subscriptions")
             with transaction.atomic():
-                for plan, monthly, yearly_discount, addon_discount in parsed:
+                for plan, monthly, yearly_discount, addon_discount, user_limit, service_limit in parsed:
                     plan.monthly_price = monthly
                     plan.yearly_discount_percent = yearly_discount
                     plan.additional_service_discount_percent = addon_discount
-                    plan.save(update_fields=["monthly_price", "yearly_discount_percent", "additional_service_discount_percent"])
-            messages.success(request, "All plan pricing settings were saved together.")
+                    plan.user_limit = user_limit
+                    plan.additional_service_limit = service_limit
+                    plan.save(update_fields=[
+                        "monthly_price", "yearly_discount_percent", "additional_service_discount_percent",
+                        "user_limit", "additional_service_limit",
+                    ])
+            messages.success(request, "All plan pricing and capacity settings were saved together.")
             return redirect("founder_subscriptions")
         if action == "save_payment_channels":
             payment_settings.paystack_enabled = request.POST.get("paystack_enabled") == "on"
@@ -645,6 +701,8 @@ def founder_subscriptions(request):
             return redirect("founder_subscriptions")
     subscriptions = BusinessSubscription.objects.select_related("primary_business", "plan", "founder_granted_by").prefetch_related("services__business")
     pending_payments = SubscriptionPayment.objects.filter(status=SubscriptionPayment.STATUS_PENDING).select_related("subscription__primary_business", "plan")[:50]
+    businesses = Business.objects.order_by("-id")
+    users = CustomUser.objects.order_by("-date_joined")
     return render(request, "accounts/founder_subscriptions.html", {
         "form": form,
         "subscriptions": subscriptions,
@@ -660,4 +718,14 @@ def founder_subscriptions(request):
         "campaign_editor_html": campaign_editor_html,
         "marketing_campaigns": MarketingPromoCampaign.objects.select_related("promotion__plan", "created_by").order_by("-active", "-priority", "id")[:50],
         "now": timezone.now(),
+        "platform_stats": {
+            "businesses": businesses.count(),
+            "users": users.count(),
+            "active_subscriptions": subscriptions.filter(
+                Q(founder_lifetime=True) | Q(status__in=[BusinessSubscription.STATUS_ACTIVE, BusinessSubscription.STATUS_TRIAL])
+            ).count(),
+            "pending_payments": pending_payments.count(),
+        },
+        "recent_businesses": businesses[:8],
+        "recent_users": users[:8],
     })

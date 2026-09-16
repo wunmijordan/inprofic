@@ -4,9 +4,12 @@ from django.core.files.base import ContentFile
 from django.test import override_settings
 from django.test import TestCase
 from core.models import Business
-from inventory.models import FinishedGood, FinishedGoodChannelPrice
+from inventory.models import FinishedGood, FinishedGoodChannelPrice, ProductCategory
 from .forms import StorefrontProductForm
-from .models import CommerceIntake, CommerceSettings, StorefrontProduct
+from .models import (
+    CommerceIntake, CommerceSettings, DeliveryArea, DeliveryOrigin,
+    DeliveryRateBand, DeliverySettings, StorefrontProduct,
+)
 from .services import accept_intake, create_intake
 
 
@@ -105,17 +108,40 @@ class CommerceApiProductTests(TestCase):
     def setUp(self):
         self.business = Business.objects.create(name="Sample Restaurant", slug="sample-restaurant", vertical=Business.VERTICAL_RESTAURANT)
         CommerceSettings.raw_objects.create(business=self.business, enabled=True, api_enabled=True)
-        self.good = FinishedGood.raw_objects.create(business=self.business, name="Moin Moin", unit="plate", units_per_batch=1, stock=12, reorder_level=2, selling_price=2500)
+        self.category = ProductCategory.raw_objects.create(
+            business=self.business, name="Meals", slug="meals", sort_order=1,
+        )
+        self.good = FinishedGood.raw_objects.create(
+            business=self.business, name="Moin Moin", product_category=self.category,
+            unit="plate", units_per_batch=1, stock=12, reorder_level=2,
+            selling_price=2500,
+        )
         self.product = StorefrontProduct.raw_objects.create(
             business=self.business, finished_good=self.good, published=True,
             image_url="https://cdn.example.test/moin-moin.jpg",
             min_quantity=1, preorder_min_quantity=5, allow_stock_order=True, allow_preorder=True,
+        )
+        DeliverySettings.raw_objects.create(business=self.business, enabled=True)
+        DeliveryOrigin.raw_objects.create(
+            business=self.business, name="Main kitchen", address="1 Test Road",
+            latitude="6.4500000", longitude="3.4000000", is_default=True,
+        )
+        band = DeliveryRateBand.raw_objects.create(
+            business=self.business, name="Nearby", min_distance_km=0,
+            max_distance_km=20, base_fee=500, per_km_fee=0,
+        )
+        self.delivery_area = DeliveryArea.raw_objects.create(
+            business=self.business, name="Victoria Island", code="victoria-island",
+            latitude="6.4300000", longitude="3.4200000", rate_band=band,
         )
 
     def test_product_api_exposes_public_image_and_preorder_minimum(self):
         response = self.client.get(f"/api/v1/storefronts/{self.business.slug}/products")
         self.assertEqual(response.status_code, 200)
         row = response.json()["products"][0]
+        category_payload = {"id": self.category.pk, "name": "Meals", "slug": "meals"}
+        self.assertEqual(response.json()["categories"], [category_payload])
+        self.assertEqual(row["category"], category_payload)
         self.assertEqual(row["image_url"], "https://cdn.example.test/moin-moin.jpg")
         self.assertEqual(row["preorder_min_quantity"], "5.00")
         self.assertEqual(
@@ -123,6 +149,10 @@ class CommerceApiProductTests(TestCase):
             ["physical_store", "online", "distribution"],
         )
         self.assertEqual(row["order_modes"][2]["label"], "Catering / Bulk Order")
+        delivery = response.json()["delivery"]
+        self.assertTrue(delivery["enabled"])
+        self.assertEqual(delivery["quote_url"], f"/api/v1/storefronts/{self.business.slug}/delivery/quote")
+        self.assertEqual(delivery["areas"][0]["id"], self.delivery_area.pk)
 
     def test_product_api_exposes_uploaded_image_as_absolute_url(self):
         # Minimal valid 1x1 transparent GIF.

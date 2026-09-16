@@ -307,6 +307,9 @@ def create_checkout(
     effective_fulfilment_mode = fulfilment_mode
     delivery_quote = None
     delivery_fee = Decimal("0")
+    normalized_service_mode = (service_mode or "").strip()
+    if normalized_service_mode == "delivery" and not delivery_quote_id:
+        raise ValidationError("A current delivery quote is required for a delivery checkout.")
     if delivery_quote_id:
         from .delivery_services import validate_delivery_quote
         delivery_quote = validate_delivery_quote(
@@ -314,6 +317,7 @@ def create_checkout(
         )
         delivery_fee = Decimal(delivery_quote.fee)
         total += delivery_fee
+        normalized_service_mode = "delivery"
 
     if fulfilment_mode == CommerceIntake.MODE_PREORDER and not any(row[5] > 0 for row in prepared):
         effective_fulfilment_mode = CommerceIntake.MODE_STOCK
@@ -330,8 +334,8 @@ def create_checkout(
             customer_name=customer_name,
             customer_phone=(customer.get("phone") or "").strip(),
             customer_email=(customer.get("email") or "").strip(),
-            customer_address=(customer.get("address") or "").strip(),
-            service_mode=(service_mode or "").strip(),
+            customer_address=(delivery_quote.destination_address if delivery_quote else (customer.get("address") or "").strip()),
+            service_mode=normalized_service_mode,
             table_reference=(table_reference or "").strip(),
             currency=currency,
             amount=total,

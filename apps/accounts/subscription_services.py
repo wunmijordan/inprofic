@@ -1,7 +1,10 @@
+import hashlib
+import re
 from decimal import Decimal
 from uuid import uuid4
 
-from django.db import transaction
+from django.conf import settings
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.core.exceptions import ValidationError
 from django.utils import timezone
@@ -11,6 +14,7 @@ from .models import (
     BusinessFeatureAccess,
     BusinessModuleAccess,
     BusinessSubscription,
+    PaidPlanTrialClaim,
     RoleModulePermission,
     SubscriptionPayment,
     SubscriptionPlan,
@@ -72,19 +76,35 @@ def ensure_default_plans():
                 plan, _created = SubscriptionPlan.objects.get_or_create(
                     code=code,
                     defaults={
-                        "name": names[code], "trial_days": 30,
+                        "name": names[code], "trial_days": 0 if code == SubscriptionPlan.CODE_STARTER else 30,
                         "monthly_price": Decimal("0.00"),
+                        "user_limit": 1 if code == SubscriptionPlan.CODE_STARTER else (5 if code == SubscriptionPlan.CODE_PRODUCTION else None),
+                        "additional_service_limit": 0 if code == SubscriptionPlan.CODE_STARTER else (1 if code == SubscriptionPlan.CODE_PRODUCTION else None),
                     },
                 )
                 plans[code] = plan
 
-    # Preserve founder-configured names/pricing. The historical invariant was
-    # only that the built-in trial length remains 30 days.
-    trial_updates = []
+    # Starter is permanently free and intentionally fixed at one user with no
+    # additional services. Paid-plan limits remain founder-configurable.
+    plan_updates = []
     for plan in plans.values():
-        if plan.trial_days != 30:
-            plan.trial_days = 30
-            trial_updates.append(plan)
+        changed = False
+        expected_trial_days = 0 if plan.code == SubscriptionPlan.CODE_STARTER else 30
+        if plan.trial_days != expected_trial_days:
+            plan.trial_days = expected_trial_days
+            changed = True
+        if plan.code == SubscriptionPlan.CODE_STARTER:
+            if plan.monthly_price != Decimal("0"):
+                plan.monthly_price = Decimal("0")
+                changed = True
+            if plan.user_limit != 1:
+                plan.user_limit = 1
+                changed = True
+            if plan.additional_service_limit != 0:
+                plan.additional_service_limit = 0
+                changed = True
+        if changed:
+            plan_updates.append(plan)
     entitlement_rows = list(
         SubscriptionPlanModule.objects.filter(plan_id__in=[plan.pk for plan in plans.values()])
     )
@@ -108,10 +128,13 @@ def ensure_default_plans():
             # Existing rows may have been edited from the Founder Console.
             # Never re-impose PLAN_MATRIX on an existing entitlement.
 
-    if trial_updates or missing_entitlements:
+    if plan_updates or missing_entitlements:
         with transaction.atomic():
-            if trial_updates:
-                SubscriptionPlan.objects.bulk_update(trial_updates, ["trial_days"])
+            if plan_updates:
+                SubscriptionPlan.objects.bulk_update(
+                    plan_updates,
+                    ["trial_days", "monthly_price", "user_limit", "additional_service_limit"],
+                )
             if missing_entitlements:
                 SubscriptionPlanModule.objects.bulk_create(missing_entitlements, ignore_conflicts=True)
 
@@ -175,18 +198,124 @@ def start_trial_for_business(business, plan=None):
     plans = ensure_default_plans()
     plan = plan or plans[SubscriptionPlan.CODE_STARTER]
     now = timezone.now()
+    is_starter = plan.code == SubscriptionPlan.CODE_STARTER
     subscription, created = BusinessSubscription.objects.get_or_create(
         primary_business=business,
         defaults={
             "plan": plan,
-            "status": BusinessSubscription.STATUS_TRIAL,
-            "trial_ends_at": now + timezone.timedelta(days=30),
+            "status": BusinessSubscription.STATUS_ACTIVE if is_starter else BusinessSubscription.STATUS_TRIAL,
+            "trial_ends_at": None if is_starter else now + timezone.timedelta(days=30),
         },
     )
     if created:
         SubscriptionService.objects.create(subscription=subscription, business=business, is_primary=True)
         apply_subscription_entitlements(subscription)
     return subscription
+
+
+def _trial_credentials(user):
+    values = [
+        (PaidPlanTrialClaim.KIND_USERNAME, (user.username or "").strip().casefold()),
+        (PaidPlanTrialClaim.KIND_EMAIL, (user.email or "").strip().casefold()),
+        (PaidPlanTrialClaim.KIND_PHONE, re.sub(r"\D", "", user.phone or "")),
+    ]
+    return [(kind, value) for kind, value in values if value]
+
+
+def _trial_fingerprint(kind, value):
+    raw = f"{settings.SECRET_KEY}|paid-plan-trial|{kind}|{value}".encode()
+    return hashlib.sha256(raw).hexdigest()
+
+
+def paid_trial_available(user):
+    fingerprints = [_trial_fingerprint(kind, value) for kind, value in _trial_credentials(user)]
+    if not fingerprints:
+        return False
+    return not PaidPlanTrialClaim.objects.filter(credential_fingerprint__in=fingerprints).exists()
+
+
+@transaction.atomic
+def start_paid_plan_trial(subscription, plan, user):
+    if not plan.active:
+        raise ValidationError("That paid plan is not currently available.")
+    if plan.code == SubscriptionPlan.CODE_STARTER or Decimal(plan.monthly_price or 0) <= 0:
+        raise ValidationError("The free Starter plan does not need a trial.")
+    subscription = BusinessSubscription.objects.select_for_update().select_related("plan").get(pk=subscription.pk)
+    if subscription.status == BusinessSubscription.STATUS_TRIAL and subscription.is_effectively_active:
+        subscription.plan = plan
+        subscription.save(update_fields=["plan"])
+        return apply_subscription_entitlements(subscription)
+    if (
+        subscription.founder_lifetime
+        or subscription.status != BusinessSubscription.STATUS_ACTIVE
+        or subscription.plan.code != SubscriptionPlan.CODE_STARTER
+    ):
+        raise ValidationError("This subscription is not eligible for a new paid-plan trial.")
+    credentials = _trial_credentials(user)
+    fingerprints = [(kind, _trial_fingerprint(kind, value)) for kind, value in credentials]
+    if not fingerprints or PaidPlanTrialClaim.objects.filter(
+        credential_fingerprint__in=[fingerprint for _kind, fingerprint in fingerprints]
+    ).exists():
+        raise ValidationError("A paid-plan free trial has already been used with these account credentials.")
+    try:
+        with transaction.atomic():
+            PaidPlanTrialClaim.objects.bulk_create([
+                PaidPlanTrialClaim(
+                    credential_kind=kind,
+                    credential_fingerprint=fingerprint,
+                    user=user,
+                    subscription=subscription,
+                    plan=plan,
+                )
+                for kind, fingerprint in fingerprints
+            ])
+    except IntegrityError as exc:
+        raise ValidationError("A paid-plan free trial has already been used with these account credentials.") from exc
+    subscription.plan = plan
+    subscription.status = BusinessSubscription.STATUS_TRIAL
+    subscription.trial_ends_at = timezone.now() + timezone.timedelta(days=30)
+    subscription.paid_until = None
+    subscription.save(update_fields=["plan", "status", "trial_ends_at", "paid_until"])
+    return apply_subscription_entitlements(subscription)
+
+
+@transaction.atomic
+def cancel_paid_plan_trial(subscription):
+    plans = ensure_default_plans()
+    subscription = BusinessSubscription.objects.select_for_update().get(pk=subscription.pk)
+    if subscription.status != BusinessSubscription.STATUS_TRIAL:
+        raise ValidationError("Only an active paid-plan trial can be cancelled.")
+    subscription.plan = plans[SubscriptionPlan.CODE_STARTER]
+    subscription.status = BusinessSubscription.STATUS_ACTIVE
+    subscription.trial_ends_at = None
+    subscription.paid_until = None
+    subscription.save(update_fields=["plan", "status", "trial_ends_at", "paid_until"])
+    return apply_subscription_entitlements(subscription)
+
+
+def subscription_for_business(business):
+    service = getattr(business, "subscription_service", None)
+    if service:
+        return service.subscription
+    return BusinessSubscription.objects.filter(primary_business=business).select_related("plan").first()
+
+
+def assert_user_capacity(business, user=None):
+    subscription = subscription_for_business(business)
+    if not subscription or subscription.plan.user_limit is None:
+        return
+    business_ids = subscription.services.values_list("business_id", flat=True)
+    active_user_ids = UserBusiness.objects.filter(
+        business_id__in=business_ids, active=True, user__is_active=True
+    ).values_list("user_id", flat=True).distinct()
+    if user and UserBusiness.objects.filter(
+        business_id__in=business_ids, active=True, user=user, user__is_active=True
+    ).exists():
+        return
+    if active_user_ids.count() >= subscription.plan.user_limit:
+        raise ValidationError(
+            f"{subscription.plan.name} allows {subscription.plan.user_limit} active user(s). Change plan or deactivate a user before adding another."
+        )
 
 
 @transaction.atomic
@@ -227,6 +356,12 @@ def revoke_founder_lifetime(subscription):
 def add_service_business(subscription, *, name, service_type, actor):
     """Provision a separate Business profile under the same commercial subscription."""
     from django.utils.text import slugify
+    additional_count = subscription.services.filter(is_primary=False).count()
+    limit = subscription.plan.additional_service_limit
+    if limit is not None and additional_count >= limit:
+        raise ValidationError(
+            f"{subscription.plan.name} allows {limit} additional service profile(s). Change plan before adding another."
+        )
     base = (slugify(name) or "business")[:52]
     slug = base
     suffix = 2

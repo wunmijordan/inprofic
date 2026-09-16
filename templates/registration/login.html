@@ -17,6 +17,9 @@
     @font-face { font-family:'IBM Plex Mono'; src:url('{% static "core/fonts/IBMPlexMono-Regular.ttf" %}') format('truetype'); font-weight:400; font-style:normal; font-display:swap; }
     @font-face { font-family:'IBM Plex Mono'; src:url('{% static "core/fonts/IBMPlexMono-Medium.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
     body { font-family: 'Inter', sans-serif; background:#FAF6EF; color:#211D1A; }
+    .auth-logo-dark { display:none; }
+    html[data-theme="dark"] .auth-logo-light { display:none; }
+    html[data-theme="dark"] .auth-logo-dark { display:block; }
     .font-display { font-family: 'Fraunces', serif; }
     .font-mono { font-family: 'IBM Plex Mono', monospace; }
     table { font-variant-numeric: tabular-nums; }
@@ -31,7 +34,8 @@
 <body>
 <main class="min-h-screen flex items-center justify-center p-4">
   <div class="w-full max-w-sm bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-6" style="box-shadow:var(--ui-shadow-raised)">
-    <img src="{% static 'core/brand/inprofic-logo-on-light.png' %}" alt="INPROFIC" class="h-9 w-auto max-w-full" width="2097" height="361">
+    <img src="{% static 'core/brand/inprofic-logo-on-light.png' %}" alt="INPROFIC" class="auth-logo-light h-9 w-auto max-w-full" width="2097" height="361">
+    <img src="{% static 'core/brand/inprofic-logo-on-dark.png' %}" alt="INPROFIC" class="auth-logo-dark h-9 w-auto max-w-full" width="1953" height="359">
     <div class="text-[10px] tracking-[0.2em] uppercase text-[#C69A3E] mb-1">Production to commerce</div>
     <h1 class="text-xl font-semibold font-display text-[#d14900] mb-4">Sign In</h1>
     {% if form.errors %}

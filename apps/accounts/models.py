@@ -221,6 +221,14 @@ class SubscriptionPlan(models.Model):
         help_text="Discount from the plan's normal monthly price for each additional service/business profile.",
     )
     trial_days = models.PositiveSmallIntegerField(default=30)
+    user_limit = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Maximum unique active users across this subscription. Leave blank for unlimited.",
+    )
+    additional_service_limit = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Maximum additional business/service profiles beyond the primary business. Leave blank for unlimited.",
+    )
     active = models.BooleanField(default=True)
 
     class Meta:
@@ -499,6 +507,8 @@ class BusinessSubscription(models.Model):
     def is_effectively_active(self):
         if self.founder_lifetime:
             return True
+        if self.plan.code == SubscriptionPlan.CODE_STARTER and self.status == self.STATUS_ACTIVE:
+            return True
         from django.utils import timezone
         expiry = self.expires_at
         return bool(expiry and expiry >= timezone.now() and self.status in {self.STATUS_TRIAL, self.STATUS_ACTIVE})
@@ -509,6 +519,8 @@ class BusinessSubscription(models.Model):
             return "Founder lifetime"
         if not self.is_effectively_active:
             return "Expired"
+        if self.plan.code == SubscriptionPlan.CODE_STARTER and self.status == self.STATUS_ACTIVE:
+            return "Free"
         return self.get_status_display()
 
     @property
@@ -543,6 +555,38 @@ class SubscriptionService(models.Model):
     @property
     def service_type(self):
         return self.business.vertical
+
+
+class PaidPlanTrialClaim(models.Model):
+    """One-way credential marker preventing repeat paid-plan trial use."""
+
+    KIND_USERNAME = "username"
+    KIND_EMAIL = "email"
+    KIND_PHONE = "phone"
+    KIND_CHOICES = [
+        (KIND_USERNAME, "Username"),
+        (KIND_EMAIL, "Email"),
+        (KIND_PHONE, "Phone"),
+    ]
+
+    credential_kind = models.CharField(max_length=12, choices=KIND_CHOICES)
+    credential_fingerprint = models.CharField(max_length=64, unique=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="paid_plan_trial_claims",
+    )
+    subscription = models.ForeignKey(
+        BusinessSubscription, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="trial_claims",
+    )
+    plan = models.ForeignKey(
+        SubscriptionPlan, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="trial_claims",
+    )
+    claimed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-claimed_at", "-id"]
 
 
 class BusinessFeatureAccess(models.Model):

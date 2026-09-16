@@ -35,7 +35,7 @@ class TenantSignupTests(TestCase):
 
     def test_marketing_plan_prices_include_thousands_separators(self):
         plans = ensure_default_plans()
-        plan = plans["starter"]
+        plan = plans["production"]
         plan.monthly_price = Decimal("12345.67")
         plan.save(update_fields=["monthly_price"])
 
@@ -47,7 +47,7 @@ class TenantSignupTests(TestCase):
         from django.utils import timezone
 
         plans = ensure_default_plans()
-        plan = plans["starter"]
+        plan = plans["production"]
         plan.monthly_price = Decimal("10000.00")
         plan.save(update_fields=["monthly_price"])
         SubscriptionPromotion.objects.create(
@@ -107,7 +107,7 @@ class TenantSignupTests(TestCase):
         self.assertNotIn("Comic Sans", campaign.content_html)
         self.assertIn("IBM Plex Mono", campaign.content_html)
 
-    def test_signup_provisions_business_admin_and_starter_trial(self):
+    def test_signup_provisions_business_admin_and_free_starter(self):
         response = self.client.post(reverse("signup"), {
             "business_name": "Plate & Pantry",
             "vertical": Business.VERTICAL_RESTAURANT,
@@ -128,7 +128,11 @@ class TenantSignupTests(TestCase):
         self.assertEqual(business.module_access.filter(enabled=True).count(), 6)
         subscription = BusinessSubscription.objects.get(primary_business=business)
         self.assertEqual(subscription.plan.code, "starter")
-        self.assertEqual(subscription.status, BusinessSubscription.STATUS_TRIAL)
+        self.assertEqual(subscription.status, BusinessSubscription.STATUS_ACTIVE)
+        self.assertIsNone(subscription.trial_ends_at)
+        self.assertEqual(subscription.plan.monthly_price, Decimal("0.00"))
+        self.assertEqual(subscription.plan.user_limit, 1)
+        self.assertEqual(subscription.plan.additional_service_limit, 0)
         self.assertFalse(business.module_access.get(module="commerce").enabled)
         self.assertEqual(self.client.session["active_business_id"], business.pk)
 
@@ -644,13 +648,32 @@ class FounderPaymentSettingsTests(TestCase):
         self.assertTrue(payment_settings.monnify_enabled)
         self.assertEqual(payment_settings.updated_by, self.user)
 
-    def test_active_plan_card_is_marked_and_current_trial_payment_is_disabled(self):
+    def test_active_plan_card_marks_free_starter(self):
         from .subscription_services import start_trial_for_business
 
         start_trial_for_business(self.business, self.plans["starter"])
         response = self.client.get(reverse("subscription_plans"))
-        self.assertContains(response, "Current · Free trial")
-        self.assertContains(response, "Renewal opens in final 7 days")
+        self.assertContains(response, "Current · Free")
+        self.assertContains(response, "Your free plan")
+
+    def test_paid_trial_can_be_cancelled_but_not_reused(self):
+        from django.core.exceptions import ValidationError
+        from .subscription_services import cancel_paid_plan_trial, start_paid_plan_trial, start_trial_for_business
+
+        self.plans["production"].monthly_price = Decimal("1000.00")
+        self.plans["production"].save(update_fields=["monthly_price"])
+        subscription = start_trial_for_business(self.business, self.plans["starter"])
+        start_paid_plan_trial(subscription, self.plans["production"], self.user)
+        subscription.refresh_from_db()
+        self.assertEqual(subscription.status, BusinessSubscription.STATUS_TRIAL)
+        self.assertEqual(subscription.plan, self.plans["production"])
+
+        cancel_paid_plan_trial(subscription)
+        subscription.refresh_from_db()
+        self.assertEqual(subscription.status, BusinessSubscription.STATUS_ACTIVE)
+        self.assertEqual(subscription.plan.code, "starter")
+        with self.assertRaises(ValidationError):
+            start_paid_plan_trial(subscription, self.plans["production"], self.user)
 
     def test_active_plan_change_requires_explicit_acknowledgement(self):
         from .subscription_services import start_trial_for_business

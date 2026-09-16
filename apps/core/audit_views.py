@@ -1,5 +1,6 @@
 from decimal import Decimal
 from io import BytesIO
+import re
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import Sum
@@ -22,6 +23,90 @@ from .models import AuditLog, AuditQuery, CashAccount, FinancialTransaction
 from .services import audit
 
 
+_AUDIT_DETAIL_LABELS = {
+    "previous_status": "Previous status",
+    "status": "New status",
+    "driver_id": "Rider record",
+    "delivery_id": "Delivery reference",
+    "external_reference": "Provider reference",
+    "proof_reference": "Proof of delivery",
+    "resolution_note": "Resolution",
+    "customer_name": "Customer",
+    "provider": "Delivery provider",
+    "provider_account": "Provider account",
+    "tracking_number": "Tracking number",
+    "category": "Category",
+    "reason": "Reason",
+    "source": "Source",
+    "module": "Module",
+    "severity": "Priority",
+    "amount": "Amount",
+    "quantity": "Quantity",
+    "configured": "Configuration ready",
+    "created": "Created items",
+    "existing": "Already active",
+    "error": "Outcome note",
+}
+_AUDIT_PRIVATE_MARKERS = {
+    "secret", "token", "password", "credential", "signature", "header",
+    "payload", "response", "api_key", "webhook_secret",
+}
+
+# The external auditor's event stream is deliberately narrower than the
+# internal AuditLog table. Configuration, access-management and maintenance
+# events remain recorded internally, but this workspace presents commercial
+# and stock evidence only.
+_EXTERNAL_BUSINESS_ACTIVITY_MODELS = frozenset({
+    # Stock and product catalogue
+    "RawMaterial", "FinishedGood", "ProductCategory",
+    "OperationalSupplyDispense", "StockAdjustment", "MarketStockLot",
+    "DistributionReturn",
+    # Procurement and finance
+    "PurchaseOrder", "SupplierPayment", "Sale", "CustomerPayment",
+    "CashAccount", "FinancialTransaction", "Expense", "ExpensePayment",
+    # Commerce, checkout, payment and delivery execution
+    "StorefrontProduct", "CommerceCheckoutSession", "CommerceIntake",
+    "CommercePayment", "CommercePaymentClaim", "CommercePaymentReceipt",
+    "DeliveryAssignment", "DeliveryIssue",
+})
+
+
+def _audit_detail_value(value):
+    if value is True:
+        return "Yes"
+    if value is False:
+        return "No"
+    if value is None or value == "":
+        return "Not recorded"
+    if isinstance(value, dict):
+        return "Recorded securely"
+    if isinstance(value, (list, tuple)):
+        value = ", ".join(str(item) for item in value)
+    text = str(value)
+    return f"{text[:177]}…" if len(text) > 180 else text
+
+
+def _public_audit_details(metadata):
+    if not isinstance(metadata, dict):
+        return []
+    rows = []
+    for key, value in metadata.items():
+        normalized = str(key).lower()
+        if any(marker in normalized for marker in _AUDIT_PRIVATE_MARKERS):
+            continue
+        label = _AUDIT_DETAIL_LABELS.get(normalized, normalized.replace("_", " ").title())
+        rows.append({"label": label, "value": _audit_detail_value(value)})
+    return rows[:8]
+
+
+def _prepare_audit_log(log):
+    log.action_label = (log.action or "Activity").replace("_", " ").title()
+    model = (log.model_name or "Record").split(".")[-1]
+    log.record_type_label = re.sub(r"(?<!^)(?=[A-Z])", " ", model)
+    log.public_details = _public_audit_details(log.metadata)
+    return log
+
+
 def _period(request):
     today = timezone.localdate()
     date_to = parse_date(request.GET.get("date_to", "")) or today
@@ -31,7 +116,7 @@ def _period(request):
     return date_from, date_to
 
 
-def _audit_dataset(request):
+def _audit_dataset(request, *, for_export=False):
     business = request.business
     date_from, date_to = _period(request)
 
@@ -108,10 +193,14 @@ def _audit_dataset(request):
         .select_related("intake", "driver", "quote", "origin", "provider_account")
         .prefetch_related("events")
     )
-    logs = list(
-        AuditLog.objects.filter(business=business, created_at__date__range=(date_from, date_to))
-        .select_related("created_by")
-    )
+    logs_queryset = AuditLog.objects.filter(
+        business=business,
+        created_at__date__range=(date_from, date_to),
+        model_name__in=_EXTERNAL_BUSINESS_ACTIVITY_MODELS,
+    ).select_related("created_by")
+    logs_total = logs_queryset.count()
+    logs = list(logs_queryset if for_export else logs_queryset[:250])
+    logs = [_prepare_audit_log(log) for log in logs]
     audit_queries = list(
         AuditQuery.objects.filter(business=business)
         .select_related("created_by", "assigned_to", "answered_by")
@@ -135,6 +224,8 @@ def _audit_dataset(request):
         "measurement_changes": measurement_changes,
         "deliveries": deliveries,
         "logs": logs,
+        "logs_total": logs_total,
+        "logs_limited": not for_export and logs_total > len(logs),
         "audit_queries": audit_queries,
         "can_raise_audit_query": user_has_permission(request.user, business, "audit", "view"),
         "can_answer_audit_query": is_business_admin(request.user, business) or user_has_permission(request.user, business, "audit", "edit"),
@@ -212,7 +303,7 @@ def audit_export_xlsx(request):
     from openpyxl import Workbook
     from openpyxl.styles import Font
 
-    data = _audit_dataset(request)
+    data = _audit_dataset(request, for_export=True)
     business = request.business
     wb = Workbook()
     ws = wb.active

@@ -62,16 +62,43 @@ def _settings(business):
 def delivery_dashboard(request):
     settings = _settings(request.business)
     assignments = DeliveryAssignment.objects.select_related(
-        "intake", "driver", "origin", "quote", "provider_account"
+        "intake", "driver__user", "origin", "quote", "provider_account"
     ).prefetch_related("events", "issues")[:100]
+    origins = DeliveryOrigin.objects.filter(business=request.business)
+    rate_bands = DeliveryRateBand.objects.filter(business=request.business)
+    areas = DeliveryArea.objects.filter(business=request.business).select_related("rate_band")
+    drivers = DeliveryDriver.objects.filter(business=request.business).select_related("user")
+    provider_accounts = DeliveryProviderAccount.objects.filter(business=request.business)
+    base_ready = origins.filter(
+        active=True, latitude__isnull=False, longitude__isnull=False
+    ).exists()
+    pricing_ready = rate_bands.filter(active=True).exists()
+    provider_ready = True
+    if settings.default_provider == DeliverySettings.PROVIDER_THIRD_PARTY:
+        account = settings.default_provider_account
+        provider_ready = bool(
+            account and account.active and (
+                account.provider_code != DeliveryProviderAccount.PROVIDER_GLOVO
+                or account.is_configured_for_quote
+            )
+        )
+    public_ready = bool(settings.enabled and base_ready and pricing_ready and provider_ready)
     return render(request, "commerce/delivery/dashboard.html", {
         "delivery_settings": settings,
         "assignments": assignments,
-        "origins": DeliveryOrigin.objects.filter(business=request.business),
-        "rate_bands": DeliveryRateBand.objects.filter(business=request.business),
-        "areas": DeliveryArea.objects.filter(business=request.business).select_related("rate_band"),
-        "drivers": DeliveryDriver.objects.filter(business=request.business),
-        "provider_accounts": DeliveryProviderAccount.objects.filter(business=request.business),
+        "origins": origins,
+        "rate_bands": rate_bands,
+        "areas": areas,
+        "drivers": drivers,
+        "provider_accounts": provider_accounts,
+        "delivery_setup": {
+            "base_ready": base_ready,
+            "pricing_ready": pricing_ready,
+            "destinations_ready": areas.filter(active=True).exists(),
+            "dispatch_ready": drivers.filter(active=True).exists() or provider_accounts.filter(active=True).exists(),
+            "provider_ready": provider_ready,
+            "public_ready": public_ready,
+        },
         "can_manage_delivery": is_business_admin(request.user, request.business),
         "can_update_delivery": user_has_permission(request.user, request.business, "delivery", "edit"),
         "glovo_webhook_path": f"/api/v1/delivery/providers/glovo/{request.business.slug}/webhook",
@@ -99,7 +126,11 @@ def delivery_settings(request):
     return render(request, "commerce/delivery/settings.html", {"form": form})
 
 
-def _model_form_view(request, *, model, form_class, title, success, pk=None, business_kw=False):
+def _model_form_view(
+    request, *, model, form_class, title, success, pk=None,
+    business_kw=False, location_label="", include_user_directory=False,
+    intro="", setup_tip="",
+):
     if not is_business_admin(request.user, request.business):
         return render(request, "403.html", status=403)
     obj = get_object_or_404(model, pk=pk, business=request.business) if pk else None
@@ -117,12 +148,29 @@ def _model_form_view(request, *, model, form_class, title, success, pk=None, bus
         audit(request.business, request.user, "delivery_setup", saved, f"{title} saved")
         messages.success(request, success)
         return redirect("delivery_dashboard")
-    return render(request, "commerce/delivery/object_form.html", {"form": form, "title": title, "obj": obj})
+    context = {
+        "form": form,
+        "title": title,
+        "obj": obj,
+        "location_label": location_label,
+        "form_intro": intro,
+        "setup_tip": setup_tip,
+    }
+    if include_user_directory:
+        context["delivery_user_directory"] = list(
+            form.fields["user"].queryset.values("id", "fullname", "username", "phone", "email")
+        )
+    return render(request, "commerce/delivery/object_form.html", context)
 
 
 @login_required
 def delivery_provider_account_form(request, pk=None):
-    return _model_form_view(request, model=DeliveryProviderAccount, form_class=DeliveryProviderAccountForm, title="Delivery provider account", success="Delivery provider account saved.", pk=pk)
+    return _model_form_view(
+        request, model=DeliveryProviderAccount, form_class=DeliveryProviderAccountForm,
+        title="Delivery provider account", success="Delivery provider account saved.", pk=pk,
+        intro="Connect a courier plug-in or keep a manual provider record. Credentials stay tenant-scoped and are never exposed to storefront customers.",
+        setup_tip="For Glovo, save the issued LaaS credentials and Address Book pickup ID, then return to Delivery and register the tenant webhook. Keep Sandbox on until a complete test quote and dispatch succeeds.",
+    )
 
 
 @login_required
@@ -149,22 +197,45 @@ def delivery_provider_register_glovo_webhooks(request, pk):
 
 @login_required
 def delivery_origin_form(request, pk=None):
-    return _model_form_view(request, model=DeliveryOrigin, form_class=DeliveryOriginForm, title="Delivery origin", success="Delivery origin saved.", pk=pk)
+    return _model_form_view(
+        request, model=DeliveryOrigin, form_class=DeliveryOriginForm,
+        title="Delivery / office base", success="Delivery base saved.", pk=pk,
+        location_label="dispatch base",
+        intro="This is where riders or delivery partners collect paid orders. Distance and delivery fees are calculated from the mapped base.",
+        setup_tip="Place the map pin accurately and mark the normal pickup location as default. You can keep additional bases inactive until they are ready.",
+    )
 
 
 @login_required
 def delivery_rate_band_form(request, pk=None):
-    return _model_form_view(request, model=DeliveryRateBand, form_class=DeliveryRateBandForm, title="Delivery rate band", success="Delivery rate band saved.", pk=pk)
+    return _model_form_view(
+        request, model=DeliveryRateBand, form_class=DeliveryRateBandForm,
+        title="Delivery price band", success="Delivery price band saved.", pk=pk,
+        intro="Define what customers pay and the ETA they see for a distance range. INPROFIC calculates distance from the selected delivery base.",
+        setup_tip="Create non-overlapping bands from nearest to farthest. A fee is calculated as base fee plus the per-kilometre fee; use zero per-kilometre for a flat rate.",
+    )
 
 
 @login_required
 def delivery_area_form(request, pk=None):
-    return _model_form_view(request, model=DeliveryArea, form_class=DeliveryAreaForm, title="Delivery area", success="Delivery area saved.", pk=pk, business_kw=True)
+    return _model_form_view(
+        request, model=DeliveryArea, form_class=DeliveryAreaForm,
+        title="Delivery destination / zone", success="Delivery destination saved.",
+        pk=pk, business_kw=True, location_label="delivery destination centre",
+        intro="Give customers and counter staff a familiar destination choice, then link it to the price band that governs its fee and ETA.",
+        setup_tip="The zone pin is a convenient default. Customers can place a more precise destination pin during checkout, while the selected zone still controls its configured pricing band.",
+    )
 
 
 @login_required
 def delivery_driver_form(request, pk=None):
-    return _model_form_view(request, model=DeliveryDriver, form_class=DeliveryDriverForm, title="Delivery driver / provider", success="Delivery driver saved.", pk=pk, business_kw=True)
+    return _model_form_view(
+        request, model=DeliveryDriver, form_class=DeliveryDriverForm,
+        title="Delivery rider / courier", success="Delivery rider saved.", pk=pk,
+        business_kw=True, include_user_directory=True,
+        intro="Create an assignable rider or manual courier contact. Linking an in-house rider to a staff user unlocks their focused My Deliveries workspace.",
+        setup_tip="Select a staff user first to fill their contact details automatically. External API providers belong under Provider plug-ins, not Rider login.",
+    )
 
 
 @login_required
@@ -399,7 +470,8 @@ def storefront_delivery_quote(request, business_slug):
 @require_http_methods(["POST"])
 def api_delivery_quote(request, business_slug):
     business = get_object_or_404(Business, slug=business_slug)
-    if not business_has_module(business, "commerce") or not delivery_available(business):
+    commerce_settings = CommerceSettings.raw_objects.filter(business=business).first()
+    if not business_has_module(business, "commerce") or not commerce_settings or not commerce_settings.enabled or not commerce_settings.api_enabled or not delivery_available(business):
         return JsonResponse({"detail": "Delivery API unavailable."}, status=404)
     key = request.headers.get("X-INPROFIC-Key", "")
     if not CommerceIntegration.raw_objects.filter(
@@ -417,6 +489,7 @@ def api_delivery_quote(request, business_slug):
             "quote_id": str(selected.public_id) if selected else None,
             "selection_required": selected is None,
             "routing_policy": settings.hybrid_routing_policy if settings.default_provider == DeliverySettings.PROVIDER_HYBRID else None,
+            "switch_policy": settings.hybrid_switch_policy if settings.default_provider == DeliverySettings.PROVIDER_HYBRID else None,
             "switch_policy_text": settings.customer_switch_policy_text if settings.default_provider == DeliverySettings.PROVIDER_HYBRID else "",
             "options": [serialize_delivery_quote(row) for row in options],
             **(serialize_delivery_quote(selected) if selected else {}),

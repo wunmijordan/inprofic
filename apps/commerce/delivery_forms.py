@@ -22,6 +22,19 @@ class DeliverySettingsForm(StyledModelForm):
             self.fields["default_provider_account"].queryset = DeliveryProviderAccount.objects.filter(business=business, active=True)
         else:
             self.fields["default_provider_account"].queryset = DeliveryProviderAccount.objects.none()
+        hints = {
+            "enabled": "Turn this on only after the delivery base and pricing are ready. It immediately exposes delivery on eligible hosted, POS and API checkout surfaces.",
+            "default_provider": "Choose who normally carries new deliveries. Hybrid keeps in-house and the selected partner available under the routing policy below.",
+            "default_provider_account": "Required for external-provider delivery and for Hybrid policies that compare or offer both methods.",
+            "hybrid_routing_policy": "Controls whether the customer, dispatcher, or INPROFIC selects the delivery method before payment.",
+            "hybrid_switch_policy": "Controls method changes after payment. The customer is never charged more after checkout.",
+            "customer_switch_policy_note": "Optional plain-language note shown to customers alongside the standard switch policy.",
+            "quote_valid_minutes": "A basket or destination change always requires a fresh quote, even within this time.",
+            "customer_tracking_enabled": "Lets customers open the secure delivery timeline from their order or account page.",
+            "require_proof_of_delivery": "Use this when a rider or dispatcher must record delivery evidence before completion.",
+        }
+        for name, hint in hints.items():
+            self.fields[name].help_text = hint
 
     def clean(self):
         cleaned = super().clean()
@@ -51,6 +64,22 @@ class DeliverySettingsForm(StyledModelForm):
 
 
 class DeliveryProviderAccountForm(StyledModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        hints = {
+            "name": "Use a recognizable internal name, such as Glovo Lagos Production or Manual Courier Desk.",
+            "provider_code": "Choose Generic for a manually coordinated courier or Glovo for the built-in LaaS v2 connection.",
+            "sandbox": "Keep this on while testing provider credentials. Turn it off only when the provider has issued production access.",
+            "auto_dispatch": "When enabled, a fully paid delivery is sent to this provider automatically. Failed sends remain visible for manual dispatch.",
+            "use_live_quotes": "Use the provider's fee and ETA at checkout. Generic/manual providers use INPROFIC price bands as the customer-facing fallback.",
+            "address_book_id": "For Glovo, this is the pickup location ID created in the LaaS Address Book—not the written office address.",
+            "webhook_secret": "Used to verify provider status callbacks. Keep it private and register the displayed tenant webhook after saving.",
+            "status_mapping": "Optional JSON mapping from provider status names to INPROFIC delivery statuses.",
+            "metadata": "Optional provider-specific JSON. Leave blank unless the provider integration requires extra fields.",
+        }
+        for name, hint in hints.items():
+            self.fields[name].help_text = hint
+
     class Meta:
         model = DeliveryProviderAccount
         fields = ["name", "provider_code", "active", "sandbox", "auto_dispatch", "use_live_quotes", "base_url", "auth_endpoint", "quote_endpoint", "order_endpoint", "cancel_endpoint", "api_key", "api_secret", "address_book_id", "store_id", "webhook_secret", "tracking_base_url", "status_mapping", "metadata"]
@@ -98,6 +127,22 @@ class DeliveryProviderAccountForm(StyledModelForm):
 
 
 class DeliveryOriginForm(StyledModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["name"].label = "Delivery / office base name"
+        self.fields["name"].widget.attrs["placeholder"] = "e.g. Lekki dispatch base"
+        self.fields["address"].label = "Base address"
+        self.fields["address"].widget.attrs["placeholder"] = "Street address used for dispatch"
+        self.fields["area"].label = "Town / service area"
+        self.fields["latitude"].label = "Base latitude"
+        self.fields["longitude"].label = "Base longitude"
+        self.fields["address"].help_text = "This is the pickup address shared with dispatchers and supported delivery providers."
+        self.fields["area"].help_text = "A short locality label for staff, such as Ikeja or Lekki Phase 1."
+        self.fields["latitude"].help_text = "Place the pin on the map below; accurate base coordinates are required for distance pricing."
+        self.fields["longitude"].help_text = "Filled together with latitude by the map picker."
+        self.fields["is_default"].help_text = "New quotes start from the default base. If none is marked, INPROFIC uses the first active base."
+        self.fields["active"].help_text = "Inactive bases remain in history but cannot be used for new delivery quotes."
+
     class Meta:
         model = DeliveryOrigin
         fields = ["name", "address", "area", "latitude", "longitude", "is_default", "active", "notes"]
@@ -110,6 +155,23 @@ class DeliveryOriginForm(StyledModelForm):
 
 
 class DeliveryRateBandForm(StyledModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        hints = {
+            "name": "Use a customer-friendly range name, such as Nearby (0–5 km).",
+            "min_distance_km": "Inclusive start of this distance range.",
+            "max_distance_km": "Inclusive end of the range. Leave blank only for the final unlimited band.",
+            "base_fee": "Fixed amount charged whenever this band applies.",
+            "per_km_fee": "Added for every calculated kilometre. Enter 0 for a flat fee.",
+            "minimum_order": "Basket subtotal required before delivery can be quoted in this band. Enter 0 for no minimum.",
+            "eta_min_minutes": "Best-case customer-facing delivery estimate.",
+            "eta_max_minutes": "Latest customer-facing delivery estimate under normal conditions.",
+            "sort_order": "Lower numbers win first when active bands overlap. Avoid overlaps where possible.",
+            "active": "Inactive bands remain in history and are ignored for new quotes.",
+        }
+        for name, hint in hints.items():
+            self.fields[name].help_text = hint
+
     class Meta:
         model = DeliveryRateBand
         fields = [
@@ -146,6 +208,18 @@ class DeliveryAreaForm(StyledModelForm):
         super().__init__(*args, **kwargs)
         if business:
             self.fields["rate_band"].queryset = DeliveryRateBand.objects.filter(business=business, active=True)
+        else:
+            self.fields["rate_band"].queryset = DeliveryRateBand.objects.none()
+        self.fields["name"].label = "Delivery destination / zone name"
+        self.fields["name"].widget.attrs["placeholder"] = "e.g. Victoria Island"
+        self.fields["latitude"].label = "Destination centre latitude"
+        self.fields["longitude"].label = "Destination centre longitude"
+        self.fields["rate_band"].label = "Delivery price band"
+        self.fields["code"].help_text = "Optional stable short code for website or staff reference, for example victoria-island."
+        self.fields["latitude"].help_text = "Place the pin near the centre of this zone. Customers may still provide a more precise pin at checkout."
+        self.fields["longitude"].help_text = "Filled together with latitude by the map picker."
+        self.fields["rate_band"].help_text = "Links this named destination to its customer-facing fee, minimum order and ETA rules."
+        self.fields["active"].help_text = "Only active destinations appear on hosted, POS and API storefronts."
 
     def clean(self):
         cleaned = super().clean()
@@ -157,6 +231,7 @@ class DeliveryAreaForm(StyledModelForm):
 class DeliveryDriverForm(StyledModelForm):
     def __init__(self, *args, business=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.business = business
         User = get_user_model()
         if business:
             self.fields["user"].queryset = User.objects.filter(
@@ -168,11 +243,25 @@ class DeliveryDriverForm(StyledModelForm):
             self.fields["user"].queryset = User.objects.none()
         self.fields["user"].label = "Rider login (optional)"
         self.fields["user"].help_text = "Link an in-house rider to a tenant staff login so they can use the lightweight My Deliveries workspace."
+        self.fields["name"].label = "Rider / courier name"
+        self.fields["phone"].label = "Contact phone"
+        self.fields["email"].label = "Contact email"
+        self.fields["provider"].help_text = "In-house riders can use My Deliveries. Third-party entries are manual courier contacts, not provider API accounts."
+        self.fields["vehicle_type"].help_text = "Optional operational detail, such as Bike, Car or Van."
+        self.fields["vehicle_registration"].help_text = "Optional plate or fleet identifier shown to dispatch staff."
+        self.fields["active"].help_text = "Inactive riders remain on historical deliveries but cannot receive new assignments."
 
     def clean(self):
         cleaned = super().clean()
-        if cleaned.get("provider") == DeliveryDriver.PROVIDER_THIRD_PARTY and cleaned.get("user"):
+        user = cleaned.get("user")
+        if cleaned.get("provider") == DeliveryDriver.PROVIDER_THIRD_PARTY and user:
             self.add_error("user", "Staff rider login is only available for in-house drivers. External couriers are tracked through provider references.")
+        if self.business and user:
+            existing = DeliveryDriver.objects.filter(business=self.business, user=user)
+            if self.instance.pk:
+                existing = existing.exclude(pk=self.instance.pk)
+            if existing.exists():
+                self.add_error("user", "This staff login is already linked to another rider profile.")
         return cleaned
 
     class Meta:

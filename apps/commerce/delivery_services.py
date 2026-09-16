@@ -14,6 +14,7 @@ from accounts.services import business_has_module
 from core.services import audit
 
 from .models import (
+    CommerceCheckoutSession,
     CommerceIntake,
     CommerceNotification,
     DeliveryArea,
@@ -50,6 +51,32 @@ def delivery_available(business):
         return False
     settings = DeliverySettings.raw_objects.filter(business=business).first()
     return bool(settings and settings.enabled)
+
+
+def public_delivery_config(business):
+    """Return the tenant's customer-safe delivery discovery contract."""
+    enabled = delivery_available(business)
+    areas = []
+    if enabled:
+        areas = [
+            {
+                "id": area.pk,
+                "code": area.code,
+                "name": area.name,
+                "latitude": str(area.latitude) if area.latitude is not None else None,
+                "longitude": str(area.longitude) if area.longitude is not None else None,
+            }
+            for area in DeliveryArea.raw_objects.filter(
+                business=business, active=True
+            ).order_by("name", "id")
+        ]
+    return {
+        "enabled": enabled,
+        "quote_required_before_checkout": enabled,
+        "destination_address_required": enabled,
+        "destination_coordinates_supported": enabled,
+        "areas": areas,
+    }
 
 
 def _default_origin(business):
@@ -332,6 +359,15 @@ def validate_delivery_quote(*, business, public_id, subtotal):
             quote.status = DeliveryQuote.STATUS_EXPIRED
             quote.save(update_fields=["status", "updated_at"])
         raise ValidationError("Delivery quote has expired. Request a fresh quote.")
+    if CommerceCheckoutSession.raw_objects.filter(
+        business=business, delivery_quote__quote_group_id=quote.quote_group_id
+    ).exclude(
+        status__in=[
+            CommerceCheckoutSession.STATUS_CANCELLED,
+            CommerceCheckoutSession.STATUS_EXPIRED,
+        ]
+    ).exists():
+        raise ValidationError("This delivery quote is already attached to another checkout. Request a fresh quote.")
     subtotal = Decimal(subtotal).quantize(Decimal("0.01"))
     if Decimal(quote.subtotal).quantize(Decimal("0.01")) != subtotal:
         raise ValidationError("The basket changed after the delivery quote. Request a fresh quote.")

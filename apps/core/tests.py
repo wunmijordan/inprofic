@@ -10,6 +10,33 @@ from accounts.models import CustomUser
 from .jobs import SCHEDULED_COMMANDS, run_all_jobs
 from .models import Business
 from .performance import PerformanceDiagnosticMiddleware
+from .audit_views import _EXTERNAL_BUSINESS_ACTIVITY_MODELS, _public_audit_details
+
+
+class AuditPresentationTests(TestCase):
+    def test_external_trail_contains_business_activity_not_system_operations(self):
+        self.assertIn("RawMaterial", _EXTERNAL_BUSINESS_ACTIVITY_MODELS)
+        self.assertIn("PurchaseOrder", _EXTERNAL_BUSINESS_ACTIVITY_MODELS)
+        self.assertIn("CommerceIntake", _EXTERNAL_BUSINESS_ACTIVITY_MODELS)
+        self.assertNotIn("system", _EXTERNAL_BUSINESS_ACTIVITY_MODELS)
+        self.assertNotIn("Business", _EXTERNAL_BUSINESS_ACTIVITY_MODELS)
+        self.assertNotIn("DeliverySettings", _EXTERNAL_BUSINESS_ACTIVITY_MODELS)
+
+    def test_metadata_is_humanized_and_private_provider_details_are_hidden(self):
+        rows = _public_audit_details({
+            "previous_status": "assigned",
+            "driver_id": 42,
+            "configured": True,
+            "provider_payload": {"secret": "not-for-the-screen"},
+            "api_key": "also-private",
+        })
+
+        details = {row["label"]: row["value"] for row in rows}
+        self.assertEqual(details["Previous status"], "assigned")
+        self.assertEqual(details["Rider record"], "42")
+        self.assertEqual(details["Configuration ready"], "Yes")
+        self.assertNotIn("Provider Payload", details)
+        self.assertNotIn("Api Key", details)
 
 
 class ScheduledJobRegistryTests(TestCase):
@@ -130,6 +157,7 @@ class PwaEndpointTests(TestCase):
         self.assertEqual(payload["name"], "INPROFIC")
         self.assertEqual(payload["id"], "/pwa/inprofic")
         self.assertEqual(payload["theme_color"], "#050733")
+        self.assertEqual(payload["background_color"], "#FFF1E8")
         self.assertTrue(any(icon["sizes"] == "512x512" for icon in payload["icons"]))
 
     def test_tenant_manifest_uses_tenant_name_and_theme_but_inprofic_icons(self):
@@ -156,6 +184,7 @@ class PwaEndpointTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["name"], "Northwind Foods")
         self.assertEqual(payload["theme_color"], "#173B45")
+        self.assertEqual(payload["background_color"], "#FFF1E8")
         self.assertEqual(payload["id"], "/pwa/tenant/northwind-foods")
         self.assertTrue(all("core/pwa/icon-" in icon["src"] for icon in payload["icons"]))
 

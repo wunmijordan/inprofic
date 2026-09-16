@@ -1,6 +1,15 @@
 from django.contrib import admin
 from .models import Business, CashAccount, FinancialTransaction, AuditLog
-admin.site.register(Business)
+
+
+@admin.register(Business)
+class BusinessAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug", "vertical", "currency_symbol", "accent_color", "background_color")
+    list_filter = ("vertical",)
+    search_fields = ("name", "slug")
+    ordering = ("name",)
+
+
 admin.site.register(CashAccount)
 @admin.register(FinancialTransaction)
 class FinancialTransactionAdmin(admin.ModelAdmin): list_display=('date','transaction_type','amount','category','description','payment_method','account','reversed'); list_filter=('transaction_type','category','payment_method')

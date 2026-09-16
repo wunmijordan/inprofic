@@ -349,6 +349,8 @@ def storefront_order(request,business_slug):
                 raise ValidationError("One of the selected products is no longer available.")
             items.append({"storefront_product": product, "quantity": quantity})
         delivery_quote_id = request.POST.get("delivery_quote_id") or None
+        if request.POST.get("request_delivery") == "on" and not delivery_quote_id:
+            raise ValidationError("Get a current delivery quote before continuing to payment.")
         checkout, _ = create_checkout(
             business=business,
             source=CommerceIntake.SOURCE_STOREFRONT,
@@ -677,7 +679,10 @@ def api_products(request,business_slug):
             business=business, active=True, products__storefront_product__published=True
         ).distinct().order_by("sort_order", "name", "id")
     ]
-    return JsonResponse({"business":business.name,"business_slug":business.slug,"service":business.get_vertical_display(),"categories":categories,"products":rows})
+    from .delivery_services import public_delivery_config
+    delivery = public_delivery_config(business)
+    delivery["quote_url"] = f"/api/v1/storefronts/{business.slug}/delivery/quote"
+    return JsonResponse({"business":business.name,"business_slug":business.slug,"service":business.get_vertical_display(),"categories":categories,"delivery":delivery,"products":rows})
 
 
 @csrf_exempt
@@ -1009,6 +1014,12 @@ def storefront_pos(request):
     pos_channel = vertical_config(request.business).get("direct_sale_channel") or CommerceIntake.CHANNEL_PHYSICAL_STORE
     products = list(_staff_pos_products(request.business))
     methods = eligible_payment_methods(request.business, surface="pos")
+    from .delivery_services import delivery_available
+    delivery_enabled = delivery_available(request.business)
+    delivery_areas = list(
+        DeliveryArea.raw_objects.filter(business=request.business, active=True)
+        .select_related("rate_band").order_by("name", "id")
+    ) if delivery_enabled else []
     error = ""
     active_checkout = None
     active_payment = None
@@ -1046,20 +1057,25 @@ def storefront_pos(request):
             customer_email = (request.POST.get("customer_email") or "").strip()
             if customer_email:
                 validate_email(customer_email)
+            delivery_requested = request.POST.get("request_delivery") == "on"
+            delivery_quote_id = (request.POST.get("delivery_quote_id") or "").strip() or None
+            if delivery_requested and not delivery_quote_id:
+                raise ValidationError("Get a current delivery quote before completing this sale.")
             checkout, _ = create_checkout(
                 business=request.business,
                 source=CommerceIntake.SOURCE_STAFF_POS,
                 order_mode=pos_channel,
-                service_mode=(request.POST.get("service_mode") or "") if pos_ui.get("show_service_mode") else "",
+                service_mode="delivery" if delivery_quote_id else ((request.POST.get("service_mode") or "") if pos_ui.get("show_service_mode") else ""),
                 table_reference=(request.POST.get("table_reference") or "") if pos_ui.get("show_reference") else "",
                 customer={
                     "name": customer_name,
                     "phone": (request.POST.get("customer_phone") or "").strip(),
                     "email": customer_email,
-                    "address": "",
+                    "address": (request.POST.get("customer_address") or "").strip(),
                 },
                 items=items,
                 idempotency_key=(request.POST.get("pos_key") or f"staff-pos-{uuid4().hex}")[:120],
+                delivery_quote_id=delivery_quote_id,
             )
             payment = initiate_payment(
                 checkout=checkout,
@@ -1099,6 +1115,8 @@ def storefront_pos(request):
         "pos_ui": pos_ui,
         "pos_channel": pos_channel,
         "pos_channel_label": vertical_config(request.business)["commerce_channels"].get(pos_channel, pos_channel.replace("_", " ").title()),
+        "delivery_enabled": delivery_enabled,
+        "delivery_areas": delivery_areas,
     })
 
 

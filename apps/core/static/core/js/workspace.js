@@ -64,10 +64,15 @@
     root.dataset.backgroundPreference = chosen;
     root.style.setProperty('--tenant-background', color);
     root.style.setProperty('--tenant-background-contrast', contrast(color));
-    root.style.setProperty('--ui-dark-bg', mix(darkBase,'black',.12));
-    root.style.setProperty('--ui-dark-surface', mix(darkBase,'white',.08));
-    root.style.setProperty('--ui-dark-surface-muted', mix(darkBase,'white',.13));
-    root.style.setProperty('--ui-dark-border', mix(darkBase,'white',.24));
+    // Keep the selected hue visible on the canvas while cards sit on a deeper
+    // shade. This preserves clear surface hierarchy without turning dark mode
+    // into a near-black page for every palette.
+    // Dark-mode page canvas: increase .14 for a lighter canvas or reduce it
+    // for a darker canvas. Card shades are controlled by the two lines below.
+    root.style.setProperty('--ui-dark-bg', mix(darkBase,'white',.18));
+    root.style.setProperty('--ui-dark-surface', mix(darkBase,'black',.18));
+    root.style.setProperty('--ui-dark-surface-muted', mix(darkBase,'black',.08));
+    root.style.setProperty('--ui-dark-border', mix(darkBase,'white',.28));
     document.querySelectorAll('[data-background-choice]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.backgroundChoice === chosen)));
   };
 
@@ -116,21 +121,12 @@
     });
 
     const progress = document.querySelector('.page-progress');
-    const warmed = new Set();
     const eligible = link => {
       if (!link?.href || link.target || link.download || link.dataset.noPrefetch !== undefined) return false;
       const url = new URL(link.href, location.href);
       const unsafePath = /\/(logout|switch)(\/|$)/.test(url.pathname);
       return url.origin === location.origin && url.pathname !== location.pathname && !url.hash && !unsafePath;
     };
-    const warm = link => {
-      if (!eligible(link) || warmed.has(link.href)) return;
-      warmed.add(link.href);
-      const hint = document.createElement('link'); hint.rel = 'prefetch'; hint.href = link.href; hint.as = 'document'; document.head.appendChild(hint);
-    };
-    document.addEventListener('pointerover', event => warm(event.target.closest('a')), {passive:true});
-    document.addEventListener('focusin', event => warm(event.target.closest('a')));
-    document.addEventListener('touchstart', event => warm(event.target.closest('a')), {passive:true});
     document.addEventListener('click', event => {
       const link = event.target.closest('a');
       if (eligible(link) && progress) progress.dataset.active = 'true';

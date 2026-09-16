@@ -84,7 +84,7 @@ def manifest(request):
             "start_url": reverse("marketing_home"),
             "scope": "/",
             "display": "standalone",
-            "background_color": "#FAF6EF",
+            "background_color": "#FFF1E8",
             "theme_color": "#050733",
             "categories": ["business", "productivity", "finance"],
             "icons": _icons(),
@@ -109,7 +109,9 @@ def tenant_manifest(request, business_slug):
             "start_url": reverse("pwa_launch", kwargs={"business_slug": business.slug}),
             "scope": "/",
             "display": "standalone",
-            "background_color": business.background_color,
+            # Keep the operating-system launch canvas aligned with the light
+            # orange icon tile; tenant colours still brand the browser chrome.
+            "background_color": "#FFF1E8",
             "theme_color": business.background_color,
             "categories": ["business", "productivity", "finance"],
             # Installed app artwork remains INPROFIC by design. The optional

@@ -23,10 +23,16 @@ from .models import (
     CommercePaymentConfiguration,
     CommercePaymentReceipt,
     CommerceSettings,
+    DeliveryArea,
+    DeliveryAssignment,
+    DeliveryOrigin,
+    DeliveryRateBand,
+    DeliverySettings,
     StorefrontProduct,
 )
 from .payment_gateways import GatewayError, monnify_signature_valid, verify_monnify, verify_paystack
 from .checkout_services import create_checkout
+from .delivery_services import create_delivery_quote
 from .payment_services import initiate_payment, record_verified_payment, reverse_payment_receipt
 from .services import create_intake
 
@@ -148,6 +154,62 @@ class HeadlessPaymentApiTests(CommercePaymentTestBase):
         self.assertEqual(response.status_code, 200)
         methods = {row["code"] for row in response.json()["methods"]}
         self.assertNotIn(CommercePayment.METHOD_CASH, methods)
+
+    def test_api_delivery_quote_is_included_in_authoritative_checkout_total(self):
+        BusinessModuleAccess.objects.update_or_create(
+            business=self.business, module="delivery", defaults={"enabled": True}
+        )
+        DeliverySettings.raw_objects.create(business=self.business, enabled=True)
+        DeliveryOrigin.raw_objects.create(
+            business=self.business, name="Main base", address="1 Test Road",
+            latitude="6.4500000", longitude="3.4000000", is_default=True,
+        )
+        band = DeliveryRateBand.raw_objects.create(
+            business=self.business, name="Nearby", min_distance_km=0,
+            max_distance_km=20, base_fee="500.00", per_km_fee=0,
+        )
+        area = DeliveryArea.raw_objects.create(
+            business=self.business, name="Victoria Island",
+            latitude="6.4300000", longitude="3.4200000", rate_band=band,
+        )
+        quote_response = self.api_post(
+            f"/api/v1/storefronts/{self.business.slug}/delivery/quote",
+            {"subtotal": "2500.00", "address": "12 Customer Street", "area_id": area.pk},
+        )
+        self.assertEqual(quote_response.status_code, 201)
+        quote_id = quote_response.json()["quote_id"]
+
+        checkout_response = self.api_post(
+            f"/api/v1/storefronts/{self.business.slug}/checkouts",
+            {
+                "order_mode": "physical_store",
+                "customer": {"name": "Ada", "phone": "08010000000", "address": "Changed address"},
+                "delivery_quote_id": quote_id,
+                "items": [{"product_id": str(self.product.public_id), "quantity": "1"}],
+            },
+            idem="delivery-checkout-api",
+        )
+        self.assertEqual(checkout_response.status_code, 201)
+        payload = checkout_response.json()
+        self.assertEqual(payload["subtotal"], "2500.00")
+        self.assertEqual(payload["delivery_fee"], "500.00")
+        self.assertEqual(payload["amount"], "3000.00")
+        checkout = CommerceCheckoutSession.raw_objects.get(public_id=payload["checkout_id"])
+        self.assertEqual(checkout.customer_address, "12 Customer Street")
+        self.assertEqual(checkout.service_mode, "delivery")
+
+        reused = self.api_post(
+            f"/api/v1/storefronts/{self.business.slug}/checkouts",
+            {
+                "order_mode": "physical_store",
+                "customer": {"name": "Another Customer", "phone": "08020000000"},
+                "delivery_quote_id": quote_id,
+                "items": [{"product_id": str(self.product.public_id), "quantity": "1"}],
+            },
+            idem="delivery-checkout-api-reuse",
+        )
+        self.assertEqual(reused.status_code, 400)
+        self.assertIn("already attached", reused.json()["detail"])
         self.assertNotIn(CommercePayment.METHOD_POS_CARD, methods)
         self.assertIn(CommercePayment.METHOD_BANK_TRANSFER, methods)
 
@@ -529,6 +591,51 @@ class StorefrontPosGuardTests(CommercePaymentTestBase):
         )
         self.assertEqual(checkout.status, CommerceCheckoutSession.STATUS_CANCELLED)
         self.assertIsNotNone(checkout.reservation_released_at)
+
+    def test_walk_in_delivery_collects_fee_and_creates_dispatch_assignment(self):
+        BusinessModuleAccess.objects.update_or_create(
+            business=self.business, module="delivery", defaults={"enabled": True}
+        )
+        DeliverySettings.raw_objects.create(business=self.business, enabled=True)
+        origin = DeliveryOrigin.raw_objects.create(
+            business=self.business, name="Main base", address="1 Test Road",
+            latitude="6.4500000", longitude="3.4000000", is_default=True,
+        )
+        band = DeliveryRateBand.raw_objects.create(
+            business=self.business, name="Nearby", min_distance_km=0,
+            max_distance_km=20, base_fee="500.00", per_km_fee=0,
+        )
+        area = DeliveryArea.raw_objects.create(
+            business=self.business, name="Victoria Island",
+            latitude="6.4300000", longitude="3.4200000", rate_band=band,
+        )
+        quote = create_delivery_quote(
+            business=self.business, subtotal="2500.00",
+            destination_address="12 Walk-in Street", area_id=area.pk, actor=self.staff,
+        )
+        response = self.client.post("/commerce/storefront-pos/", {
+            "method": CommercePayment.METHOD_CASH,
+            "cash_received": "on",
+            f"qty_{self.product.public_id}": "1",
+            "customer_name": "Walk-in Customer",
+            "customer_phone": "08020000000",
+            "customer_address": "12 Walk-in Street",
+            "request_delivery": "on",
+            "delivery_quote_id": str(quote.public_id),
+            "pos_key": "walk-in-delivery",
+        })
+        self.assertEqual(response.status_code, 302)
+        checkout = CommerceCheckoutSession.raw_objects.get(
+            business=self.business, source=CommerceIntake.SOURCE_STAFF_POS,
+            idempotency_key="walk-in-delivery",
+        )
+        self.assertEqual(checkout.amount, Decimal("3000.00"))
+        self.assertEqual(checkout.customer_address, "12 Walk-in Street")
+        assignment = DeliveryAssignment.raw_objects.get(
+            business=self.business, intake=checkout.materialized_intake
+        )
+        self.assertEqual(assignment.origin, origin)
+        self.assertEqual(assignment.quote_id, quote.pk)
 
 
 

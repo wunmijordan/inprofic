@@ -9,7 +9,7 @@
     {% include "_field.html" with field=form.name %}
     {% include "_field.html" with field=form.category %}
 
-    <details class="mb-4 rounded-lg border border-[#D9CFB4] bg-[#F0EAD9] text-xs">
+    <details class="raw-material-help mb-4 rounded-lg border border-[#D9CFB4] bg-[#F0EAD9] text-xs">
       <summary class="cursor-pointer px-4 py-3 font-semibold text-stone-700">How purchase, package and usage units work</summary>
       <div class="space-y-1.5 border-t border-[#D9CFB4] px-4 py-3 leading-5">
       {% if vertical_ui.uses_production %}
@@ -43,7 +43,7 @@
       {% include "_field.html" with field=form.usage_unit %}
     </div>
 
-    <section class="rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-4 mb-4" aria-labelledby="unit-converter-title">
+    <section class="raw-material-converter rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-4 mb-4" aria-labelledby="unit-converter-title">
       <div class="flex flex-wrap items-start justify-between gap-2 mb-3">
         <div>
           <p class="text-[10px] font-bold uppercase tracking-[.16em] text-sky-700">2 · Conversion</p>

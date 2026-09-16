@@ -3,15 +3,20 @@
    templates without changing their fields, URLs, permissions, or workflows. */
 :root {
   color-scheme: light;
-  --ui-bg: #e9eef5;
-  --ui-surface: #f8fafc;
-  --ui-surface-muted: #eef2f7;
+  /* Light-mode page canvas. Change this to tune the background behind cards. */
+  --ui-bg: #ffffff;
+  --ui-surface: #eceff3ee;
+  --ui-surface-muted: #dee3e9;
   --ui-text: #182433;
   --ui-muted: #667382;
   --ui-border: #cbd5e1;
-  --ui-shadow: 0 2px 5px rgba(15,23,42,.18), 0 10px 24px rgba(15,23,42,.14);
-  --ui-shadow-raised: 0 16px 38px rgba(15,23,42,.24), 0 4px 10px rgba(15,23,42,.16);
-  --ui-radius: .5rem;
+  /* Global elevation: edit these two values to tune cards and raised panels. */
+  --ui-shadow: 0 4px 8px #000000d2;
+  --ui-shadow-raised: 0 6px 10px #000000d2;
+  /* Global corners: controls, ordinary cards, then large feature cards. */
+  --ui-radius: 1.5rem;
+  --ui-card-radius: 2.5rem;
+  --ui-card-radius-large: 1.65rem;
   --ui-control-height: 2.25rem;
   --ui-accent: var(--tenant-button, #d14900);
   --ui-accent-contrast: var(--tenant-button-contrast, #fff);
@@ -19,14 +24,15 @@
 
 html[data-theme="dark"] {
   color-scheme: dark;
+  /* Dark canvas is generated from the selected palette in workspace.js. */
   --ui-bg: var(--ui-dark-bg, #111827);
   --ui-surface: var(--ui-dark-surface, #182230);
   --ui-surface-muted: var(--ui-dark-surface-muted, #202c3b);
   --ui-text: #e8edf3;
   --ui-muted: #9ba9b8;
   --ui-border: var(--ui-dark-border, #344154);
-  --ui-shadow: 0 3px 9px rgba(0,0,0,.48), 0 12px 28px rgba(0,0,0,.34);
-  --ui-shadow-raised: 0 18px 44px rgba(0,0,0,.58), 0 4px 12px rgba(0,0,0,.4);
+  --ui-shadow: 0 4px 12px #000000d2;
+  --ui-shadow-raised: 0 8px 18px #000000d2;
 }
 
 html, body { background: var(--ui-bg) !important; color: var(--ui-text) !important; }
@@ -57,13 +63,14 @@ main :is(h1,h2).font-display { letter-spacing: -.025em; color: var(--ui-text) !i
 main h3, main h4 { color: var(--ui-text); }
 main :where(.text-stone-400,.text-stone-500,.text-stone-600) { color: var(--ui-muted); }
 main :where(.text-stone-700,.text-stone-800,.text-stone-900) { color: var(--ui-text); }
+main :where(.text-\[\#d14900\],.text-\[\#b94300\]) { color: var(--ui-accent) !important; }
 
 main :where(.bg-white,.bg-white\/95,.bg-\[\#FFFDF8\]) { background-color: var(--ui-surface) !important; }
-main :where(.bg-\[\#FAF8F1\],.bg-\[\#F5EFE0\],.bg-stone-50,.bg-stone-100) { background-color: var(--ui-surface-muted) !important; }
+main :where(.bg-\[\#FAF8F1\],.bg-\[\#F5EFE0\],.bg-\[\#F0EAD9\],.bg-stone-50,.bg-stone-100) { background-color: var(--ui-surface-muted) !important; }
 main :where(.border-\[\#E7DFCC\],.border-\[\#D9CFB4\],.border-\[\#EEE7D7\],.border-stone-100,.border-stone-200,.border-stone-300) { border-color: var(--ui-border) !important; }
 main :where(article,section,aside,form,details)[class*="rounded"][class*="border"] { box-shadow: var(--ui-shadow) !important; }
-main :where(.rounded-2xl,.rounded-3xl) { border-radius: .65rem !important; }
-main :where(.rounded-xl) { border-radius: .5rem !important; }
+main :where(.rounded-2xl,.rounded-3xl) { border-radius: var(--ui-card-radius-large) !important; }
+main :where(.rounded-xl) { border-radius: var(--ui-card-radius) !important; }
 
 main table { border-collapse: separate; border-spacing: 0; }
 main thead { background: var(--ui-surface-muted) !important; }
@@ -82,10 +89,10 @@ main textarea { min-height: 5rem; }
 main input::placeholder, main textarea::placeholder { color: color-mix(in srgb,var(--ui-muted) 72%,transparent); }
 main input:focus, main select:focus, main textarea:focus { border-color: var(--ui-accent) !important; box-shadow: 0 0 0 3px color-mix(in srgb,var(--ui-accent) 14%,transparent) !important; }
 
-.cf-form-shell { border-color: var(--ui-border) !important; border-radius: .65rem !important; background: var(--ui-surface) !important; box-shadow: var(--ui-shadow-raised) !important; }
+.cf-form-shell { border-color: var(--ui-border) !important; border-radius: var(--ui-card-radius-large) !important; background: var(--ui-surface) !important; box-shadow: var(--ui-shadow-raised) !important; }
 .cf-form-header { border-color: var(--ui-border) !important; background: var(--ui-surface-muted) !important; padding: 1rem 1.1rem !important; }
 .cf-form-body { padding: 1.1rem !important; }
-.cf-form-section { border-color: var(--ui-border) !important; border-radius: .5rem !important; background: var(--ui-surface) !important; }
+.cf-form-section { border-color: var(--ui-border) !important; border-radius: var(--ui-card-radius) !important; background: var(--ui-surface) !important; }
 .cf-toggle-field { border-color: var(--ui-border) !important; border-radius: .5rem !important; background: var(--ui-surface) !important; padding: .65rem .8rem !important; }
 .cf-toggle-field:hover { background: var(--ui-surface-muted) !important; }
 .cf-field { margin-bottom: .7rem !important; }
@@ -155,11 +162,18 @@ html[data-theme="dark"] main :where(.bg-sky-50,.bg-blue-50) { background: #132c3
 html[data-theme="dark"] main :where(.bg-emerald-50,.bg-green-50) { background: #153126 !important; }
 html[data-theme="dark"] main :where(.bg-rose-50,.bg-red-50) { background: #3a1c25 !important; }
 html[data-theme="dark"] main :where(.bg-violet-50,.bg-purple-50) { background: #2d2340 !important; }
-html[data-theme="dark"] main :where(.text-sky-700,.text-sky-800,.text-sky-900,.text-sky-950,.text-blue-700,.text-blue-800,.text-blue-900) { color: #7dd3fc !important; }
-html[data-theme="dark"] main :where(.text-amber-700,.text-amber-800,.text-amber-900,.text-amber-950,.text-orange-700,.text-orange-800,.text-orange-900) { color: #fcd34d !important; }
-html[data-theme="dark"] main :where(.text-emerald-700,.text-emerald-800,.text-emerald-900,.text-green-700,.text-green-800,.text-green-900) { color: #6ee7b7 !important; }
-html[data-theme="dark"] main :where(.text-rose-600,.text-rose-700,.text-rose-800,.text-rose-900,.text-red-600,.text-red-700,.text-red-800,.text-red-900) { color: #fda4af !important; }
+html[data-theme="dark"] main :where(.bg-stone-50\/80,.bg-white\/60,.bg-white\/95) { background: var(--ui-surface-muted) !important; }
+html[data-theme="dark"] main :where(.text-sky-500,.text-sky-600,.text-sky-700,.text-sky-800,.text-sky-900,.text-sky-950,.text-blue-500,.text-blue-600,.text-blue-700,.text-blue-800,.text-blue-900) { color: #7dd3fc !important; }
+html[data-theme="dark"] main :where(.text-amber-500,.text-amber-600,.text-amber-700,.text-amber-800,.text-amber-900,.text-amber-950,.text-orange-500,.text-orange-600,.text-orange-700,.text-orange-800,.text-orange-900,.text-yellow-500,.text-yellow-600,.text-yellow-700,.text-yellow-800,.text-yellow-900) { color: #fcd34d !important; }
+html[data-theme="dark"] main :where(.text-emerald-500,.text-emerald-600,.text-emerald-700,.text-emerald-800,.text-emerald-900,.text-emerald-950,.text-green-500,.text-green-600,.text-green-700,.text-green-800,.text-green-900) { color: #6ee7b7 !important; }
+html[data-theme="dark"] main :where(.text-rose-500,.text-rose-600,.text-rose-700,.text-rose-800,.text-rose-900,.text-rose-950,.text-red-500,.text-red-600,.text-red-700,.text-red-800,.text-red-900) { color: #fda4af !important; }
 html[data-theme="dark"] main :where(.text-violet-700,.text-violet-800,.text-violet-900,.text-purple-700,.text-purple-800,.text-purple-900) { color: #c4b5fd !important; }
+html[data-theme="dark"] main :where(.text-slate-900,.text-\[\#4D1C25\],.text-\[\#1E4536\],.text-\[\#050733\]) { color: var(--ui-text) !important; }
+.raw-material-help { background: var(--ui-surface-muted) !important; color: var(--ui-text) !important; }
+.raw-material-help > summary,
+.raw-material-help > div { background: transparent !important; color: var(--ui-text) !important; }
+html[data-theme="dark"] .raw-material-converter { background: var(--ui-surface-muted) !important; background-image: none !important; color: var(--ui-text) !important; }
+html[data-theme="dark"] .raw-material-converter :where(.text-sky-800\/75,.text-sky-950) { color: #bae6fd !important; }
 html[data-theme="dark"] main img { opacity: .94; }
 
 @media (max-width: 767px) {
