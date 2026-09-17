@@ -67,9 +67,17 @@ class DeliverySetupUiTests(TestCase):
         self.assertContains(response, "data-location-picker")
         self.assertContains(response, "location-picker.js")
 
+        area_response = self.client.get(reverse("delivery_area_add"))
+        self.assertEqual(area_response.status_code, 200)
+        self.assertContains(area_response, 'data-radius-input="#id_radius_km"')
+        self.assertContains(area_response, 'data-radius-handle="radius"')
+        self.assertContains(area_response, 'data-extension-handle="ne"')
+        self.assertContains(area_response, "maximum coverage radius")
+
     def test_delivery_forms_and_dashboard_explain_the_setup_flow(self):
         rate_form = DeliveryRateBandForm()
         self.assertIn("customer-facing", rate_form.fields["eta_min_minutes"].help_text)
+        self.assertIn("named destination area", rate_form.fields["max_distance_km"].help_text)
 
         response = self.client.get(reverse("delivery_origin_add"))
         self.assertContains(response, "Distance and delivery fees are calculated")

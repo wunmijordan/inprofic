@@ -18,8 +18,8 @@ from core.services import audit
 
 from .delivery_forms import DeliveryAreaForm, DeliveryDriverForm, DeliveryOriginForm, DeliveryProviderAccountForm, DeliveryRateBandForm, DeliverySettingsForm
 from .delivery_services import (
-    create_delivery_quote_options, delivery_available, raise_delivery_issue,
-    select_delivery_quote, serialize_delivery_quote, switch_delivery_method, update_delivery_status,
+    create_delivery_quote_options, delivery_area_distance_summary, delivery_available, raise_delivery_issue,
+    resolve_delivery_location, select_delivery_quote, serialize_delivery_quote, switch_delivery_method, update_delivery_status,
 )
 from .notification_services import queue_commerce_notification
 from .models import (
@@ -64,15 +64,26 @@ def delivery_dashboard(request):
     assignments = DeliveryAssignment.objects.select_related(
         "intake", "driver__user", "origin", "quote", "provider_account"
     ).prefetch_related("events", "issues")[:100]
-    origins = DeliveryOrigin.objects.filter(business=request.business)
-    rate_bands = DeliveryRateBand.objects.filter(business=request.business)
-    areas = DeliveryArea.objects.filter(business=request.business).select_related("rate_band")
-    drivers = DeliveryDriver.objects.filter(business=request.business).select_related("user")
-    provider_accounts = DeliveryProviderAccount.objects.filter(business=request.business)
-    base_ready = origins.filter(
-        active=True, latitude__isnull=False, longitude__isnull=False
-    ).exists()
-    pricing_ready = rate_bands.filter(active=True).exists()
+    # Materialize setup collections once: the dashboard renders each list and also
+    # derives readiness from it, so Python checks avoid duplicate EXISTS queries.
+    origins = list(DeliveryOrigin.objects.filter(business=request.business))
+    rate_bands = list(DeliveryRateBand.objects.filter(business=request.business))
+    areas = list(DeliveryArea.objects.filter(business=request.business).select_related("rate_band"))
+    drivers = list(DeliveryDriver.objects.filter(business=request.business).select_related("user"))
+    provider_accounts = list(DeliveryProviderAccount.objects.filter(business=request.business))
+    mapped_active_origins = [
+        row for row in origins
+        if row.active and row.latitude is not None and row.longitude is not None
+    ]
+    active_origin = next((row for row in mapped_active_origins if row.is_default), None) or (mapped_active_origins[0] if mapped_active_origins else None)
+    for area in areas:
+        summary = delivery_area_distance_summary(area, origin=active_origin)
+        area.centre_distance_from_base_km = summary["centre_distance_km"]
+        area.maximum_distance_from_base_km = summary["maximum_base_distance_km"]
+    base_ready = bool(mapped_active_origins)
+    pricing_ready = any(row.active for row in rate_bands)
+    destinations_ready = any(row.active for row in areas)
+    dispatch_ready = any(row.active for row in drivers) or any(row.active for row in provider_accounts)
     provider_ready = True
     if settings.default_provider == DeliverySettings.PROVIDER_THIRD_PARTY:
         account = settings.default_provider_account
@@ -94,8 +105,8 @@ def delivery_dashboard(request):
         "delivery_setup": {
             "base_ready": base_ready,
             "pricing_ready": pricing_ready,
-            "destinations_ready": areas.filter(active=True).exists(),
-            "dispatch_ready": drivers.filter(active=True).exists() or provider_accounts.filter(active=True).exists(),
+            "destinations_ready": destinations_ready,
+            "dispatch_ready": dispatch_ready,
             "provider_ready": provider_ready,
             "public_ready": public_ready,
         },
@@ -129,7 +140,7 @@ def delivery_settings(request):
 def _model_form_view(
     request, *, model, form_class, title, success, pk=None,
     business_kw=False, location_label="", include_user_directory=False,
-    intro="", setup_tip="",
+    intro="", setup_tip="", radius_selector=False,
 ):
     if not is_business_admin(request.user, request.business):
         return render(request, "403.html", status=403)
@@ -155,7 +166,12 @@ def _model_form_view(
         "location_label": location_label,
         "form_intro": intro,
         "setup_tip": setup_tip,
+        "radius_selector": radius_selector,
     }
+    if location_label:
+        context["delivery_areas"] = list(
+            DeliveryArea.raw_objects.filter(business=request.business, active=True).order_by("name", "id")
+        )
     if include_user_directory:
         context["delivery_user_directory"] = list(
             form.fields["user"].queryset.values("id", "fullname", "username", "phone", "email")
@@ -211,8 +227,8 @@ def delivery_rate_band_form(request, pk=None):
     return _model_form_view(
         request, model=DeliveryRateBand, form_class=DeliveryRateBandForm,
         title="Delivery price band", success="Delivery price band saved.", pk=pk,
-        intro="Define what customers pay and the ETA they see for a distance range. INPROFIC calculates distance from the selected delivery base.",
-        setup_tip="Create non-overlapping bands from nearest to farthest. A fee is calculated as base fee plus the per-kilometre fee; use zero per-kilometre for a flat rate.",
+        intro="Define the fee, per-kilometre rate, minimum basket and ETA used by one or more destination areas. INPROFIC prices the real distance from the delivery base to the validated customer destination.",
+        setup_tip="For named destination areas, the area's mapped radius is the coverage boundary; the min/max distance fields remain only as a fallback for map-only quotes with no selected area.",
     )
 
 
@@ -221,9 +237,9 @@ def delivery_area_form(request, pk=None):
     return _model_form_view(
         request, model=DeliveryArea, form_class=DeliveryAreaForm,
         title="Delivery destination / zone", success="Delivery destination saved.",
-        pk=pk, business_kw=True, location_label="delivery destination centre",
-        intro="Give customers and counter staff a familiar destination choice, then link it to the price band that governs its fee and ETA.",
-        setup_tip="The zone pin is a convenient default. Customers can place a more precise destination pin during checkout, while the selected zone still controls its configured pricing band.",
+        pk=pk, business_kw=True, location_label="delivery destination centre", radius_selector=True,
+        intro="Map the destination centre and its maximum coverage radius, then link the area to the pricing band that supplies its fee, minimum basket and ETA rules.",
+        setup_tip="Drag the radius handle to set the normal coverage boundary. Optional NE/SE/SW/NW handles can extend awkward corridors beyond the circle. Checkout validates the customer's exact address or pin inside that shape, then prices the real distance from your delivery base.",
     )
 
 
@@ -437,6 +453,64 @@ def delivery_rider_issue(request, public_id):
     return redirect("delivery_rider_dashboard")
 
 
+def _location_payload(result):
+    return {
+        "address": result["address"],
+        "latitude": str(result["latitude"]),
+        "longitude": str(result["longitude"]),
+        "validated_by": result["validated_by"],
+        "location_source": result["validated_by"],
+        "address_resolved": result["address_resolved"],
+        "area_id": result["area_id"],
+        "area_name": result["area_name"],
+    }
+
+
+@require_http_methods(["POST"])
+def storefront_delivery_location(request, business_slug):
+    business = get_object_or_404(Business, slug=business_slug)
+    commerce_settings = CommerceSettings.raw_objects.filter(business=business).first()
+    if not business_has_module(business, "commerce") or not commerce_settings or not commerce_settings.enabled or not delivery_available(business):
+        return JsonResponse({"detail": "Delivery location lookup is unavailable."}, status=404)
+    try:
+        result = resolve_delivery_location(
+            business=business,
+            address=request.POST.get("address", ""),
+            area_id=request.POST.get("area_id") or None,
+            latitude=request.POST.get("latitude") or None,
+            longitude=request.POST.get("longitude") or None,
+        )
+        return JsonResponse(_location_payload(result))
+    except (ValidationError, InvalidOperation, TypeError, ValueError) as exc:
+        return JsonResponse({"detail": _detail(exc)}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_delivery_location(request, business_slug):
+    business = get_object_or_404(Business, slug=business_slug)
+    commerce_settings = CommerceSettings.raw_objects.filter(business=business).first()
+    if not business_has_module(business, "commerce") or not commerce_settings or not commerce_settings.enabled or not commerce_settings.api_enabled or not delivery_available(business):
+        return JsonResponse({"detail": "Delivery location API unavailable."}, status=404)
+    key = request.headers.get("X-INPROFIC-Key", "")
+    if not CommerceIntegration.raw_objects.filter(
+        business=business, active=True, integration_type=CommerceIntegration.TYPE_API, api_key=key
+    ).exists():
+        return JsonResponse({"detail": "Invalid commerce API credential."}, status=403)
+    try:
+        data = json.loads(request.body or b"{}")
+        result = resolve_delivery_location(
+            business=business,
+            address=data.get("address", ""),
+            area_id=data.get("area_id"),
+            latitude=data.get("latitude"),
+            longitude=data.get("longitude"),
+        )
+        return JsonResponse(_location_payload(result))
+    except (json.JSONDecodeError, ValidationError, InvalidOperation, TypeError, ValueError) as exc:
+        return JsonResponse({"detail": _detail(exc)}, status=400)
+
+
 @require_http_methods(["POST"])
 def storefront_delivery_quote(request, business_slug):
     business = get_object_or_404(Business, slug=business_slug)
@@ -451,6 +525,7 @@ def storefront_delivery_quote(request, business_slug):
             area_id=request.POST.get("area_id") or None,
             latitude=request.POST.get("latitude") or None,
             longitude=request.POST.get("longitude") or None,
+            location_source=request.POST.get("location_source") or None,
         )
         selected = select_delivery_quote(settings, options)
         return JsonResponse({
@@ -483,6 +558,7 @@ def api_delivery_quote(request, business_slug):
         settings, options = create_delivery_quote_options(
             business=business, subtotal=data.get("subtotal"), destination_address=data.get("address", ""),
             area_id=data.get("area_id"), latitude=data.get("latitude"), longitude=data.get("longitude"),
+            location_source=data.get("location_source"),
         )
         selected = select_delivery_quote(settings, options)
         return JsonResponse({

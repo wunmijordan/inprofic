@@ -157,12 +157,14 @@ class DeliveryOriginForm(StyledModelForm):
 class DeliveryRateBandForm(StyledModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["min_distance_km"].label = "Fallback minimum distance (km)"
+        self.fields["max_distance_km"].label = "Fallback maximum distance (km)"
         hints = {
-            "name": "Use a customer-friendly range name, such as Nearby (0–5 km).",
-            "min_distance_km": "Inclusive start of this distance range.",
-            "max_distance_km": "Inclusive end of the range. Leave blank only for the final unlimited band.",
-            "base_fee": "Fixed amount charged whenever this band applies.",
-            "per_km_fee": "Added for every calculated kilometre. Enter 0 for a flat fee.",
+            "name": "Use a recognizable pricing name, such as Nearby Zone Pricing.",
+            "min_distance_km": "Used only for map-only/direct-coordinate quotes that do not select a named destination area. Named areas use their mapped centre and radius for coverage.",
+            "max_distance_km": "Used only for map-only/direct-coordinate quotes. A named area's radius (plus optional diagonal extensions) is its authoritative maximum coverage boundary.",
+            "base_fee": "Fixed amount charged whenever this pricing band applies.",
+            "per_km_fee": "Added for every kilometre from the delivery base to the customer's precise validated destination. Enter 0 for a flat fee.",
             "minimum_order": "Basket subtotal required before delivery can be quoted in this band. Enter 0 for no minimum.",
             "eta_min_minutes": "Best-case customer-facing delivery estimate.",
             "eta_max_minutes": "Latest customer-facing delivery estimate under normal conditions.",
@@ -202,7 +204,11 @@ class DeliveryRateBandForm(StyledModelForm):
 class DeliveryAreaForm(StyledModelForm):
     class Meta:
         model = DeliveryArea
-        fields = ["name", "code", "latitude", "longitude", "rate_band", "active", "notes"]
+        fields = [
+            "name", "code", "latitude", "longitude", "radius_km",
+            "extension_ne_km", "extension_se_km", "extension_sw_km", "extension_nw_km",
+            "rate_band", "active", "notes",
+        ]
 
     def __init__(self, *args, business=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -214,10 +220,21 @@ class DeliveryAreaForm(StyledModelForm):
         self.fields["name"].widget.attrs["placeholder"] = "e.g. Victoria Island"
         self.fields["latitude"].label = "Destination centre latitude"
         self.fields["longitude"].label = "Destination centre longitude"
+        self.fields["radius_km"].label = "Coverage radius (km)"
+        extension_labels = {
+            "extension_ne_km": "Extra reach north-east (km)",
+            "extension_se_km": "Extra reach south-east (km)",
+            "extension_sw_km": "Extra reach south-west (km)",
+            "extension_nw_km": "Extra reach north-west (km)",
+        }
+        for name, label in extension_labels.items():
+            self.fields[name].label = label
+            self.fields[name].help_text = "Optional distance beyond the main radius in this diagonal direction. Leave at 0 for a circle."
         self.fields["rate_band"].label = "Delivery price band"
         self.fields["code"].help_text = "Optional stable short code for website or staff reference, for example victoria-island."
-        self.fields["latitude"].help_text = "Place the pin near the centre of this zone. Customers may still provide a more precise pin at checkout."
+        self.fields["latitude"].help_text = "Place the pin at the centre of this zone. The coverage circle is measured from this point."
         self.fields["longitude"].help_text = "Filled together with latitude by the map picker."
+        self.fields["radius_km"].help_text = "Drag the radius handle on the map or enter the maximum distance from the zone centre."
         self.fields["rate_band"].help_text = "Links this named destination to its customer-facing fee, minimum order and ETA rules."
         self.fields["active"].help_text = "Only active destinations appear on hosted, POS and API storefronts."
 
@@ -225,6 +242,10 @@ class DeliveryAreaForm(StyledModelForm):
         cleaned = super().clean()
         if (cleaned.get("latitude") is None) != (cleaned.get("longitude") is None):
             raise forms.ValidationError("Enter both latitude and longitude for a delivery area.")
+        if cleaned.get("active") and (cleaned.get("latitude") is None or cleaned.get("longitude") is None):
+            raise forms.ValidationError("An active delivery destination needs a mapped centre point.")
+        if cleaned.get("active") and not cleaned.get("rate_band"):
+            self.add_error("rate_band", "Choose the pricing band used for this active delivery destination.")
         return cleaned
 
 

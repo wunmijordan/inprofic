@@ -112,6 +112,52 @@ class UserForm(forms.ModelForm):
         return obj
 
 
+class FounderUserManagementForm(forms.ModelForm):
+    new_password = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput,
+        help_text="Leave blank to keep the current password.",
+    )
+
+    class Meta:
+        model = CustomUser
+        fields = [
+            "fullname", "username", "email", "phone",
+            "is_active", "is_staff", "is_superuser",
+        ]
+
+    def __init__(self, *args, actor=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.actor = actor
+        for field in self.fields.values():
+            field.widget.attrs["class"] = CLS
+        for name in ("is_active", "is_staff", "is_superuser"):
+            self.fields[name].widget.attrs["class"] = "h-4 w-4 accent-[#8f172d]"
+        self.fields["is_active"].help_text = "Paused accounts cannot sign in, but their history remains intact."
+        self.fields["is_staff"].help_text = "Allows access to Django administration when model permissions also allow it."
+        self.fields["is_superuser"].help_text = "Grants unrestricted platform access. Use only for trusted founders."
+
+    def clean(self):
+        cleaned = super().clean()
+        if self.actor and self.instance.pk == self.actor.pk:
+            for field in ("is_active", "is_staff", "is_superuser"):
+                if not cleaned.get(field):
+                    self.add_error(field, "You cannot remove this access from the account you are currently using.")
+        password = cleaned.get("new_password")
+        if password:
+            password_validation.validate_password(password, self.instance)
+        return cleaned
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        password = self.cleaned_data.get("new_password")
+        if password:
+            user.set_password(password)
+        if commit:
+            user.save()
+        return user
+
+
 class PermissionMatrixForm(forms.Form):
     def __init__(self, *args, membership, **kwargs):
         super().__init__(*args, **kwargs)

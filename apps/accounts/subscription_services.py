@@ -162,35 +162,105 @@ def business_has_feature(business, feature):
 
 
 @transaction.atomic
-def apply_subscription_entitlements(subscription):
-    """Make BusinessModuleAccess the hard entitlement boundary for every service profile."""
-    subscription = BusinessSubscription.objects.select_related("plan").get(pk=subscription.pk)
-    plan_rows = {
-        row.module: row
-        for row in subscription.plan.module_entitlements.all()
-    }
-    source = BusinessModuleAccess.SOURCE_FOUNDER if subscription.founder_lifetime else BusinessModuleAccess.SOURCE_PLAN
-    active = subscription.is_effectively_active
-    for service in subscription.services.select_related("business"):
-        business = service.business
-        for module, _label in PLAN_ENTITLEMENT_MODULES:
-            entitlement = plan_rows.get(module)
-            enabled = bool((active and entitlement and entitlement.enabled) or (not active and module == "dashboard"))
-            # Preserve vertical/service capability restrictions in the central permission resolver;
-            # this row represents commercial entitlement only.
-            BusinessModuleAccess.objects.update_or_create(
-                business=business,
-                module=module,
-                defaults={"enabled": enabled, "source": source},
-            )
-        reports = plan_rows.get("reports")
-        BusinessFeatureAccess.objects.update_or_create(
-            business=business,
-            feature="reports_full",
-            defaults={"enabled": bool(active and reports and reports.enabled and reports.level == "full"), "source": source},
+def apply_subscriptions_entitlements(subscriptions):
+    """Apply several subscription policies with a bounded set of bulk queries."""
+    subscription_ids = [
+        item.pk if isinstance(item, BusinessSubscription) else int(item)
+        for item in subscriptions
+        if item is not None
+    ]
+    if not subscription_ids:
+        return []
+    rows = list(
+        BusinessSubscription.objects.filter(pk__in=subscription_ids)
+        .select_related("plan")
+        .prefetch_related("plan__module_entitlements", "services__business")
+    )
+    policies = {}
+    businesses = {}
+    for subscription in rows:
+        plan_rows = {item.module: item for item in subscription.plan.module_entitlements.all()}
+        source = (
+            BusinessModuleAccess.SOURCE_FOUNDER
+            if subscription.founder_lifetime
+            else BusinessModuleAccess.SOURCE_PLAN
         )
+        active = subscription.is_effectively_active
+        reports = plan_rows.get("reports")
+        for service in subscription.services.all():
+            business = service.business
+            businesses[business.pk] = business
+            policies[business.pk] = {
+                "source": source,
+                "modules": {
+                    module: bool(
+                        (active and plan_rows.get(module) and plan_rows[module].enabled)
+                        or (not active and module == "dashboard")
+                    )
+                    for module, _label in PLAN_ENTITLEMENT_MODULES
+                },
+                "reports_full": bool(
+                    active and reports and reports.enabled and reports.level == "full"
+                ),
+            }
+
+    business_ids = list(policies)
+    access_by_key = {
+        (item.business_id, item.module): item
+        for item in BusinessModuleAccess.objects.filter(business_id__in=business_ids)
+    }
+    access_to_create = []
+    access_to_update = []
+    for business_id, policy in policies.items():
+        for module, enabled in policy["modules"].items():
+            item = access_by_key.get((business_id, module))
+            if item is None:
+                access_to_create.append(BusinessModuleAccess(
+                    business_id=business_id, module=module,
+                    enabled=enabled, source=policy["source"],
+                ))
+            elif item.enabled != enabled or item.source != policy["source"]:
+                item.enabled = enabled
+                item.source = policy["source"]
+                access_to_update.append(item)
+    if access_to_create:
+        BusinessModuleAccess.objects.bulk_create(access_to_create, ignore_conflicts=True)
+    if access_to_update:
+        BusinessModuleAccess.objects.bulk_update(access_to_update, ["enabled", "source"])
+
+    features = {
+        item.business_id: item
+        for item in BusinessFeatureAccess.objects.filter(
+            business_id__in=business_ids, feature="reports_full"
+        )
+    }
+    features_to_create = []
+    features_to_update = []
+    for business_id, policy in policies.items():
+        item = features.get(business_id)
+        enabled = policy["reports_full"]
+        if item is None:
+            features_to_create.append(BusinessFeatureAccess(
+                business_id=business_id, feature="reports_full",
+                enabled=enabled, source=policy["source"],
+            ))
+        elif item.enabled != enabled or item.source != policy["source"]:
+            item.enabled = enabled
+            item.source = policy["source"]
+            features_to_update.append(item)
+    if features_to_create:
+        BusinessFeatureAccess.objects.bulk_create(features_to_create, ignore_conflicts=True)
+    if features_to_update:
+        BusinessFeatureAccess.objects.bulk_update(features_to_update, ["enabled", "source"])
+    for business in businesses.values():
         invalidate_business_access_cache(business)
-    return subscription
+    return rows
+
+
+def apply_subscription_entitlements(subscription):
+    """Make BusinessModuleAccess the hard entitlement boundary for one subscription."""
+    rows = apply_subscriptions_entitlements([subscription])
+    return next((item for item in rows if item.pk == subscription.pk), subscription)
 
 
 @transaction.atomic

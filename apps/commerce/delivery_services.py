@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from decimal import Decimal, InvalidOperation
-from math import asin, cos, radians, sin, sqrt
+from math import asin, atan2, cos, degrees, radians, sin, sqrt
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
+from django.conf import settings as django_settings
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 from django.db import transaction
@@ -46,6 +52,88 @@ def _haversine_km(lat1, lon1, lat2, lon2):
     return Decimal(str(6371.0088 * 2 * asin(sqrt(a)))).quantize(Decimal("0.01"))
 
 
+def _bearing_degrees(lat1, lon1, lat2, lon2):
+    first, second = radians(float(lat1)), radians(float(lat2))
+    delta = radians(float(lon2) - float(lon1))
+    y = sin(delta) * cos(second)
+    x = cos(first) * sin(second) - sin(first) * cos(second) * cos(delta)
+    return (degrees(atan2(y, x)) + 360) % 360
+
+
+def _destination_point(latitude, longitude, distance_km, bearing):
+    """Return the geographic point reached from a centre at a bearing/distance."""
+    angular = float(distance_km) / 6371.0088
+    angle = radians(float(bearing))
+    lat1 = radians(float(latitude))
+    lon1 = radians(float(longitude))
+    lat2 = asin(sin(lat1) * cos(angular) + cos(lat1) * sin(angular) * cos(angle))
+    lon2 = lon1 + atan2(
+        sin(angle) * sin(angular) * cos(lat1),
+        cos(angular) - sin(lat1) * sin(lat2),
+    )
+    return (
+        Decimal(str(degrees(lat2))).quantize(Decimal("0.0000001")),
+        Decimal(str(((degrees(lon2) + 540) % 360) - 180)).quantize(Decimal("0.0000001")),
+    )
+
+
+def _area_reach_km(area, latitude, longitude):
+    """Interpolate optional diagonal lobes while preserving the base circle."""
+    bearing = _bearing_degrees(area.latitude, area.longitude, latitude, longitude)
+    extensions = (
+        (45, Decimal(area.extension_ne_km)),
+        (135, Decimal(area.extension_se_km)),
+        (225, Decimal(area.extension_sw_km)),
+        (315, Decimal(area.extension_nw_km)),
+    )
+    direction, extension = min(extensions, key=lambda row: abs((bearing - row[0] + 180) % 360 - 180))
+    delta = abs((bearing - direction + 180) % 360 - 180)
+    weight = Decimal(str(max(0.0, 1 - (delta / 45))))
+    return Decimal(area.radius_km) + (extension * weight)
+
+
+def delivery_area_coverage_polygon(area, *, step_degrees=10):
+    """Return a compact customer-safe polygon for the configured radial coverage.
+
+    The server remains authoritative for inclusion checks.  The polygon exists so
+    hosted/POS maps and headless websites can render exactly the same visual guide
+    without reimplementing the diagonal-extension interpolation.
+    """
+    if area.latitude is None or area.longitude is None:
+        return []
+    points = []
+    for bearing in range(0, 360, max(1, int(step_degrees))):
+        probe_lat, probe_lon = _destination_point(area.latitude, area.longitude, 1, bearing)
+        reach = _area_reach_km(area, probe_lat, probe_lon)
+        lat, lon = _destination_point(area.latitude, area.longitude, reach, bearing)
+        points.append({"latitude": str(lat), "longitude": str(lon)})
+    return points
+
+
+def delivery_area_distance_summary(area, origin=None):
+    """Describe area geometry relative to the active delivery base.
+
+    Named-area eligibility is governed by the centre radius/extensions, not the
+    legacy max-distance field on a rate band.  Pricing still uses the precise
+    base-to-destination distance.
+    """
+    if (
+        not origin or origin.latitude is None or origin.longitude is None
+        or area.latitude is None or area.longitude is None
+    ):
+        return {"centre_distance_km": None, "maximum_base_distance_km": None}
+    centre = _haversine_km(origin.latitude, origin.longitude, area.latitude, area.longitude)
+    boundary = delivery_area_coverage_polygon(area)
+    max_distance = max(
+        (_haversine_km(origin.latitude, origin.longitude, row["latitude"], row["longitude"]) for row in boundary),
+        default=centre,
+    )
+    return {
+        "centre_distance_km": centre,
+        "maximum_base_distance_km": max_distance,
+    }
+
+
 def delivery_available(business):
     if not business_has_module(business, "delivery"):
         return False
@@ -58,23 +146,47 @@ def public_delivery_config(business):
     enabled = delivery_available(business)
     areas = []
     if enabled:
-        areas = [
-            {
+        for area in DeliveryArea.raw_objects.filter(
+            business=business, active=True
+        ).select_related("rate_band").order_by("name", "id"):
+            extensions = {
+                "ne": str(area.extension_ne_km), "se": str(area.extension_se_km),
+                "sw": str(area.extension_sw_km), "nw": str(area.extension_nw_km),
+            }
+            has_extensions = any(Decimal(value) > 0 for value in extensions.values())
+            areas.append({
                 "id": area.pk,
                 "code": area.code,
                 "name": area.name,
                 "latitude": str(area.latitude) if area.latitude is not None else None,
                 "longitude": str(area.longitude) if area.longitude is not None else None,
-            }
-            for area in DeliveryArea.raw_objects.filter(
-                business=business, active=True
-            ).order_by("name", "id")
-        ]
+                "radius_km": str(area.radius_km),
+                "coverage_shape": "circle_with_diagonal_extensions" if has_extensions else "circle",
+                "diagonal_extensions_km": extensions,
+                "coverage_polygon": delivery_area_coverage_polygon(area),
+                "pricing": {
+                    "band": area.rate_band.name,
+                    "base_fee": str(area.rate_band.base_fee),
+                    "per_km_fee": str(area.rate_band.per_km_fee),
+                    "minimum_order": str(area.rate_band.minimum_order),
+                    "eta_min_minutes": area.rate_band.eta_min_minutes,
+                    "eta_max_minutes": area.rate_band.eta_max_minutes,
+                    "distance_basis": "delivery_base_to_precise_destination",
+                    "coverage_boundary_basis": "destination_centre_radius",
+                } if area.rate_band_id and area.rate_band.active else None,
+            })
     return {
         "enabled": enabled,
         "quote_required_before_checkout": enabled,
+        "destination_area_supported": enabled,
         "destination_address_required": enabled,
         "destination_coordinates_supported": enabled,
+        # Keep the original discovery fields stable for existing headless clients.
+        "destination_address_validation": "server_geocode_or_map_pin" if enabled else None,
+        "destination_address_flow": "server_geocode_then_map_pin_fallback" if enabled else None,
+        "coverage_shape": "circle" if enabled else None,
+        "coverage_geometry": "radius_with_optional_diagonal_extensions" if enabled else None,
+        "coverage_geometry_version": 1 if enabled else None,
         "areas": areas,
     }
 
@@ -86,10 +198,7 @@ def _default_origin(business):
 
 def _rate_band(business, distance, area=None):
     if area and area.rate_band_id and area.rate_band.active:
-        band = area.rate_band
-        if distance < band.min_distance_km or (band.max_distance_km is not None and distance > band.max_distance_km):
-            raise ValidationError(f"{area.name} is outside its configured delivery distance band.")
-        return band
+        return area.rate_band
     return DeliveryRateBand.raw_objects.filter(
         business=business,
         active=True,
@@ -99,7 +208,137 @@ def _rate_band(business, distance, area=None):
     ).order_by("sort_order", "min_distance_km", "id").first()
 
 
-def _destination(*, business, origin, area_id=None, latitude=None, longitude=None):
+def _geocode_results(address, area=None):
+    """Return cached geocoder matches including a customer-safe display address."""
+    query = ", ".join(part for part in [address.strip(), area.name if area else ""] if part)
+    key = "delivery-geocode-v2:" + hashlib.sha256(query.casefold().encode("utf-8")).hexdigest()
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+    endpoint = getattr(django_settings, "DELIVERY_GEOCODER_URL", "https://nominatim.openstreetmap.org/search")
+    params = urlencode({"q": query, "format": "jsonv2", "limit": 5, "addressdetails": 0})
+    request = Request(
+        f"{endpoint}?{params}",
+        headers={"User-Agent": getattr(django_settings, "DELIVERY_GEOCODER_USER_AGENT", "INPROFIC-delivery/1.0")},
+    )
+    try:
+        with urlopen(request, timeout=getattr(django_settings, "DELIVERY_GEOCODER_TIMEOUT_SECONDS", 4)) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return []
+    results = []
+    for row in payload if isinstance(payload, list) else []:
+        try:
+            lat, lon = Decimal(str(row["lat"])), Decimal(str(row["lon"]))
+        except (InvalidOperation, KeyError, TypeError, ValueError):
+            continue
+        if -90 <= lat <= 90 and -180 <= lon <= 180:
+            results.append({
+                "latitude": lat,
+                "longitude": lon,
+                "address": str(row.get("display_name") or address).strip()[:500],
+            })
+    cache.set(key, results, getattr(django_settings, "DELIVERY_GEOCODER_CACHE_SECONDS", 86400))
+    return results
+
+
+def _geocode_candidates(address, area=None):
+    # Compatibility helper retained for the quote-validation tests/callers.
+    return [(row["latitude"], row["longitude"]) for row in _geocode_results(address, area=area)]
+
+
+def _reverse_geocode(latitude, longitude):
+    key = f"delivery-reverse-geocode:{Decimal(latitude):.6f}:{Decimal(longitude):.6f}"
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+    endpoint = getattr(django_settings, "DELIVERY_REVERSE_GEOCODER_URL", "") or getattr(
+        django_settings, "DELIVERY_GEOCODER_URL", "https://nominatim.openstreetmap.org/search"
+    ).replace("/search", "/reverse")
+    params = urlencode({"lat": str(latitude), "lon": str(longitude), "format": "jsonv2", "zoom": 18, "addressdetails": 0})
+    request = Request(
+        f"{endpoint}?{params}",
+        headers={"User-Agent": getattr(django_settings, "DELIVERY_GEOCODER_USER_AGENT", "INPROFIC-delivery/1.0")},
+    )
+    try:
+        with urlopen(request, timeout=getattr(django_settings, "DELIVERY_GEOCODER_TIMEOUT_SECONDS", 4)) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return ""
+    value = str(payload.get("display_name") or "").strip()[:500] if isinstance(payload, dict) else ""
+    cache.set(key, value, getattr(django_settings, "DELIVERY_GEOCODER_CACHE_SECONDS", 86400))
+    return value
+
+
+def _validate_area_point(area, latitude, longitude):
+    if not area:
+        return
+    if area.latitude is None or area.longitude is None:
+        raise ValidationError(f"{area.name} does not have a configured coverage centre.")
+    zone_distance = _haversine_km(area.latitude, area.longitude, latitude, longitude)
+    permitted_reach = _area_reach_km(area, latitude, longitude)
+    if zone_distance > permitted_reach:
+        raise ValidationError(
+            f"This location is outside {area.name}'s configured delivery coverage. Choose another area or move the map pin."
+        )
+
+
+def resolve_delivery_location(*, business, address="", area_id=None, latitude=None, longitude=None):
+    """Resolve typed address <-> map coordinates without creating a delivery quote.
+
+    This is the synchronization contract used by hosted checkout, POS and headless
+    integrations. Coverage is validated when a named area is supplied, but basket
+    minimums and delivery fees are intentionally not evaluated here.
+    """
+    if not delivery_available(business):
+        raise ValidationError("Delivery location lookup is unavailable for this business.")
+    area = None
+    if area_id:
+        area = DeliveryArea.raw_objects.filter(business=business, pk=area_id, active=True).first()
+        if not area:
+            raise ValidationError("Choose a valid delivery area.")
+    address = (address or "").strip()
+    lat = _decimal(latitude, "destination latitude") if latitude not in (None, "") else None
+    lon = _decimal(longitude, "destination longitude") if longitude not in (None, "") else None
+    if (lat is None) != (lon is None):
+        raise ValidationError("Provide both destination latitude and longitude, or neither.")
+    if lat is not None:
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            raise ValidationError("Destination coordinates are outside the valid range.")
+        _validate_area_point(area, lat, lon)
+        resolved_address = _reverse_geocode(lat, lon)
+        return {
+            "address": resolved_address or address,
+            "latitude": lat,
+            "longitude": lon,
+            "validated_by": "map_pin",
+            "address_resolved": bool(resolved_address),
+            "area_id": area.pk if area else None,
+            "area_name": area.name if area else None,
+        }
+    if not address:
+        raise ValidationError("Enter a delivery address or place the destination pin on the map.")
+    matches = _geocode_results(address, area=area)
+    if area:
+        if area.latitude is None or area.longitude is None:
+            raise ValidationError(f"{area.name} does not have a configured coverage centre.")
+        matches = [row for row in matches if _haversine_km(area.latitude, area.longitude, row["latitude"], row["longitude"]) <= _area_reach_km(area, row["latitude"], row["longitude"])]
+    if not matches:
+        raise ValidationError("We could not locate that address inside the selected delivery area. Enter a more precise address or place the map pin.")
+    match = matches[0]
+    _validate_area_point(area, match["latitude"], match["longitude"])
+    return {
+        "address": match["address"] or address,
+        "latitude": match["latitude"],
+        "longitude": match["longitude"],
+        "validated_by": "geocoded_address",
+        "address_resolved": True,
+        "area_id": area.pk if area else None,
+        "area_name": area.name if area else None,
+    }
+
+
+def _destination(*, business, origin, address, area_id=None, latitude=None, longitude=None, location_source=None):
     area = None
     if area_id:
         area = DeliveryArea.raw_objects.filter(
@@ -107,17 +346,27 @@ def _destination(*, business, origin, area_id=None, latitude=None, longitude=Non
         ).select_related("rate_band").first()
         if not area:
             raise ValidationError("Choose a valid delivery area.")
-        if latitude in (None, ""):
-            latitude = area.latitude
-        if longitude in (None, ""):
-            longitude = area.longitude
     latitude_value = _decimal(latitude, "destination latitude") if latitude not in (None, "") else None
     longitude_value = _decimal(longitude, "destination longitude") if longitude not in (None, "") else None
+    validation_source = (location_source if location_source in {"map_pin", "geocoded_address"} else "map_pin") if latitude_value is not None and longitude_value is not None else "geocoded_address"
     if (latitude_value is None) != (longitude_value is None):
         raise ValidationError("Provide both destination latitude and longitude, or neither.")
     if latitude_value is not None and not (-90 <= latitude_value <= 90 and -180 <= longitude_value <= 180):
         raise ValidationError("Destination coordinates are outside the valid range.")
-    return area, latitude_value, longitude_value
+    if latitude_value is None:
+        candidates = _geocode_candidates(address, area=area)
+        if area and area.latitude is not None and area.longitude is not None:
+            candidates = [
+                (lat, lon) for lat, lon in candidates
+                if _haversine_km(area.latitude, area.longitude, lat, lon) <= _area_reach_km(area, lat, lon)
+            ]
+        if not candidates:
+            raise ValidationError(
+                "We could not locate that address inside the selected delivery area. Enter a more precise address or place the map pin."
+            )
+        latitude_value, longitude_value = candidates[0]
+    _validate_area_point(area, latitude_value, longitude_value)
+    return area, latitude_value, longitude_value, validation_source
 
 
 def _native_quote_data(*, business, origin, area, latitude, longitude, subtotal):
@@ -175,7 +424,16 @@ def _glovo_quote_data(*, account, destination_address, latitude, longitude, subt
 
 
 def _persist_quote(*, business, actor, group_id, selection_source, origin, area, address, latitude, longitude,
-                   subtotal, provider, provider_account, data, expires_at):
+                   subtotal, provider, provider_account, data, expires_at, validation_source, settings):
+    provider_payload = dict(data.get("payload") or {})
+    provider_payload["destination_validation"] = validation_source
+    # Snapshot customer-facing Hybrid policy beside the quote so the final
+    # pre-payment review and headless checkout response cannot drift if the
+    # tenant changes delivery settings after the customer accepts the quote.
+    if settings.default_provider == DeliverySettings.PROVIDER_HYBRID:
+        provider_payload["routing_policy"] = settings.hybrid_routing_policy
+        provider_payload["switch_policy"] = settings.hybrid_switch_policy
+        provider_payload["switch_policy_text"] = settings.customer_switch_policy_text
     return DeliveryQuote.raw_objects.create(
         business=business,
         created_by=actor,
@@ -195,13 +453,13 @@ def _persist_quote(*, business, actor, group_id, selection_source, origin, area,
         provider=provider,
         provider_account=provider_account,
         provider_quote_reference=data.get("provider_reference", ""),
-        provider_payload=data.get("payload", {}),
+        provider_payload=provider_payload,
         expires_at=data.get("expires_at") or expires_at,
     )
 
 
 def create_delivery_quote_options(*, business, subtotal, destination_address, area_id=None, latitude=None, longitude=None,
-                                  actor=None):
+                                  location_source=None, actor=None):
     """Create the delivery methods currently available for one destination.
 
     Hybrid is a routing mode, never a courier. Every persisted option resolves
@@ -220,12 +478,13 @@ def create_delivery_quote_options(*, business, subtotal, destination_address, ar
     origin = _default_origin(business)
     if not origin:
         raise ValidationError("Configure a delivery origin before quoting delivery.")
-    area, lat, lon = _destination(
-        business=business, origin=origin, area_id=area_id, latitude=latitude, longitude=longitude
-    )
-    address = (destination_address or (area.name if area else "")).strip()
+    address = (destination_address or "").strip()
     if not address:
-        raise ValidationError("Enter the delivery address.")
+        raise ValidationError("Enter the precise delivery address.")
+    area, lat, lon, validation_source = _destination(
+        business=business, origin=origin, address=address,
+        area_id=area_id, latitude=latitude, longitude=longitude, location_source=location_source,
+    )
     group_id = uuid.uuid4()
     base_expires = timezone.now() + timezone.timedelta(minutes=settings.quote_valid_minutes)
     options = []
@@ -243,6 +502,7 @@ def create_delivery_quote_options(*, business, subtotal, destination_address, ar
             business=business, actor=actor, group_id=group_id, selection_source=selection_source,
             origin=origin, area=area, address=address, latitude=lat, longitude=lon, subtotal=subtotal,
             provider=DeliverySettings.PROVIDER_INHOUSE, provider_account=None, data=data, expires_at=base_expires,
+            validation_source=validation_source, settings=settings,
         ))
 
     def add_external(selection_source):
@@ -272,6 +532,7 @@ def create_delivery_quote_options(*, business, subtotal, destination_address, ar
             business=business, actor=actor, group_id=group_id, selection_source=selection_source,
             origin=origin, area=area, address=address, latitude=lat, longitude=lon, subtotal=subtotal,
             provider=DeliverySettings.PROVIDER_THIRD_PARTY, provider_account=account, data=data, expires_at=base_expires,
+            validation_source=validation_source, settings=settings,
         ))
 
     if settings.default_provider == DeliverySettings.PROVIDER_INHOUSE:
@@ -327,17 +588,30 @@ def serialize_delivery_quote(quote):
     provider_label = "In-house delivery" if quote.provider == DeliverySettings.PROVIDER_INHOUSE else (
         quote.provider_account.get_provider_code_display() if quote.provider_account_id else "Delivery partner"
     )
+    snapshot = quote.provider_payload or {}
     return {
         "quote_id": str(quote.public_id),
         "quote_group_id": str(quote.quote_group_id),
         "provider": quote.provider,
         "provider_label": provider_label,
+        "selection_source": quote.selection_source,
+        "routing_policy": snapshot.get("routing_policy"),
+        "switch_policy": snapshot.get("switch_policy"),
+        "switch_policy_text": snapshot.get("switch_policy_text", ""),
         "distance_km": str(quote.distance_km),
         "fee": f"{quote.fee:.2f}",
         "total": f"{quote.total:.2f}",
         "eta_min_minutes": quote.eta_min_minutes,
         "eta_max_minutes": quote.eta_max_minutes,
         "expires_at": quote.expires_at.isoformat(),
+        "destination": {
+            "address": quote.destination_address,
+            "latitude": str(quote.destination_latitude) if quote.destination_latitude is not None else None,
+            "longitude": str(quote.destination_longitude) if quote.destination_longitude is not None else None,
+            "area_id": quote.area_id,
+            "area_name": quote.area.name if quote.area_id else None,
+            "validated_by": (quote.provider_payload or {}).get("destination_validation", ""),
+        },
     }
 
 

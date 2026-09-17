@@ -1,7 +1,9 @@
 from decimal import Decimal
 import tempfile
+from unittest.mock import patch
 from django.core.files.base import ContentFile
 from django.test import override_settings
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from core.models import Business
 from inventory.models import FinishedGood, FinishedGoodChannelPrice, ProductCategory
@@ -11,6 +13,9 @@ from .models import (
     DeliveryRateBand, DeliverySettings, StorefrontProduct,
 )
 from .services import accept_intake, create_intake
+from .delivery_services import (
+    _destination, _haversine_km, delivery_area_coverage_polygon, resolve_delivery_location,
+)
 
 
 class CommerceIntakeTests(TestCase):
@@ -151,8 +156,16 @@ class CommerceApiProductTests(TestCase):
         self.assertEqual(row["order_modes"][2]["label"], "Catering / Bulk Order")
         delivery = response.json()["delivery"]
         self.assertTrue(delivery["enabled"])
+        self.assertEqual(delivery["location_url"], f"/api/v1/storefronts/{self.business.slug}/delivery/location")
         self.assertEqual(delivery["quote_url"], f"/api/v1/storefronts/{self.business.slug}/delivery/quote")
-        self.assertEqual(delivery["areas"][0]["id"], self.delivery_area.pk)
+        self.assertEqual(delivery["destination_address_validation"], "server_geocode_or_map_pin")
+        self.assertEqual(delivery["destination_address_flow"], "server_geocode_then_map_pin_fallback")
+        area = delivery["areas"][0]
+        self.assertEqual(area["id"], self.delivery_area.pk)
+        self.assertEqual(area["radius_km"], "5.00")
+        self.assertEqual(area["coverage_shape"], "circle")
+        self.assertEqual(len(area["coverage_polygon"]), 36)
+        self.assertEqual(area["pricing"]["distance_basis"], "delivery_base_to_precise_destination")
 
     def test_product_api_exposes_uploaded_image_as_absolute_url(self):
         # Minimal valid 1x1 transparent GIF.
@@ -170,6 +183,93 @@ class CommerceApiProductTests(TestCase):
         self.assertIn("image", form.fields)
         self.assertNotIn("image_url", form.fields)
         self.assertNotIn("allow_preorder", form.fields)
+
+
+class DeliveryCoverageTests(TestCase):
+    def setUp(self):
+        self.business = Business.objects.create(name="Coverage Store", slug="coverage-store")
+        self.origin = DeliveryOrigin.raw_objects.create(
+            business=self.business, name="Base", address="1 Base Road",
+            latitude="6.4500000", longitude="3.4000000", is_default=True,
+        )
+        self.band = DeliveryRateBand.raw_objects.create(
+            business=self.business, name="Zone pricing", min_distance_km=0, max_distance_km=50,
+            base_fee=500, per_km_fee=100,
+        )
+        self.area = DeliveryArea.raw_objects.create(
+            business=self.business, name="Central Zone", code="central-zone",
+            latitude="6.4500000", longitude="3.4200000", radius_km="1.00",
+            extension_ne_km="1.50", rate_band=self.band,
+        )
+        DeliverySettings.raw_objects.create(business=self.business, enabled=True)
+
+    def test_coverage_polygon_includes_diagonal_extension(self):
+        polygon = delivery_area_coverage_polygon(self.area, step_degrees=45)
+        self.assertEqual(len(polygon), 8)
+        # NE extends farther than the unextended east/south edges.
+        distances = [
+            _haversine_km(self.area.latitude, self.area.longitude, row["latitude"], row["longitude"])
+            for row in polygon
+        ]
+        self.assertGreater(max(distances), Decimal("2.40"))
+        self.assertLess(min(distances), Decimal("1.10"))
+
+    @patch("commerce.delivery_services._geocode_results")
+    def test_location_resolver_moves_typed_address_to_exact_map_point(self, geocode):
+        geocode.return_value = [{
+            "latitude": Decimal("6.4501000"),
+            "longitude": Decimal("3.4210000"),
+            "address": "12 Valid Street, Central Zone",
+        }]
+        result = resolve_delivery_location(
+            business=self.business, address="12 Valid Street", area_id=self.area.pk,
+        )
+        self.assertEqual(result["validated_by"], "geocoded_address")
+        self.assertEqual(result["address"], "12 Valid Street, Central Zone")
+        self.assertEqual(result["latitude"], Decimal("6.4501000"))
+
+    @patch("commerce.delivery_services._reverse_geocode")
+    def test_location_resolver_reverse_geocodes_map_pin_into_address(self, reverse_geocode):
+        reverse_geocode.return_value = "18 Pin Road, Central Zone"
+        result = resolve_delivery_location(
+            business=self.business, area_id=self.area.pk,
+            latitude="6.4501000", longitude="3.4210000",
+        )
+        self.assertEqual(result["validated_by"], "map_pin")
+        self.assertEqual(result["address"], "18 Pin Road, Central Zone")
+        self.assertTrue(result["address_resolved"])
+
+    @patch("commerce.delivery_services._geocode_candidates")
+    def test_typed_address_must_resolve_inside_selected_area(self, geocode):
+        geocode.return_value = [(Decimal("6.4500000"), Decimal("3.4210000"))]
+        area, latitude, longitude, source = _destination(
+            business=self.business, origin=self.origin, address="12 Valid Street", area_id=self.area.pk,
+        )
+        self.assertEqual(area.pk, self.area.pk)
+        self.assertEqual(source, "geocoded_address")
+        self.assertEqual(latitude, Decimal("6.4500000"))
+        self.assertEqual(longitude, Decimal("3.4210000"))
+
+        geocode.return_value = [(Decimal("6.4500000"), Decimal("3.5000000"))]
+        with self.assertRaisesMessage(ValidationError, "could not locate"):
+            _destination(
+                business=self.business, origin=self.origin, address="Unlocatable Street", area_id=self.area.pk,
+            )
+
+    def test_map_pin_is_a_supported_address_fallback_but_still_obeys_coverage(self):
+        area, latitude, longitude, source = _destination(
+            business=self.business, origin=self.origin, address="Landmark near customer", area_id=self.area.pk,
+            latitude="6.4500000", longitude="3.4210000",
+        )
+        self.assertEqual(area.pk, self.area.pk)
+        self.assertEqual(source, "map_pin")
+        self.assertEqual(latitude, Decimal("6.4500000"))
+
+        with self.assertRaisesMessage(ValidationError, "outside Central Zone"):
+            _destination(
+                business=self.business, origin=self.origin, address="Far away", area_id=self.area.pk,
+                latitude="6.4500000", longitude="3.5000000",
+            )
 
 
 class StorefrontTenantLogoTests(TestCase):

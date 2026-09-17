@@ -566,6 +566,57 @@ Delivery remains provider-neutral. INPROFIC owns delivery quotes, delivery fee
 snapshots, assignments, events, proof of delivery and customer tracking.
 Provider accounts, including the seeded Glovo LaaS v2 account, add optional live provider quotes, OAuth parcel dispatch, tracking links and authorized webhook synchronization without making the rest of the system Glovo-specific.
 
+### Delivery coverage geometry and address validation
+
+Named delivery destinations use `DeliveryArea` as the authoritative coverage
+boundary. Each area stores a centre latitude/longitude, a base `radius_km`, and
+optional north-east, south-east, south-west and north-west extensions. The base
+radius forms the normal circular boundary; diagonal extensions interpolate into
+controlled lobes so corridors that do not fit a circle can still be covered
+without turning the delivery model into arbitrary freehand polygons.
+
+For a named destination, the linked `DeliveryRateBand` supplies price/ETA rules
+but **does not decide the area's maximum reach**. Coverage is decided first by
+the area's mapped centre/radius/extensions. The rate band's legacy minimum and
+maximum distance fields remain only for map-only/direct-coordinate quotes that
+do not select a named area. This keeps older integrations working while making
+radius geometry the source of truth for normal destination-area checkout.
+
+The actual customer fee is always based on the validated route distance from the
+active delivery base to the customer's precise destination:
+
+```text
+area centre + radius/extensions -> may this address/pin be served?
+delivery base -> precise validated address/pin -> billable distance
+base fee + (per-km fee * billable distance) -> customer delivery fee
+```
+
+The Delivery dashboard derives the centre distance and approximate farthest
+coverage-edge distance from the active base for operator visibility. Those are
+display diagnostics; they do not replace the precise quote calculation.
+
+Hosted storefront and authenticated POS use the same server quote path. A
+customer/staff user selects a destination area, enters a precise address, and
+INPROFIC first tries to geocode that address. Geocoded coordinates must fall
+inside the selected coverage shape. If the address cannot be located, checkout
+returns an explicit correction message and allows the user to place the exact
+map pin instead. A supplied pin is still validated against the selected area, so
+manual pin fallback cannot bypass delivery coverage.
+
+Headless Commerce receives the same area centre/radius/diagonal values plus a
+server-generated `coverage_polygon`, so external websites can draw the exact
+visual guide without reimplementing INPROFIC's interpolation algorithm. The
+headless website remains responsible only for rendering that guidance, collecting
+the address/pin, proxying the authenticated quote request server-side, and then
+submitting the returned `delivery_quote_id` with checkout. Server validation and
+pricing remain authoritative.
+
+Address geocoding is cached and occurs only during delivery quoting, not during
+normal catalogue/dashboard rendering. Delivery dashboard setup collections are
+materialized once and reused for readiness checks to avoid duplicate configuration
+queries; the radius work therefore does not undo the recent request/query-count
+optimisations.
+
 In-Premise POS is a separate `pos` permission. The system role `pos_operator` has no Dashboard permission and therefore lands directly in the full-page POS, while the same `pos` permission can also be granted as a supplemental per-user override to managers or other staff who should retain their primary role.
 
 

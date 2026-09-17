@@ -4,6 +4,7 @@
   const themeKey = 'inprofic-theme';
   const accentKey = `inprofic-accent:${tenantId}`;
   const backgroundKey = `inprofic-background:${tenantId}`;
+  const darkCanvasKey = `inprofic-dark-canvas:${tenantId}`;
   const configuredAccent = root.dataset.tenantAccent || '#D14900';
   const configuredBackground = root.dataset.tenantBackground || '#050733';
 
@@ -54,7 +55,7 @@
     root.style.setProperty('--tenant-button-contrast', contrast(color));
     document.querySelectorAll('[data-accent-choice]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.accentChoice === chosen)));
   };
-  const applyBackground = preference => {
+  const applyBackground = (preference, useDefaultDarkCanvas = false) => {
     const options = backgroundOptions();
     const chosen = options[preference] ? preference : 'tenant';
     const color = options[chosen];
@@ -64,23 +65,28 @@
     root.dataset.backgroundPreference = chosen;
     root.style.setProperty('--tenant-background', color);
     root.style.setProperty('--tenant-background-contrast', contrast(color));
-    // Keep the selected hue visible on the canvas while cards sit on a deeper
-    // shade. This preserves clear surface hierarchy without turning dark mode
-    // into a near-black page for every palette.
-    // Dark-mode page canvas: increase .14 for a lighter canvas or reduce it
-    // for a darker canvas. Card shades are controlled by the two lines below.
-    root.style.setProperty('--ui-dark-bg', mix(darkBase,'white',.18));
-    root.style.setProperty('--ui-dark-surface', mix(darkBase,'black',.18));
-    root.style.setProperty('--ui-dark-surface-muted', mix(darkBase,'black',.08));
-    root.style.setProperty('--ui-dark-border', mix(darkBase,'white',.28));
+    // Canvas and surface choices are intentionally independent. The fixed
+    // canvas stays neutral while primary cards keep the exact palette colour.
+    root.style.setProperty('--ui-dark-bg', useDefaultDarkCanvas ? 'var(--ui-default-dark-canvas, #111827)' : mix(darkBase,'white',.18));
+    root.style.setProperty('--ui-dark-surface', color);
+    root.style.setProperty('--ui-dark-surface-muted', mix(color,'black',.08));
+    root.style.setProperty('--ui-dark-border', mix(color,'white',.25));
     document.querySelectorAll('[data-background-choice]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.backgroundChoice === chosen)));
+    document.querySelectorAll('[data-dark-canvas-toggle]').forEach(toggle => { toggle.checked = useDefaultDarkCanvas; });
   };
 
   const stored = key => { try { return localStorage.getItem(key); } catch (_) { return null; } };
   const remember = (key, value) => { try { localStorage.setItem(key, value); } catch (_) {} };
+  // Migrate the former palette-based dark option without losing its behavior.
+  if (stored(backgroundKey) === 'defaultDark') {
+    remember(backgroundKey, 'tenant');
+    remember(darkCanvasKey, 'true');
+  }
+  const backgroundPreference = () => stored(backgroundKey) || 'tenant';
+  const usesDefaultDarkCanvas = () => stored(darkCanvasKey) === 'true';
   applyTheme(stored(themeKey) || 'system');
   applyAccent(stored(accentKey) || 'tenant');
-  applyBackground(stored(backgroundKey) || 'tenant');
+  applyBackground(backgroundPreference(), usesDefaultDarkCanvas());
   matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
     if ((stored(themeKey) || 'system') === 'system') applyTheme('system');
   });
@@ -90,7 +96,7 @@
     // after parsing so controls expose the current selection accessibly.
     applyTheme(stored(themeKey) || 'system');
     applyAccent(stored(accentKey) || 'tenant');
-    applyBackground(stored(backgroundKey) || 'tenant');
+    applyBackground(backgroundPreference(), usesDefaultDarkCanvas());
     document.querySelectorAll('[data-theme-choice]').forEach(button => button.addEventListener('click', () => {
       remember(themeKey, button.dataset.themeChoice); applyTheme(button.dataset.themeChoice);
     }));
@@ -105,9 +111,15 @@
       const color = backgroundOptions()[button.dataset.backgroundChoice];
       if (color) button.style.backgroundColor = color;
       button.addEventListener('click', () => {
-        remember(backgroundKey, button.dataset.backgroundChoice); applyBackground(button.dataset.backgroundChoice);
+        remember(backgroundKey, button.dataset.backgroundChoice);
+        applyBackground(button.dataset.backgroundChoice, usesDefaultDarkCanvas());
       });
     });
+    document.querySelectorAll('[data-dark-canvas-toggle]').forEach(toggle => toggle.addEventListener('change', () => {
+      const enabled = toggle.checked;
+      remember(darkCanvasKey, String(enabled));
+      applyBackground(backgroundPreference(), enabled);
+    }));
     document.querySelectorAll('[data-appearance-toggle]').forEach(button => button.addEventListener('click', () => {
       const panel = document.getElementById(button.getAttribute('aria-controls'));
       if (!panel) return;

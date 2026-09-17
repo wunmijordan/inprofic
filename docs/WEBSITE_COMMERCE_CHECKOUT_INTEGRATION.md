@@ -134,15 +134,23 @@ order:
 1. confirm the plan includes Delivery and Commerce;
 2. add an active **Delivery / office base**, place its map pin accurately and
    mark the normal pickup base as default;
-3. add active **Delivery price bands** with non-overlapping distance ranges,
-   base/per-kilometre fees, minimum basket values and customer-facing ETAs;
-4. add active **Delivery destinations / zones** and link them to price bands;
-   zones are convenient choices, while a precise checkout map pin may override
-   the zone centre;
+3. add active **Delivery price bands** with base/per-kilometre fees, minimum
+   basket values and customer-facing ETAs. The band's min/max distance fields
+   are fallback rules for map-only quotes; named destination areas use their
+   own mapped coverage geometry;
+4. add active **Delivery destinations / zones**, link each to a price band, place
+   the centre pin, then drag the radius handle to define its maximum normal
+   coverage. Optional NE/SE/SW/NW handles extend diagonal corridors that a
+   circle cannot cover cleanly;
 5. add active in-house riders, a manual courier, or a configured provider
    plug-in;
 6. open **Delivery → Settings**, choose In-house, External provider or Hybrid,
    review its routing/switch policy, then enable delivery.
+
+For a named area, the radius/extensions decide whether the destination is
+serviceable. The linked price band supplies the base fee, per-kilometre rate,
+minimum order and ETA. The quoted kilometre distance is always measured from
+the delivery base to the customer's precise validated address or map pin.
 
 For Glovo LaaS v2, save the tenant's production or sandbox base URL, client
 credentials, quote/order endpoints and Address Book pickup ID. Register/verify
@@ -183,6 +191,8 @@ GET /api/v1/storefronts/{business_slug}/products
 ```
 
 This read is available only while the tenant’s Commerce and API switches are enabled.
+The `coverage_polygon` below is shortened for readability; the live response returns
+enough ordered boundary points for the website to draw the configured coverage shape.
 
 ```json
 {
@@ -195,8 +205,14 @@ This read is available only while the tenant’s Commerce and API switches are e
   "delivery": {
     "enabled": true,
     "quote_required_before_checkout": true,
+    "destination_area_supported": true,
     "destination_address_required": true,
     "destination_coordinates_supported": true,
+    "destination_address_validation": "server_geocode_or_map_pin",
+    "destination_address_flow": "server_geocode_then_map_pin_fallback",
+    "coverage_shape": "circle",
+    "coverage_geometry": "radius_with_optional_diagonal_extensions",
+    "coverage_geometry_version": 1,
     "quote_url": "/api/v1/storefronts/yourstore/delivery/quote",
     "areas": [
       {
@@ -204,7 +220,25 @@ This read is available only while the tenant’s Commerce and API switches are e
         "code": "victoria-island",
         "name": "Victoria Island",
         "latitude": "6.4281000",
-        "longitude": "3.4219000"
+        "longitude": "3.4219000",
+        "radius_km": "4.50",
+        "coverage_shape": "circle_with_diagonal_extensions",
+        "diagonal_extensions_km": {"ne": "1.50", "se": "0.00", "sw": "0.00", "nw": "0.75"},
+        "coverage_polygon": [
+          {"latitude": "6.4686012", "longitude": "3.4219000"},
+          {"latitude": "6.4659503", "longitude": "3.4437294"},
+          {"latitude": "6.4580421", "longitude": "3.4626450"}
+        ],
+        "pricing": {
+          "band": "Central zone",
+          "base_fee": "500.00",
+          "per_km_fee": "100.00",
+          "minimum_order": "2000.00",
+          "eta_min_minutes": 20,
+          "eta_max_minutes": 45,
+          "distance_basis": "delivery_base_to_precise_destination",
+          "coverage_boundary_basis": "destination_centre_radius"
+        }
       }
     ]
   },
@@ -314,6 +348,38 @@ Read the top-level `delivery` object from the product response on every
 catalogue refresh. Show delivery only when `delivery.enabled` is `true`. Render
 the returned areas instead of copying zone IDs or names into website code.
 
+### 5.1 What the headless website must implement
+
+The website UI should mirror the hosted/POS flow, but INPROFIC remains the
+validation and pricing authority:
+
+1. show the returned destination areas in a selector;
+2. draw each area's `coverage_polygon` on the website map as a visual guide.
+   The polygon already includes the radius and optional diagonal extensions, so
+   the website should **not** recreate INPROFIC's geometry algorithm;
+3. after an area is selected, ask for a **precise delivery address** (building,
+   street, locality and useful landmark);
+4. request a quote first with `area_id + address` and no coordinates. INPROFIC
+   geocodes the address and verifies that the result is inside that area;
+5. if the quote endpoint returns a location error, keep the basket intact and
+   show the returned `detail`. Let the customer correct the address **or** open
+   the website map and place an exact destination pin;
+6. when the customer uses the pin, resend the same address plus the pin's
+   `latitude` and `longitude`. INPROFIC still checks the pin against the selected
+   area boundary;
+7. display the chosen quote fee, distance, ETA and any Hybrid switch-policy text
+   before payment; and
+8. submit only INPROFIC's returned `delivery_quote_id` with checkout. Do not
+   independently calculate or persist a delivery fee.
+
+A basic map implementation can use Leaflet, MapLibre, Google Maps, or another
+map library. The only required geometry input is the returned
+`coverage_polygon`: convert each point to `[latitude, longitude]` (or the
+coordinate order required by the chosen library), draw a non-editable polygon,
+and highlight the currently selected area's polygon. The website may provide
+its own address autocomplete for convenience, but that **does not replace** the
+server quote validation.
+
 After the customer chooses one order mode and completes the basket, calculate
 the candidate subtotal from that mode's current `order_modes[].price` using
 decimal arithmetic. Then request the authoritative delivery options:
@@ -337,10 +403,14 @@ Content-Type: application/json
 Rules:
 
 - `subtotal` and `address` are required;
-- send either an active `area_id`, both coordinates, or an area plus more
-  precise coordinates;
-- when both are supplied, the area keeps its configured price-band rules while
-  the coordinates determine the actual distance;
+- for the normal named-area flow, send `area_id + address` first and omit
+  coordinates so INPROFIC can validate the typed address;
+- send both `latitude` and `longitude` only when the customer deliberately uses
+  the map-pin fallback (or when a trusted first-party location picker already
+  established the exact point);
+- when area and coordinates are supplied, the area keeps its configured pricing
+  rules and coverage boundary while the coordinates determine the precise
+  destination and billable base-to-destination distance;
 - do not expose the API key by calling this endpoint directly from browser
   JavaScript—proxy it through the website server;
 - a basket, order-mode or destination change invalidates the quote;
@@ -361,6 +431,14 @@ top-level `quote_id`:
   "eta_min_minutes": 25,
   "eta_max_minutes": 50,
   "expires_at": "2026-09-16T15:20:00+01:00",
+  "destination": {
+    "address": "12 Example Street, Victoria Island",
+    "latitude": "6.4282500",
+    "longitude": "3.4221500",
+    "area_id": 8,
+    "area_name": "Victoria Island",
+    "validated_by": "geocoded_address"
+  },
   "options": [
     {
       "quote_id": "1e75ac66-66b1-4f31-91ec-2238c7bc0be0",
@@ -385,7 +463,57 @@ replace the returned fee.
 
 If quoting fails, do not create a delivery checkout or start payment. Let the
 customer correct the destination, refresh the basket, choose pickup, or contact
-the tenant.
+the tenant. For address-location failures, the normal recovery is to show the
+exact INPROFIC `detail` message and offer the map-pin fallback.
+
+The returned `destination.validated_by` is `geocoded_address` when INPROFIC
+located the typed address, and `map_pin` when coordinates were supplied as the
+fallback. A website may display this as “Address located” or “Map pin validated.”
+It is informational only; possession of a quote ID is the authoritative proof
+that the destination passed delivery validation.
+
+### Keep delivery details on the final review screen
+
+Do not stop showing delivery details after the quote-selection step. When the customer proceeds to the last review screen before payment, show the accepted delivery method/provider, ETA range, distance, selected delivery area, precise validated destination, validation method (`geocoded_address` or `map_pin`), delivery fee, and `switch_policy_text` when present. Show these beside the product lines, unit prices, subtotal and final total.
+
+After checkout creation, use the checkout response itself as the final source of truth. Delivery checkouts now include an accepted delivery snapshot under `delivery`:
+
+```json
+{
+  "checkout_id": "...",
+  "subtotal": "2000.00",
+  "delivery_fee": "1500.00",
+  "amount": "3500.00",
+  "delivery": {
+    "quote_id": "1e75ac66-66b1-4f31-91ec-2238c7bc0be0",
+    "provider": "inhouse",
+    "provider_label": "In-house delivery",
+    "selection_source": "platform",
+    "routing_policy": "fastest_eta",
+    "switch_policy": "business_absorbs",
+    "switch_policy_text": "The business may switch between in-house delivery and its delivery partner after payment. Your paid delivery fee will not increase; the business absorbs any higher provider cost.",
+    "distance_km": "4.30",
+    "fee": "1500.00",
+    "total": "3500.00",
+    "eta_min_minutes": 25,
+    "eta_max_minutes": 50,
+    "destination": {
+      "address": "12 Example Street, Victoria Island, Lagos, Nigeria",
+      "latitude": "6.4282500",
+      "longitude": "3.4221500",
+      "area_id": 8,
+      "area_name": "Victoria Island",
+      "validated_by": "geocoded_address"
+    }
+  }
+}
+```
+
+The same `delivery` object is returned by `GET /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}`. Use it when restoring a checkout after refresh/login/device state loss. It prevents the website from having to reconstruct delivery review data from local state.
+
+For Hybrid customer-choice, the website first presents `options[]` from the quote endpoint. Once the selected `quote_id` is submitted during checkout creation, the resulting `delivery` object represents the one accepted method and is what should remain visible on the final review/payment screen.
+
+`reservation_expires_at` is the payment/reservation deadline for the created checkout. Treat it separately from the earlier quote's `expires_at`: once a valid quote has been attached to a checkout, render the checkout snapshot and reservation deadline rather than asking the customer to interpret the old quote expiry.
 
 ## 6. Payment discovery
 
@@ -460,6 +588,28 @@ HTTP `201` means created; `200` means an idempotent retry returned the existing 
   "subtotal": "2000.00",
   "delivery_fee": "1500.00",
   "delivery_quote_id": "1e75ac66-66b1-4f31-91ec-2238c7bc0be0",
+  "delivery": {
+    "quote_id": "1e75ac66-66b1-4f31-91ec-2238c7bc0be0",
+    "provider": "inhouse",
+    "provider_label": "In-house delivery",
+    "selection_source": "platform",
+    "routing_policy": null,
+    "switch_policy": null,
+    "switch_policy_text": "",
+    "distance_km": "4.30",
+    "fee": "1500.00",
+    "total": "3500.00",
+    "eta_min_minutes": 25,
+    "eta_max_minutes": 50,
+    "destination": {
+      "address": "12 Example Street, Victoria Island, Lagos, Nigeria",
+      "latitude": "6.4282500",
+      "longitude": "3.4221500",
+      "area_id": 8,
+      "area_name": "Victoria Island",
+      "validated_by": "geocoded_address"
+    }
+  },
   "amount": "3500.00",
   "currency": "NGN",
   "reservation_expires_at": "2026-09-08T15:45:00+01:00",
@@ -486,7 +636,7 @@ HTTP `201` means created; `200` means an idempotent retry returned the existing 
 }
 ```
 
-Save `checkout_id`, amount/currency, external ID and checkout idempotency key in the website database/session before payment.
+Save `checkout_id`, amount/currency, external ID and checkout idempotency key in the website database/session before payment. For a delivery checkout, render the returned `delivery` object on the final review screen and persist only what your website needs for presentation/recovery; INPROFIC remains authoritative when the checkout is fetched again.
 
 If INPROFIC pricing, availability or payable quantity changed after quoting,
 checkout returns an error rather than accepting a mismatched fee. Refresh the
@@ -789,6 +939,9 @@ export const createCheckout = (input, key) =>
 export const startPayment = (checkoutId, input, key) =>
   inprofic(`/checkouts/${checkoutId}/payments`, { method: "POST", body: input, idempotencyKey: key });
 
+export const resolveDeliveryLocation = input =>
+  inprofic("/delivery/location", { method: "POST", body: input });
+
 export const quoteDelivery = input =>
   inprofic("/delivery/quote", { method: "POST", body: input });
 
@@ -805,8 +958,9 @@ The browser calls the website’s own API routes; the website server attaches th
 - [ ] INPROFIC uses HTTPS and correct `ALLOWED_HOSTS`.
 - [ ] `MEDIA_ROOT` is persistent and `/media/` is mapped on PythonAnywhere.
 - [ ] Commerce module, master switch and Headless API are enabled.
-- [ ] Delivery base pin, price bands, destinations and dispatch method are tested before enabling Delivery.
-- [ ] Product response `delivery.enabled`, `areas` and `quote_url` drive the website UI.
+- [ ] Delivery base pin, price bands, destination centres/radii/extensions and dispatch method are tested before enabling Delivery.
+- [ ] Product response `delivery.enabled`, `areas`, `coverage_polygon`, `location_url` and `quote_url` drive the website UI.
+- [ ] The website keeps precise address and map pin synchronized in both directions through its server-side proxy to `delivery/location`, and offers map-pin fallback when INPROFIC cannot locate typed text.
 - [ ] Delivery quote is requested server-side after basket/order-mode selection and refreshed after any basket or destination change.
 - [ ] Customer-choice Hybrid renders the returned options and switch-policy text.
 - [ ] Selected `delivery_quote_id` is included in checkout and returned subtotal, delivery fee and amount are displayed before payment.
@@ -848,3 +1002,7 @@ For every new or migrated website: create `/checkouts`, pay using the checkout U
 ## 17. Delivery rider and storefront-customer boundaries
 
 Delivery Rider is a purpose-specific staff access surface: rider-only users can see and act only on assignments linked to their own active in-house driver record. Delivery alerts reuse the durable Commerce notification transport but support targeted rider recipients. Public storefront customers remain guests by default; optional `StorefrontCustomer` profiles are tenant-scoped, separate from staff users, and store purchase history without making registration a checkout requirement. Hybrid delivery means in-house and the configured provider remain interchangeable per order under the tenant’s routing and customer-visible post-payment switch policy.
+
+## Two-way delivery address/map synchronization
+
+For delivery UI, do not let the address textbox and map pin drift apart. Use `POST /api/v1/storefronts/{business_slug}/delivery/location` in both directions: send `area_id + address` to obtain validated coordinates and move/zoom the map pin; send `area_id + latitude + longitude` to reverse-geocode a manually placed pin and update the address field. Because this endpoint requires `X-INPROFIC-Key`, the browser should call the website's own backend/serverless proxy; that proxy calls INPROFIC and returns only the normalized location result. Never expose the tenant API key in browser JavaScript. Then send the synchronized address, coordinates and returned `location_source` to `/delivery/quote`. Coverage and minimum-order errors returned by INPROFIC should be displayed as red customer-facing validation text. See `COMMERCE_INTEGRATION.md` for the complete payload/response contract.

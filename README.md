@@ -36,9 +36,10 @@ what was borrowed and what was deliberately left out).
   transaction, with a shortage warning you can override.
 - **Reports** — CSV export for stock, procurement, production, sales, plus
   a full JSON backup.
-- **Delivery** — plan-gated delivery setup with in-house riders, true interchangeable Hybrid routing, external
-  providers and a built-in Glovo LaaS v2 plug-in, with live delivery-fee quoting before payment,
-  customer tracking, proof-of-delivery records and delivery timelines.
+- **Delivery** — plan-gated delivery setup with mapped destination centres, radius/diagonal coverage guides,
+  precise-address geocoding with map-pin fallback, in-house riders, true interchangeable Hybrid routing, external
+  providers and a built-in Glovo LaaS v2 plug-in, with live base-to-destination delivery-fee quoting before payment,
+  customer tracking, proof-of-delivery records and delivery timelines across hosted storefront, POS and headless API.
 - **Audit Workspace** — plan-gated read-only cross-module evidence review for
   external auditors, with auditor queries/flags and response tracking for
   admins or permitted audit reviewers.

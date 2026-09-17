@@ -302,6 +302,17 @@ class DeliveryArea(BusinessOwnedModel):
     code = models.SlugField(max_length=80, blank=True, default="")
     latitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    radius_km = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        default=Decimal("5.00"),
+        validators=[MinValueValidator(Decimal("0.10")), MaxValueValidator(Decimal("500.00"))],
+        help_text="Maximum distance from this destination centre that an address may be delivered to.",
+    )
+    extension_ne_km = models.DecimalField(max_digits=8, decimal_places=2, default=0, validators=[MinValueValidator(0), MaxValueValidator(500)])
+    extension_se_km = models.DecimalField(max_digits=8, decimal_places=2, default=0, validators=[MinValueValidator(0), MaxValueValidator(500)])
+    extension_sw_km = models.DecimalField(max_digits=8, decimal_places=2, default=0, validators=[MinValueValidator(0), MaxValueValidator(500)])
+    extension_nw_km = models.DecimalField(max_digits=8, decimal_places=2, default=0, validators=[MinValueValidator(0), MaxValueValidator(500)])
     rate_band = models.ForeignKey(DeliveryRateBand, null=True, blank=True, on_delete=models.PROTECT, related_name="areas")
     active = models.BooleanField(default=True)
     notes = models.CharField(max_length=255, blank=True, default="")

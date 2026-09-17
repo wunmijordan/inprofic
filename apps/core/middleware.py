@@ -148,6 +148,7 @@ EXEMPT_PREFIXES = (
 SUBSCRIPTION_RECOVERY_PREFIXES = (
     "/users/plans",
     "/users/founder/subscriptions",
+    "/users/founder/platform/",
 )
 
 

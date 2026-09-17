@@ -126,14 +126,13 @@
     <form id="basket-form" method="post" action="{% url 'storefront_order' store_business.slug %}" class="px-5 pb-7 pt-5 sm:px-7 sm:pb-8">{% csrf_token %}
       <input type="hidden" name="checkout_key" value="{{ checkout_key }}"><input type="hidden" name="delivery_quote_id" id="delivery-quote-id" value=""><input type="hidden" name="delivery_latitude" id="delivery-latitude" value=""><input type="hidden" name="delivery_longitude" id="delivery-longitude" value=""><input type="hidden" name="catalog_mode" value="{% if order_now_mode %}order_now{% else %}storefront{% endif %}">
       <div id="basket-items" class="divide-y divide-stone-100 rounded-2xl border border-stone-200 bg-white"></div>
-      <p id="basket-mode-error" class="mt-3 hidden rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900" role="alert"></p>
+      <p id="basket-mode-error" class="mt-3 hidden rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold leading-5 text-rose-700" role="alert"></p>
       <div class="mt-6 grid gap-3 sm:grid-cols-2">
         <label class="text-xs font-semibold text-stone-600">Name <span class="text-rose-600">*</span><input required name="customer_name" autocomplete="name" value="{% if storefront_customer %}{{ storefront_customer.name }}{% endif %}" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"></label>
         <label class="text-xs font-semibold text-stone-600">Phone <span class="text-rose-600">*</span><input required name="phone" autocomplete="tel" inputmode="tel" value="{% if storefront_customer %}{{ storefront_customer.phone }}{% endif %}" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"></label>
         <label class="text-xs font-semibold text-stone-600 sm:col-span-2">Email <span class="font-normal text-stone-400">(optional)</span><input name="email" type="email" autocomplete="email" value="{% if storefront_customer %}{{ storefront_customer.email }}{% endif %}" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"></label>
-        <label class="text-xs font-semibold text-stone-600 sm:col-span-2">Delivery destination / contact address<textarea id="checkout-address" name="address" rows="2" autocomplete="street-address" class="mt-1.5 w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100">{% if storefront_customer %}{{ storefront_customer.default_address }}{% endif %}</textarea></label>
       </div>
-      {% if delivery_enabled %}<section class="mt-5 rounded-2xl border border-stone-200 bg-white p-4"><label class="flex cursor-pointer items-start gap-3"><input id="request-delivery" name="request_delivery" type="checkbox" class="mt-1 h-4 w-4 rounded border-stone-300"><span><strong class="block text-sm text-stone-900">Deliver this order</strong><span class="text-xs leading-5 text-stone-500">A live distance-based quote is locked into checkout before payment.</span></span></label><div id="delivery-fields" class="mt-4 hidden"><label class="block text-xs font-semibold text-stone-600">Delivery destination / zone<select id="delivery-area" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal"><option value="">Use map coordinates</option>{% for area in delivery_areas %}<option value="{{ area.pk }}">{{ area.name }}{% if area.rate_band %} · {{ area.rate_band.name }}{% endif %}</option>{% endfor %}</select></label>{% include "commerce/delivery/_location_picker.html" with latitude_selector="#delivery-latitude" longitude_selector="#delivery-longitude" picker_label="delivery destination" %}<div id="delivery-quote-status" class="mt-3 rounded-xl bg-stone-50 px-3 py-2.5 text-xs leading-5 text-stone-500">Choose a destination zone or place the pin on the map, then select an ordering option.</div><div id="delivery-method-options" class="mt-3 hidden space-y-2"></div><div id="delivery-switch-policy" class="mt-3 hidden rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs leading-5 text-sky-900"></div></div></section>{% endif %}
+      {% if delivery_enabled %}<section class="mt-5 rounded-2xl border border-stone-200 bg-white p-4"><label class="flex cursor-pointer items-start gap-3"><input id="request-delivery" name="request_delivery" type="checkbox" class="mt-1 h-4 w-4 rounded border-stone-300"><span><strong class="block text-sm text-stone-900">Deliver this order</strong><span class="text-xs leading-5 text-stone-500">A live distance-based quote is locked into checkout before payment.</span></span></label><div id="delivery-fields" class="mt-4 hidden"><label class="block text-xs font-semibold text-stone-600">Delivery destination / zone<select id="delivery-area" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal"><option value="">Use map coordinates</option>{% for area in delivery_areas %}<option value="{{ area.pk }}">{{ area.name }} · {{ area.radius_km }} km radius{% if area.extension_ne_km or area.extension_se_km or area.extension_sw_km or area.extension_nw_km %} + extended corridors{% endif %}{% if area.rate_band %} · {{ area.rate_band.name }}{% endif %}</option>{% endfor %}</select></label><label class="mt-3 block text-xs font-semibold text-stone-600">Precise delivery address<textarea id="checkout-address" name="address" rows="2" autocomplete="street-address" class="mt-1.5 w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100" placeholder="House or building, street, area and landmark">{% if storefront_customer %}{{ storefront_customer.default_address }}{% endif %}</textarea><span class="mt-1 block text-[11px] font-normal leading-4 text-stone-500">INPROFIC first tries to locate this address inside the selected coverage shape. If it cannot, correct the address or place the map pin at the exact destination.</span></label>{% url 'storefront_delivery_location' store_business.slug as storefront_location_url %}{% include "commerce/delivery/_location_picker.html" with latitude_selector="#delivery-latitude" longitude_selector="#delivery-longitude" area_selector="#delivery-area" address_selector="#checkout-address" resolve_url=storefront_location_url picker_label="delivery destination" %}<div id="delivery-quote-status" class="mt-3 rounded-xl border border-transparent bg-stone-50 px-3 py-2.5 text-xs leading-5 text-stone-500" role="alert">Choose a destination zone and enter the precise address, or place the destination pin.</div><div id="delivery-method-options" class="mt-3 hidden space-y-2"></div><div id="delivery-switch-policy" class="mt-3 hidden rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs leading-5 text-sky-900"></div></div></section>{% endif %}
       <div class="mt-6"><p class="text-xs font-semibold text-stone-600">Choose one ordering option for this basket</p><div class="mt-2 grid gap-2">
         <button type="submit" name="order_mode" value="physical_store" data-checkout-mode="physical_store" class="channel-submit flex items-center justify-between rounded-xl border border-stone-200 bg-white px-3.5 py-3 text-left text-sm shadow-sm transition hover:border-stone-400 disabled:cursor-not-allowed disabled:opacity-45"><span><strong class="block text-stone-900">{{ commerce_channels.physical_store }}</strong><small class="mode-note text-stone-500">{{ storefront_copy.immediate_order }}</small></span><strong class="mode-total shrink-0 text-stone-900"></strong></button>
         <button type="submit" name="order_mode" value="online" data-checkout-mode="online" class="channel-submit flex items-center justify-between rounded-xl border border-stone-200 bg-white px-3.5 py-3 text-left text-sm shadow-sm transition hover:border-stone-400 disabled:cursor-not-allowed disabled:opacity-45"><span><strong class="block text-stone-900">{{ commerce_channels.online }}</strong><small class="mode-note text-stone-500">{% if store_business.uses_production and not p.finished_good.is_purchased_for_resale %}{{ storefront_copy.prepared_order }}{% else %}{{ storefront_copy.immediate_order }}{% endif %}</small></span><strong class="mode-total shrink-0 text-stone-900"></strong></button>
@@ -186,7 +185,7 @@
       const deliveryLongitude = document.getElementById('delivery-longitude');
       const deliveryQuoteId = document.getElementById('delivery-quote-id');
       const deliveryQuoteStatus = document.getElementById('delivery-quote-status'); const deliveryMethodOptions = document.getElementById('delivery-method-options'); const deliverySwitchPolicy = document.getElementById('delivery-switch-policy');
-      let deliveryQuoteSignature = '';
+      let deliveryQuoteSignature = ''; let deliveryLocationSource = '';
       function readOrderHistory() {
         try {
           const value = JSON.parse(localStorage.getItem(historyStorageKey) || '[]');
@@ -293,19 +292,21 @@
           });
           button.disabled = short.length > 0;
           button.querySelector('.mode-total').textContent = `{{ store_business.currency_symbol }}${total.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-          button.querySelector('.mode-note').textContent = short.length ? short.join(' · ') : button.value === 'physical_store' ? '{{ storefront_copy.immediate_order|escapejs }}' : '{% if store_business.uses_production %}{{ storefront_copy.prepared_order|escapejs }}{% else %}{{ storefront_copy.immediate_order|escapejs }}{% endif %}';
+          const modeNote=button.querySelector('.mode-note'); modeNote.textContent = short.length ? short.join(' · ') : button.value === 'physical_store' ? '{{ storefront_copy.immediate_order|escapejs }}' : '{% if store_business.uses_production %}{{ storefront_copy.prepared_order|escapejs }}{% else %}{{ storefront_copy.immediate_order|escapejs }}{% endif %}'; modeNote.classList.toggle('text-rose-700',short.length>0); modeNote.classList.toggle('font-semibold',short.length>0); modeNote.classList.toggle('text-stone-500',short.length===0);
         });
         modeError.textContent = anyAvailable ? '' : 'These products do not share an ordering option. Remove one item or create separate checkouts.';
         modeError.classList.toggle('hidden', anyAvailable);
       }
       function basketSubtotal(mode) { let total = 0; basket.forEach(product => { total += product.quantity * Number(product.prices[mode] || 0); }); return total; }
       function deliverySignature(mode) { return JSON.stringify({mode, area: deliveryArea?.value || '', address: deliveryAddress?.value.trim() || '', latitude: deliveryLatitude?.value || '', longitude: deliveryLongitude?.value || '', items: Array.from(basket.values()).map(p => [p.id, p.quantity, p.prices[mode]])}); }
-      function invalidateDeliveryQuote(message) { if (deliveryQuoteId) deliveryQuoteId.value = ''; deliveryQuoteSignature = ''; if (deliveryMethodOptions) { deliveryMethodOptions.replaceChildren(); deliveryMethodOptions.classList.add('hidden'); } if (deliverySwitchPolicy) { deliverySwitchPolicy.textContent=''; deliverySwitchPolicy.classList.add('hidden'); } if (deliveryQuoteStatus && deliveryToggle?.checked) deliveryQuoteStatus.textContent = message || 'Basket or destination changed. A fresh quote will be calculated at checkout.'; }
+      function setDeliveryStatus(message, isError=false) { if (!deliveryQuoteStatus) return; deliveryQuoteStatus.textContent=message||''; deliveryQuoteStatus.classList.toggle('border-rose-200',isError); deliveryQuoteStatus.classList.toggle('bg-rose-50',isError); deliveryQuoteStatus.classList.toggle('text-rose-700',isError); deliveryQuoteStatus.classList.toggle('font-semibold',isError); deliveryQuoteStatus.classList.toggle('border-transparent',!isError); deliveryQuoteStatus.classList.toggle('bg-stone-50',!isError); deliveryQuoteStatus.classList.toggle('text-stone-500',!isError); }
+      function invalidateDeliveryQuote(message, isError=false) { if (deliveryQuoteId) deliveryQuoteId.value = ''; deliveryQuoteSignature = ''; if (deliveryMethodOptions) { deliveryMethodOptions.replaceChildren(); deliveryMethodOptions.classList.add('hidden'); } if (deliverySwitchPolicy) { deliverySwitchPolicy.textContent=''; deliverySwitchPolicy.classList.add('hidden'); } if (deliveryQuoteStatus && deliveryToggle?.checked) setDeliveryStatus(message || 'Basket or destination changed. A fresh quote will be calculated at checkout.', isError); }
       if (deliveryToggle) deliveryToggle.addEventListener('change', () => { deliveryFields.classList.toggle('hidden', !deliveryToggle.checked); invalidateDeliveryQuote(deliveryToggle.checked ? 'Choose an area and ordering option to get a live quote.' : ''); });
       deliveryArea?.addEventListener('change', () => invalidateDeliveryQuote());
       deliveryAddress?.addEventListener('input', () => invalidateDeliveryQuote());
       deliveryLatitude?.addEventListener('change', () => invalidateDeliveryQuote());
       deliveryLongitude?.addEventListener('change', () => invalidateDeliveryQuote());
+      document.querySelector('[data-location-picker]')?.addEventListener('locationpicker:resolved', event => { if(event.detail?.error){invalidateDeliveryQuote(event.detail.detail||'Location could not be validated.', true);return;} deliveryLocationSource=event.detail?.location_source||event.detail?.validated_by||''; invalidateDeliveryQuote(); });
       function renderBasket() {
         basketItems.replaceChildren();
         basket.forEach(product => {
@@ -313,7 +314,9 @@
           const copy = document.createElement('div'); copy.className = 'min-w-0 flex-1';
           const name = document.createElement('strong'); name.className = 'block truncate text-sm text-stone-900'; name.textContent = product.name;
           const unit = document.createElement('span'); unit.className = 'mt-0.5 block text-xs text-stone-400'; unit.textContent = `Measured in ${product.unit}`;
-          copy.append(name, unit);
+          const priceLine = document.createElement('span'); priceLine.className = 'mt-1 block text-[11px] font-semibold text-stone-600';
+          const labels={physical_store:'Counter',online:'Online',distribution:'Distribution'}; priceLine.textContent=product.modes.map(mode=>`${labels[mode]||mode}: {{ store_business.currency_symbol }}${Number(product.prices[mode]||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} / ${product.unit}`).join(' · ');
+          copy.append(name, unit, priceLine);
           const input = document.createElement('input'); input.type = 'number'; input.inputMode = 'decimal'; input.step = '0.01'; input.min = '0.01'; if (product.max) input.max = product.max; input.value = product.quantity; input.setAttribute('aria-label', `Quantity for ${product.name}`); input.className = 'h-10 w-24 rounded-xl border border-stone-300 px-2.5 text-sm outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100';
           input.addEventListener('input', () => { product.quantity = Number(input.value || 0); invalidateDeliveryQuote(); saveBasket(); refreshModes(); });
           const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'flex h-9 w-9 items-center justify-center rounded-full text-lg text-stone-400 hover:bg-rose-50 hover:text-rose-700'; remove.setAttribute('aria-label', `Remove ${product.name}`); remove.textContent = '×';
@@ -347,11 +350,11 @@
         const signature = deliverySignature(mode);
         if (deliveryQuoteId?.value && deliveryQuoteSignature === signature) return;
         event.preventDefault();
-        if (!deliveryArea?.value && !(deliveryLatitude?.value && deliveryLongitude?.value)) { deliveryQuoteStatus.textContent = 'Choose a destination zone or place the destination pin on the map.'; return; }
-        if (!deliveryAddress?.value.trim()) { deliveryQuoteStatus.textContent = 'Enter the delivery address before continuing.'; deliveryAddress.focus(); return; }
+        if (!deliveryArea?.value && !(deliveryLatitude?.value && deliveryLongitude?.value)) { setDeliveryStatus('Choose a destination zone or place the destination pin on the map.', true); return; }
+        if (!deliveryAddress?.value.trim()) { setDeliveryStatus('Enter the delivery address before continuing.', true); deliveryAddress.focus(); return; }
         submitter.disabled = true;
-        deliveryQuoteStatus.textContent = 'Calculating live delivery distance, fee and ETA…';
-        const payload = new FormData(); payload.append('csrfmiddlewaretoken', basketForm.querySelector('[name="csrfmiddlewaretoken"]').value); payload.append('subtotal', basketSubtotal(mode).toFixed(2)); payload.append('address', deliveryAddress.value.trim()); if (deliveryArea?.value) payload.append('area_id', deliveryArea.value); if (deliveryLatitude?.value && deliveryLongitude?.value) { payload.append('latitude', deliveryLatitude.value); payload.append('longitude', deliveryLongitude.value); }
+        setDeliveryStatus('Calculating live delivery distance, fee and ETA…');
+        const payload = new FormData(); payload.append('csrfmiddlewaretoken', basketForm.querySelector('[name="csrfmiddlewaretoken"]').value); payload.append('subtotal', basketSubtotal(mode).toFixed(2)); payload.append('address', deliveryAddress.value.trim()); if (deliveryArea?.value) payload.append('area_id', deliveryArea.value); if (deliveryLatitude?.value && deliveryLongitude?.value) { payload.append('latitude', deliveryLatitude.value); payload.append('longitude', deliveryLongitude.value); if(deliveryLocationSource)payload.append('location_source',deliveryLocationSource); }
         try {
           const response = await fetch('{% url "storefront_delivery_quote" store_business.slug %}', {method:'POST', body:payload, headers:{Accept:'application/json'}});
           const data = await response.json();
@@ -359,12 +362,13 @@
           if (data.switch_policy_text && deliverySwitchPolicy) { deliverySwitchPolicy.textContent = data.switch_policy_text; deliverySwitchPolicy.classList.remove('hidden'); }
           const useQuote = (option) => {
             deliveryQuoteId.value = option.quote_id; deliveryQuoteSignature = signature;
-            deliveryQuoteStatus.textContent = `${option.provider_label}: {{ store_business.currency_symbol }}${Number(option.fee).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} · ${option.distance_km} km · ETA ${option.eta_min_minutes}–${option.eta_max_minutes} min · total {{ store_business.currency_symbol }}${Number(option.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}. Quote locked — continuing to checkout…`;
+            const validationLabel = option.destination?.validated_by === 'map_pin' ? 'Map pin validated' : 'Address located';
+            setDeliveryStatus(`${validationLabel} · ${option.provider_label}: {{ store_business.currency_symbol }}${Number(option.fee).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} · ${option.distance_km} km · ETA ${option.eta_min_minutes}–${option.eta_max_minutes} min · total {{ store_business.currency_symbol }}${Number(option.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}. Quote locked — continuing to checkout…`);
             submitter.querySelector('.mode-total').textContent = `{{ store_business.currency_symbol }}${Number(option.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
             basketForm.requestSubmit(submitter);
           };
           if (data.selection_required) {
-            deliveryQuoteStatus.textContent = 'Choose how you want this order delivered. Your selected fee is locked before payment.';
+            setDeliveryStatus('Choose how you want this order delivered. Your selected fee is locked before payment.');
             deliveryMethodOptions.replaceChildren(); deliveryMethodOptions.classList.remove('hidden');
             (data.options || []).forEach(option => {
               const button = document.createElement('button'); button.type='button'; button.className='flex w-full items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white px-3 py-3 text-left text-xs hover:border-stone-400';
@@ -374,21 +378,15 @@
             return;
           }
           useQuote(data);
-        } catch (error) { invalidateDeliveryQuote(error.message); } finally { submitter.disabled = false; }
+        } catch (error) { invalidateDeliveryQuote(error.message, true); } finally { submitter.disabled = false; }
       });
       window.addEventListener('pageshow', function (event) {
         if (!event.persisted) return;
         const key = basketForm.querySelector('[name="checkout_key"]');
         if (key) key.value = window.crypto && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
       });
-      dialog.addEventListener('click', event => {
-        const bounds = dialog.getBoundingClientRect();
-        if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close();
-      });
-      historyDialog.addEventListener('click', event => {
-        const bounds = historyDialog.getBoundingClientRect();
-        if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) historyDialog.close();
-      });
+      dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
+      historyDialog.addEventListener('click', event => { if (event.target === historyDialog) historyDialog.close(); });
       restoreBasket();
       renderOrderHistory();
     })();

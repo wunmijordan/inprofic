@@ -17,4 +17,8 @@ urlpatterns = [
     path("plans/payment/webhook/<str:provider>/", views.subscription_payment_webhook, name="subscription_payment_webhook"),
     path("plans/services/add/", views.subscription_add_service, name="subscription_add_service"),
     path("founder/subscriptions/", views.founder_subscriptions, name="founder_subscriptions"),
+    path("founder/platform/business/<int:pk>/", views.founder_platform_business, name="founder_platform_business"),
+    path("founder/platform/business/<int:pk>/delete/", views.founder_platform_business_delete, name="founder_platform_business_delete"),
+    path("founder/platform/user/<int:pk>/", views.founder_platform_user, name="founder_platform_user"),
+    path("founder/platform/user/<int:pk>/delete/", views.founder_platform_user_delete, name="founder_platform_user_delete"),
 ]

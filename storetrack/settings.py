@@ -305,6 +305,18 @@ WEB_PUSH_VAPID_PRIVATE_KEY = os.environ.get("WEB_PUSH_VAPID_PRIVATE_KEY", "").st
 WEB_PUSH_VAPID_SUBJECT = os.environ.get("WEB_PUSH_VAPID_SUBJECT", "").strip()
 WEB_PUSH_TIMEOUT_SECONDS = float(os.environ.get("WEB_PUSH_TIMEOUT_SECONDS", "5"))
 
+# Delivery address lookup is server-side, cached and optional when a customer
+# supplies an exact map pin. Keep the endpoint configurable for a managed
+# geocoder in higher-volume production deployments.
+DELIVERY_GEOCODER_URL = os.environ.get(
+    "DELIVERY_GEOCODER_URL", "https://nominatim.openstreetmap.org/search"
+).strip()
+DELIVERY_GEOCODER_USER_AGENT = os.environ.get(
+    "DELIVERY_GEOCODER_USER_AGENT", "INPROFIC-delivery/1.0"
+).strip()
+DELIVERY_GEOCODER_TIMEOUT_SECONDS = float(os.environ.get("DELIVERY_GEOCODER_TIMEOUT_SECONDS", "4"))
+DELIVERY_GEOCODER_CACHE_SECONDS = int(os.environ.get("DELIVERY_GEOCODER_CACHE_SECONDS", "86400"))
+
 # Auth
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'dashboard'

@@ -17,6 +17,7 @@ from .models import (
 from .services import business_has_module, can_use_commerce_storefront, is_live_tester, seed_business_roles, user_has_permission
 from .subscription_services import (
     apply_subscription_entitlements,
+    apply_subscriptions_entitlements,
     create_payment_request,
     ensure_default_plans,
     grant_founder_lifetime,
@@ -379,6 +380,29 @@ class SubscriptionEntitlementTests(TestCase):
     def test_business_pro_enables_commerce(self):
         self._subscribe("business_pro")
         self.assertTrue(business_has_module(self.business, "commerce"))
+
+    def test_bulk_entitlement_refresh_has_bounded_queries(self):
+        second_business = Business.objects.create(name="Plan Retail", slug="plan-retail")
+        subscriptions = []
+        for business in (self.business, second_business):
+            subscription = BusinessSubscription.objects.create(
+                primary_business=business,
+                plan=self.plans["production"],
+                status=BusinessSubscription.STATUS_TRIAL,
+                trial_ends_at=self.timezone.now() + self.timezone.timedelta(days=30),
+            )
+            SubscriptionService.objects.create(
+                subscription=subscription, business=business, is_primary=True,
+            )
+            subscriptions.append(subscription)
+
+        with CaptureQueriesContext(connection) as queries:
+            apply_subscriptions_entitlements(subscriptions)
+
+        self.assertLessEqual(len(queries), 12)
+        self.assertTrue(BusinessModuleAccess.objects.filter(
+            business=second_business, module="production", enabled=True,
+        ).exists())
 
     def test_expired_subscription_keeps_only_dashboard_module_recovery(self):
         subscription = self._subscribe("production")
@@ -811,6 +835,60 @@ class FounderPaymentSettingsTests(TestCase):
         self.assertTrue(user_has_permission(staff, self.business, "dashboard", "view"))
         self.assertTrue(user_has_permission(staff, self.business, "pos", "view"))
         self.assertTrue(can_use_commerce_storefront(staff, self.business))
+
+
+class FounderPlatformDeletionTests(TestCase):
+    def setUp(self):
+        self.founder = CustomUser.objects.create_superuser(
+            username="deletion-founder", password="safe-password-123", fullname="Deletion Founder"
+        )
+        self.business = Business.objects.create(name="Delete Me Ltd", slug="delete-me-ltd")
+        self.account = CustomUser.objects.create_user(
+            username="delete-me", password="safe-password-123", fullname="Delete Me"
+        )
+        self.client.force_login(self.founder)
+
+    def test_founder_can_preview_and_delete_business(self):
+        url = reverse("founder_platform_business_delete", args=[self.business.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Delete business")
+
+        response = self.client.post(url, {"confirm_delete": "yes"})
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Business.objects.filter(pk=self.business.pk).exists())
+
+    def test_founder_can_delete_another_user_but_not_self(self):
+        delete_url = reverse("founder_platform_user_delete", args=[self.account.pk])
+        response = self.client.post(delete_url, {"confirm_delete": "yes"})
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(CustomUser.objects.filter(pk=self.account.pk).exists())
+
+        self_url = reverse("founder_platform_user_delete", args=[self.founder.pk])
+        response = self.client.post(self_url, {"confirm_delete": "yes"})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(CustomUser.objects.filter(pk=self.founder.pk).exists())
+        self.assertContains(response, "cannot delete the account you are currently using")
+
+    def test_primary_business_with_additional_services_must_be_deleted_last(self):
+        plan = ensure_default_plans()["production"]
+        subscription = BusinessSubscription.objects.create(
+            primary_business=self.business, plan=plan, status=BusinessSubscription.STATUS_ACTIVE,
+        )
+        SubscriptionService.objects.create(
+            subscription=subscription, business=self.business, is_primary=True,
+        )
+        additional = Business.objects.create(name="Additional Branch", slug="additional-branch")
+        SubscriptionService.objects.create(
+            subscription=subscription, business=additional, is_primary=False,
+        )
+
+        url = reverse("founder_platform_business_delete", args=[self.business.pk])
+        response = self.client.post(url, {"confirm_delete": "yes"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Business.objects.filter(pk=self.business.pk).exists())
+        self.assertContains(response, "Delete those businesses first")
 
 
 

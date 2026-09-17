@@ -15,7 +15,10 @@
     @font-face{font-family:Fraunces;src:url('{% static "core/fonts/Fraunces-SemiBold.ttf" %}') format('truetype');font-weight:600 700;font-display:swap}
     body{font-family:Inter,sans-serif;background:#f6f3ee;color:#211d1a}.font-display{font-family:Fraunces,serif}
     .pos-scroll{scrollbar-width:thin;scrollbar-color:#c9c1b7 transparent}.pos-scroll::-webkit-scrollbar{width:7px;height:7px}.pos-scroll::-webkit-scrollbar-thumb{background:#c9c1b7;border-radius:999px}
-    .product-card[data-hidden="true"]{display:none}.cart-row[hidden]{display:none}@media(min-width:1024px){.pos-main{height:calc(100vh - 73px);overflow:hidden}.pos-fill{height:100%}}
+    .product-card[data-hidden="true"]{display:none}.cart-row[hidden]{display:none}
+    dialog::backdrop{background:rgba(20,16,14,.58);backdrop-filter:blur(2px)}
+    @media(min-width:1024px){html,body{height:100%;overflow:hidden}body{display:flex;flex-direction:column}.pos-header{flex:0 0 auto}.pos-main{display:flex;min-height:0;flex:1;flex-direction:column;height:auto;overflow:hidden;width:100%}#pos-form{min-height:0;flex:1;height:auto}.pos-fill{height:auto;min-height:0}}
+    @media print{body.printing-pos-receipt>*:not(#pos-receipt-dialog){display:none!important}body.printing-pos-receipt{display:block!important;height:auto!important;overflow:visible!important;background:#fff!important}body.printing-pos-receipt #pos-receipt-dialog{display:block!important;position:static!important;width:100%!important;max-width:none!important;height:auto!important;max-height:none!important;margin:0!important;box-shadow:none!important;border:0!important}body.printing-pos-receipt #pos-receipt-print-area{max-height:none!important;overflow:visible!important}body.printing-pos-receipt #pos-receipt-dialog .pos-receipt-actions,body.printing-pos-receipt #pos-receipt-close{display:none!important}}
   </style>
 </head>
 <body class="min-h-screen">
@@ -41,13 +44,13 @@
           </div>
         </div>
         {% if module_permissions.commerce.view %}<a href="{% url 'commerce_dashboard' %}" class="hidden rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold transition hover:bg-white/20 sm:block">Commerce</a>{% endif %}
-        {% if module_permissions.dashboard.view %}<a href="{% url 'dashboard' %}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate-900 transition hover:bg-stone-100">Main app</a>{% else %}<a href="{% url 'logout' %}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate-900 transition hover:bg-stone-100">Log out</a>{% endif %}
+        {% if module_permissions.dashboard.view %}<a href="{% url 'dashboard' %}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate-900 transition hover:bg-stone-100">Main App</a>{% else %}<a href="{% url 'logout' %}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate-900 transition hover:bg-stone-100">Log Out</a>{% endif %}
       </div>
     </div>
   </header>
 
   <main class="pos-main mx-auto max-w-7xl px-3 py-4 sm:px-5" data-route="commerce_storefront_pos">
-    {% if messages %}<div class="mb-3 space-y-2">{% for message in messages %}<div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ message }}</div>{% endfor %}</div>{% endif %}
+    {% if messages %}<div class="mb-3 space-y-2">{% for message in messages %}<div class="rounded-xl border px-4 py-3 text-sm {% if 'error' in message.tags %}border-rose-200 bg-rose-50 font-semibold text-rose-800{% else %}border-emerald-200 bg-emerald-50 text-emerald-800{% endif %}" role="alert">{{ message }}</div>{% endfor %}</div>{% endif %}
     {% if pos_error %}<div class="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{{ pos_error }}</div>{% endif %}
     {% if active_checkout and active_payment %}
       <section id="active-pos-payment" data-status-url="{% url 'commerce_storefront_pos_status' active_checkout.public_id %}" class="mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
@@ -87,10 +90,10 @@
             {% if delivery_enabled %}<section class="rounded-xl border border-stone-200 bg-stone-50 p-3">
               <label class="flex cursor-pointer items-center justify-between gap-3"><span><strong class="block text-xs text-stone-800">Arrange delivery</strong><span class="mt-0.5 block text-[11px] leading-4 text-stone-500">Quote the destination and add delivery to the amount collected.</span></span><span class="cf-switch shrink-0"><input id="pos-request-delivery" type="checkbox" name="request_delivery" {% if request.POST.request_delivery == "on" %}checked{% endif %}><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label>
               <div id="pos-delivery-fields" class="mt-3 {% if request.POST.request_delivery != 'on' %}hidden{% endif %} space-y-3 border-t border-stone-200 pt-3">
-                <label class="block text-xs font-semibold text-stone-600">Delivery destination / zone<select id="pos-delivery-area" name="delivery_area" class="mt-1.5 h-10 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal"><option value="">Use map coordinates</option>{% for area in delivery_areas %}<option value="{{ area.pk }}" {% if request.POST.delivery_area == area.pk|stringformat:"s" %}selected{% endif %}>{{ area.name }}{% if area.rate_band %} · {{ area.rate_band.name }}{% endif %}</option>{% endfor %}</select></label>
-                <label class="block text-xs font-semibold text-stone-600">Customer delivery address<textarea id="pos-customer-address" name="customer_address" rows="2" autocomplete="street-address" class="mt-1.5 w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm font-normal" placeholder="Street, landmark and contact location">{{ request.POST.customer_address }}</textarea></label>
-                {% include "commerce/delivery/_location_picker.html" with latitude_selector="#pos-delivery-latitude" longitude_selector="#pos-delivery-longitude" picker_label="customer delivery destination" %}
-                <div id="pos-delivery-quote-status" class="rounded-lg bg-white px-3 py-2 text-[11px] leading-4 text-stone-500" aria-live="polite">The live fee and ETA will be confirmed before payment.</div>
+                <label class="block text-xs font-semibold text-stone-600">Delivery destination / zone<select id="pos-delivery-area" name="delivery_area" class="mt-1.5 h-10 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal"><option value="">Use map coordinates</option>{% for area in delivery_areas %}<option value="{{ area.pk }}" {% if request.POST.delivery_area == area.pk|stringformat:"s" %}selected{% endif %}>{{ area.name }} · {{ area.radius_km }} km radius{% if area.extension_ne_km or area.extension_se_km or area.extension_sw_km or area.extension_nw_km %} + extended corridors{% endif %}{% if area.rate_band %} · {{ area.rate_band.name }}{% endif %}</option>{% endfor %}</select></label>
+                <label class="block text-xs font-semibold text-stone-600">Precise customer delivery address<textarea id="pos-customer-address" name="customer_address" rows="2" autocomplete="street-address" class="mt-1.5 w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm font-normal" placeholder="House or building, street, area and landmark">{{ request.POST.customer_address }}</textarea><span class="mt-1 block text-[11px] font-normal leading-4 text-stone-500">INPROFIC locates this inside the selected zone. Use the map pin when the address is new or difficult to find.</span></label>
+                {% url 'storefront_delivery_location' biz.slug as pos_location_url %}{% include "commerce/delivery/_location_picker.html" with latitude_selector="#pos-delivery-latitude" longitude_selector="#pos-delivery-longitude" area_selector="#pos-delivery-area" address_selector="#pos-customer-address" resolve_url=pos_location_url picker_label="customer delivery destination" %}
+                <div id="pos-delivery-quote-status" class="rounded-lg border border-transparent bg-white px-3 py-2 text-[11px] leading-4 text-stone-500" aria-live="polite" role="alert">The live fee and ETA will be confirmed before payment.</div>
                 <div id="pos-delivery-method-options" class="hidden space-y-2"></div>
                 <div id="pos-delivery-switch-policy" class="hidden rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] leading-4 text-sky-900"></div>
               </div>
@@ -104,7 +107,30 @@
     </form>
   </main>
 
+<dialog id="pos-review-dialog" class="m-auto w-[min(96vw,46rem)] overflow-hidden rounded-3xl border-0 bg-white p-0 shadow-2xl">
+  <div class="flex items-center justify-between border-b border-stone-200 px-5 py-4"><div><p class="text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">Before anything is recorded</p><h2 class="font-display text-xl font-semibold text-stone-900">Review order</h2></div><button type="button" id="pos-review-close" class="flex h-9 w-9 items-center justify-center rounded-full border border-stone-200 bg-white text-xl text-stone-500" aria-label="Close order preview">×</button></div>
+  <div class="max-h-[72dvh] overflow-y-auto px-5 py-4">
+    <div id="pos-review-items" class="divide-y divide-stone-100 rounded-2xl border border-stone-200"></div>
+    <div class="mt-4 grid gap-3 rounded-2xl bg-stone-50 p-4 text-sm sm:grid-cols-2"><div><p class="text-xs text-stone-400">Customer</p><p id="pos-review-customer" class="mt-1 font-semibold text-stone-800"></p></div><div><p class="text-xs text-stone-400">Payment</p><p id="pos-review-payment" class="mt-1 font-semibold text-stone-800"></p></div><div><p class="text-xs text-stone-400">Service</p><p id="pos-review-service" class="mt-1 font-semibold text-stone-800"></p></div><div id="pos-review-address-wrap" class="hidden"><p class="text-xs text-stone-400">Delivery address</p><p id="pos-review-address" class="mt-1 font-semibold text-stone-800"></p></div></div>
+    <div class="mt-4 space-y-2 rounded-2xl border border-stone-200 p-4 text-sm"><div class="flex justify-between gap-4"><span class="text-stone-500">Products subtotal</span><strong id="pos-review-subtotal"></strong></div><div id="pos-review-delivery-row" class="hidden flex justify-between gap-4"><span class="text-stone-500">Delivery fee</span><strong id="pos-review-delivery"></strong></div><div class="flex justify-between gap-4 border-t border-stone-200 pt-3 text-base"><span class="font-semibold">Total to collect</span><strong id="pos-review-total" class="text-[#8f172d]"></strong></div></div>
+    <p class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">Confirming will create the checkout and start/record the selected payment flow. Use Back if anything needs correcting.</p>
+  </div>
+  <div class="flex gap-2 border-t border-stone-200 bg-white px-5 py-4"><button type="button" id="pos-review-back" class="flex-1 rounded-xl border border-stone-300 px-4 py-3 text-sm font-semibold text-stone-700">Back</button><button type="button" id="pos-review-confirm" class="flex-1 rounded-xl bg-[#D14900] px-4 py-3 text-sm font-bold text-white">Confirm order</button></div>
+</dialog>
+
+<dialog id="pos-receipt-dialog" class="m-auto w-[min(96vw,46rem)] overflow-hidden rounded-3xl border-0 bg-white p-0 shadow-2xl">
+  <div class="flex items-center justify-between border-b border-stone-200 bg-white px-5 py-4"><div><p class="text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">Completed sale</p><h2 class="font-display text-xl font-semibold text-stone-900">Receipt</h2></div><button type="button" id="pos-receipt-close" class="flex h-9 w-9 items-center justify-center rounded-full border border-stone-200 bg-white text-xl text-stone-500" aria-label="Close receipt">×</button></div>
+  <div class="max-h-[72dvh] overflow-y-auto px-5 py-5" id="pos-receipt-print-area">
+    <div class="flex flex-wrap items-start justify-between gap-4 border-b border-stone-100 pb-4"><div><p class="text-[10px] font-bold uppercase tracking-[.18em] text-stone-400">Payment receipt</p><h3 class="mt-1 font-display text-2xl font-semibold">{{ biz.name }}</h3><p id="pos-receipt-id" class="mt-1 text-xs text-stone-500"></p></div><span class="rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-bold text-emerald-700">Payment confirmed</span></div>
+    <div class="grid gap-3 border-b border-stone-100 py-4 text-sm sm:grid-cols-2"><div><p class="text-xs text-stone-400">Customer</p><p id="pos-receipt-customer" class="mt-1 font-semibold"></p><p id="pos-receipt-contact" class="text-xs text-stone-500"></p></div><div class="sm:text-right"><p class="text-xs text-stone-400">Verified</p><p id="pos-receipt-verified" class="mt-1 font-semibold"></p><p id="pos-receipt-method" class="text-xs text-stone-500"></p></div></div>
+    <div id="pos-receipt-items" class="divide-y divide-stone-100"></div>
+    <div class="border-t border-stone-100 pt-4"><div class="space-y-2 rounded-2xl bg-stone-50 p-4 text-sm"><div class="flex justify-between gap-4"><span class="text-stone-500">Products subtotal</span><strong id="pos-receipt-subtotal"></strong></div><div id="pos-receipt-delivery-row" class="hidden flex justify-between gap-4"><span class="text-stone-500">Delivery fee</span><strong id="pos-receipt-delivery"></strong></div><div class="flex justify-between gap-4 border-t border-stone-200 pt-3 text-base"><span class="font-semibold">Amount received</span><strong id="pos-receipt-total"></strong></div></div><div class="mt-4"><p class="text-xs text-stone-400">Payment reference</p><p id="pos-receipt-reference" class="mt-1 break-all text-sm font-semibold text-stone-700"></p></div></div>
+  </div>
+  <div class="pos-receipt-actions flex gap-2 border-t border-stone-200 bg-white px-5 py-4"><button type="button" id="pos-receipt-done" class="flex-1 rounded-xl border border-stone-300 px-4 py-3 text-sm font-semibold text-stone-700">Done</button><button type="button" id="pos-receipt-print" class="flex-1 rounded-xl bg-[#D14900] px-4 py-3 text-sm font-bold text-white">Print receipt</button></div>
+</dialog>
+
 {{ biz.currency_symbol|default:'₦'|json_script:"pos-currency-value" }}
+{{ completed_receipt|json_script:"pos-completed-receipt" }}
 <script>
 (() => {
   const search = document.getElementById('pos-search');
@@ -130,67 +156,80 @@
   const deliveryQuoteStatus = document.getElementById('pos-delivery-quote-status');
   const deliveryMethodOptions = document.getElementById('pos-delivery-method-options');
   const deliverySwitchPolicy = document.getElementById('pos-delivery-switch-policy');
+  const reviewDialog = document.getElementById('pos-review-dialog');
+  const receiptDialog = document.getElementById('pos-receipt-dialog');
   let basketSubtotal = 0;
   let deliveryFee = 0;
   let deliveryQuoteSignature = '';
-  function invalidateDeliveryQuote(message){
-    if(deliveryQuoteId)deliveryQuoteId.value=''; deliveryQuoteSignature=''; deliveryFee=0;
-    if(deliveryMethodOptions){deliveryMethodOptions.replaceChildren();deliveryMethodOptions.classList.add('hidden');}
-    if(deliverySwitchPolicy){deliverySwitchPolicy.textContent='';deliverySwitchPolicy.classList.add('hidden');}
-    if(deliveryQuoteStatus&&deliveryToggle?.checked)deliveryQuoteStatus.textContent=message||'Basket or destination changed. The live quote will refresh before payment.';
-    totalNode.textContent=money(basketSubtotal);
+  let deliveryLocationSource = '';
+  let finalSubmit = false;
+
+  const selectedItems = () => cards.map(card => {
+    const qty = Number(card.querySelector('[data-qty]')?.value || 0);
+    if(qty <= 0) return null;
+    const price = Number(card.dataset.price || 0);
+    return {name:card.querySelector('h3')?.textContent.trim() || 'Product', quantity:qty, unit_price:price, line_total:qty*price};
+  }).filter(Boolean);
+
+  function renderReview(){
+    const items=selectedItems(), list=document.getElementById('pos-review-items');list.replaceChildren();
+    items.forEach(item=>{const row=document.createElement('div');row.className='flex items-start justify-between gap-4 px-4 py-3 text-sm';const left=document.createElement('div');const name=document.createElement('p');name.className='font-semibold text-stone-800';name.textContent=item.name;const meta=document.createElement('p');meta.className='mt-1 text-xs text-stone-500';meta.textContent=`${item.quantity} × ${money(item.unit_price)}`;left.append(name,meta);const total=document.createElement('strong');total.textContent=money(item.line_total);row.append(left,total);list.append(row);});
+    const customer=form.elements.customer_name?.value?.trim()||'Walk-in Customer';const phone=form.elements.customer_phone?.value?.trim()||'';const email=form.elements.customer_email?.value?.trim()||'';document.getElementById('pos-review-customer').textContent=[customer,phone,email].filter(Boolean).join(' · ');
+    const payment=form.querySelector('[name="method"]:checked');document.getElementById('pos-review-payment').textContent=payment?.closest('label')?.querySelector('.font-medium')?.textContent?.trim()||payment?.value||'—';
+    const service=form.querySelector('[name="service_mode"]:checked');const reference=form.elements.table_reference?.value?.trim()||'';document.getElementById('pos-review-service').textContent=[deliveryToggle?.checked?'Delivery':(service?.closest('label')?.textContent?.trim()||service?.value||'Counter sale'),reference].filter(Boolean).join(' · ');
+    const addressWrap=document.getElementById('pos-review-address-wrap');addressWrap.classList.toggle('hidden',!deliveryToggle?.checked);const zone=deliveryArea?.selectedOptions?.[0]?.value?deliveryArea.selectedOptions[0].textContent.trim():'';document.getElementById('pos-review-address').textContent=[zone,deliveryAddress?.value.trim()||''].filter(Boolean).join(' · ')||'—';
+    document.getElementById('pos-review-subtotal').textContent=money(basketSubtotal);const deliveryRow=document.getElementById('pos-review-delivery-row');deliveryRow.classList.toggle('hidden',!deliveryToggle?.checked);document.getElementById('pos-review-delivery').textContent=money(deliveryFee);document.getElementById('pos-review-total').textContent=money(basketSubtotal+deliveryFee);
   }
-  function renderCart(){
-    cartLines.innerHTML=''; let total=0,count=0;
-    cards.forEach(card => {
-      const input=card.querySelector('[data-qty]'); const qty=Number(input.value||0); if(qty<=0)return;
-      const price=Number(card.dataset.price||0); const name=card.querySelector('h3').textContent.trim(); const id=card.dataset.product; count++; total += qty*price;
-      const row=document.createElement('div'); row.className='flex items-center gap-2 rounded-xl border border-stone-200 p-2.5';
-      row.innerHTML=`<div class="min-w-0 flex-1"><div class="truncate text-xs font-semibold"></div><div class="mt-0.5 text-[11px] text-stone-500">${money(price)} each</div></div><button type="button" class="h-8 w-8 rounded-lg border text-sm" data-cart-dec="${id}" aria-label="Reduce quantity">−</button><span class="w-10 text-center font-mono text-xs">${qty}</span><button type="button" class="h-8 w-8 rounded-lg border text-sm" data-cart-inc="${id}" aria-label="Increase quantity">+</button>`;
-      row.querySelector('.truncate').textContent=name; cartLines.appendChild(row);
-    });
-    basketSubtotal=total; empty.hidden=count>0; countNode.textContent=count; invalidateDeliveryQuote(); totalNode.textContent=money(total);
+  function openReview(){if(!reviewDialog)return;renderReview();if(!reviewDialog.open)reviewDialog.showModal();}
+  function closeReview(){if(reviewDialog?.open)reviewDialog.close();}
+  document.getElementById('pos-review-close')?.addEventListener('click',closeReview);document.getElementById('pos-review-back')?.addEventListener('click',closeReview);reviewDialog?.addEventListener('click',event=>{if(event.target===reviewDialog)closeReview();});
+  document.getElementById('pos-review-confirm')?.addEventListener('click',()=>{if(!form.reportValidity()){finalSubmit=false;closeReview();return;}finalSubmit=true;closeReview();checkoutButton.disabled=true;form.requestSubmit(checkoutButton);});
+
+  function renderReceipt(data){
+    if(!data||!receiptDialog)return;
+    document.getElementById('pos-receipt-id').textContent=`Receipt ${data.receipt_id||''}`;
+    document.getElementById('pos-receipt-customer').textContent=data.customer?.name||'Customer';
+    document.getElementById('pos-receipt-contact').textContent=[data.customer?.phone,data.customer?.email].filter(Boolean).join(' · ');
+    document.getElementById('pos-receipt-verified').textContent=data.verified_at?new Date(data.verified_at).toLocaleString():'—';
+    document.getElementById('pos-receipt-method').textContent=data.payment?.method_label||data.payment?.method||'';
+    const items=document.getElementById('pos-receipt-items');items.replaceChildren();(data.items||[]).forEach(item=>{const row=document.createElement('div');row.className='flex items-start justify-between gap-4 py-3 text-sm';const left=document.createElement('div');const name=document.createElement('p');name.className='font-semibold text-stone-800';name.textContent=item.name;const meta=document.createElement('p');meta.className='mt-1 text-xs text-stone-500';meta.textContent=`${item.quantity} × ${money(item.unit_price)}`;left.append(name,meta);const total=document.createElement('strong');total.textContent=money(item.line_total);row.append(left,total);items.append(row);});
+    if(!(data.items||[]).length){const empty=document.createElement('p');empty.className='py-4 text-sm text-stone-500';empty.textContent='No line-item detail is attached to this receipt.';items.append(empty);}
+    document.getElementById('pos-receipt-subtotal').textContent=money(data.subtotal);const fee=Number(data.delivery_fee||0);const feeRow=document.getElementById('pos-receipt-delivery-row');feeRow.classList.toggle('hidden',fee<=0);document.getElementById('pos-receipt-delivery').textContent=money(fee);document.getElementById('pos-receipt-total').textContent=money(data.total||data.payment?.amount);document.getElementById('pos-receipt-reference').textContent=data.payment?.reference||'—';
+    if(!receiptDialog.open)receiptDialog.showModal();
   }
-  function change(id, direction){ const input=document.querySelector(`[data-qty="${id}"]`); if(!input)return; const card=input.closest('.product-card'); const min=Math.max(Number(card.dataset.min||1),0.01); const current=Number(input.value||0); input.value=direction>0 ? (current>0?current+1:min) : (current<=min?0:Math.max(min,current-1)); input.dispatchEvent(new Event('change',{bubbles:true})); }
-  document.addEventListener('click', e => { const add=e.target.closest('[data-add]'); if(add){change(add.dataset.add,1);return;} const inc=e.target.closest('[data-cart-inc]'); if(inc){change(inc.dataset.cartInc,1);return;} const dec=e.target.closest('[data-cart-dec]'); if(dec){change(dec.dataset.cartDec,-1);} });
-  document.querySelectorAll('[data-qty]').forEach(i => i.addEventListener('change',renderCart));
-  document.getElementById('clear-cart')?.addEventListener('click',()=>{document.querySelectorAll('[data-qty]').forEach(i=>i.value=0);renderCart();});
-  function filterProducts(){const q=search?.value.trim().toLowerCase()||'';let visible=0;cards.forEach(c=>{const hideText=q&&!c.dataset.name.includes(q);const hideCategory=activeCategory!=='all'&&c.dataset.category!==activeCategory;const hide=hideText||hideCategory;c.dataset.hidden=hide?'true':'false';if(!hide)visible++;});visibleNode.textContent=visible;}
-  search?.addEventListener('input',filterProducts);
-  categoryButtons.forEach(button=>button.addEventListener('click',()=>{activeCategory=button.dataset.posCategory;categoryButtons.forEach(b=>{const active=b===button;b.setAttribute('aria-pressed',active?'true':'false');b.classList.toggle('bg-stone-900',active);b.classList.toggle('text-white',active);b.classList.toggle('bg-white',!active);b.classList.toggle('text-stone-600',!active);});filterProducts();}));
-  deliveryToggle?.addEventListener('change',()=>{
-    deliveryFields.classList.toggle('hidden',!deliveryToggle.checked);
-    if(!deliveryToggle.checked){const selected=document.querySelector('[name="service_mode"]:checked');if(selected?.value==='delivery'){document.querySelector('[name="service_mode"]:not([value="delivery"])')?.click();}}
-    invalidateDeliveryQuote(deliveryToggle.checked?'Enter the destination; the live quote will be confirmed before payment.':'');
-  });
-  document.querySelectorAll('[name="service_mode"]').forEach(input=>input.addEventListener('change',()=>{if(input.checked&&input.value==='delivery'&&deliveryToggle&&!deliveryToggle.checked){deliveryToggle.checked=true;deliveryToggle.dispatchEvent(new Event('change'));}}));
-  deliveryArea?.addEventListener('change',()=>invalidateDeliveryQuote());
-  deliveryAddress?.addEventListener('input',()=>invalidateDeliveryQuote());
-  deliveryLatitude?.addEventListener('change',()=>invalidateDeliveryQuote());
-  deliveryLongitude?.addEventListener('change',()=>invalidateDeliveryQuote());
+  window.INPROFICOpenPosReceipt=renderReceipt;
+  function closeReceipt(){if(receiptDialog?.open)receiptDialog.close();const url=new URL(window.location.href);url.searchParams.delete('receipt');url.searchParams.delete('checkout');history.replaceState({},'',url.pathname+url.search);document.getElementById('active-pos-payment')?.remove();}
+  document.getElementById('pos-receipt-close')?.addEventListener('click',closeReceipt);document.getElementById('pos-receipt-done')?.addEventListener('click',closeReceipt);receiptDialog?.addEventListener('click',event=>{if(event.target===receiptDialog)closeReceipt();});
+  document.getElementById('pos-receipt-print')?.addEventListener('click',()=>{document.body.classList.add('printing-pos-receipt');window.print();setTimeout(()=>document.body.classList.remove('printing-pos-receipt'),250);});window.addEventListener('afterprint',()=>document.body.classList.remove('printing-pos-receipt'));
+
+  function setDeliveryStatus(message,isError=false){if(!deliveryQuoteStatus)return;deliveryQuoteStatus.textContent=message||'';deliveryQuoteStatus.classList.toggle('border-rose-200',isError);deliveryQuoteStatus.classList.toggle('bg-rose-50',isError);deliveryQuoteStatus.classList.toggle('text-rose-700',isError);deliveryQuoteStatus.classList.toggle('font-semibold',isError);deliveryQuoteStatus.classList.toggle('border-transparent',!isError);deliveryQuoteStatus.classList.toggle('bg-white',!isError);deliveryQuoteStatus.classList.toggle('text-stone-500',!isError);}
+  function invalidateDeliveryQuote(message){if(deliveryQuoteId)deliveryQuoteId.value='';deliveryQuoteSignature='';deliveryFee=0;if(deliveryMethodOptions){deliveryMethodOptions.replaceChildren();deliveryMethodOptions.classList.add('hidden');}if(deliverySwitchPolicy){deliverySwitchPolicy.textContent='';deliverySwitchPolicy.classList.add('hidden');}if(deliveryQuoteStatus&&deliveryToggle?.checked)setDeliveryStatus(message||'Basket or destination changed. The live quote will refresh before payment.');totalNode.textContent=money(basketSubtotal);}
+  function renderCart(){cartLines.innerHTML='';let total=0,count=0;cards.forEach(card=>{const input=card.querySelector('[data-qty]');const qty=Number(input.value||0);if(qty<=0)return;const price=Number(card.dataset.price||0);const name=card.querySelector('h3').textContent.trim();const id=card.dataset.product;count++;total+=qty*price;const row=document.createElement('div');row.className='flex items-center gap-2 rounded-xl border border-stone-200 p-2.5';row.innerHTML=`<div class="min-w-0 flex-1"><div class="truncate text-xs font-semibold"></div><div class="mt-0.5 text-[11px] text-stone-500">${money(price)} each</div></div><button type="button" class="h-8 w-8 rounded-lg border text-sm" data-cart-dec="${id}" aria-label="Reduce quantity">−</button><span class="w-10 text-center font-mono text-xs">${qty}</span><button type="button" class="h-8 w-8 rounded-lg border text-sm" data-cart-inc="${id}" aria-label="Increase quantity">+</button>`;row.querySelector('.truncate').textContent=name;cartLines.appendChild(row);});basketSubtotal=total;empty.hidden=count>0;countNode.textContent=count;invalidateDeliveryQuote();totalNode.textContent=money(total);}
+  function change(id,direction){const input=document.querySelector(`[data-qty="${id}"]`);if(!input)return;const card=input.closest('.product-card');const min=Math.max(Number(card.dataset.min||1),0.01);const current=Number(input.value||0);input.value=direction>0?(current>0?current+1:min):(current<=min?0:Math.max(min,current-1));input.dispatchEvent(new Event('change',{bubbles:true}));}
+  document.addEventListener('click',e=>{const add=e.target.closest('[data-add]');if(add){change(add.dataset.add,1);return;}const inc=e.target.closest('[data-cart-inc]');if(inc){change(inc.dataset.cartInc,1);return;}const dec=e.target.closest('[data-cart-dec]');if(dec)change(dec.dataset.cartDec,-1);});
+  document.querySelectorAll('[data-qty]').forEach(i=>i.addEventListener('change',renderCart));document.getElementById('clear-cart')?.addEventListener('click',()=>{document.querySelectorAll('[data-qty]').forEach(i=>i.value=0);renderCart();});
+  function filterProducts(){const q=search?.value.trim().toLowerCase()||'';let visible=0;cards.forEach(c=>{const hideText=q&&!c.dataset.name.includes(q);const hideCategory=activeCategory!=='all'&&c.dataset.category!==activeCategory;const hide=hideText||hideCategory;c.dataset.hidden=hide?'true':'false';if(!hide)visible++;});visibleNode.textContent=visible;}search?.addEventListener('input',filterProducts);categoryButtons.forEach(button=>button.addEventListener('click',()=>{activeCategory=button.dataset.posCategory;categoryButtons.forEach(b=>{const active=b===button;b.setAttribute('aria-pressed',active?'true':'false');b.classList.toggle('bg-stone-900',active);b.classList.toggle('text-white',active);b.classList.toggle('bg-white',!active);b.classList.toggle('text-stone-600',!active);});filterProducts();}));
+  deliveryToggle?.addEventListener('change',()=>{deliveryFields.classList.toggle('hidden',!deliveryToggle.checked);if(!deliveryToggle.checked){const selected=document.querySelector('[name="service_mode"]:checked');if(selected?.value==='delivery')document.querySelector('[name="service_mode"]:not([value="delivery"])')?.click();}invalidateDeliveryQuote(deliveryToggle.checked?'Enter the destination; the live quote will be confirmed before payment.':'');});
+  document.querySelectorAll('[name="service_mode"]').forEach(input=>input.addEventListener('change',()=>{if(input.checked&&input.value==='delivery'&&deliveryToggle&&!deliveryToggle.checked){deliveryToggle.checked=true;deliveryToggle.dispatchEvent(new Event('change'));}}));deliveryArea?.addEventListener('change',()=>invalidateDeliveryQuote());deliveryAddress?.addEventListener('input',()=>invalidateDeliveryQuote());deliveryLatitude?.addEventListener('change',()=>invalidateDeliveryQuote());deliveryLongitude?.addEventListener('change',()=>invalidateDeliveryQuote());document.querySelector('[data-location-picker]')?.addEventListener('locationpicker:resolved',event=>{if(event.detail?.error){invalidateDeliveryQuote();setDeliveryStatus(event.detail.detail||'Location could not be validated.',true);return;}deliveryLocationSource=event.detail?.location_source||event.detail?.validated_by||'';invalidateDeliveryQuote();});
   function deliverySignature(){return JSON.stringify({subtotal:basketSubtotal.toFixed(2),area:deliveryArea?.value||'',address:deliveryAddress?.value.trim()||'',latitude:deliveryLatitude?.value||'',longitude:deliveryLongitude?.value||''});}
   form.addEventListener('submit',async event=>{
-    if(!deliveryToggle?.checked){if(deliveryQuoteId)deliveryQuoteId.value='';return;}
-    const signature=deliverySignature();
-    if(deliveryQuoteId?.value&&deliveryQuoteSignature===signature)return;
+    if(finalSubmit)return;
     event.preventDefault();
-    if(basketSubtotal<=0){deliveryQuoteStatus.textContent='Add at least one product before requesting delivery.';return;}
-    if(!deliveryAddress?.value.trim()){deliveryQuoteStatus.textContent='Enter the customer delivery address.';deliveryAddress.focus();return;}
-    if(!deliveryArea?.value&&!(deliveryLatitude?.value&&deliveryLongitude?.value)){deliveryQuoteStatus.textContent='Choose a destination zone or place the destination pin on the map.';return;}
-    checkoutButton.disabled=true;deliveryQuoteStatus.textContent='Calculating the live delivery fee and ETA…';
-    const payload=new FormData();payload.append('csrfmiddlewaretoken',form.querySelector('[name="csrfmiddlewaretoken"]').value);payload.append('subtotal',basketSubtotal.toFixed(2));payload.append('address',deliveryAddress.value.trim());if(deliveryArea?.value)payload.append('area_id',deliveryArea.value);if(deliveryLatitude?.value&&deliveryLongitude?.value){payload.append('latitude',deliveryLatitude.value);payload.append('longitude',deliveryLongitude.value);}
-    try{
-      const response=await fetch('{% url "storefront_delivery_quote" biz.slug %}',{method:'POST',body:payload,headers:{Accept:'application/json'}});const data=await response.json();if(!response.ok)throw new Error(data.detail||'Delivery quote could not be created.');
-      if(data.switch_policy_text&&deliverySwitchPolicy){deliverySwitchPolicy.textContent=data.switch_policy_text;deliverySwitchPolicy.classList.remove('hidden');}
-      const useQuote=option=>{deliveryQuoteId.value=option.quote_id;deliveryQuoteSignature=signature;deliveryFee=Number(option.fee||0);totalNode.textContent=money(basketSubtotal+deliveryFee);deliveryQuoteStatus.textContent=`${option.provider_label}: ${money(option.fee)} · ${option.distance_km} km · ETA ${option.eta_min_minutes}–${option.eta_max_minutes} min · checkout total ${money(option.total)}. Continuing to payment…`;checkoutButton.disabled=false;form.requestSubmit(checkoutButton);};
-      if(data.selection_required){deliveryQuoteStatus.textContent='Choose the delivery method to use for this sale.';deliveryMethodOptions.replaceChildren();deliveryMethodOptions.classList.remove('hidden');(data.options||[]).forEach(option=>{const button=document.createElement('button');button.type='button';button.className='flex w-full items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-left text-xs hover:border-stone-400';const copy=document.createElement('span');copy.textContent=`${option.provider_label} · ${option.distance_km} km · ${option.eta_min_minutes}–${option.eta_max_minutes} min`;const fee=document.createElement('strong');fee.textContent=money(option.fee);button.append(copy,fee);button.addEventListener('click',()=>useQuote(option));deliveryMethodOptions.append(button);});return;}
-      useQuote(data);
-    }catch(error){invalidateDeliveryQuote(error.message);}finally{checkoutButton.disabled=false;}
+    if(basketSubtotal<=0){setDeliveryStatus('Add at least one product before completing the sale.',true);return;}
+    if(!deliveryToggle?.checked){if(deliveryQuoteId)deliveryQuoteId.value='';openReview();return;}
+    const signature=deliverySignature();
+    if(deliveryQuoteId?.value&&deliveryQuoteSignature===signature){openReview();return;}
+    if(!deliveryAddress?.value.trim()){setDeliveryStatus('Enter the customer delivery address.',true);deliveryAddress.focus();return;}
+    if(!deliveryArea?.value&&!(deliveryLatitude?.value&&deliveryLongitude?.value)){setDeliveryStatus('Choose a destination zone or place the destination pin on the map.',true);return;}
+    checkoutButton.disabled=true;setDeliveryStatus('Calculating the live delivery fee and ETA…');
+    const payload=new FormData();payload.append('csrfmiddlewaretoken',form.querySelector('[name="csrfmiddlewaretoken"]').value);payload.append('subtotal',basketSubtotal.toFixed(2));payload.append('address',deliveryAddress.value.trim());if(deliveryArea?.value)payload.append('area_id',deliveryArea.value);if(deliveryLatitude?.value&&deliveryLongitude?.value){payload.append('latitude',deliveryLatitude.value);payload.append('longitude',deliveryLongitude.value);if(deliveryLocationSource)payload.append('location_source',deliveryLocationSource);}
+    try{const response=await fetch('{% url "storefront_delivery_quote" biz.slug %}',{method:'POST',body:payload,headers:{Accept:'application/json'}});const data=await response.json();if(!response.ok)throw new Error(data.detail||'Delivery quote could not be created.');if(data.switch_policy_text&&deliverySwitchPolicy){deliverySwitchPolicy.textContent=data.switch_policy_text;deliverySwitchPolicy.classList.remove('hidden');}const useQuote=option=>{deliveryQuoteId.value=option.quote_id;deliveryQuoteSignature=signature;deliveryFee=Number(option.fee||0);totalNode.textContent=money(basketSubtotal+deliveryFee);const validationLabel=option.destination?.validated_by==='map_pin'?'Map pin validated':'Address located';setDeliveryStatus(`${validationLabel} · ${option.provider_label}: ${money(option.fee)} · ${option.distance_km} km · ETA ${option.eta_min_minutes}–${option.eta_max_minutes} min · checkout total ${money(option.total)}.`);checkoutButton.disabled=false;openReview();};if(data.selection_required){setDeliveryStatus('Choose the delivery method to use for this sale.');deliveryMethodOptions.replaceChildren();deliveryMethodOptions.classList.remove('hidden');(data.options||[]).forEach(option=>{const button=document.createElement('button');button.type='button';button.className='flex w-full items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-left text-xs hover:border-stone-400';const copy=document.createElement('span');copy.textContent=`${option.provider_label} · ${option.distance_km} km · ${option.eta_min_minutes}–${option.eta_max_minutes} min`;const fee=document.createElement('strong');fee.textContent=money(option.fee);button.append(copy,fee);button.addEventListener('click',()=>useQuote(option));deliveryMethodOptions.append(button);});return;}useQuote(data);}catch(error){invalidateDeliveryQuote();setDeliveryStatus(error.message,true);}finally{checkoutButton.disabled=false;}
   });
   renderCart();
+  const completedReceipt=JSON.parse(document.getElementById('pos-completed-receipt')?.textContent||'null');if(completedReceipt)renderReceipt(completedReceipt);
 })();
 </script>
 {% if delivery_enabled %}<script src="{% static 'core/js/location-picker.js' %}" defer></script>{% endif %}
-{% if active_checkout and active_payment and active_payment.status != 'paid' %}<script>(function(){const box=document.getElementById('active-pos-payment');if(!box)return;const url=box.dataset.statusUrl;let stop=false;async function poll(){if(stop||document.hidden)return;try{const r=await fetch(url,{headers:{Accept:'application/json'},cache:'no-store'});if(!r.ok)return;const d=await r.json();if(d.payment&&d.payment.receipt_path){stop=true;window.location.href=d.payment.receipt_path;return;}if(d.payment&&['failed','cancelled','refunded'].includes(d.payment.status)){stop=true;window.location.reload();}}catch(e){}}setInterval(poll,5000);})();</script>{% endif %}
+{% if active_checkout and active_payment and active_payment.status != 'paid' %}<script>(function(){const box=document.getElementById('active-pos-payment');if(!box)return;const url=box.dataset.statusUrl;let stop=false;async function poll(){if(stop||document.hidden)return;try{const r=await fetch(url,{headers:{Accept:'application/json'},cache:'no-store'});if(!r.ok)return;const d=await r.json();if(d.receipt){stop=true;window.INPROFICOpenPosReceipt?.(d.receipt);return;}if(d.payment&&['failed','cancelled','refunded'].includes(d.payment.status)){stop=true;window.location.reload();}}catch(e){}}setInterval(poll,5000);})();</script>{% endif %}
 </body>
 </html>

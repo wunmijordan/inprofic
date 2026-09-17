@@ -4,7 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -501,6 +501,155 @@ def subscription_add_service(request):
 
 
 @login_required
+def founder_platform_business(request, pk):
+    """Founder-native business editor; Django admin remains an optional fallback."""
+    from core.forms import BusinessForm
+    from core.services import audit
+
+    if not request.user.is_superuser:
+        return render(request, "403.html", status=403)
+    business = get_object_or_404(Business, pk=pk)
+    previous_slug = business.slug
+    if request.method == "POST":
+        form = BusinessForm(request.POST, request.FILES, instance=business)
+        if form.is_valid():
+            business = form.save()
+            audit(
+                business, request.user, "update", business,
+                "Founder updated business settings",
+                {"previous_slug": previous_slug, "slug": business.slug, "vertical": business.vertical},
+            )
+            messages.success(request, f"{business.name} was updated.")
+            return redirect(f"{reverse('founder_subscriptions')}?workspace=management#platform-management")
+    else:
+        form = BusinessForm(instance=business)
+    memberships = business.user_memberships.select_related("user", "role").order_by("user__fullname", "user__username")
+    return render(request, "accounts/founder_platform_form.html", {
+        "form": form,
+        "title": f"Manage {business.name}",
+        "eyebrow": "Founder platform management · Business",
+        "object_kind": "business",
+        "managed_business": business,
+        "memberships": memberships,
+    })
+
+
+@login_required
+def founder_platform_user(request, pk):
+    """Founder-native global account editor with self-lockout protection."""
+    from .forms import FounderUserManagementForm
+
+    if not request.user.is_superuser:
+        return render(request, "403.html", status=403)
+    account = get_object_or_404(CustomUser, pk=pk)
+    if request.method == "POST":
+        form = FounderUserManagementForm(request.POST, instance=account, actor=request.user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"{account.fullname or account.username} was updated.")
+            return redirect(f"{reverse('founder_subscriptions')}?workspace=management#platform-management")
+    else:
+        form = FounderUserManagementForm(instance=account, actor=request.user)
+    memberships = account.business_memberships.select_related("business", "role").order_by("business__name")
+    return render(request, "accounts/founder_platform_form.html", {
+        "form": form,
+        "title": account.fullname or account.username,
+        "eyebrow": "Founder platform management · User",
+        "object_kind": "user",
+        "managed_user": account,
+        "memberships": memberships,
+    })
+
+
+def _founder_deletion_context(obj, object_kind):
+    """Build a plain-text cascade preview independent of model-admin policy."""
+    from django.contrib.admin.utils import NestedObjects
+    from django.db import router
+
+    collector = NestedObjects(using=router.db_for_write(obj.__class__, instance=obj))
+    collector.collect([obj])
+    model_count = {
+        model._meta.verbose_name_plural: len(objects)
+        for model, objects in collector.model_objs.items()
+    }
+
+    return {
+        "target": obj,
+        "target_label": str(obj),
+        "object_kind": object_kind,
+        "deleted_objects": collector.nested(format_callback=str),
+        "model_count": model_count,
+        "protected": [str(item) for item in collector.protected],
+    }
+
+
+@login_required
+def founder_platform_business_delete(request, pk):
+    """Delete a tenant root only after showing its full cascade impact."""
+    from django.db.models.deletion import ProtectedError, RestrictedError
+    from .models import SubscriptionService
+
+    if not request.user.is_superuser:
+        return render(request, "403.html", status=403)
+    business = get_object_or_404(Business, pk=pk)
+    context = _founder_deletion_context(business, "business")
+    additional_services = list(
+        SubscriptionService.objects.filter(subscription__primary_business=business)
+        .exclude(business=business)
+        .select_related("business")
+    )
+    if additional_services:
+        names = ", ".join(service.business.name for service in additional_services)
+        context["protected"].append(
+            f"Additional service workspace(s) on this subscription: {names}. Delete those businesses first."
+        )
+    context["blocked"] = bool(context["protected"])
+    if request.method == "POST" and request.POST.get("confirm_delete") == "yes":
+        if context["blocked"]:
+            messages.error(request, "This business cannot be deleted while protected records remain.")
+        else:
+            business_name = business.name
+            try:
+                with transaction.atomic():
+                    business.delete()
+            except (ProtectedError, RestrictedError):
+                messages.error(request, "This business could not be deleted because a protected record was added or changed.")
+            else:
+                if request.session.get("active_business_id") == pk:
+                    request.session.pop("active_business_id", None)
+                messages.success(request, f"{business_name} and its connected records were deleted.")
+                return redirect(f"{reverse('founder_subscriptions')}?workspace=management#platform-management")
+    return render(request, "accounts/founder_platform_confirm_delete.html", context)
+
+
+@login_required
+def founder_platform_user_delete(request, pk):
+    """Delete a global account with cascade preview and self-delete protection."""
+    from django.db.models.deletion import ProtectedError, RestrictedError
+
+    if not request.user.is_superuser:
+        return render(request, "403.html", status=403)
+    account = get_object_or_404(CustomUser, pk=pk)
+    context = _founder_deletion_context(account, "user")
+    context["self_delete"] = account.pk == request.user.pk
+    context["blocked"] = bool(context["self_delete"] or context["protected"])
+    if request.method == "POST" and request.POST.get("confirm_delete") == "yes":
+        if context["blocked"]:
+            messages.error(request, "This account cannot be deleted from the current session.")
+        else:
+            account_name = account.fullname or account.username
+            try:
+                with transaction.atomic():
+                    account.delete()
+            except (ProtectedError, RestrictedError):
+                messages.error(request, "This account could not be deleted because a protected record was added or changed.")
+            else:
+                messages.success(request, f"{account_name} and its connected access records were deleted.")
+                return redirect(f"{reverse('founder_subscriptions')}?workspace=management#platform-management")
+    return render(request, "accounts/founder_platform_confirm_delete.html", context)
+
+
+@login_required
 def founder_subscriptions(request):
     from .forms import FounderGrantForm, BusinessRestoreForm, SubscriptionPromotionForm, MarketingPromoCampaignForm
     from .models import BusinessSubscription, SubscriptionPlan, SubscriptionPayment, SubscriptionPaymentSettings, SubscriptionPromotion, MarketingPromoCampaign
@@ -537,6 +686,15 @@ def founder_subscriptions(request):
         campaign_editor_html = ""
     backup_restore_report = None
     if request.method == "POST":
+        if action == "open_business_users":
+            try:
+                business_id = int(request.POST.get("business_id") or "")
+            except (TypeError, ValueError):
+                messages.error(request, "Choose a valid business workspace.")
+                return redirect(f"{reverse('founder_subscriptions')}?workspace=management#platform-management")
+            business = get_object_or_404(Business, pk=business_id)
+            request.session["active_business_id"] = business.pk
+            return redirect("users_list")
         if action in {"backup_preview", "backup_restore"} and restore_form.is_valid():
             target_business = restore_form.cleaned_data["target_business"]
             source_business_id = restore_form.cleaned_data.get("source_business_id")
@@ -611,9 +769,15 @@ def founder_subscriptions(request):
             return redirect(f"{reverse('founder_subscriptions')}#marketing-promo-campaigns")
         if action == "save_plan_entitlements":
             from .models import SubscriptionPlanModule
-            from .subscription_services import PLAN_ENTITLEMENT_MODULES, apply_subscription_entitlements
+            from .subscription_services import PLAN_ENTITLEMENT_MODULES, apply_subscriptions_entitlements
             plans_to_update = list(SubscriptionPlan.objects.all().order_by("id"))
             with transaction.atomic():
+                existing_rows = {
+                    (item.plan_id, item.module): item
+                    for item in SubscriptionPlanModule.objects.filter(plan__in=plans_to_update)
+                }
+                rows_to_create = []
+                rows_to_update = []
                 for plan in plans_to_update:
                     for module, _label in PLAN_ENTITLEMENT_MODULES:
                         field_name = f"module_{plan.pk}_{module}"
@@ -623,13 +787,22 @@ def founder_subscriptions(request):
                                 level = SubscriptionPlanModule.LEVEL_NONE
                         else:
                             level = SubscriptionPlanModule.LEVEL_FULL if request.POST.get(field_name) == "on" else SubscriptionPlanModule.LEVEL_NONE
-                        SubscriptionPlanModule.objects.update_or_create(
-                            plan=plan, module=module,
-                            defaults={"enabled": level != SubscriptionPlanModule.LEVEL_NONE, "level": level},
-                        )
+                        enabled = level != SubscriptionPlanModule.LEVEL_NONE
+                        entitlement = existing_rows.get((plan.pk, module))
+                        if entitlement is None:
+                            rows_to_create.append(SubscriptionPlanModule(
+                                plan=plan, module=module, enabled=enabled, level=level,
+                            ))
+                        elif entitlement.enabled != enabled or entitlement.level != level:
+                            entitlement.enabled = enabled
+                            entitlement.level = level
+                            rows_to_update.append(entitlement)
+                if rows_to_create:
+                    SubscriptionPlanModule.objects.bulk_create(rows_to_create, ignore_conflicts=True)
+                if rows_to_update:
+                    SubscriptionPlanModule.objects.bulk_update(rows_to_update, ["enabled", "level"])
                 subscription_ids = list(BusinessSubscription.objects.filter(plan__in=plans_to_update).values_list("pk", flat=True))
-                for subscription in BusinessSubscription.objects.filter(pk__in=subscription_ids).select_related("plan"):
-                    apply_subscription_entitlements(subscription)
+                apply_subscriptions_entitlements(subscription_ids)
             messages.success(request, "All plan module access settings were saved together and applied to current subscribers.")
             return redirect(f"{reverse('founder_subscriptions')}#plan-entitlements")
         if action == "save_plan_pricing":
@@ -701,8 +874,17 @@ def founder_subscriptions(request):
             return redirect("founder_subscriptions")
     subscriptions = BusinessSubscription.objects.select_related("primary_business", "plan", "founder_granted_by").prefetch_related("services__business")
     pending_payments = SubscriptionPayment.objects.filter(status=SubscriptionPayment.STATUS_PENDING).select_related("subscription__primary_business", "plan")[:50]
-    businesses = Business.objects.order_by("-id")
-    users = CustomUser.objects.order_by("-date_joined")
+    platform_query = (request.GET.get("platform_q") or "").strip()[:100]
+    businesses = Business.objects.annotate(member_count=Count("user_memberships", distinct=True)).order_by("-id")
+    users = CustomUser.objects.annotate(business_count=Count("business_memberships", distinct=True)).order_by("-date_joined")
+    if platform_query:
+        businesses = businesses.filter(Q(name__icontains=platform_query) | Q(slug__icontains=platform_query))
+        users = users.filter(
+            Q(fullname__icontains=platform_query)
+            | Q(username__icontains=platform_query)
+            | Q(email__icontains=platform_query)
+            | Q(phone__icontains=platform_query)
+        )
     return render(request, "accounts/founder_subscriptions.html", {
         "form": form,
         "subscriptions": subscriptions,
@@ -719,13 +901,14 @@ def founder_subscriptions(request):
         "marketing_campaigns": MarketingPromoCampaign.objects.select_related("promotion__plan", "created_by").order_by("-active", "-priority", "id")[:50],
         "now": timezone.now(),
         "platform_stats": {
-            "businesses": businesses.count(),
-            "users": users.count(),
+            "businesses": Business.objects.count(),
+            "users": CustomUser.objects.count(),
             "active_subscriptions": subscriptions.filter(
                 Q(founder_lifetime=True) | Q(status__in=[BusinessSubscription.STATUS_ACTIVE, BusinessSubscription.STATUS_TRIAL])
             ).count(),
             "pending_payments": pending_payments.count(),
         },
-        "recent_businesses": businesses[:8],
-        "recent_users": users[:8],
+        "platform_query": platform_query,
+        "platform_businesses": businesses[:50],
+        "platform_users": users[:50],
     })

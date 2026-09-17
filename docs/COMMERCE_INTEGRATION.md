@@ -38,6 +38,18 @@ payment verification. The delivery engine then owns in-house, hybrid, manual
 third-party and optional Glovo LaaS v2 live-quote/dispatch without allowing the storefront
 to create operational delivery records directly.
 
+Named delivery areas are geometry-backed rather than tariff-only labels. Each
+area has a mapped centre, radius and optional diagonal extensions. That geometry
+decides whether an address/pin is serviceable; the linked pricing band supplies
+base/per-kilometre fee, minimum basket and ETA, while the billable distance is
+measured from the active delivery base to the precise validated destination.
+Hosted storefront, POS and Headless API use the same quote service. Address text
+is geocoded server-side first; if it cannot be located inside the selected area,
+the customer is prompted to correct it or place an exact map pin, which is still
+checked against the same coverage boundary. Headless clients receive a
+`coverage_polygon` so their maps can display INPROFIC's configured shape without
+reimplementing the radius/diagonal algorithm.
+
 Product categories are part of the public product contract. They are business-defined
 records and do not replace the source distinction between made-in-house and
 purchased-for-resale products.
@@ -307,11 +319,15 @@ The current versioned write boundary is:
 
 ```text
 GET  /api/v1/storefronts/{business_slug}/products
+POST /api/v1/storefronts/{business_slug}/delivery/location
+POST /api/v1/storefronts/{business_slug}/delivery/quote
+GET  /api/v1/storefronts/{business_slug}/payment-methods
 POST /api/v1/storefronts/{business_slug}/checkouts
 GET  /api/v1/storefronts/{business_slug}/checkouts/{checkout_uuid}
 POST /api/v1/storefronts/{business_slug}/checkouts/{checkout_uuid}/payments
 GET  /api/v1/storefronts/{business_slug}/checkouts/{checkout_uuid}/payments/current
 GET  /api/v1/storefronts/{business_slug}/orders/{public_uuid}   # after verified payment materializes it
+POST /api/v1/storefronts/{business_slug}/orders/{public_uuid}/preorder
 ```
 
 Product GET is public when Commerce/API are enabled. Checkout/payment calls use a tenant-bound `CommerceIntegration` API key supplied as `X-INPROFIC-Key` and idempotency keys. Duplicate retries return the same checkout/payment. `POST /orders` no longer creates an intake and returns HTTP 410 so a new integration cannot bypass payment-first materialization.
@@ -442,3 +458,145 @@ Gateway webhook URLs point directly to INPROFIC, not the website:
 ### Delivery rider and storefront-customer boundaries
 
 Delivery Rider is a purpose-specific staff access surface: rider-only users can see and act only on assignments linked to their own active in-house driver record. Delivery alerts reuse the durable Commerce notification transport but support targeted rider recipients. Public storefront customers remain guests by default; optional `StorefrontCustomer` profiles are tenant-scoped, separate from staff users, and store purchase history without making registration a checkout requirement. Hybrid delivery means in-house and the configured provider remain interchangeable per order under the tenant’s routing and customer-visible post-payment switch policy.
+
+## Headless checkout UI contract: complete exposed surface
+
+A headless website should treat INPROFIC as the authoritative commerce and delivery backend while owning its own presentation. The current customer-facing API surface is:
+
+```text
+GET  /api/v1/storefronts/{business_slug}/products
+POST /api/v1/storefronts/{business_slug}/delivery/location
+POST /api/v1/storefronts/{business_slug}/delivery/quote
+GET  /api/v1/storefronts/{business_slug}/payment-methods
+POST /api/v1/storefronts/{business_slug}/checkouts
+GET  /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}
+POST /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}/payments
+GET  /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}/payments/current
+POST /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}/payments/current/claim
+GET  /api/v1/storefronts/{business_slug}/orders/{public_id}
+POST /api/v1/storefronts/{business_slug}/orders/{public_id}/preorder
+```
+
+Write calls use the tenant-bound `X-INPROFIC-Key` credential. Checkout and payment creation also require the documented idempotency headers. A headless client must never calculate an authoritative total locally: product prices, delivery fees and final checkout totals returned by INPROFIC win over browser calculations.
+
+Because the API key is a server credential, browser JavaScript must **not** call protected INPROFIC write/location endpoints directly. A headless website should proxy those calls through its own backend/serverless route, keep `X-INPROFIC-Key` there, and return only the customer-safe response to the browser. This applies to the live address/map synchronization endpoint as well as checkout/payment creation.
+
+The following older routes are still present for compatibility but are **not** the preferred new-integration path:
+
+```text
+POST /api/v1/storefronts/{business_slug}/orders
+     # deliberately returns HTTP 410 checkout_first_required
+POST /api/v1/storefronts/{business_slug}/orders/{public_id}/payments/initiate
+GET  /api/v1/storefronts/{business_slug}/orders/{public_id}/payments/current
+POST /api/v1/storefronts/{business_slug}/orders/{public_id}/payments/current/claim
+```
+
+New websites should use checkout-scoped payment endpoints. Provider webhooks are server-to-server endpoints handled by INPROFIC, not browser endpoints:
+
+```text
+POST /api/v1/storefronts/{business_slug}/payments/{provider}/webhook
+POST /api/v1/delivery/providers/glovo/{business_slug}/webhook
+```
+
+The normalized platform-connector ingestion boundary is separate from headless storefront checkout:
+
+```text
+POST /api/v1/connectors/{business_slug}/{integration_id}/orders
+```
+
+### Product and delivery discovery
+
+`GET /products` returns business identity, product categories, products and the `delivery` discovery object. For each product, `order_modes[]` exposes the channel code/label, unit price, minimum and maximum quantity, fulfilment mode, immediate availability where applicable, and lead-time information. The same response exposes the tenant's delivery areas, radius, diagonal extensions, `coverage_polygon`, pricing metadata, `location_url` and `quote_url`.
+
+A website may use `coverage_polygon` directly with Leaflet, MapLibre, Google Maps or a similar client-side map. It should not attempt to reproduce INPROFIC's diagonal-extension interpolation itself. The polygon is the visual guide; the server remains authoritative for coverage validation.
+
+### Required two-way address and map synchronization
+
+Headless websites should keep the precise-address field and map pin synchronized exactly as INPROFIC's hosted storefront and POS do.
+The examples below show the INPROFIC call itself; in a browser-based website, make that call from your own backend proxy so the tenant API key never reaches the browser. The browser may debounce address input and send it to your backend; your backend forwards it to INPROFIC and returns the normalized location result.
+
+**Typed address -> map pin**
+
+Call:
+
+```http
+POST /api/v1/storefronts/{business_slug}/delivery/location
+X-INPROFIC-Key: <tenant api key>
+Content-Type: application/json
+
+{
+  "area_id": 12,
+  "address": "14 Example Street, Victoria Island, Lagos"
+}
+```
+
+Successful response:
+
+```json
+{
+  "address": "14 Example Street, Victoria Island, Lagos, Nigeria",
+  "latitude": "6.4281000",
+  "longitude": "3.4219000",
+  "validated_by": "geocoded_address",
+  "location_source": "geocoded_address",
+  "address_resolved": true,
+  "area_id": 12,
+  "area_name": "Victoria Island"
+}
+```
+
+The website should move the pin to those coordinates, zoom to the resolved destination, and retain/update the visible address with the returned normalized address.
+
+**Map pin -> address field**
+
+Call the same endpoint with coordinates instead:
+
+```json
+{
+  "area_id": 12,
+  "latitude": "6.4281000",
+  "longitude": "3.4219000",
+  "address": "optional current field text"
+}
+```
+
+INPROFIC reverse-geocodes the pin and returns the corresponding address with `validated_by: "map_pin"`. The website should replace the address field with the returned address when `address_resolved` is true. If reverse geocoding cannot identify a precise street address, keep the existing user text and visibly ask the customer to confirm/refine it rather than inventing an address.
+
+When `area_id` is supplied, both forward and reverse location resolution enforce that area's radius/diagonal coverage. An out-of-range point returns HTTP 400. Display this and other validation failures as clear red error text near the delivery fields.
+
+The location endpoint intentionally does **not** evaluate basket minimums or calculate a delivery fee. This allows address/map synchronization while the customer is still editing the basket. Quote only after the location is valid.
+
+### Delivery quote after location synchronization
+
+Once the website has synchronized the address and coordinates, request the authoritative delivery quote:
+
+```json
+{
+  "subtotal": "12500.00",
+  "area_id": 12,
+  "address": "14 Example Street, Victoria Island, Lagos, Nigeria",
+  "latitude": "6.4281000",
+  "longitude": "3.4219000",
+  "location_source": "geocoded_address"
+}
+```
+
+Use `location_source: "map_pin"` when the customer chose the point directly. INPROFIC revalidates the coverage and then applies the area's linked minimum order, distance pricing, hybrid/provider routing and ETA rules. HTTP 400 errors such as out-of-range destination or minimum-order failure should be shown to the customer as red validation text; the website must not override them locally.
+
+A Hybrid tenant may return `selection_required: true` plus `options[]`. Present those choices and submit the selected option's `quote_id`. Otherwise use the top-level selected `quote_id`. The quote snapshot is what must be passed into checkout; do not recompute the delivery fee after the quote is returned.
+
+### Final pre-payment review contract
+
+A headless checkout should display, at minimum, product name, selected quantity, the INPROFIC unit price for the chosen `order_mode`, line total, products subtotal, delivery fee (when present), and final checkout total. Unit price should remain visible in the review step so the customer can verify how each line was calculated.
+
+For a delivery checkout, the final review immediately before payment must also keep the accepted INPROFIC delivery snapshot visible: `provider_label`, `eta_min_minutes`, `eta_max_minutes`, `distance_km`, `destination.area_name`, `destination.address`, `destination.validated_by`, and `switch_policy_text` when present. Do not collapse those details after the customer accepts a quote. The customer should be able to see both what is being bought and how the order is expected to reach them before money is collected.
+
+Checkout creation and `GET /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}` return the accepted snapshot again under `delivery`. This is the preferred source for the final review because it is attached to the checkout itself; a headless site does not need to rely only on a browser-cached copy of the earlier quote response. The `delivery` object contains the accepted quote ID, provider/method label, distance, delivery fee, ETA range, precise destination and validation source, plus the Hybrid routing/switch-policy snapshot when applicable.
+
+If `delivery` is `null`, the checkout is not a delivery checkout. Never synthesize an ETA, provider name, distance or switch policy that INPROFIC did not return.
+
+### Payment, receipt and tracking
+
+Create the checkout only after basket/channel/delivery validation. Use the payment-method discovery endpoint to show only methods INPROFIC considers available for that tenant/surface. Payment initiation returns the provider flow/status; poll the current-payment endpoint or follow the documented provider redirect/webhook path. A paid checkout eventually exposes the materialized order and receipt/tracking information through the checkout/order responses. Browser redirects are never proof of settlement.
+
+Customer registration is not required for headless integration. A tenant website may keep its own customer profile/session and store INPROFIC checkout/order UUIDs against that profile. Guest checkout and unguessable tracking remain valid.

@@ -24,20 +24,13 @@
     [x-cloak] { display: none !important; }
     .field-client-invalid { border-color: #e11d48 !important; box-shadow: 0 0 0 1px rgba(225,29,72,.15); }
     .field-has-error input, .field-has-error select, .field-has-error textarea { border-color: #e11d48 !important; }
-    .cf-field input:not([type="checkbox"]):not([type="radio"]), .cf-field select, .cf-field textarea { min-height:2.6rem; border-radius:.75rem !important; transition:border-color .15s ease, box-shadow .15s ease, background .15s ease; }
+    .cf-field input:not([type="checkbox"]):not([type="radio"]), .cf-field select, .cf-field textarea { min-height:2.6rem; border-radius:var(--ui-radius) !important; transition:border-color .15s ease, box-shadow .15s ease, background .15s ease; }
     .cf-field textarea { min-height:5.5rem; }
     .cf-field input:focus, .cf-field select:focus, .cf-field textarea:focus { box-shadow:0 0 0 3px color-mix(in srgb,var(--tenant-button) 15%,transparent) !important; }
-    .cf-switch { position:relative; display:inline-flex; height:1.65rem; width:3rem; align-items:center; }
-    .cf-switch > input[type="checkbox"] { position:absolute !important; inset:0 !important; z-index:2; width:100% !important; height:100% !important; margin:0 !important; cursor:pointer; opacity:0 !important; }
-    .cf-switch-track { position:absolute; inset:0; border-radius:999px; background:#d6d3d1; box-shadow:inset 0 0 0 1px rgba(87,83,78,.12); transition:background .18s ease; }
-    .cf-switch-thumb { position:absolute; left:.2rem; top:.2rem; width:1.25rem; height:1.25rem; border-radius:999px; background:white; box-shadow:0 2px 6px rgba(0,0,0,.22); transition:transform .18s ease; }
-    .cf-switch > input[type="checkbox"]:checked + .cf-switch-track { background:var(--tenant-button); }
-    .cf-switch > input[type="checkbox"]:checked + .cf-switch-track .cf-switch-thumb { transform:translateX(1.35rem); }
-    .cf-switch > input[type="checkbox"]:focus-visible + .cf-switch-track { outline:3px solid color-mix(in srgb,var(--tenant-button) 20%,transparent); outline-offset:2px; }
-    .cf-form-shell { max-width:72rem; border:1px solid #E7DFCC; border-radius:1.5rem; background:#FFFDF8; box-shadow:0 18px 45px rgba(33,29,26,.10); overflow:hidden; }
+    .cf-form-shell { max-width:72rem; border:1px solid #E7DFCC; border-radius:var(--ui-card-radius-large); background:#FFFDF8; box-shadow:0 18px 45px rgba(33,29,26,.10); overflow:hidden; }
     .cf-form-header { padding:1.25rem 1.25rem 1rem; border-bottom:1px solid #E7DFCC; background:linear-gradient(135deg,#FFFDF8,#F7F0DF); }
     .cf-form-body { padding:1.25rem; }
-    .cf-form-section { border:1px solid #E7DFCC; border-radius:1rem; background:#fff; padding:1rem; }
+    .cf-form-section { border:1px solid #E7DFCC; border-radius:var(--ui-card-radius); background:#fff; padding:1rem; }
     .cf-form-section-title { font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.13em; color:#78716c; }
     :root { --st-card-shadow: var(--ui-shadow); --st-modal-shadow: var(--ui-shadow-raised); }
     .st-card-shadow,
@@ -90,7 +83,7 @@
 <body class="min-h-screen flex">
   <div class="page-progress" aria-hidden="true"></div>
 
-  {% if is_live_tester %}<div class="fixed right-3 top-3 z-[120] rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-900 shadow-lg" title="Demo access can browse and open forms, but cannot save changes.">Demo · read only</div>{% endif %}
+  {% if is_live_tester %}<div class="fixed right-3 top-3 z-[120] rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-900 shadow-lg" title="Demo access can browse and open forms, but cannot save changes.">Demo · Read Only</div>{% endif %}
 
   {% if user.is_authenticated %}
   <aside class="desktop-sidebar tenant-sidebar hidden md:flex flex-col">
@@ -104,7 +97,7 @@
       {% if available_businesses|length > 1 %}
       <form action="{% url 'switch_business' %}" method="post" class="mt-3">
         {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
-        <select name="business_id" onchange="this.form.submit()" aria-label="Current business" class="w-full rounded border border-white/20 bg-white/10 px-2 py-1 text-[11px]">
+        <select name="business_id" onchange="this.form.submit()" aria-label="Current business" class="w-full rounded-full border border-white/20 bg-white/10 px-2 py-1 text-[11px]">
           {% for business in available_businesses %}<option class="text-stone-900" value="{{ business.pk }}" {% if business.pk == biz.pk %}selected{% endif %}>{{ business.name }}</option>{% endfor %}
         </select>
       </form>

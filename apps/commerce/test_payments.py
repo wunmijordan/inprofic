@@ -194,6 +194,30 @@ class HeadlessPaymentApiTests(CommercePaymentTestBase):
         self.assertEqual(payload["subtotal"], "2500.00")
         self.assertEqual(payload["delivery_fee"], "500.00")
         self.assertEqual(payload["amount"], "3000.00")
+        self.assertEqual(payload["delivery"]["provider_label"], "In-house delivery")
+        self.assertEqual(payload["delivery"]["fee"], "500.00")
+        self.assertEqual(payload["delivery"]["destination"]["area_name"], "Victoria Island")
+        self.assertIn("eta_min_minutes", payload["delivery"])
+        self.assertIn("eta_max_minutes", payload["delivery"])
+        self.assertIn("distance_km", payload["delivery"])
+
+        detail = self.client.get(
+            f"/api/v1/storefronts/{self.business.slug}/checkouts/{payload['checkout_id']}",
+            HTTP_X_INPROFIC_KEY=self.integration.api_key,
+        )
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()["delivery"]["quote_id"], quote_id)
+
+        hosted_review = self.client.get(
+            f"/shop/{self.business.slug}/checkouts/{payload['checkout_id']}/"
+        )
+        self.assertEqual(hosted_review.status_code, 200)
+        self.assertContains(hosted_review, "Delivery review")
+        self.assertContains(hosted_review, "In-house delivery")
+        self.assertContains(hosted_review, "Victoria Island")
+        self.assertContains(hosted_review, "ETA")
+        self.assertContains(hosted_review, "Distance")
+
         checkout = CommerceCheckoutSession.raw_objects.get(public_id=payload["checkout_id"])
         self.assertEqual(checkout.customer_address, "12 Customer Street")
         self.assertEqual(checkout.service_mode, "delivery")
@@ -553,6 +577,46 @@ class StorefrontPosGuardTests(CommercePaymentTestBase):
         session["active_business_id"] = self.business.pk
         session.save()
 
+    def test_pos_page_uses_native_review_and_receipt_modals_without_iframe(self):
+        response = self.client.get("/commerce/storefront-pos/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="pos-review-dialog"')
+        self.assertContains(response, 'id="pos-receipt-dialog"')
+        self.assertContains(response, 'id="pos-receipt-items"')
+        self.assertNotContains(response, '<iframe')
+
+    def test_pos_status_returns_native_receipt_payload_after_verified_payment(self):
+        checkout, _ = create_checkout(
+            business=self.business,
+            source=CommerceIntake.SOURCE_STAFF_POS,
+            order_mode=CommerceIntake.CHANNEL_PHYSICAL_STORE,
+            customer={"name": "Counter Customer", "phone": "08020000000"},
+            items=[{"storefront_product": self.product, "quantity": "1"}],
+            idempotency_key="pos-status-native-receipt",
+        )
+        payment = initiate_payment(
+            checkout=checkout,
+            method=CommercePayment.METHOD_CASH,
+            idempotency_key="pos-status-native-payment",
+            surface="pos",
+        )
+        receipt, _ = record_verified_payment(
+            payment=payment,
+            amount=payment.amount,
+            actor=self.staff,
+            idempotency_key="pos-status-native-verification",
+            location="In-premise storefront",
+        )
+        response = self.client.get(f"/commerce/storefront-pos/checkouts/{checkout.public_id}/status/")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()["receipt"]
+        self.assertEqual(payload["receipt_id"], str(receipt.public_id))
+        self.assertEqual(payload["customer"]["name"], "Counter Customer")
+        self.assertEqual(payload["items"][0]["name"], self.product.display_name)
+        self.assertEqual(payload["items"][0]["unit_price"], "2500.00")
+        self.assertEqual(payload["delivery_fee"], "0.00")
+        self.assertEqual(payload["total"], "2500.00")
+
     def test_cash_must_be_confirmed_before_checkout_reserves_stock(self):
         response = self.client.post("/commerce/storefront-pos/", {
             "method": CommercePayment.METHOD_CASH,
@@ -636,6 +700,11 @@ class StorefrontPosGuardTests(CommercePaymentTestBase):
         )
         self.assertEqual(assignment.origin, origin)
         self.assertEqual(assignment.quote_id, quote.pk)
+        receipt_page = self.client.get(response["Location"])
+        self.assertEqual(receipt_page.status_code, 200)
+        self.assertEqual(receipt_page.context["completed_receipt"]["delivery_fee"], "500.00")
+        self.assertEqual(receipt_page.context["completed_receipt"]["subtotal"], "2500.00")
+        self.assertEqual(receipt_page.context["completed_receipt"]["total"], "3000.00")
 
 
 

@@ -10,12 +10,14 @@
   --ui-text: #182433;
   --ui-muted: #667382;
   --ui-border: #cbd5e1;
+  /* Fixed page colour used by the standalone default dark-canvas control. */
+  --ui-default-dark-canvas: #111827;
   /* Global elevation: edit these two values to tune cards and raised panels. */
   --ui-shadow: 0 4px 8px #000000d2;
   --ui-shadow-raised: 0 6px 10px #000000d2;
   /* Global corners: controls, ordinary cards, then large feature cards. */
-  --ui-radius: 1.5rem;
-  --ui-card-radius: 2.5rem;
+  --ui-radius: .85rem;
+  --ui-card-radius: 1.25rem;
   --ui-card-radius-large: 1.65rem;
   --ui-control-height: 2.25rem;
   --ui-accent: var(--tenant-button, #d14900);
@@ -44,6 +46,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   outline-offset: 2px;
 }
 
+/* Shared toggle used by forms, settings and standalone workspaces such as POS. */
+.cf-switch { position: relative; display: inline-flex; height: 1.65rem; width: 3rem; align-items: center; }
+.cf-switch > input[type="checkbox"] { position: absolute !important; inset: 0 !important; z-index: 2; width: 100% !important; height: 100% !important; margin: 0 !important; cursor: pointer; opacity: 0 !important; }
+.cf-switch-track { position: absolute; inset: 0; border-radius: 999px; background: #d6d3d1; box-shadow: inset 0 0 0 1px rgba(87,83,78,.12); transition: background .18s ease; }
+.cf-switch-thumb { position: absolute; left: .2rem; top: .2rem; width: 1.25rem; height: 1.25rem; border-radius: 999px; background: white; box-shadow: 0 2px 6px rgba(0,0,0,.22); transition: transform .18s ease; }
+.cf-switch > input[type="checkbox"]:checked + .cf-switch-track { background: var(--tenant-button); }
+.cf-switch > input[type="checkbox"]:checked + .cf-switch-track .cf-switch-thumb { transform: translateX(1.35rem); }
+.cf-switch > input[type="checkbox"]:focus-visible + .cf-switch-track { outline: 3px solid color-mix(in srgb,var(--tenant-button) 20%,transparent); outline-offset: 2px; }
+
 .workspace-main { background: var(--ui-bg); }
 .workspace-content { width: 100%; max-width: 96rem; margin-inline: auto; }
 .workspace-utility-bar { min-height: 2.25rem; }
@@ -56,23 +67,43 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .workspace-back:hover, .workspace-icon-button:hover { color: var(--ui-text); border-color: color-mix(in srgb,var(--ui-accent) 35%,var(--ui-border)); }
 
 .desktop-sidebar { box-shadow: 1px 0 0 rgba(255,255,255,.08), 8px 0 28px rgba(15,23,42,.12); }
-.desktop-sidebar-nav a, .mobile-sidebar-nav a { position: relative; border-radius: .42rem; margin: .12rem .65rem; padding-inline: .75rem !important; }
+.desktop-sidebar-nav a, .mobile-sidebar-nav a { position: relative; border-radius: 1rem; margin: .12rem .65rem; padding-inline: .75rem !important; }
 .desktop-sidebar-nav a.bg-white\/10, .mobile-sidebar-nav a.bg-white\/10 { background: rgba(255,255,255,.14) !important; box-shadow: inset 3px 0 0 var(--ui-accent); }
 
 main :is(h1,h2).font-display { letter-spacing: -.025em; color: var(--ui-text) !important; }
 main h3, main h4 { color: var(--ui-text); }
-main :where(.text-stone-400,.text-stone-500,.text-stone-600) { color: var(--ui-muted); }
-main :where(.text-stone-700,.text-stone-800,.text-stone-900) { color: var(--ui-text); }
+main :where(.text-stone-300,.text-stone-400,.text-stone-500,.text-stone-600,
+            .text-gray-400,.text-gray-500,.text-gray-600,
+            .text-slate-400,.text-slate-500,.text-slate-600,
+            .text-neutral-400,.text-neutral-500,.text-neutral-600) { color: var(--ui-muted) !important; }
+main :where(.text-stone-700,.text-stone-800,.text-stone-900,
+            .text-gray-700,.text-gray-800,.text-gray-900,
+            .text-slate-700,.text-slate-800,.text-slate-900,
+            .text-neutral-700,.text-neutral-800,.text-neutral-900,
+            .text-\[\#211D1A\]) { color: var(--ui-text) !important; }
 main :where(.text-\[\#d14900\],.text-\[\#b94300\]) { color: var(--ui-accent) !important; }
 
 main :where(.bg-white,.bg-white\/95,.bg-\[\#FFFDF8\]) { background-color: var(--ui-surface) !important; }
 main :where(.bg-\[\#FAF8F1\],.bg-\[\#F5EFE0\],.bg-\[\#F0EAD9\],.bg-stone-50,.bg-stone-100) { background-color: var(--ui-surface-muted) !important; }
 main :where(.border-\[\#E7DFCC\],.border-\[\#D9CFB4\],.border-\[\#EEE7D7\],.border-stone-100,.border-stone-200,.border-stone-300) { border-color: var(--ui-border) !important; }
-main :where(article,section,aside,form,details)[class*="rounded"][class*="border"] { box-shadow: var(--ui-shadow) !important; }
-main :where(.rounded-2xl,.rounded-3xl) { border-radius: var(--ui-card-radius-large) !important; }
-main :where(.rounded-xl) { border-radius: var(--ui-card-radius) !important; }
+main :where(article,section,aside,form,details)[class*="rounded"][class*="border"] {
+  border-radius: var(--ui-card-radius) !important;
+  box-shadow: var(--ui-shadow) !important;
+}
+main :where(article,section,aside,form,details).rounded-2xl,
+main :where(article,section,aside,form,details).rounded-3xl,
+main :where(.st-feature-card,.cf-form-shell) { border-radius: var(--ui-card-radius-large) !important; }
+main :where(div)[class*="rounded"][class*="border"]:is(.bg-white,.bg-\[\#FFFDF8\],.bg-\[\#F5EFE0\],.overflow-hidden,.overflow-x-auto),
+main :where(div)[class*="rounded"][class*="border"]:has(> table) {
+  border-radius: var(--ui-card-radius) !important;
+}
+main :where(button,a,[role="button"]):is(.rounded-sm,.rounded-md,.rounded-lg,.rounded-xl,.rounded-2xl,.rounded-3xl):not(.rounded-full),
+main :where(.workspace-back,.workspace-icon-button,.appearance-option) {
+  border-radius: var(--ui-radius) !important;
+}
+main :where(.rounded):not(.rounded-full) { border-radius: var(--ui-radius) !important; }
 
-main table { border-collapse: separate; border-spacing: 0; }
+main table { border-collapse: separate; border-spacing: 0; border-radius: inherit; }
 main thead { background: var(--ui-surface-muted) !important; }
 main th { height: 2.35rem; color: var(--ui-muted) !important; font-size: .68rem; font-weight: 700; letter-spacing: .035em; text-transform: uppercase; }
 main td { color: var(--ui-text); }

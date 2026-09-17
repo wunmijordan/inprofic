@@ -268,7 +268,9 @@ def _validation_message(exc):
 
 def _public_checkout(business, checkout_id):
     checkout = get_object_or_404(
-        CommerceCheckoutSession.raw_objects.prefetch_related(
+        CommerceCheckoutSession.raw_objects.select_related(
+            "delivery_quote__area", "delivery_quote__provider_account", "materialized_intake"
+        ).prefetch_related(
             "items__storefront_product", "items__finished_good"
         ),
         business=business,
@@ -681,6 +683,7 @@ def api_products(request,business_slug):
     ]
     from .delivery_services import public_delivery_config
     delivery = public_delivery_config(business)
+    delivery["location_url"] = f"/api/v1/storefronts/{business.slug}/delivery/location"
     delivery["quote_url"] = f"/api/v1/storefronts/{business.slug}/delivery/quote"
     return JsonResponse({"business":business.name,"business_slug":business.slug,"service":business.get_vertical_display(),"categories":categories,"delivery":delivery,"products":rows})
 
@@ -759,7 +762,9 @@ def api_checkout_detail(request, business_slug, checkout_id):
     if not ok:
         return JsonResponse({"detail": "Invalid or disabled commerce API credential."}, status=403)
     checkout = get_object_or_404(
-        CommerceCheckoutSession.raw_objects.prefetch_related("items__storefront_product", "items__finished_good"),
+        CommerceCheckoutSession.raw_objects.select_related(
+            "delivery_quote__area", "delivery_quote__provider_account", "materialized_intake"
+        ).prefetch_related("items__storefront_product", "items__finished_good"),
         business=business,
         public_id=checkout_id,
     )
@@ -913,19 +918,8 @@ def connector_orders(request, business_slug, integration_id):
 
 
 
-@require_http_methods(["GET"])
-def storefront_receipt(request, business_slug, receipt_id):
-    """Public, unguessable receipt generated only from verified payment rows."""
-    business = get_object_or_404(Business, slug=business_slug)
-    receipt = get_object_or_404(
-        CommercePaymentReceipt.raw_objects.select_related(
-            "business", "account", "payment__checkout", "payment__intake"
-        ).prefetch_related(
-            "payment__checkout__items__storefront_product",
-            "payment__intake__items__finished_good",
-        ),
-        business=business, public_id=receipt_id,
-    )
+def _receipt_details(receipt):
+    """Return one tenant-safe, JSON-friendly receipt snapshot for web/POS rendering."""
     payment = receipt.payment
     checkout = payment.checkout
     intake = payment.intake
@@ -933,45 +927,94 @@ def storefront_receipt(request, business_slug, receipt_id):
         items = [
             {
                 "name": row.storefront_product.display_name,
-                "quantity": row.payable_quantity,
-                "unit_price": row.unit_price,
-                "line_total": row.line_total,
+                "quantity": f"{row.payable_quantity}",
+                "unit_price": f"{row.unit_price:.2f}",
+                "line_total": f"{row.line_total:.2f}",
             }
             for row in checkout.items.all()
         ]
         customer_name = checkout.customer_name
         customer_phone = checkout.customer_phone
         customer_email = checkout.customer_email
+        delivery_fee = Decimal(checkout.delivery_fee or 0)
     elif intake is not None:
         items = [
             {
                 "name": row.finished_good.name,
-                "quantity": row.requested_quantity,
-                "unit_price": row.unit_price,
-                "line_total": row.requested_quantity * row.unit_price,
+                "quantity": f"{row.requested_quantity}",
+                "unit_price": f"{row.unit_price:.2f}",
+                "line_total": f"{row.line_total:.2f}",
             }
             for row in intake.items.all()
         ]
         customer_name = intake.customer_name
         customer_phone = intake.customer_phone
         customer_email = getattr(intake, "customer_email", "")
+        delivery_fee = Decimal(intake.delivery_fee or 0)
     else:
         items, customer_name, customer_phone, customer_email = [], "", "", ""
+        delivery_fee = Decimal("0.00")
+    subtotal = sum((Decimal(row["line_total"]) for row in items), Decimal("0.00"))
+    return {
+        "receipt_id": str(receipt.public_id),
+        "business_name": receipt.business.name,
+        "verified_at": receipt.verified_at.isoformat(),
+        "reversed_at": receipt.reversed_at.isoformat() if receipt.reversed_at else None,
+        "reversal_reason": receipt.reversal_reason or "",
+        "customer": {
+            "name": customer_name or "Customer",
+            "phone": customer_phone or "",
+            "email": customer_email or "",
+        },
+        "payment": {
+            "method": payment.method,
+            "method_label": payment.get_method_display(),
+            "currency": payment.currency,
+            "reference": payment.reference,
+            "gateway_provider": payment.gateway_provider or "",
+            "external_reference": receipt.external_reference or "",
+            "amount": f"{receipt.amount:.2f}",
+        },
+        "items": items,
+        "subtotal": f"{subtotal:.2f}",
+        "delivery_fee": f"{delivery_fee:.2f}",
+        "total": f"{receipt.amount:.2f}",
+    }
+
+
+def _receipt_queryset():
+    return CommercePaymentReceipt.raw_objects.select_related(
+        "business", "account", "payment__checkout", "payment__intake"
+    ).prefetch_related(
+        "payment__checkout__items__storefront_product__finished_good",
+        "payment__intake__items__finished_good",
+    )
+
+
+@require_http_methods(["GET"])
+def storefront_receipt(request, business_slug, receipt_id):
+    """Public, unguessable receipt generated only from verified payment rows."""
+    business = get_object_or_404(Business, slug=business_slug)
+    receipt = get_object_or_404(_receipt_queryset(), business=business, public_id=receipt_id)
+    details = _receipt_details(receipt)
+    payment = receipt.payment
+    checkout = payment.checkout
+    intake = payment.intake
     response = render(request, "commerce/storefront_receipt.html", {
         **_public_storefront_context(business),
         "receipt": receipt,
         "payment": payment,
-        "receipt_items": items,
-        "customer_name": customer_name,
-        "customer_phone": customer_phone,
-        "customer_email": customer_email,
+        "receipt_items": details["items"],
+        "delivery_fee": Decimal(details["delivery_fee"]),
+        "receipt_subtotal": Decimal(details["subtotal"]),
+        "customer_name": details["customer"]["name"],
+        "customer_phone": details["customer"]["phone"],
+        "customer_email": details["customer"]["email"],
         "hide_storefront_header": bool(
             (checkout is not None and checkout.source == CommerceCheckoutSession.SOURCE_STAFF_POS)
             or (intake is not None and intake.source == CommerceIntake.SOURCE_STAFF_POS)
         ),
     })
-    # Receipt links are intentionally unguessable but can contain customer PII;
-    # keep them out of shared/browser caches even outside the installed PWA.
     response["Cache-Control"] = "private, no-store, max-age=0"
     response["X-Robots-Tag"] = "noindex, nofollow"
     return response
@@ -1092,7 +1135,7 @@ def storefront_pos(request):
                     location="In-premise storefront",
                     note="Cash received by authorized storefront staff.",
                 )
-                return redirect("storefront_receipt", business_slug=request.business.slug, receipt_id=receipt.public_id)
+                return redirect(f"{reverse('commerce_storefront_pos')}?receipt={receipt.public_id}")
             messages.info(request, "Payment request sent to the configured POS terminal. Complete the card payment on the terminal; INPROFIC will mark it paid after automatic confirmation.")
             return redirect(f"{reverse('commerce_storefront_pos')}?checkout={checkout.public_id}")
         except (ValidationError, GatewayError, InvalidOperation, TypeError, ValueError) as exc:
@@ -1103,6 +1146,16 @@ def storefront_pos(request):
         {p.finished_good.product_category for p in products if p.finished_good.product_category_id},
         key=lambda category: (category.sort_order, category.name.lower(), category.pk),
     )
+    completed_receipt = None
+    receipt_id = (request.GET.get("receipt") or "").strip()
+    if receipt_id:
+        receipt = _receipt_queryset().filter(
+            business=request.business, public_id=receipt_id
+        ).first()
+        if receipt:
+            source = receipt.payment.checkout.source if receipt.payment.checkout_id else (receipt.payment.intake.source if receipt.payment.intake_id else "")
+            if source == CommerceIntake.SOURCE_STAFF_POS:
+                completed_receipt = _receipt_details(receipt)
     return render(request, "commerce/storefront_pos.html", {
         "products": products,
         "product_categories": pos_categories,
@@ -1117,6 +1170,7 @@ def storefront_pos(request):
         "pos_channel_label": vertical_config(request.business)["commerce_channels"].get(pos_channel, pos_channel.replace("_", " ").title()),
         "delivery_enabled": delivery_enabled,
         "delivery_areas": delivery_areas,
+        "completed_receipt": completed_receipt,
     })
 
 
@@ -1130,7 +1184,15 @@ def storefront_pos_status(request, checkout_id):
         business=request.business, public_id=checkout_id, source=CommerceIntake.SOURCE_STAFF_POS,
     )
     payment = current_checkout_payment(checkout)
+    receipt_data = None
+    if payment is not None:
+        receipt = _receipt_queryset().filter(
+            business=request.business, payment=payment, reversed_at__isnull=True
+        ).order_by("-verified_at", "-id").first()
+        if receipt:
+            receipt_data = _receipt_details(receipt)
     return JsonResponse({
         "checkout": serialize_checkout(checkout),
         "payment": serialize_payment(payment) if payment else None,
+        "receipt": receipt_data,
     })

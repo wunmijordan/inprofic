@@ -406,6 +406,12 @@ def checkout_total_paid(checkout):
 def serialize_checkout(checkout):
     expire_checkout_if_needed(checkout)
     intake = checkout.materialized_intake
+    delivery = None
+    if checkout.delivery_quote_id:
+        # Keep the accepted delivery quote in the checkout contract so hosted
+        # and headless review screens render the same authoritative snapshot.
+        from .delivery_services import serialize_delivery_quote
+        delivery = serialize_delivery_quote(checkout.delivery_quote)
     return {
         "checkout_id": str(checkout.public_id),
         "status": checkout.status,
@@ -415,6 +421,7 @@ def serialize_checkout(checkout):
         "subtotal": f"{(checkout.amount - checkout.delivery_fee):.2f}",
         "delivery_fee": f"{checkout.delivery_fee:.2f}",
         "delivery_quote_id": str(checkout.delivery_quote.public_id) if checkout.delivery_quote_id else None,
+        "delivery": delivery,
         "currency": checkout.currency,
         "reservation_expires_at": checkout.reservation_expires_at.isoformat() if checkout.reservation_expires_at else None,
         "order_id": str(intake.public_id) if intake else None,
