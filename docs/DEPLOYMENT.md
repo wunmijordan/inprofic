@@ -327,3 +327,27 @@ for every PWA deployment so installed clients can detect it.
 ### Delivery reverse geocoding
 
 Two-way checkout address/map synchronization uses the existing forward geocoder plus reverse lookup. `DELIVERY_REVERSE_GEOCODER_URL` is optional; when omitted, INPROFIC derives the reverse endpoint from `DELIVERY_GEOCODER_URL` (for the default Nominatim `/search` -> `/reverse` layout). Production deployments using another geocoding provider should set both URLs explicitly when its endpoint structure differs.
+
+## Live-production testing when there is no staging environment
+
+A normal Business can be created temporarily in production and later removed through **Founder Console → Platform management**, but it is real production data while it exists. Review the cascade preview before confirming deletion and avoid real provider/customer credentials unless the scenario genuinely requires them.
+
+The explicit Production and Commerce order sequences are tenant-scoped, so a temporary Business does not consume another tenant's Production Order or WEB order number sequence. Some older screens still display ordinary database primary keys for records such as purchase orders, sales or expenses; those global surrogate IDs may show harmless gaps after any create/delete activity. A gap in a primary key is not a cross-tenant numbering collision or data leak.
+
+For provider testing, prefer sandbox credentials where available. Export anything that must be retained before deleting the temporary tenant, and remember that external provider callbacks may outlive a local record if the provider was given a real live reference.
+
+## Performance and paid Render scaling
+
+INPROFIC already uses bounded query shaping, request-scoped permission/business caches, lazy analytical surfaces, PostgreSQL pooling, cached DB sessions and request/SQL timing diagnostics. A larger Render instance gives more CPU/memory headroom and reduces resource contention, but no instance size can guarantee zero latency if the database is geographically distant, an endpoint issues unnecessary round trips, or an external provider/geocoder is slow.
+
+For the fastest practical production path:
+
+1. keep the Render service and PostgreSQL/Supabase database in the closest practical regions;
+2. keep Psycopg pooling enabled and size `DB_POOL_MAX_SIZE` to the database's real connection budget;
+3. use the `slow_request` diagnostics to fix query amplification before buying compute to mask it;
+4. avoid synchronous external HTTP calls on ordinary page rendering;
+5. use a paid/non-sleeping Render plan to remove free-instance cold starts;
+6. before running multiple ASGI processes or Render instances, set `CHANNEL_REDIS_URL` so Channels uses Redis rather than the in-memory channel layer;
+7. monitor p95/p99 request latency, database latency and provider latency separately.
+
+The current `scripts/production.sh` intentionally starts one Daphne process. Horizontal/multi-process scaling is a separate deployment topology decision because realtime notifications require a shared Redis channel layer first. Scale that deliberately rather than spawning independent in-memory workers that cannot exchange WebSocket messages.

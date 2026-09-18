@@ -623,3 +623,17 @@ In-Premise POS is a separate `pos` permission. The system role `pos_operator` ha
 ### Delivery rider and storefront-customer boundaries
 
 Delivery Rider is a purpose-specific staff access surface: rider-only users can see and act only on assignments linked to their own active in-house driver record. Delivery alerts reuse the durable Commerce notification transport but support targeted rider recipients. Public storefront customers remain guests by default; optional `StorefrontCustomer` profiles are tenant-scoped, separate from staff users, and store purchase history without making registration a checkout requirement. Hybrid delivery means in-house and the configured provider remain interchangeable per order under the tenant’s routing and customer-visible post-payment switch policy.
+
+## New-user onboarding tour
+
+INPROFIC keeps onboarding guidance tenant-membership scoped. `UserBusiness.onboarding_tour_version` stores only the last completed/dismissed tour version; the current version lives in `core/onboarding.py`. Future memberships begin at version 0 and see the dashboard tour once. The rollout migration marks memberships that already existed at deployment as introduced, so an upgrade does not interrupt every established staff user. **Tour INPROFIC** can replay the guide explicitly.
+
+The tour reuses the permission snapshot already loaded by the context processor instead of adding a separate query to normal navigation. Steps highlight only modules present in the current user's navigation. Built-in animated mini-diagrams are CSS-only, while each step has a future media slot for GIF/WebP/MP4/WebM illustrations.
+
+## Starter commercial-mode transition
+
+Starter's capacity remains one user and zero additional services, while its commercial mode is Founder-controlled. `SubscriptionPlan.is_free_forever` derives the free state from Starter's persisted monthly price. Founder Console switches free → paid transactionally and gives existing active free Starter subscribers a 30-day transition instead of revoking access immediately. Switching paid → free restores non-expiring active Starter access. Founder-lifetime grants are excluded from the mass transition.
+
+### Onboarding tour illustration assets
+
+The tour's CSS animation is the permanent first visual layer. Optional per-step media is configured in `templates/core/_onboarding_tour.html` and stored under `apps/core/static/core/tour/`; it renders beneath the built-in art only after the asset successfully loads. Empty or failed media collapses with no placeholder. See `docs/ONBOARDING_TOUR.md` for the naming/configuration workflow and dark-theme behaviour.

@@ -271,6 +271,32 @@ class TenantRoutingTests(TestCase):
         self.assertLessEqual(len(queries), 85)
 
 
+    def test_new_membership_tour_can_be_completed_and_replayed(self):
+        membership = UserBusiness.objects.get(user=self.user, business=self.alpha)
+        membership.onboarding_tour_version = 0
+        membership.save(update_fields=["onboarding_tour_version"])
+        session = self.client.session
+        session["active_business_id"] = self.alpha.pk
+        session.save()
+
+        response = self.client.get(reverse("dashboard"))
+        self.assertContains(response, 'id="ip-onboarding-tour"')
+        self.assertContains(response, "Do not show again")
+        self.assertContains(response, 'id="ip-tour-media"')
+        self.assertContains(response, "Try this next")
+        self.assertContains(response, "const tourMedia = {")
+        self.assertContains(response, "built-in animated art ALWAYS stays above")
+
+        complete = self.client.post(reverse("onboarding_tour_complete"))
+        self.assertEqual(complete.status_code, 200)
+        membership.refresh_from_db()
+        self.assertEqual(membership.onboarding_tour_version, 1)
+        self.assertNotContains(self.client.get(reverse("dashboard")), 'id="ip-onboarding-tour"')
+        replay = self.client.get(f'{reverse("dashboard")}?tour=1')
+        self.assertContains(replay, 'id="ip-onboarding-tour"')
+        self.assertContains(replay, 'data-force="1"')
+
+
 class BusinessSettingsAccessTests(TestCase):
     def setUp(self):
         self.business = Business.objects.create(name="Bakery", slug="bakery")
@@ -795,6 +821,78 @@ class FounderPaymentSettingsTests(TestCase):
         self.assertEqual(yearly.promotion_id, promo.pk)
         self.assertEqual(yearly.base_amount, Decimal("120000.00"))
         self.assertEqual(yearly.amount, Decimal("108000.00"))
+
+
+    def _plan_pricing_payload(self, *, starter_free, starter_price="0.00"):
+        payload = {"action": "save_plan_pricing"}
+        for plan in self.plans.values():
+            price = starter_price if plan.code == "starter" else str(plan.monthly_price)
+            payload[f"monthly_price_{plan.pk}"] = price
+            payload[f"yearly_discount_{plan.pk}"] = str(plan.yearly_discount_percent)
+            payload[f"addon_discount_{plan.pk}"] = str(plan.additional_service_discount_percent)
+            if plan.code == "starter":
+                payload[f"user_limit_{plan.pk}"] = "1"
+                payload[f"service_limit_{plan.pk}"] = "0"
+                if starter_free:
+                    payload[f"free_forever_{plan.pk}"] = "on"
+            else:
+                payload[f"user_limit_{plan.pk}"] = str(plan.user_limit or 1)
+                payload[f"service_limit_{plan.pk}"] = str(plan.additional_service_limit or 0)
+                if plan.user_limit is None:
+                    payload[f"users_unlimited_{plan.pk}"] = "on"
+                if plan.additional_service_limit is None:
+                    payload[f"services_unlimited_{plan.pk}"] = "on"
+        return payload
+
+    def test_founder_can_switch_starter_paid_then_back_to_free_without_abrupt_loss(self):
+        from .subscription_services import start_trial_for_business
+
+        starter = self.plans["starter"]
+        subscription = start_trial_for_business(self.business, starter)
+        self.assertTrue(subscription.is_effectively_active)
+
+        response = self.client.post(
+            reverse("founder_subscriptions"),
+            self._plan_pricing_payload(starter_free=False, starter_price="2500.00"),
+        )
+        self.assertRedirects(response, reverse("founder_subscriptions"), fetch_redirect_response=False)
+        starter.refresh_from_db(); subscription.refresh_from_db()
+        self.assertFalse(starter.is_free_forever)
+        self.assertEqual(starter.monthly_price, Decimal("2500.00"))
+        self.assertEqual(starter.trial_days, 30)
+        self.assertEqual(subscription.status, BusinessSubscription.STATUS_TRIAL)
+        self.assertIsNotNone(subscription.trial_ends_at)
+        self.assertTrue(subscription.is_effectively_active)
+
+        response = self.client.post(
+            reverse("founder_subscriptions"),
+            self._plan_pricing_payload(starter_free=True, starter_price="2500.00"),
+        )
+        self.assertRedirects(response, reverse("founder_subscriptions"), fetch_redirect_response=False)
+        starter.refresh_from_db(); subscription.refresh_from_db()
+        self.assertTrue(starter.is_free_forever)
+        self.assertEqual(starter.monthly_price, Decimal("0.00"))
+        self.assertEqual(starter.trial_days, 0)
+        self.assertEqual(subscription.status, BusinessSubscription.STATUS_ACTIVE)
+        self.assertIsNone(subscription.trial_ends_at)
+        self.assertIsNone(subscription.paid_until)
+        self.assertTrue(subscription.is_effectively_active)
+
+    def test_new_workspace_uses_paid_starter_trial_when_founder_switches_starter_to_paid(self):
+        from .subscription_services import start_trial_for_business
+
+        starter = self.plans["starter"]
+        starter.monthly_price = Decimal("1500.00")
+        starter.trial_days = 30
+        starter.save(update_fields=["monthly_price", "trial_days"])
+        another = Business.objects.create(name="Paid Starter Tenant", slug="paid-starter-tenant")
+
+        subscription = start_trial_for_business(another, starter)
+
+        self.assertEqual(subscription.plan_id, starter.pk)
+        self.assertEqual(subscription.status, BusinessSubscription.STATUS_TRIAL)
+        self.assertIsNotNone(subscription.trial_ends_at)
+        self.assertTrue(subscription.is_effectively_active)
 
     def test_storefront_pos_access_is_supplemental_not_general_commerce_edit(self):
         roles = seed_business_roles(self.business)

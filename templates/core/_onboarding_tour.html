@@ -1,0 +1,332 @@
+{% load static %}
+
+<style>
+  .ip-tour[hidden] { display:none !important; }
+  .ip-tour { position:fixed; inset:0; z-index:170; pointer-events:none; }
+  .ip-tour-backdrop { position:absolute; inset:0; background:rgba(20,17,15,.62); backdrop-filter:blur(1px); pointer-events:auto; }
+  .ip-tour-focus { position:fixed; z-index:172; border:2px solid color-mix(in srgb,var(--tenant-button) 75%,white); border-radius:18px; box-shadow:0 0 0 9999px rgba(20,17,15,.22), 0 0 0 5px color-mix(in srgb,var(--tenant-button) 22%,transparent), 0 18px 50px rgba(0,0,0,.25); transition:left .22s ease,top .22s ease,width .22s ease,height .22s ease; pointer-events:none; }
+  .ip-tour-card { position:fixed; z-index:174; width:min(410px,calc(100vw - 28px)); background:#FFFDF8; color:#44403c; color-scheme:light; border:1px solid #E7DFCC; border-radius:24px; box-shadow:0 28px 90px rgba(0,0,0,.32); padding:18px; pointer-events:auto; transition:left .22s ease,top .22s ease; }
+  .ip-tour-art { position:relative; height:92px; overflow:hidden; border-radius:16px; background:linear-gradient(135deg,#f7efe2,#fff 58%,#f3e8d8); border:1px solid #eadfcd; }
+  .ip-tour-media[hidden] { display:none !important; }
+  .ip-tour-media { margin-top:10px; overflow:hidden; border:1px solid #eadfcd; border-radius:16px; background:#fff; }
+  .ip-tour-media :where(img,video) { display:block; width:100%; max-height:220px; object-fit:contain; background:#fff; opacity:1 !important; }
+  .ip-tour-copy { margin-top:14px; }
+  .ip-tour-cta[hidden] { display:none !important; }
+  .ip-tour-cta { margin-top:12px; border:1px solid #eadfcd; border-radius:14px; background:#f8f1e7; padding:10px 12px; color:#57534e; }
+  .ip-tour-cta-kicker { display:block; margin-bottom:3px; color:#8f172d; font:800 9px/1.2 "IBM Plex Mono",monospace; letter-spacing:.1em; text-transform:uppercase; }
+  .ip-tour-cta-copy { margin:0; color:#57534e; font-size:12px; line-height:1.55; font-weight:650; }
+  .ip-tour-cta-action { margin-top:9px; display:inline-flex; align-items:center; justify-content:center; gap:6px; border:1px solid var(--tenant-button); border-radius:10px; background:var(--tenant-button); color:var(--tenant-button-contrast); padding:7px 10px; font-size:11px; line-height:1.2; font-weight:750; box-shadow:0 4px 12px color-mix(in srgb,var(--tenant-button) 20%,transparent); transition:transform .15s ease,box-shadow .15s ease; }
+  .ip-tour-cta-action:hover { color:var(--tenant-button-contrast); transform:translateY(-1px); box-shadow:0 6px 16px color-mix(in srgb,var(--tenant-button) 28%,transparent); }
+  .ip-tour-art [data-media] { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .ip-tour-art::before { content:"Overview → Action"; position:absolute; z-index:3; left:16px; bottom:9px; font:700 9px/1.2 "IBM Plex Mono",monospace; letter-spacing:.08em; text-transform:uppercase; color:#57534e; }
+  .ip-tour-art::after { content:""; position:absolute; z-index:2; left:16px; right:16px; bottom:26px; height:1px; background:linear-gradient(90deg,transparent,#d6c7b3 15% 85%,transparent); }
+  .ip-tour-art[data-kind="search"]::before { content:"Search → Record"; }
+  .ip-tour-art[data-kind="inventory"]::before { content:"Stock → Reorder"; }
+  .ip-tour-art[data-kind="procurement"]::before { content:"PO → Receive → Stock"; }
+  .ip-tour-art[data-kind="production"]::before { content:"Recipe → Release → Batch"; }
+  .ip-tour-art[data-kind="sales"]::before { content:"Customer → Sale → Payment"; }
+  .ip-tour-art[data-kind="commerce"]::before { content:"Catalogue → Checkout → Order"; }
+  .ip-tour-art[data-kind="pos"]::before { content:"Basket → Review → Receipt"; }
+  .ip-tour-art[data-kind="delivery"]::before { content:"Quote → Dispatch → Delivered"; }
+  .ip-tour-art[data-kind="finance"]::before { content:"Activity → Ledger → Cash"; }
+  .ip-tour-art[data-kind="reports"]::before { content:"Records → Report → Export"; }
+  .ip-tour-art[data-kind="users"]::before { content:"Role → Permission → Access"; }
+  .ip-tour-art[data-kind="settings"]::before { content:"Business → Defaults → Rules"; }
+  .ip-tour-shape { position:absolute; border-radius:12px; background:color-mix(in srgb,var(--tenant-button) 72%,#fff); box-shadow:0 8px 18px rgba(33,29,26,.12); }
+  .ip-tour-shape.a { width:58px; height:34px; left:22px; top:30px; animation:ipTourFloat 2.6s ease-in-out infinite; }
+  .ip-tour-shape.b { width:86px; height:15px; left:96px; top:24px; opacity:.45; animation:ipTourPulse 2s ease-in-out infinite; }
+  .ip-tour-shape.c { width:116px; height:15px; left:96px; top:48px; opacity:.28; animation:ipTourPulse 2s .35s ease-in-out infinite; }
+  .ip-tour-shape.d { width:38px; height:38px; right:28px; top:27px; border-radius:50%; background:#fb923c; animation:ipTourOrbit 3s ease-in-out infinite; }
+  .ip-tour-art[data-kind="inventory"] .a,.ip-tour-art[data-kind="procurement"] .a { transform:rotate(-4deg); }
+  .ip-tour-art[data-kind="production"] .b,.ip-tour-art[data-kind="production"] .c { animation-name:ipTourConveyor; }
+  .ip-tour-art[data-kind="finance"] .d,.ip-tour-art[data-kind="sales"] .d { animation-name:ipTourCoin; }
+  .ip-tour-art[data-kind="delivery"] .a { animation-name:ipTourDrive; }
+  .ip-tour-progress { height:4px; border-radius:999px; background:#eee6d8; overflow:hidden; }
+  .ip-tour-progress > span { display:block; height:100%; background:linear-gradient(110deg,#050733 0%,#8f172d 18%,#D14900 34%,var(--tenant-background,#050733) 52%,var(--tenant-button,#D14900) 68%,#8f172d 84%,#050733 100%); background-size:260% 100%; animation:ipTourProgressMotion 3.8s linear infinite; transition:width .2s ease; will-change:background-position; }
+  #ip-tour-prev { background:var(--tenant-background,#050733); border-color:var(--tenant-background,#050733); color:var(--tenant-background-contrast,#fff); }
+  #ip-tour-prev:hover { color:var(--tenant-background-contrast,#fff); box-shadow:0 5px 14px color-mix(in srgb,var(--tenant-background,#050733) 28%,transparent); transform:translateY(-1px); }
+  #ip-tour-next { background:var(--tenant-button,#D14900); border-color:var(--tenant-button,#D14900); color:var(--tenant-button-contrast,#fff); }
+  #ip-tour-next:hover { color:var(--tenant-button-contrast,#fff); box-shadow:0 5px 14px color-mix(in srgb,var(--tenant-button,#D14900) 28%,transparent); transform:translateY(-1px); }
+  @keyframes ipTourProgressMotion { 0%{background-position:0% 50%} 100%{background-position:-260% 50%} }
+  @keyframes ipTourFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+  @keyframes ipTourPulse { 0%,100%{transform:scaleX(.88);opacity:.25} 50%{transform:scaleX(1);opacity:.58} }
+  @keyframes ipTourOrbit { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-12px,-8px)} }
+  @keyframes ipTourConveyor { 0%{transform:translateX(-8px)} 50%{transform:translateX(14px)} 100%{transform:translateX(-8px)} }
+  @keyframes ipTourCoin { 0%,100%{transform:translateY(2px) rotateY(0)} 50%{transform:translateY(-9px) rotateY(180deg)} }
+  @keyframes ipTourDrive { 0%{transform:translateX(-5px)} 50%{transform:translateX(35px)} 100%{transform:translateX(-5px)} }
+  html[data-theme="dark"] .ip-tour-card { background:#FFFDF8 !important; color:#44403c !important; border-color:#E7DFCC !important; }
+  html[data-theme="dark"] #ip-tour-eyebrow, html[data-theme="dark"] #ip-tour-counter { color:#a8a29e !important; }
+  html[data-theme="dark"] #ip-tour-title { color:#8f172d !important; }
+  html[data-theme="dark"] #ip-tour-body, html[data-theme="dark"] #ip-tour-skip-top, html[data-theme="dark"] #ip-tour-never { color:#57534e !important; }
+  html[data-theme="dark"] .ip-tour-cta { background:#f8f1e7 !important; border-color:#eadfcd !important; color:#57534e !important; }
+  html[data-theme="dark"] .ip-tour-cta-kicker { color:#8f172d !important; }
+  html[data-theme="dark"] .ip-tour-cta-copy { color:#57534e !important; }
+  html[data-theme="dark"] .ip-tour-cta-action { background:var(--tenant-button) !important; border-color:var(--tenant-button) !important; color:var(--tenant-button-contrast) !important; }
+  html[data-theme="dark"] .ip-tour-media { background:#fff !important; border-color:#eadfcd !important; }
+  html[data-theme="dark"] .ip-tour-media :where(img,video) { opacity:1 !important; }
+  @media (max-width:767px) {
+    .ip-tour-card { left:14px !important; right:14px; bottom:14px; top:auto !important; width:auto; max-height:min(72dvh,620px); overflow:auto; }
+    .ip-tour-focus { border-radius:14px; }
+  }
+  @media (prefers-reduced-motion:reduce) { .ip-tour-shape,.ip-tour-focus,.ip-tour-card,.ip-tour-progress > span { animation:none !important; transition:none !important; } }
+</style>
+
+<div id="ip-onboarding-tour" class="ip-tour" hidden
+     data-version="{{ onboarding_tour_version }}"
+     data-force="{% if force_onboarding_tour %}1{% else %}0{% endif %}"
+     data-complete-url="{% url 'onboarding_tour_complete' %}"
+     data-media-root="{% static 'core/tour/' %}">
+  <div class="ip-tour-backdrop" aria-hidden="true"></div>
+  <div class="ip-tour-focus" aria-hidden="true"></div>
+  <section class="ip-tour-card" role="dialog" aria-modal="true" aria-labelledby="ip-tour-title" aria-describedby="ip-tour-body">
+    <div id="ip-tour-art" class="ip-tour-art" data-kind="dashboard" aria-hidden="true">
+      <div class="ip-tour-shape a"></div><div class="ip-tour-shape b"></div><div class="ip-tour-shape c"></div><div class="ip-tour-shape d"></div>
+    </div>
+    <div id="ip-tour-media" class="ip-tour-media" hidden aria-hidden="true"></div>
+    <div class="ip-tour-copy flex items-start justify-between gap-3">
+      <div>
+        <p id="ip-tour-eyebrow" class="text-[10px] font-extrabold uppercase tracking-[.18em] text-stone-400">Getting started</p>
+        <h2 id="ip-tour-title" class="mt-1 font-display text-xl font-semibold text-[#8f172d]">Welcome to INPROFIC</h2>
+      </div>
+      <button type="button" id="ip-tour-skip-top" class="shrink-0 rounded-full px-2 py-1 text-xs text-stone-500 hover:bg-stone-100" aria-label="Skip tour">Skip</button>
+    </div>
+    <p id="ip-tour-body" class="mt-2 text-sm leading-6 text-stone-600"></p>
+    <div id="ip-tour-cta" class="ip-tour-cta" hidden>
+      <span class="ip-tour-cta-kicker">Try this next</span>
+      <p id="ip-tour-cta-copy" class="ip-tour-cta-copy"></p>
+      <button type="button" id="ip-tour-cta-action" class="ip-tour-cta-action">Open this section <span aria-hidden="true">→</span></button>
+    </div>
+    <div class="mt-4 ip-tour-progress"><span id="ip-tour-progress"></span></div>
+    <div class="mt-2 flex items-center justify-between gap-2 text-[11px] text-stone-400">
+      <span id="ip-tour-counter"></span>
+      <button type="button" id="ip-tour-never" class="font-semibold text-stone-500 underline decoration-stone-300 underline-offset-2 hover:text-[#8f172d]">Do not show again</button>
+    </div>
+    <div class="mt-4 flex items-center justify-between gap-2">
+      <button type="button" id="ip-tour-prev" class="rounded-xl border px-4 py-2 text-sm font-semibold disabled:opacity-35">Previous</button>
+      <button type="button" id="ip-tour-next" class="rounded-xl border px-5 py-2 text-sm font-semibold">Next</button>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const root = document.getElementById('ip-onboarding-tour');
+  if (!root) return;
+  const version = Number(root.dataset.version || 1);
+  const tenant = document.documentElement.dataset.tenant || 'global';
+  const skippedKey = `inprofic-tour-skip-${tenant}-v${version}`;
+  const localDoneKey = `inprofic-tour-done-${tenant}-v${version}`;
+  const resumeKey = `inprofic-tour-resume-${tenant}-v${version}`;
+  const forced = root.dataset.force === '1';
+  if (!forced && (sessionStorage.getItem(skippedKey) === '1' || localStorage.getItem(localDoneKey) === '1')) return;
+
+  /*
+   * OPTIONAL TOUR MEDIA
+   * -------------------
+   * 1. Add a GIF/WebP/PNG/MP4/WebM file under:
+   *      apps/core/static/core/tour/
+   * 2. Put only its filename beside the matching step below.
+   * 3. Redeploy / collectstatic.
+   *
+   * The built-in animated art ALWAYS stays above the custom file. Empty values
+   * render no media container at all. A missing/broken file also collapses
+   * automatically, so there is never an empty placeholder in the tour card.
+   * Full https:// URLs are supported as well when media is hosted on a CDN/R2.
+   */
+  const tourMedia = {
+    dashboard:'',
+    search:'',
+    inventory:'',
+    procurement:'',
+    production:'',
+    sales:'',
+    commerce:'',
+    pos:'',
+    delivery:'',
+    finance:'',
+    reports:'',
+    users:'',
+    settings:'',
+  };
+
+  const definitions = [
+    { target:'dashboard', kind:'dashboard', title:'Your business at a glance', body:'Start here. The dashboard surfaces the operating picture without changing the underlying records. Quick actions let you jump straight into common work.', cta:'Review today’s alerts, totals and quick actions before opening individual records.', actionLabel:'Use the dashboard' },
+    { target:'search', kind:'search', title:'Find records without hunting', body:'Use global dashboard search to find materials, products, suppliers, customers and other business records, then open a focused detail view.', cta:'Try one search using a product, material, supplier or customer name you already know.', actionLabel:'Try dashboard search' },
+    { target:'inventory', kind:'inventory', title:'Set up what you buy and sell', body:'Inventory is the foundation. Create raw materials and finished products, choose units carefully, and set reorder information before recording live activity.', cta:'Create or verify your first raw material and finished product before entering live transactions.', actionLabel:'Open Inventory' },
+    { target:'procurement', kind:'procurement', title:'Record purchases and suppliers', body:'Procurement captures purchase orders, receiving and supplier costs. Receiving stock here keeps inventory and supplier obligations connected.', cta:'Record the next real purchase as a purchase order, then receive it when the stock actually arrives.', actionLabel:'Open Procurement' },
+    { target:'production', kind:'production', title:'Plan and record production', body:'Production-capable businesses define recipes or input requirements, release materials and record actual output, waste, quality evidence and cost snapshots.', cta:'Confirm the recipe or input requirements before releasing your first live production run.', actionLabel:'Open Production' },
+    { target:'sales', kind:'sales', title:'Serve customers and record sales', body:'Sales keeps customer activity, amounts owed and payments distinct. Use the customer and sales areas for staff-managed commercial activity.', cta:'Create a customer when useful, then record sales and settlement as separate business events.', actionLabel:'Open Sales' },
+    { target:'commerce', kind:'commerce', title:'Connect storefronts and checkout', body:'Commerce powers hosted checkout, external headless websites and supported integrations. It keeps catalogue, checkout, payment and fulfilment state explicit.', cta:'Publish only the products you want online, then verify checkout, payment and fulfilment settings before sharing the storefront.', actionLabel:'Open Commerce' },
+    { target:'pos', kind:'pos', title:'Use the counter POS', body:'The in-premise POS is a focused checkout for counter staff. It shares the same product, pricing, payment and delivery truth as Commerce.', cta:'Run one supervised counter order from basket to review and receipt before handing the terminal to cashiers.', actionLabel:'Open POS' },
+    { target:'delivery', kind:'delivery', title:'Coordinate last-mile delivery', body:'Delivery can use in-house riders, external providers such as Glovo, or both in Hybrid mode. Quotes, assignments, tracking and delivery events remain connected to the order.', cta:'Map your delivery base and zones, confirm pricing, then test one address and quote end to end.', actionLabel:'Open Delivery' },
+    { target:'finance', kind:'finance', title:'Follow the money', body:'Finance distinguishes revenue, receivables, payables and real cash movement so operational activity does not get mistaken for settlement.', cta:'Set up the cash accounts you actually use, then reconcile operational activity against real money movement.', actionLabel:'Open Finance' },
+    { target:'reports', kind:'reports', title:'Review and back up', body:'Reports turn operational records into reviewable business information. Use exports and backups as part of regular operating discipline.', cta:'Pick a regular review rhythm for reports and keep an export or backup routine for important records.', actionLabel:'Open Reports & Backup' },
+    { target:'users', kind:'users', title:'Give people only the access they need', body:'Users & Access controls roles and module permissions. Keep cashier, rider, auditor and management access purpose-specific.', cta:'Add staff with the narrowest role that matches their job, then expand permissions only when needed.', actionLabel:'Open Users & Access' },
+    { target:'settings', kind:'settings', title:'Finish your business setup', body:'Business Settings holds tenant-level configuration. Revisit it when branding, operational defaults or integration settings change.', cta:'Review business identity, defaults and integrations once before relying on the workspace for live operations.', actionLabel:'Open Business Settings' },
+  ].map(step => ({...step, media:tourMedia[step.kind] || ''}));
+
+  const visibleTarget = (name) => Array.from(document.querySelectorAll(`[data-tour-target="${name}"]`)).find(el => {
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+  });
+  const steps = definitions.filter((step, index) => index < 2 || document.querySelector(`[data-tour-target="${step.target}"]`));
+  if (!steps.length) return;
+
+  const card = root.querySelector('.ip-tour-card');
+  const focus = root.querySelector('.ip-tour-focus');
+  const art = document.getElementById('ip-tour-art');
+  const mediaShell = document.getElementById('ip-tour-media');
+  const mediaRoot = root.dataset.mediaRoot || '';
+  const cta = document.getElementById('ip-tour-cta');
+  const ctaCopy = document.getElementById('ip-tour-cta-copy');
+  const ctaAction = document.getElementById('ip-tour-cta-action');
+  const eyebrow = document.getElementById('ip-tour-eyebrow');
+  const title = document.getElementById('ip-tour-title');
+  const body = document.getElementById('ip-tour-body');
+  const counter = document.getElementById('ip-tour-counter');
+  const progress = document.getElementById('ip-tour-progress');
+  const prev = document.getElementById('ip-tour-prev');
+  const next = document.getElementById('ip-tour-next');
+  const rememberedIndex = Number(sessionStorage.getItem(resumeKey) || 0);
+  let index = forced ? 0 : Math.min(Math.max(0, Number.isFinite(rememberedIndex) ? rememberedIndex : 0), steps.length - 1);
+
+  function csrfToken() {
+    const input = document.querySelector('input[name="csrfmiddlewaretoken"]');
+    if (input?.value) return input.value;
+    return (document.cookie.match(/(?:^|; )csrftoken=([^;]+)/) || [])[1] || '';
+  }
+  async function persistDone() {
+    localStorage.setItem(localDoneKey, '1');
+    sessionStorage.removeItem(resumeKey);
+    try {
+      await fetch(root.dataset.completeUrl, {
+        method:'POST', credentials:'same-origin',
+        headers:{'X-CSRFToken':csrfToken(),'X-Requested-With':'XMLHttpRequest'}
+      });
+    } catch (_) { /* local flag still prevents repeated interruption in this browser */ }
+  }
+  function closeTour(mode='skip') {
+    if (mode === 'skip') sessionStorage.setItem(skippedKey, '1');
+    root.hidden = true;
+    document.documentElement.classList.remove('ip-tour-open');
+  }
+  function mediaUrl(value) {
+    const file = String(value || '').trim();
+    if (!file) return '';
+    if (/^(https?:)?\/\//i.test(file) || file.startsWith('/')) return file;
+    return `${mediaRoot}${file.replace(/^\/+/, '')}`;
+  }
+  function renderMedia(step) {
+    art.dataset.kind = step.kind || 'dashboard';
+    mediaShell.replaceChildren();
+    mediaShell.hidden = true;
+    const src = mediaUrl(step.media);
+    if (!src) return;
+
+    const isVideo = /\.(mp4|webm)(\?.*)?$/i.test(src);
+    const media = document.createElement(isVideo ? 'video' : 'img');
+    media.dataset.media = '1';
+    media.src = src;
+    media.setAttribute('aria-hidden', 'true');
+    if (isVideo) {
+      media.autoplay = true;
+      media.loop = true;
+      media.muted = true;
+      media.playsInline = true;
+      media.preload = 'metadata';
+      media.addEventListener('loadeddata', () => { if (!mediaShell.contains(media)) return; mediaShell.hidden = false; requestAnimationFrame(() => place(visibleTarget(steps[index].target))); }, {once:true});
+      media.addEventListener('error', () => { if (!mediaShell.contains(media)) return; mediaShell.replaceChildren(); mediaShell.hidden = true; }, {once:true});
+    } else {
+      media.alt = '';
+      media.decoding = 'async';
+      media.addEventListener('load', () => { if (!mediaShell.contains(media)) return; mediaShell.hidden = false; requestAnimationFrame(() => place(visibleTarget(steps[index].target))); }, {once:true});
+      media.addEventListener('error', () => { if (!mediaShell.contains(media)) return; mediaShell.replaceChildren(); mediaShell.hidden = true; }, {once:true});
+    }
+    mediaShell.appendChild(media);
+  }
+  function actionTarget(step) {
+    return visibleTarget(step.target) || document.querySelector(`[data-tour-target="${step.target}"]`);
+  }
+  function actionAnchor(target) {
+    if (!target) return null;
+    if (target.matches?.('a[href]')) return target;
+    return target.closest?.('a[href]') || target.querySelector?.('a[href]') || null;
+  }
+  function rememberNextStep() {
+    const nextIndex = Math.min(index + 1, steps.length - 1);
+    sessionStorage.setItem(resumeKey, String(nextIndex));
+  }
+  function useCurrentSection() {
+    const step = steps[index];
+    const target = actionTarget(step);
+    const anchor = actionAnchor(target);
+    rememberNextStep();
+    closeTour('practice');
+    if (anchor?.href) {
+      window.location.assign(anchor.href);
+      return;
+    }
+    if (!target) return;
+    target.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'center'});
+    const focusable = target.matches?.('input,select,textarea,button,[tabindex]:not([tabindex="-1"])')
+      ? target
+      : target.querySelector?.('input,select,textarea,button,[tabindex]:not([tabindex="-1"])');
+    setTimeout(() => focusable?.focus?.({preventScroll:true}), 180);
+  }
+
+  function place(target) {
+    const mobile = matchMedia('(max-width: 767px)').matches;
+    if (!target) {
+      focus.style.display='none';
+      if (!mobile) { card.style.left=`${Math.max(16,(innerWidth-card.offsetWidth)/2)}px`; card.style.top=`${Math.max(16,(innerHeight-card.offsetHeight)/2)}px`; }
+      return;
+    }
+    const rect = target.getBoundingClientRect();
+    const pad = 7;
+    focus.style.display='block';
+    focus.style.left=`${Math.max(6,rect.left-pad)}px`; focus.style.top=`${Math.max(6,rect.top-pad)}px`;
+    focus.style.width=`${Math.min(innerWidth-12,rect.width+pad*2)}px`; focus.style.height=`${Math.min(innerHeight-12,rect.height+pad*2)}px`;
+    if (mobile) return;
+    const gap=18, margin=16, w=card.offsetWidth, h=card.offsetHeight;
+    let left=rect.right+gap, top=Math.min(Math.max(margin,rect.top),innerHeight-h-margin);
+    if (left+w>innerWidth-margin) left=Math.max(margin,rect.left-w-gap);
+    if (left<margin || (rect.width>innerWidth*.55 && left+w>rect.left)) {
+      left=Math.min(Math.max(margin,rect.left),innerWidth-w-margin);
+      top=rect.bottom+gap;
+      if (top+h>innerHeight-margin) top=Math.max(margin,rect.top-h-gap);
+    }
+    card.style.left=`${left}px`; card.style.top=`${top}px`;
+  }
+  function render() {
+    const step=steps[index];
+    let target=visibleTarget(step.target);
+    if (target && (target.getBoundingClientRect().top < 0 || target.getBoundingClientRect().bottom > innerHeight)) {
+      target.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'center'});
+      setTimeout(() => place(visibleTarget(step.target)), 260);
+    }
+    eyebrow.textContent=index===0?'Getting started':'INPROFIC tour';
+    title.textContent=step.title; body.textContent=step.body; renderMedia(step);
+    ctaCopy.textContent=step.cta || '';
+    ctaAction.childNodes[0].textContent=`${step.actionLabel || 'Open this section'} `;
+    cta.hidden=!step.cta;
+    counter.textContent=`${index+1} of ${steps.length}`;
+    progress.style.width=`${((index+1)/steps.length)*100}%`;
+    prev.disabled=index===0; next.textContent=index===steps.length-1?'Finish':'Next';
+    requestAnimationFrame(() => place(target));
+  }
+
+  ctaAction.addEventListener('click', useCurrentSection);
+  prev.addEventListener('click',()=>{ if(index>0){index--;render();} });
+  next.addEventListener('click',async()=>{ if(index<steps.length-1){index++;render();} else {await persistDone();closeTour('done');} });
+  document.getElementById('ip-tour-skip-top').addEventListener('click',()=>closeTour('skip'));
+  document.getElementById('ip-tour-never').addEventListener('click',async()=>{await persistDone();closeTour('done');});
+  addEventListener('resize',()=>place(visibleTarget(steps[index].target)));
+  addEventListener('keydown',(e)=>{
+    if(root.hidden) return;
+    if(e.key==='Escape') closeTour('skip');
+    if(e.key==='ArrowRight') next.click();
+    if(e.key==='ArrowLeft' && !prev.disabled) prev.click();
+  });
+  root.hidden=false; document.documentElement.classList.add('ip-tour-open'); render();
+})();
+</script>

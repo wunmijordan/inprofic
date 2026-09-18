@@ -13,7 +13,7 @@
   @media (prefers-reduced-motion: reduce) { .dashboard-kpi { transition: none; } .dashboard-kpi:hover { transform: none; } }
 </style>
 <div x-data="{ dashboardView: new URLSearchParams(window.location.search).has('stock_item') ? 'stock' : 'overview' }">
-<header class="mb-4 flex items-end justify-between gap-4">
+<header data-tour-target="dashboard" class="mb-4 flex items-end justify-between gap-4">
   <div>
     <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">Workspace Overview</p>
     <h1 class="text-2xl md:text-3xl font-semibold font-display text-[#8f172d]">{{ biz.name }}</h1>
@@ -30,7 +30,7 @@
 </header>
  
 <!-- Global dashboard search: intentionally lives only on the dashboard. --> 
-<div x-data="dashboardSearch()" class="relative mb-4">
+<div data-tour-target="search" x-data="dashboardSearch()" class="relative mb-4">
   <div class="dashboard-surface rounded-2xl p-3 md:p-4">
     <div class="flex items-center gap-3"> 
       <div class="shrink-0 text-[#8f172d]"> 
@@ -1364,4 +1364,8 @@ function dashboardSearch() {
   };
 }
 </script>
+
+{% if show_onboarding_tour %}
+  {% include "core/_onboarding_tour.html" %}
+{% endif %}
 {% endblock %}

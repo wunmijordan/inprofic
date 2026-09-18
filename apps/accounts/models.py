@@ -171,6 +171,10 @@ class UserBusiness(models.Model):
     business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name="user_memberships")
     role = models.ForeignKey(Role, on_delete=models.PROTECT, related_name="memberships")
     active = models.BooleanField(default=True)
+    onboarding_tour_version = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Latest INPROFIC onboarding-tour version this membership completed or dismissed.",
+    )
 
     class Meta:
         constraints = [
@@ -236,6 +240,17 @@ class SubscriptionPlan(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def is_free_forever(self):
+        """Starter can be founder-switched between free-forever and paid.
+
+        Keeping the policy derived from the persisted price avoids a second
+        state flag drifting out of sync with billing. Other built-in plans are
+        never treated as free merely because their price is temporarily zero.
+        """
+        from decimal import Decimal
+        return self.code == self.CODE_STARTER and Decimal(self.monthly_price or 0) <= 0
 
     @property
     def yearly_price(self):
@@ -507,7 +522,7 @@ class BusinessSubscription(models.Model):
     def is_effectively_active(self):
         if self.founder_lifetime:
             return True
-        if self.plan.code == SubscriptionPlan.CODE_STARTER and self.status == self.STATUS_ACTIVE:
+        if self.plan.is_free_forever and self.status == self.STATUS_ACTIVE:
             return True
         from django.utils import timezone
         expiry = self.expires_at
@@ -519,7 +534,7 @@ class BusinessSubscription(models.Model):
             return "Founder lifetime"
         if not self.is_effectively_active:
             return "Expired"
-        if self.plan.code == SubscriptionPlan.CODE_STARTER and self.status == self.STATUS_ACTIVE:
+        if self.plan.is_free_forever and self.status == self.STATUS_ACTIVE:
             return "Free"
         return self.get_status_display()
 

@@ -41,7 +41,10 @@
     @keyframes preview-float { 0%,100%{transform:translateY(0) rotate(-.15deg)} 50%{transform:translateY(-8px) rotate(.15deg)} }
     @keyframes bridge-rise { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
     @keyframes flow-line { 0%,100%{background-position:0 100%} 50%{background-position:0 0} }
-    .promo-stage { position:relative; overflow:hidden; margin-top:-2.75rem; padding-top:4.75rem; background:#050733; }
+    .promo-stage { position:relative; overflow:hidden; margin-top:0; padding-top:4.75rem; background:#050733; }
+    .promo-bridge-shell { position:relative; background:#050733; }
+    .promo-bridge-overlap { position:absolute; inset:0 0 auto; z-index:30; transform:translateY(-50%); pointer-events:none; }
+    .promo-bridge-overlap > div { pointer-events:auto; }
     .promo-stage::before { content:""; position:absolute; inset:-40%; background:conic-gradient(from 90deg,transparent 0 20%,rgba(209,73,0,.26) 30%,transparent 42% 70%,rgba(231,189,101,.2) 82%,transparent 92%); animation:promo-orbit 14s linear infinite; pointer-events:none; }
     .promo-slide { --promo-fg:#fff; --promo-muted:rgba(255,255,255,.72); --promo-chip:rgba(255,255,255,.12); display:none; position:relative; min-height:330px; color:var(--promo-fg); isolation:isolate; }
     .promo-slide.is-active { display:grid; animation:promo-enter .75s cubic-bezier(.2,.8,.2,1) both; }
@@ -74,7 +77,7 @@
     @keyframes promo-marquee { from{transform:translateX(0) rotate(-2deg)} to{transform:translateX(-18%) rotate(-2deg)} }
     @keyframes promo-orbit { to{transform:rotate(360deg)} }
     @keyframes promo-timer { from{width:0} to{width:100%} }
-    @media(max-width:780px){.promo-stage{margin-top:-2.25rem;padding-top:4.25rem}.promo-slide-grid{grid-template-columns:1fr;padding:30px 20px 42px}.promo-media{min-height:210px;transform:none}.promo-media img,.promo-media video{min-height:210px}.promo-animation-marquee::after{font-size:28px}}
+    @media(max-width:780px){.promo-bridge-shell{padding-top:1px}.promo-bridge-overlap{position:relative;transform:none;margin:-2rem auto 0}.promo-stage{padding-top:1.5rem}.promo-slide-grid{grid-template-columns:1fr;padding:30px 20px 42px}.promo-media{min-height:210px;transform:none}.promo-media img,.promo-media video{min-height:210px}.promo-animation-marquee::after{font-size:28px}}
     @media (prefers-reduced-motion:reduce) { html{scroll-behavior:auto}.feature-card,.flow-step{transition:none}.ambient-orb,.hero-preview,.bridge-card>div,.process-flow::before,.promo-stage::before,.promo-slide,.promo-copy>*,.promo-media,.promo-animation-marquee::after,.promo-progress span::after{animation:none!important} }
   </style>
 </head>
@@ -104,7 +107,7 @@
           <a href="{% url 'signup' %}" class="rounded-xl bg-[#d14900] px-5 py-3 text-sm font-bold text-white shadow-[0_14px_35px_rgba(209,73,0,.34)] hover:brightness-110">Create your workspace</a>
           <a href="#capabilities" class="rounded-xl border border-white/20 bg-white/5 px-5 py-3 text-sm font-semibold hover:bg-white/10">Explore INPROFIC</a>
         </div>
-        <p class="mt-4 text-xs text-white/45">Free Starter workspace · Paid plans include a 30-day trial · Cancel anytime</p>
+        <p class="mt-4 text-xs text-white/45">{% if starter_plan and starter_plan.is_free_forever %}Free Starter workspace · {% else %}Starter includes a 30-day trial · {% endif %}Paid plans can be cancelled anytime</p>
       </div>
       <div class="hero-preview glass soft-card rounded-[2rem] p-4 sm:p-6">
         <div class="rounded-3xl bg-[#fffdf8] p-5 text-stone-900 shadow-2xl sm:p-6">
@@ -124,17 +127,10 @@
   </header>
 
   <main class="relative z-10">
-    <section class="relative z-30 mx-auto -mt-12 max-w-6xl px-5 sm:px-8">
-      <div class="bridge-card soft-card grid gap-px overflow-hidden rounded-2xl border border-stone-200 bg-stone-200 sm:grid-cols-2 lg:grid-cols-4">
-        <div class="bg-white p-5 text-center"><strong class="font-display text-xl text-[#d14900]">One source of truth</strong><p class="mt-1 text-xs text-stone-500">Stock, orders and money stay connected.</p></div>
-        <div class="bg-white p-5 text-center"><strong class="font-display text-xl text-[#d14900]">Payment-first commerce</strong><p class="mt-1 text-xs text-stone-500">Verified payment precedes order intake.</p></div>
-        <div class="bg-white p-5 text-center"><strong class="font-display text-xl text-[#d14900]">Plan-gated delivery</strong><p class="mt-1 text-xs text-stone-500">In-house riders, true hybrid routing or Glovo LaaS dispatch.</p></div>
-        <div class="bg-white p-5 text-center"><strong class="font-display text-xl text-[#d14900]">Audit workspace</strong><p class="mt-1 text-xs text-stone-500">External auditors review, flag and query evidence safely.</p></div>
-      </div>
-    </section>
-
     {% if marketing_campaigns %}
-    <section class="promo-stage" data-promo-stage aria-label="Current INPROFIC promotions">
+    <section class="promo-bridge-shell" aria-label="Current INPROFIC promotions">
+      <div class="promo-bridge-overlap mx-auto max-w-6xl px-5 sm:px-8">{% include "marketing/_bridge.html" %}</div>
+      <div class="promo-stage" data-promo-stage>
       {% for campaign in marketing_campaigns %}
       <a href="#plans" class="promo-slide promo-theme-{{ campaign.theme }} promo-animation-{{ campaign.animation_style }}{% if forloop.first %} is-active{% endif %}" data-promo-slide aria-hidden="{% if forloop.first %}false{% else %}true{% endif %}">
         <div class="promo-slide-grid">
@@ -155,7 +151,10 @@
       </a>
       {% endfor %}
       {% if marketing_campaigns|length > 1 %}<div class="promo-progress" aria-hidden="true">{% for campaign in marketing_campaigns %}<span{% if forloop.first %} class="is-active"{% endif %}></span>{% endfor %}</div>{% endif %}
+      </div>
     </section>
+    {% else %}
+    <section class="relative z-30 mx-auto -mt-12 max-w-6xl px-5 sm:px-8">{% include "marketing/_bridge.html" %}</section>
     {% endif %}
 
     <section id="capabilities" class="mx-auto max-w-7xl px-5 py-24 sm:px-8">
@@ -212,42 +211,23 @@
           <p class="mt-2 text-sm leading-6 text-stone-500">See cash accounts, money movements, receivables, payables and expenses with audit-preserving corrections.</p>
         </article>
         <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
-          <span class="text-2xl">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(209, 0, 63)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-file-analytics">
-              <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M14 3v4a1 1 0 0 0 1 1h4" />
-              <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /><path d="M9 17l0 -5" /><path d="M12 17l0 -1" /><path d="M15 17l0 -3" />
-            </svg>
-          </span>
+          <span class="text-2xl">↗</span>
           <h3 class="mt-4 font-display text-xl font-semibold">Reports & backup</h3>
           <p class="mt-2 text-sm leading-6 text-stone-500">Understand stock, sales, procurement, production and financial performance, with practical exports and backup tools.</p>
         </article>
         <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
-          <span class="text-2xl">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(0, 209, 174)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-truck-delivery">
-              <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M5 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" /><path d="M15 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
-              <path d="M5 17h-2v-4m-1 -8h11v12m-4 0h6m4 0h2v-6h-8m0 -5h5l3 5" /><path d="M3 9l4 0" />
-            </svg>
-          </span>
+          <span class="text-2xl">🚚</span>
           <h3 class="mt-4 font-display text-xl font-semibold">Delivery operations</h3>
           <p class="mt-2 text-sm leading-6 text-stone-500">Quote delivery fees before payment, run a rider workspace for in-house jobs, keep in-house and Glovo genuinely interchangeable in Hybrid mode, and optionally use Glovo LaaS for live quotes, paid-order dispatch, tracking and status sync.</p>
         </article>
         <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
-          <span class="text-2xl">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(192, 0, 209)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-zoom-question">
-              <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" /><path d="M21 21l-6 -6" />
-              <path d="M10 13l0 .01" /><path d="M10 10a1.5 1.5 0 1 0 -1.14 -2.474" />
-            </svg>
-          </span>
+          <span class="text-2xl">🔎</span>
           <h3 class="mt-4 font-display text-xl font-semibold">Audit Workspace</h3>
           <p class="mt-2 text-sm leading-6 text-stone-500">Give external auditors a read-only, tenant-scoped evidence workspace with flags, queries and exportable audit packs.</p>
         </article>
         <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
-          <span class="text-2xl">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(209, 49, 0)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-receipt">
-              <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M5 21v-16a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v16l-3 -2l-2 2l-2 -2l-2 2l-2 -2l-3 2m4 -14h6m-6 4h6m-2 4h2" />
-            </svg>
-          </span>
-          <h3 class="mt-4 font-display text-xl font-semibold">Dedicated In-Premise POS</h3>
+          <span class="text-2xl">🧾</span>
+          <h3 class="mt-4 font-display text-xl font-semibold">Dedicated in-premise POS</h3>
           <p class="mt-2 text-sm leading-6 text-stone-500">Cashier-only users can land straight in the counter storefront, sell safely, and log out without entering the wider workspace.</p>
         </article>
       </div>
@@ -285,7 +265,7 @@
 
     <section id="plans" class="border-y border-stone-200 bg-white py-24">
       <div class="mx-auto max-w-7xl px-5 sm:px-8">
-        <div class="mx-auto max-w-2xl text-center"><p class="text-xs font-bold uppercase tracking-[.22em] text-[#d14900]">Plans</p><h2 class="mt-3 font-display text-3xl font-semibold sm:text-5xl">Start with what you need.</h2><p class="mt-4 text-stone-500">Starter is free for one user. Paid plans include one protected 30-day trial per account and can be cancelled anytime. Pricing and capacity come directly from INPROFIC.</p></div>
+        <div class="mx-auto max-w-2xl text-center"><p class="text-xs font-bold uppercase tracking-[.22em] text-[#d14900]">Plans</p><h2 class="mt-3 font-display text-3xl font-semibold sm:text-5xl">Start with what you need.</h2><p class="mt-4 text-stone-500">Starter is always a focused one-user plan{% if starter_plan and starter_plan.is_free_forever %} and is currently free forever{% elif starter_plan %} with the current price shown below{% endif %}. Paid access includes a protected 30-day trial where eligible and can be cancelled anytime. Pricing and capacity come directly from INPROFIC.</p></div>
         <div class="mt-10 grid gap-5 lg:grid-cols-3">
           {% for plan in plans %}
           <article class="soft-card flex flex-col rounded-3xl border {% if plan.code == 'business_pro' %}border-[#d14900] ring-2 ring-[#d14900]/10{% else %}border-stone-200{% endif %} bg-[#fffdf8] p-6">
@@ -294,18 +274,18 @@
             <div class="mt-4 flex flex-wrap items-end gap-x-2 gap-y-1"><span class="text-sm text-stone-400 line-through">{{ plan.monthly_price|money:"₦" }}</span><span class="font-display text-3xl font-semibold text-[#d14900]">{{ plan.promo_monthly_price|money:"₦" }}</span><span class="text-xs text-stone-500"> / month</span></div>
             <div class="mt-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2"><p class="text-xs font-bold text-[#b94300]">{{ plan.current_monthly_promotion.reason }}</p><p class="mt-0.5 text-[11px] text-stone-600">Monthly eligible · ends {{ plan.current_monthly_promotion.ends_at|date:"j M Y, g:i A" }}</p></div>
             {% else %}
-            <div class="mt-4"><span class="font-display text-3xl font-semibold">{% if plan.code == 'starter' %}Free{% else %}{{ plan.monthly_price|money:"₦" }}{% endif %}</span>{% if plan.code != 'starter' %}<span class="text-xs text-stone-500"> / month</span>{% endif %}</div>
+            <div class="mt-4"><span class="font-display text-3xl font-semibold">{% if plan.is_free_forever %}Free{% else %}{{ plan.monthly_price|money:"₦" }}{% endif %}</span>{% if not plan.is_free_forever %}<span class="text-xs text-stone-500"> / month</span>{% endif %}</div>
             {% endif %}
-            {% if plan.code == 'starter' %}<p class="mt-1 text-xs text-emerald-700">No expiry and no card required</p>{% elif plan.current_yearly_promotion %}<p class="mt-2 text-xs font-semibold text-emerald-700">{{ plan.promo_yearly_price|money:"₦" }} yearly · {{ plan.current_yearly_promotion.reason }} · yearly eligible</p>{% else %}<p class="mt-1 text-xs text-emerald-700">{{ plan.yearly_price|money:"₦" }} yearly · {{ plan.yearly_discount_percent|floatformat:-2 }}% discount</p>{% endif %}
+            {% if plan.is_free_forever %}<p class="mt-1 text-xs text-emerald-700">No expiry and no card required</p>{% elif plan.current_yearly_promotion %}<p class="mt-2 text-xs font-semibold text-emerald-700">{{ plan.promo_yearly_price|money:"₦" }} yearly · {{ plan.current_yearly_promotion.reason }} · yearly eligible</p>{% else %}<p class="mt-1 text-xs text-emerald-700">{{ plan.yearly_price|money:"₦" }} yearly · {{ plan.yearly_discount_percent|floatformat:-2 }}% discount</p>{% endif %}
             <div class="mt-5 flex-1 space-y-2 border-t border-stone-200 pt-5 text-sm">
               {% for entitlement in plan.module_entitlements.all %}
                 {% if entitlement.enabled %}<div class="flex items-center justify-between gap-3"><span>{{ entitlement.get_module_display }}</span><span class="text-xs font-semibold text-emerald-700">{% if entitlement.level == 'basic' %}Basic{% else %}Included{% endif %}</span></div>{% endif %}
               {% endfor %}
             </div>
             <div class="mt-4 grid grid-cols-2 gap-2 text-xs text-stone-500"><span>{% if plan.user_limit %}{{ plan.user_limit }} user{{ plan.user_limit|pluralize }}{% else %}Unlimited users{% endif %}</span><span class="text-right">{% if plan.additional_service_limit == None %}Unlimited add-ons{% elif plan.additional_service_limit %}{{ plan.additional_service_limit }} add-on{{ plan.additional_service_limit|pluralize }}{% else %}No add-ons{% endif %}</span></div>
-            <a href="{% url 'signup' %}" class="mt-6 block rounded-xl px-4 py-3 text-center text-sm font-bold {% if plan.code == 'business_pro' %}bg-[#d14900] text-white{% else %}border border-stone-300 bg-white text-stone-800{% endif %}">{% if plan.code == 'starter' %}Create free workspace{% else %}Start 30-day trial{% endif %}</a>
+            <a href="{% url 'signup' %}" class="mt-6 block rounded-xl px-4 py-3 text-center text-sm font-bold {% if plan.code == 'business_pro' %}bg-[#d14900] text-white{% else %}border border-stone-300 bg-white text-stone-800{% endif %}">{% if plan.is_free_forever %}Create free workspace{% else %}Start 30-day trial{% endif %}</a>
           </article>
-          {% empty %}<p class="col-span-full text-center text-sm text-stone-500">Plans are being prepared. You can still create a free Starter workspace.</p>{% endfor %}
+          {% empty %}<p class="col-span-full text-center text-sm text-stone-500">Plans are being prepared. Create your workspace and review the current Starter terms when plans become available.</p>{% endfor %}
         </div>
       </div>
     </section>
@@ -348,7 +328,7 @@
           <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can staff have different levels of access?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Roles can control View and Edit access by area, with selected individual adjustments where appropriate. Business admins can manage ordinary team access while protected roles remain restricted.</p></details>
           <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can INPROFIC alert staff about commerce activity?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Commerce activity can appear in the in-app notification tray, with supported device notifications available when enabled.</p></details>
           <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can I install INPROFIC like an app?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Supported browsers can install the workspace to the device home screen for quicker access, while the same account remains available through the web.</p></details>
-          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can I start small and add more later?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Starter remains free for one user, while paid plans add founder-configured capacity and modules. Eligible promotions can apply to monthly or yearly payments.</p></details>
+          <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can I start small and add more later?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Starter remains the focused one-user entry plan{% if starter_plan and starter_plan.is_free_forever %} and is currently free forever{% endif %}, while larger plans add founder-configured capacity and modules. Eligible promotions can apply to monthly or yearly payments.</p></details>
         </div>
       </div>
       <div class="mt-8 text-center">

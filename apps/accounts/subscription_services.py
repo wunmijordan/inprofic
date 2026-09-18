@@ -84,19 +84,18 @@ def ensure_default_plans():
                 )
                 plans[code] = plan
 
-    # Starter is permanently free and intentionally fixed at one user with no
-    # additional services. Paid-plan limits remain founder-configurable.
+    # Starter keeps its intentionally small capacity, while the Founder may
+    # switch its commercial mode between free-forever (price 0) and paid. A
+    # paid Starter receives the same 30-day transition/trial window used by
+    # paid plans; a free Starter has no expiry.
     plan_updates = []
     for plan in plans.values():
         changed = False
-        expected_trial_days = 0 if plan.code == SubscriptionPlan.CODE_STARTER else 30
+        expected_trial_days = 0 if plan.is_free_forever else 30
         if plan.trial_days != expected_trial_days:
             plan.trial_days = expected_trial_days
             changed = True
         if plan.code == SubscriptionPlan.CODE_STARTER:
-            if plan.monthly_price != Decimal("0"):
-                plan.monthly_price = Decimal("0")
-                changed = True
             if plan.user_limit != 1:
                 plan.user_limit = 1
                 changed = True
@@ -133,7 +132,7 @@ def ensure_default_plans():
             if plan_updates:
                 SubscriptionPlan.objects.bulk_update(
                     plan_updates,
-                    ["trial_days", "monthly_price", "user_limit", "additional_service_limit"],
+                    ["trial_days", "user_limit", "additional_service_limit"],
                 )
             if missing_entitlements:
                 SubscriptionPlanModule.objects.bulk_create(missing_entitlements, ignore_conflicts=True)
@@ -268,13 +267,14 @@ def start_trial_for_business(business, plan=None):
     plans = ensure_default_plans()
     plan = plan or plans[SubscriptionPlan.CODE_STARTER]
     now = timezone.now()
-    is_starter = plan.code == SubscriptionPlan.CODE_STARTER
+    is_free_plan = plan.is_free_forever
+    trial_days = max(1, int(plan.trial_days or 30))
     subscription, created = BusinessSubscription.objects.get_or_create(
         primary_business=business,
         defaults={
             "plan": plan,
-            "status": BusinessSubscription.STATUS_ACTIVE if is_starter else BusinessSubscription.STATUS_TRIAL,
-            "trial_ends_at": None if is_starter else now + timezone.timedelta(days=30),
+            "status": BusinessSubscription.STATUS_ACTIVE if is_free_plan else BusinessSubscription.STATUS_TRIAL,
+            "trial_ends_at": None if is_free_plan else now + timezone.timedelta(days=trial_days),
         },
     )
     if created:
@@ -355,8 +355,13 @@ def cancel_paid_plan_trial(subscription):
     subscription = BusinessSubscription.objects.select_for_update().get(pk=subscription.pk)
     if subscription.status != BusinessSubscription.STATUS_TRIAL:
         raise ValidationError("Only an active paid-plan trial can be cancelled.")
-    subscription.plan = plans[SubscriptionPlan.CODE_STARTER]
-    subscription.status = BusinessSubscription.STATUS_ACTIVE
+    starter = plans[SubscriptionPlan.CODE_STARTER]
+    subscription.plan = starter
+    subscription.status = (
+        BusinessSubscription.STATUS_ACTIVE
+        if starter.is_free_forever
+        else BusinessSubscription.STATUS_EXPIRED
+    )
     subscription.trial_ends_at = None
     subscription.paid_until = None
     subscription.save(update_fields=["plan", "status", "trial_ends_at", "paid_until"])

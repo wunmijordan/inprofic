@@ -212,3 +212,9 @@ and the shared production command, see
 See `CLAUDE.md` §7 and the docs folder for extension notes. New operational
 references include `docs/DELIVERY_GLOVO_PROVIDER.md` and
 `docs/AUDIT_WORKSPACE.md`.
+
+### Guided onboarding and technical study guide
+
+New tenant memberships receive a one-time, replayable dashboard tour with module-aware highlights, Previous/Next/Skip/Do-not-show-again controls and extensible animated illustrations. Existing memberships are not interrupted on rollout; use **Tour INPROFIC** to replay it. Optional per-step GIF/WebP/PNG/MP4/WebM media lives under `apps/core/static/core/tour/` and is configured without replacing the built-in artwork; see [`docs/ONBOARDING_TOUR.md`](docs/ONBOARDING_TOUR.md).
+
+For a detailed explanation of the stack, tenancy, access control, transaction flows, Commerce, Delivery, performance, deployment, security and common architecture-defense questions, read [`docs/INPROFIC_TECHNICAL_DEFENSE_GUIDE.md`](docs/INPROFIC_TECHNICAL_DEFENSE_GUIDE.md).

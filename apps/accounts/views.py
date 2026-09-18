@@ -264,7 +264,7 @@ def subscription_plans(request):
     can_start_paid_trial = trial_credentials_available and bool(
         not subscription or (
             subscription.status == BusinessSubscription.STATUS_ACTIVE
-            and subscription.plan.code == SubscriptionPlan.CODE_STARTER
+            and subscription.plan.is_free_forever
         )
     )
     return render(request, "accounts/subscription_plans.html", {
@@ -328,8 +328,11 @@ def subscription_payment(request, plan_code=None):
         action = request.POST.get("action") or ""
         if action == "cancel_trial":
             try:
-                cancel_paid_plan_trial(subscription)
-                messages.success(request, "Paid-plan trial cancelled. Your workspace is back on free Starter; no payment was taken.")
+                restored = cancel_paid_plan_trial(subscription)
+                if restored.plan.is_free_forever:
+                    messages.success(request, "Paid-plan trial cancelled. Your workspace is back on free Starter; no payment was taken.")
+                else:
+                    messages.success(request, "Paid-plan trial cancelled. Your workspace is back on Starter; Starter currently requires payment before normal access resumes.")
             except ValidationError as exc:
                 messages.error(request, "; ".join(exc.messages))
             return redirect("subscription_plans")
@@ -341,8 +344,8 @@ def subscription_payment(request, plan_code=None):
                 messages.error(request, "; ".join(exc.messages))
             return redirect("subscription_plans")
         if payment_locked:
-            if selected.code == SubscriptionPlan.CODE_STARTER:
-                messages.info(request, "Starter is free and does not require renewal or payment.")
+            if selected.is_free_forever:
+                messages.info(request, "Starter is currently free forever and does not require renewal or payment.")
             elif subscription.founder_lifetime:
                 messages.info(request, "Your current plan has founder lifetime access; payment is disabled for it.")
             else:
@@ -811,7 +814,15 @@ def founder_subscriptions(request):
             parsed = []
             try:
                 for plan in plans_to_update:
-                    monthly = Decimal("0") if plan.code == SubscriptionPlan.CODE_STARTER else max(Decimal("0"), Decimal(request.POST.get(f"monthly_price_{plan.pk}") or "0"))
+                    starter_free = bool(
+                        plan.code == SubscriptionPlan.CODE_STARTER
+                        and request.POST.get(f"free_forever_{plan.pk}") == "on"
+                    )
+                    monthly = max(Decimal("0"), Decimal(request.POST.get(f"monthly_price_{plan.pk}") or "0"))
+                    if starter_free:
+                        monthly = Decimal("0")
+                    elif plan.code == SubscriptionPlan.CODE_STARTER and monthly <= 0:
+                        raise ValueError("Paid Starter needs a positive monthly price.")
                     yearly_discount = min(Decimal("100"), max(Decimal("0"), Decimal(request.POST.get(f"yearly_discount_{plan.pk}") or "0")))
                     addon_discount = min(Decimal("100"), max(Decimal("0"), Decimal(request.POST.get(f"addon_discount_{plan.pk}") or "0")))
                     if plan.code == SubscriptionPlan.CODE_STARTER:
@@ -819,9 +830,12 @@ def founder_subscriptions(request):
                     else:
                         user_limit = None if request.POST.get(f"users_unlimited_{plan.pk}") == "on" else max(1, int(request.POST.get(f"user_limit_{plan.pk}") or 1))
                         service_limit = None if request.POST.get(f"services_unlimited_{plan.pk}") == "on" else max(0, int(request.POST.get(f"service_limit_{plan.pk}") or 0))
-                    parsed.append((plan, monthly, yearly_discount, addon_discount, user_limit, service_limit))
+                    parsed.append((
+                        plan, monthly, yearly_discount, addon_discount, user_limit, service_limit,
+                        plan.is_free_forever, starter_free,
+                    ))
             except (InvalidOperation, TypeError, ValueError):
-                messages.error(request, "Enter valid numeric pricing and discount values for every plan.")
+                messages.error(request, "Enter valid numeric pricing and discount values for every plan. Paid Starter requires a price above zero.")
                 return redirect("founder_subscriptions")
             # Keep configurable base pricing from making an already scheduled
             # fixed-amount promotion impossible to pay. One bounded query checks
@@ -833,7 +847,9 @@ def founder_subscriptions(request):
                 ends_at__gt=timezone.now(),
             ).select_related("plan"))
             invalid = []
-            for plan, monthly, _yearly_discount, _addon_discount, _user_limit, _service_limit in parsed:
+            for plan, monthly, _yearly_discount, _addon_discount, _user_limit, _service_limit, _was_free, will_be_free in parsed:
+                if will_be_free:
+                    continue
                 applicable = [promo for promo in fixed_promos if promo.applies_to_plan(plan)]
                 promo = max(applicable, key=lambda row: row.discount_value, default=None)
                 if promo and monthly <= promo.discount_value:
@@ -844,18 +860,50 @@ def founder_subscriptions(request):
                     "End or reduce the fixed promotion before lowering its base price: " + ", ".join(invalid),
                 )
                 return redirect("founder_subscriptions")
+            now = timezone.now()
+            transition_messages = []
             with transaction.atomic():
-                for plan, monthly, yearly_discount, addon_discount, user_limit, service_limit in parsed:
+                plan_rows = []
+                for plan, monthly, yearly_discount, addon_discount, user_limit, service_limit, was_free, will_be_free in parsed:
                     plan.monthly_price = monthly
                     plan.yearly_discount_percent = yearly_discount
                     plan.additional_service_discount_percent = addon_discount
                     plan.user_limit = user_limit
                     plan.additional_service_limit = service_limit
-                    plan.save(update_fields=[
-                        "monthly_price", "yearly_discount_percent", "additional_service_discount_percent",
+                    plan.trial_days = 0 if will_be_free else 30
+                    plan_rows.append(plan)
+                    if plan.code != SubscriptionPlan.CODE_STARTER or was_free == will_be_free:
+                        continue
+                    subscriptions = BusinessSubscription.objects.filter(plan=plan, founder_lifetime=False)
+                    if was_free and not will_be_free:
+                        # Existing free Starter tenants receive a 30-day grace/trial
+                        # instead of losing access the moment the Founder changes policy.
+                        changed = subscriptions.filter(
+                            status=BusinessSubscription.STATUS_ACTIVE,
+                            trial_ends_at__isnull=True,
+                            paid_until__isnull=True,
+                        ).update(
+                            status=BusinessSubscription.STATUS_TRIAL,
+                            trial_ends_at=now + timezone.timedelta(days=30),
+                            paid_until=None,
+                        )
+                        transition_messages.append(f"Starter changed to paid; {changed} existing free subscriber(s) received 30 days of uninterrupted access.")
+                    elif not was_free and will_be_free:
+                        changed = subscriptions.update(
+                            status=BusinessSubscription.STATUS_ACTIVE,
+                            trial_ends_at=None,
+                            paid_until=None,
+                        )
+                        transition_messages.append(f"Starter changed back to free forever; {changed} Starter subscriber(s) now have non-expiring access.")
+                SubscriptionPlan.objects.bulk_update(
+                    plan_rows,
+                    [
+                        "monthly_price", "yearly_discount_percent",
+                        "additional_service_discount_percent", "trial_days",
                         "user_limit", "additional_service_limit",
-                    ])
-            messages.success(request, "All plan pricing and capacity settings were saved together.")
+                    ],
+                )
+            messages.success(request, "All plan pricing and capacity settings were saved together." + (" " + " ".join(transition_messages) if transition_messages else ""))
             return redirect("founder_subscriptions")
         if action == "save_payment_channels":
             payment_settings.paystack_enabled = request.POST.get("paystack_enabled") == "on"

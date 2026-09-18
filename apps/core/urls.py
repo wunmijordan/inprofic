@@ -17,6 +17,7 @@ urlpatterns = [
     path("ops/dispatch-web-push/", operations.dispatch_web_push, name="dispatch_web_push"),
     path("", views.marketing_home, name="marketing_home"),
     path("dashboard/", views.dashboard, name="dashboard"),
+    path("dashboard/tour/complete/", views.onboarding_tour_complete, name="onboarding_tour_complete"),
     path("audit/", audit_views.audit_workspace, name="audit_workspace"),
     path("audit/query/", audit_views.audit_query_create, name="audit_query_create"),
     path("audit/query/<int:pk>/update/", audit_views.audit_query_update, name="audit_query_update"),

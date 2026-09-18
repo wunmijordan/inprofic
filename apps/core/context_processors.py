@@ -4,6 +4,7 @@ from accounts.subscription_services import business_has_feature
 from django.utils.functional import SimpleLazyObject
 from .context import get_request_cache
 from .models import Business
+from .onboarding import CURRENT_TOUR_VERSION
 from .verticals import vertical_config
 
 def business(request):
@@ -38,6 +39,19 @@ def business(request):
     visible_module_count = sum(
         1 for permission in permissions.values() if permission.get("view")
     )
+    membership = None
+    if biz and getattr(request.user, "is_authenticated", False):
+        request_cache = get_request_cache()
+        snapshot = request_cache.get(("permission_snapshot", request.user.pk, biz.pk)) if request_cache is not None else None
+        membership = snapshot[0] if snapshot else None
+    explicit_tour = bool(getattr(request, "GET", {}).get("tour") == "1")
+    show_onboarding_tour = bool(
+        permissions.get("dashboard", {}).get("view")
+        and (
+            explicit_tour
+            or (membership and membership.onboarding_tour_version < CURRENT_TOUR_VERSION)
+        )
+    )
     return {
         "biz": biz,
         "module_permissions": permissions,
@@ -52,6 +66,9 @@ def business(request):
         # surface they cannot use. Multi-module users get the shared back
         # affordance on every standard workspace page.
         "show_workspace_back": visible_module_count > 1,
+        "show_onboarding_tour": show_onboarding_tour,
+        "force_onboarding_tour": explicit_tour,
+        "onboarding_tour_version": CURRENT_TOUR_VERSION,
         # Only the reports page consumes this flag. Keep it lazy so ordinary
         # navigation doesn't query feature entitlements that won't be rendered.
         "reports_full": (

@@ -4,7 +4,7 @@
 
 `BusinessModuleAccess` remains the runtime commercial entitlement boundary. Plan changes write explicit rows for every module. `enabled=False` is a hard ceiling before role or user permissions are evaluated.
 
-Existing businesses are **not** automatically enrolled by the subscription migration. They keep their current existing entitlement behavior. New signups start a 30-day STARTER trial, and an existing tenant becomes plan-managed when it deliberately chooses a plan.
+Existing businesses are **not** silently downgraded by subscription migrations. STARTER keeps a fixed one-user/no-add-on capacity, while its commercial mode is Founder-controlled. When STARTER is free, new workspaces receive non-expiring STARTER access. When the Founder makes STARTER paid, new workspaces begin the configured 30-day STARTER trial and existing free STARTER tenants receive the same protected transition window instead of losing access abruptly.
 
 ## Seeded plans
 
@@ -23,7 +23,7 @@ Existing businesses are **not** automatically enrolled by the subscription migra
 | Delivery | Founder toggle | Founder toggle | Founder toggle |
 | Audit Workspace | Founder toggle | Founder toggle | Founder toggle |
 
-Every plan has one 30-day trial period. A tenant can switch the plan used during that trial without restarting the 30-day clock.
+Paid access uses a protected 30-day trial period. Free-forever STARTER has no expiry. When STARTER is switched from free to paid, existing active free STARTER subscriptions are converted to a 30-day transition/trial; switching STARTER back to free restores non-expiring active access. A tenant can switch the paid plan used during a trial without restarting the original trial clock.
 
 Delivery and Audit Workspace are seeded as disabled on every plan. The Founder Console decides which plan can use either add-on, and that plan row becomes the hard commercial ceiling before role permissions are considered.
 
@@ -42,6 +42,16 @@ plan monthly price × (1 − additional service discount %)
 ```
 
 The subscription monthly total is the primary plan price plus the discounted add-on price for every additional service profile.
+
+### Founder-controlled STARTER commercial mode
+
+STARTER always retains one user and no additional service profiles. The Founder Console may safely change only its commercial mode:
+
+- **Free forever:** monthly price is stored as `0.00`; active STARTER access has no expiry or renewal requirement.
+- **Paid:** Founder turns off **Free forever** and enters a positive monthly price. Existing free STARTER subscribers receive 30 days of uninterrupted transition access and new STARTER workspaces begin on the paid trial.
+- **Paid → free:** all ordinary STARTER subscriptions are restored to Active with trial/payment expiry cleared. Founder-lifetime grants are not rewritten by the bulk transition.
+
+The state is derived by `SubscriptionPlan.is_free_forever` from the STARTER code plus persisted monthly price instead of storing a separate boolean that could drift out of sync with billing.
 
 ## Multiple services under one subscription
 

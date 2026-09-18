@@ -61,7 +61,10 @@ def marketing_home(request):
         .select_related("promotion__plan")
         .order_by("-priority", "id")
     )
-    return render(request, "marketing/home.html", {"plans": plans, "marketing_campaigns": marketing_campaigns})
+    starter_plan = next((plan for plan in plans if plan.code == SubscriptionPlan.CODE_STARTER), None)
+    return render(request, "marketing/home.html", {
+        "plans": plans, "starter_plan": starter_plan, "marketing_campaigns": marketing_campaigns,
+    })
 
 
 def today():
@@ -1554,6 +1557,28 @@ def dashboard(request):
         "selected_item": selected_item,
         "stock_periods": stock_periods,
         "stock_unit": stock_unit,
+    })
+
+
+
+
+@login_required
+@require_POST
+def onboarding_tour_complete(request):
+    """Persist completion/dismissal for the current tenant membership.
+
+    The endpoint is intentionally tiny: the tour itself is static UI guidance,
+    so persisting one version integer must not add work to normal navigation.
+    """
+    from .onboarding import CURRENT_TOUR_VERSION
+
+    updated = UserBusiness.objects.filter(
+        user=request.user, business=request.business, active=True
+    ).update(onboarding_tour_version=CURRENT_TOUR_VERSION)
+    return JsonResponse({
+        "ok": True,
+        "updated": bool(updated),
+        "version": CURRENT_TOUR_VERSION,
     })
 
 

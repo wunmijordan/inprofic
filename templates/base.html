@@ -93,11 +93,11 @@
       </a>
       <div class="mt-3 min-w-0 truncate font-display font-semibold">{{ biz.name }}</div>
       <div class="text-[10px] tracking-[0.2em] uppercase text-[#C69A3E]">{{ biz.tagline|default:vertical_ui.platform_label }}</div>
-      {% if subscription %}<a href="{% url 'subscription_payment' %}" class="inline-flex mt-2 items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold {% if subscription.is_expiring_soon %}bg-rose-500 text-white{% else %}bg-white/10 text-white{% endif %}">{{ subscription.plan.name }}{% if subscription.founder_lifetime %} · Founder lifetime{% elif subscription.status == 'trial' and subscription.is_effectively_active %} · Trial{% elif subscription.plan.code == 'starter' and subscription.status == 'active' %} · Free{% elif subscription.status == 'active' %} · Paid{% else %} · {{ subscription.effective_status_label }}{% endif %}</a>{% else %}{% if can_manage_business %}<a href="{% url 'subscription_plans' %}" class="inline-flex mt-2 rounded-full bg-white/10 px-2 py-1 text-[10px] font-semibold text-white">Choose plan</a>{% endif %}{% endif %}
+      {% if subscription %}<a href="{% url 'subscription_payment' %}" class="inline-flex mt-2 items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold {% if subscription.is_expiring_soon %}bg-rose-500 text-white{% else %}bg-white/10 text-white{% endif %}">{{ subscription.plan.name }}{% if subscription.founder_lifetime %} · Founder lifetime{% elif subscription.status == 'trial' and subscription.is_effectively_active %} · Trial{% elif subscription.plan.is_free_forever and subscription.status == 'active' %} · Free{% elif subscription.status == 'active' %} · Paid{% else %} · {{ subscription.effective_status_label }}{% endif %}</a>{% else %}{% if can_manage_business %}<a href="{% url 'subscription_plans' %}" class="inline-flex mt-2 rounded-full bg-white/10 px-2 py-1 text-[10px] font-semibold text-white">Choose plan</a>{% endif %}{% endif %}
       {% if available_businesses|length > 1 %}
       <form action="{% url 'switch_business' %}" method="post" class="mt-3">
         {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
-        <select name="business_id" onchange="this.form.submit()" aria-label="Current business" class="w-full rounded-full border border-white/20 bg-white/10 px-2 py-1 text-[11px]">
+        <select name="business_id" onchange="this.form.submit()" aria-label="Current business" class="w-full rounded border border-white/20 bg-white/10 px-2 py-1 text-[11px]">
           {% for business in available_businesses %}<option class="text-stone-900" value="{{ business.pk }}" {% if business.pk == biz.pk %}selected{% endif %}>{{ business.name }}</option>{% endfor %}
         </select>
       </form>
