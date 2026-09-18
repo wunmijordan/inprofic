@@ -15,6 +15,7 @@ from core.services import audit
 
 from .models import CommerceNotification, DeliveryAssignment, DeliveryEvent, DeliveryProviderAccount
 from .notification_services import queue_commerce_notification
+from .realtime import publish_delivery_changed
 
 
 class ProviderDispatchError(ValidationError):
@@ -189,7 +190,7 @@ def ensure_builtin_provider_accounts(business):
 
 
 def dispatch_assignment_to_provider(assignment: DeliveryAssignment, *, actor=None) -> DeliveryAssignment:
-    assignment = DeliveryAssignment.raw_objects.select_related("provider_account", "origin", "quote", "intake", "business").get(pk=assignment.pk)
+    assignment = DeliveryAssignment.raw_objects.select_related("provider_account", "origin", "quote", "intake", "business", "driver__user").get(pk=assignment.pk)
     account = assignment.provider_account
     if not account or not account.active:
         return assignment
@@ -230,7 +231,15 @@ def dispatch_assignment_to_provider(assignment: DeliveryAssignment, *, actor=Non
         assignment.status = mapped
     elif assignment.status == DeliveryAssignment.STATUS_PENDING:
         assignment.status = DeliveryAssignment.STATUS_ASSIGNED
-    assignment.save(update_fields=["provider_payload", "provider_order_id", "provider_status", "external_reference", "external_tracking_url", "status", "updated_at"])
+    now = timezone.now()
+    pickup_fields = []
+    if assignment.status in {DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_OUT_FOR_DELIVERY} and not assignment.picked_up_at:
+        assignment.picked_up_at = now
+        pickup_fields.append("picked_up_at")
+        if assignment.quote_id:
+            assignment.eta_at = now + timezone.timedelta(minutes=assignment.quote.eta_max_minutes)
+            pickup_fields.append("eta_at")
+    assignment.save(update_fields=["provider_payload", "provider_order_id", "provider_status", "external_reference", "external_tracking_url", "status", *pickup_fields, "updated_at"])
     DeliveryEvent.raw_objects.create(
         business=assignment.business, created_by=actor, assignment=assignment, status=assignment.status,
         note="Delivery dispatched to Glovo LaaS.",
@@ -244,6 +253,10 @@ def dispatch_assignment_to_provider(assignment: DeliveryAssignment, *, actor=Non
         message=f"Tracking {provider_id or 'pending'} · {status}",
         target_url="/delivery/",
         dedupe_key=f"delivery:{assignment.pk}:glovo-dispatch:{provider_id or quote_reference}",
+    )
+    publish_delivery_changed(
+        assignment.business_id, assignment.public_id, reason="provider_dispatch",
+        rider_user_ids=(assignment.driver.user_id,) if assignment.driver_id and assignment.driver and assignment.driver.user_id else (),
     )
     return assignment
 
@@ -317,11 +330,11 @@ def consume_glovo_webhook(*, business, payload: dict, header_secret="", actor=No
     status = str(payload.get("status") or payload.get("state") or "").strip().upper()
     if not provider_id:
         return None
-    assignment = DeliveryAssignment.raw_objects.filter(
+    assignment = DeliveryAssignment.raw_objects.select_related("quote", "intake", "driver__user").filter(
         business=business, provider_account=account, provider_order_id=provider_id
     ).first()
     if not assignment:
-        assignment = DeliveryAssignment.raw_objects.filter(
+        assignment = DeliveryAssignment.raw_objects.select_related("quote", "intake", "driver__user").filter(
             business=business, provider_account=account, external_reference=provider_id
         ).first()
     if not assignment:
@@ -337,9 +350,17 @@ def consume_glovo_webhook(*, business, payload: dict, header_secret="", actor=No
         "last_webhook": payload,
         "last_webhook_at": timezone.now().isoformat(),
     }
+    now = timezone.now()
+    pickup_fields = []
+    if assignment.status in {DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_OUT_FOR_DELIVERY} and not assignment.picked_up_at:
+        assignment.picked_up_at = now
+        pickup_fields.append("picked_up_at")
+        if assignment.quote_id:
+            assignment.eta_at = now + timezone.timedelta(minutes=assignment.quote.eta_max_minutes)
+            pickup_fields.append("eta_at")
     if assignment.status == DeliveryAssignment.STATUS_DELIVERED and not assignment.delivered_at:
-        assignment.delivered_at = timezone.now()
-    assignment.save(update_fields=["status", "provider_status", "provider_payload", "delivered_at", "updated_at"])
+        assignment.delivered_at = now
+    assignment.save(update_fields=["status", "provider_status", "provider_payload", "delivered_at", *pickup_fields, "updated_at"])
     DeliveryEvent.raw_objects.create(
         business=business, created_by=actor, assignment=assignment, status=assignment.status,
         note="Glovo LaaS webhook update received.",
@@ -353,4 +374,8 @@ def consume_glovo_webhook(*, business, payload: dict, header_secret="", actor=No
             message=f"{status} → {assignment.get_status_display()}", target_url="/delivery/",
             dedupe_key=f"delivery:{assignment.pk}:glovo-status:{status}:{payload.get('updateReason') or ''}",
         )
+    publish_delivery_changed(
+        business.pk, assignment.public_id, reason="provider_status",
+        rider_user_ids=(assignment.driver.user_id,) if assignment.driver_id and assignment.driver and assignment.driver.user_id else (),
+    )
     return assignment

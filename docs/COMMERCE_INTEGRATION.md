@@ -474,6 +474,7 @@ POST /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}/payments
 GET  /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}/payments/current
 POST /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}/payments/current/claim
 GET  /api/v1/storefronts/{business_slug}/orders/{public_id}
+GET  /api/v1/storefronts/{business_slug}/deliveries/{delivery_id}/tracking
 POST /api/v1/storefronts/{business_slug}/orders/{public_id}/preorder
 ```
 
@@ -595,8 +596,61 @@ Checkout creation and `GET /api/v1/storefronts/{business_slug}/checkouts/{checko
 
 If `delivery` is `null`, the checkout is not a delivery checkout. Never synthesize an ETA, provider name, distance or switch policy that INPROFIC did not return.
 
-### Payment, receipt and tracking
+### Payment, receipt and live delivery tracking
 
 Create the checkout only after basket/channel/delivery validation. Use the payment-method discovery endpoint to show only methods INPROFIC considers available for that tenant/surface. Payment initiation returns the provider flow/status; poll the current-payment endpoint or follow the documented provider redirect/webhook path. A paid checkout eventually exposes the materialized order and receipt/tracking information through the checkout/order responses. Browser redirects are never proof of settlement.
 
-Customer registration is not required for headless integration. A tenant website may keep its own customer profile/session and store INPROFIC checkout/order UUIDs against that profile. Guest checkout and unguessable tracking remain valid.
+For delivery orders, INPROFIC exposes an authoritative customer-safe tracking snapshot:
+
+```text
+GET /api/v1/storefronts/{business_slug}/deliveries/{delivery_id}/tracking
+X-INPROFIC-Key: <tenant api key>
+```
+
+The response contains `order`, `delivery`, `timeline` and `realtime`. The timeline begins with the paid/materialized order confirmation and then contains delivery events. The delivery object includes provider/driver display data, `picked_up_at`, `eta_min_at`, `eta_max_at`, delivered time and the current status. Before pickup, the ETA fields are `null`: INPROFIC deliberately does not count courier travel time from order confirmation. On the first `picked_up`/`out_for_delivery` transition, the ETA window is anchored to that pickup timestamp using the accepted delivery quote's minimum/maximum ETA minutes.
+
+Example shape:
+
+```json
+{
+  "order": {
+    "id": "...",
+    "number": "WEB-000123",
+    "status": "confirmed",
+    "confirmed_at": "2026-09-18T13:02:00Z"
+  },
+  "delivery": {
+    "id": "...",
+    "status": "out_for_delivery",
+    "status_label": "Out for delivery",
+    "provider_label": "In-house delivery",
+    "driver": "Rider name",
+    "picked_up_at": "2026-09-18T13:24:00Z",
+    "eta_min_at": "2026-09-18T13:49:00Z",
+    "eta_max_at": "2026-09-18T14:14:00Z",
+    "delivered_at": null
+  },
+  "timeline": [
+    {"status": "confirmed", "status_label": "Order confirmed", "created_at": "..."},
+    {"status": "picked_up", "status_label": "Picked up", "created_at": "..."},
+    {"status": "out_for_delivery", "status_label": "Out for delivery", "created_at": "..."}
+  ],
+  "realtime": {
+    "event_type": "delivery.changed",
+    "fallback_poll_seconds": 10
+  }
+}
+```
+
+Hosted INPROFIC tracking uses a customer-safe WebSocket wake-up channel. A `delivery.changed` message is intentionally only a signal that something changed; it does **not** carry customer/order data. The page immediately re-fetches the authoritative status snapshot and redraws status, pickup-based ETA and timeline. Dispatcher, rider and supported provider/webhook status changes publish the same signal, so open Delivery Console, Rider and customer tracking surfaces update without a full page reload.
+
+For a headless website, keep `X-INPROFIC-Key` on the website server. The normal browser-safe pattern is:
+
+1. website browser calls its own `/api/orders/{id}/tracking` route;
+2. website backend calls the INPROFIC tracking endpoint with `X-INPROFIC-Key`;
+3. browser renders the returned status/ETA/timeline;
+4. repeat every roughly 8–10 seconds as a fallback, or have the website backend maintain/proxy the INPROFIC realtime signal and trigger an immediate re-fetch.
+
+Do not expose the API key in browser JavaScript. Also do not treat the realtime wake-up as authoritative state: always re-fetch the tracking snapshot. Direct cross-origin browser WebSockets depend on the deployment's allowed-origin policy, so server-side proxy/SSE/WebSocket relay or polling is the portable headless pattern.
+
+Customer registration is not required for headless integration. A tenant website may keep its own customer profile/session and store INPROFIC checkout/order/delivery UUIDs against that profile. Guest checkout and unguessable hosted tracking remain valid.

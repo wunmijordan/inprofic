@@ -35,6 +35,7 @@ from .models import (
     DeliverySettings,
 )
 from .notification_services import queue_commerce_notification
+from .realtime import publish_delivery_changed
 
 
 def _decimal(value, label):
@@ -615,6 +616,63 @@ def serialize_delivery_quote(quote):
     }
 
 
+
+def serialize_delivery_tracking(assignment):
+    """Customer-safe delivery snapshot shared by hosted and headless tracking."""
+    quote = assignment.quote if assignment.quote_id else None
+    pickup_at = assignment.picked_up_at
+    eta_min_at = None
+    eta_max_at = None
+    if pickup_at and quote:
+        eta_min_at = pickup_at + timezone.timedelta(minutes=quote.eta_min_minutes)
+        eta_max_at = pickup_at + timezone.timedelta(minutes=quote.eta_max_minutes)
+
+    intake = assignment.intake
+    timeline = [{
+        "key": f"order-confirmed:{intake.public_id}",
+        "status": "confirmed",
+        "status_label": "Order confirmed",
+        "note": "Your order was confirmed and entered fulfilment.",
+        "created_at": intake.created_at.isoformat(),
+    }]
+    for event in assignment.events.all():
+        timeline.append({
+            "key": f"delivery-event:{event.pk}",
+            "status": event.status,
+            "status_label": event.get_status_display(),
+            "note": event.note or "",
+            "created_at": event.created_at.isoformat(),
+        })
+
+    return {
+        "order": {
+            "id": str(intake.public_id),
+            "number": intake.public_number,
+            "status": intake.status,
+            "status_label": intake.get_status_display(),
+            "payment_state": intake.payment_state,
+            "fulfilment_state": intake.fulfilment_state,
+            "confirmed_at": intake.created_at.isoformat(),
+        },
+        "delivery": {
+            "id": str(assignment.public_id),
+            "status": assignment.status,
+            "status_label": assignment.get_status_display(),
+            "status_note": assignment.status_note or "",
+            "provider": assignment.provider,
+            "provider_label": assignment.get_provider_display(),
+            "driver": assignment.driver.name if assignment.driver_id else None,
+            "driver_vehicle": assignment.driver.vehicle_type if assignment.driver_id else "",
+            "picked_up_at": pickup_at.isoformat() if pickup_at else None,
+            "eta_min_at": eta_min_at.isoformat() if eta_min_at else None,
+            "eta_max_at": eta_max_at.isoformat() if eta_max_at else None,
+            "delivered_at": assignment.delivered_at.isoformat() if assignment.delivered_at else None,
+            "external_tracking_url": assignment.external_tracking_url or None,
+            "updated_at": assignment.updated_at.isoformat(),
+        },
+        "timeline": timeline,
+    }
+
 def validate_delivery_quote(*, business, public_id, subtotal):
     if not business_has_module(business, "delivery"):
         raise ValidationError("Delivery is no longer included in this business plan.")
@@ -725,7 +783,9 @@ def ensure_delivery_assignment(intake, *, actor=None):
         provider=quote.provider,
         provider_account=quote.provider_account,
         status=DeliveryAssignment.STATUS_PENDING,
-        eta_at=timezone.now() + timezone.timedelta(minutes=quote.eta_max_minutes),
+        # Customer ETA begins when the parcel is actually picked up, not when
+        # the paid order first creates a dispatch assignment.
+        eta_at=None,
     )
     DeliveryEvent.raw_objects.create(
         business=intake.business,
@@ -774,6 +834,11 @@ def ensure_delivery_assignment(intake, *, actor=None):
                 str(exc),
                 f"provider-failed:{timezone.now().strftime('%Y%m%d%H%M')}",
             )
+    transaction.on_commit(
+        lambda business_id=assignment.business_id, delivery_id=assignment.public_id: publish_delivery_changed(
+            business_id, delivery_id, reason="created"
+        )
+    )
     return assignment
 
 
@@ -783,11 +848,12 @@ def update_delivery_status(*, assignment, status, actor=None, note="", driver=No
     allowed = {value for value, _ in DeliveryAssignment.STATUS_CHOICES}
     if status not in allowed:
         raise ValidationError("Choose a valid delivery status.")
-    assignment = DeliveryAssignment.raw_objects.select_for_update().select_related("driver__user", "intake", "business").get(
+    assignment = DeliveryAssignment.raw_objects.select_for_update().select_related("driver__user", "intake", "business", "quote").get(
         pk=assignment.pk, business=assignment.business
     )
     previous = assignment.status
     previous_driver_id = assignment.driver_id
+    previous_driver_user_id = assignment.driver.user_id if assignment.driver_id and assignment.driver else None
     transitions = {
         DeliveryAssignment.STATUS_PENDING: {DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_READY, DeliveryAssignment.STATUS_CANCELLED},
         DeliveryAssignment.STATUS_ASSIGNED: {DeliveryAssignment.STATUS_READY, DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_CANCELLED},
@@ -843,6 +909,14 @@ def update_delivery_status(*, assignment, status, actor=None, note="", driver=No
     now = timezone.now()
     if status in {DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_OUT_FOR_DELIVERY} and not assignment.picked_up_at:
         assignment.picked_up_at = now
+        if assignment.quote_id:
+            assignment.eta_at = now + timezone.timedelta(minutes=assignment.quote.eta_max_minutes)
+    elif assignment.picked_up_at and assignment.quote_id and status not in {
+        DeliveryAssignment.STATUS_DELIVERED, DeliveryAssignment.STATUS_RETURNED, DeliveryAssignment.STATUS_CANCELLED,
+    }:
+        # Repair legacy assignments whose ETA was previously anchored to order
+        # confirmation instead of the actual pickup timestamp.
+        assignment.eta_at = assignment.picked_up_at + timezone.timedelta(minutes=assignment.quote.eta_max_minutes)
     if status == DeliveryAssignment.STATUS_DELIVERED:
         assignment.delivered_at = now
     assignment.save()
@@ -872,6 +946,13 @@ def update_delivery_status(*, assignment, status, actor=None, note="", driver=No
             f"status:{status}:{assignment.events.count()}",
         )
         _notify_rider_status(assignment, actor=actor)
+    current_driver_user_id = assignment.driver.user_id if assignment.driver_id and assignment.driver else None
+    rider_user_ids = tuple(value for value in (previous_driver_user_id, current_driver_user_id) if value)
+    transaction.on_commit(
+        lambda business_id=assignment.business_id, delivery_id=assignment.public_id, rider_ids=rider_user_ids: publish_delivery_changed(
+            business_id, delivery_id, reason="status", rider_user_ids=rider_ids
+        )
+    )
     return assignment
 
 
@@ -901,7 +982,7 @@ def switch_delivery_method(*, assignment, target_provider, actor=None, manager_a
         raise ValidationError("Choose In-house or the configured delivery partner.")
     if not business_has_module(assignment.business, "delivery"):
         raise ValidationError("Delivery is no longer included in this business plan.")
-    current = DeliveryAssignment.raw_objects.select_related("intake", "quote", "provider_account", "business").get(pk=assignment.pk)
+    current = DeliveryAssignment.raw_objects.select_related("intake", "quote", "provider_account", "business", "driver__user").get(pk=assignment.pk)
     settings = DeliverySettings.raw_objects.filter(business=current.business, enabled=True).first()
     if not settings or settings.default_provider != DeliverySettings.PROVIDER_HYBRID:
         raise ValidationError("Delivery-method switching is available only while Hybrid delivery is enabled.")
@@ -927,6 +1008,7 @@ def switch_delivery_method(*, assignment, target_provider, actor=None, manager_a
     previous_provider = current.provider
     previous_account_id = current.provider_account_id
     previous_driver_id = current.driver_id
+    previous_driver_user_id = current.driver.user_id if current.driver_id and current.driver else None
     with transaction.atomic():
         current = DeliveryAssignment.raw_objects.select_for_update().get(pk=current.pk)
         current.quote = target_quote
@@ -943,7 +1025,7 @@ def switch_delivery_method(*, assignment, target_provider, actor=None, manager_a
         current.external_tracking_url = ""
         current.method_switch_count += 1
         current.last_method_switched_at = timezone.now()
-        current.eta_at = timezone.now() + timezone.timedelta(minutes=target_quote.eta_max_minutes)
+        current.eta_at = None
         current.save()
         DeliveryEvent.raw_objects.create(
             business=current.business,
@@ -991,6 +1073,10 @@ def switch_delivery_method(*, assignment, target_provider, actor=None, manager_a
                 str(exc),
                 f"switch-provider-failed:{current.method_switch_count}",
             )
+    publish_delivery_changed(
+        current.business_id, current.public_id, reason="method_switch",
+        rider_user_ids=(previous_driver_user_id,) if previous_driver_user_id else (),
+    )
     return current
 
 

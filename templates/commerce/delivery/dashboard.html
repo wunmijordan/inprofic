@@ -29,8 +29,9 @@
   </div>
 </section>{% endif %}
 
+<div id="delivery-live-root">
 <section class="rounded-xl border border-[#E7DFCC] bg-white overflow-hidden">
-  <div class="border-b border-[#E7DFCC] bg-[#FAF8F1] px-4 py-3"><h3 class="font-semibold text-stone-800">Dispatch queue</h3><p class="mt-0.5 text-xs text-stone-500">Dispatcher means the staff member coordinating the order — not the rider. Every method/status/issue change is written to the delivery timeline.</p></div>
+  <div class="border-b border-[#E7DFCC] bg-[#FAF8F1] px-4 py-3"><div class="flex items-center justify-between gap-3"><h3 class="font-semibold text-stone-800">Dispatch queue</h3><span class="text-[10px] font-semibold uppercase tracking-wider text-emerald-600">Live</span></div><p class="mt-0.5 text-xs text-stone-500">Dispatcher means the staff member coordinating the order — not the rider. Every method/status/issue change is written to the delivery timeline.</p></div>
   {% if assignments %}<div class="divide-y divide-[#EEE7D7]">{% for d in assignments %}<article class="p-4">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0 flex-1"><div class="flex flex-wrap items-center gap-2"><span class="font-mono text-sm font-semibold text-[#8f172d]">{{ d.intake.public_number }}</span><span class="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-stone-600">{{ d.get_status_display }}</span><span class="text-xs text-stone-400">{{ d.get_provider_display }}{% if d.provider_account %} · {{ d.provider_account.get_provider_code_display }}{% endif %}{% if d.method_switch_count %} · switched {{ d.method_switch_count }}×{% endif %}</span></div><div class="mt-1 break-words text-sm text-stone-700">{{ d.intake.customer_name }} · {{ d.intake.customer_phone }}</div><div class="mt-1 break-words text-xs text-stone-500"><strong>Destination:</strong> {{ d.intake.customer_address|default:d.quote.destination_address }}{% if d.quote %} · {{ d.quote.distance_km }} km · customer paid {{ request.business.currency_symbol }}{{ d.intake.delivery_fee }}{% endif %}{% if d.provider_order_id %} · provider ID {{ d.provider_order_id }}{% endif %}{% if d.quote and d.quote.destination_latitude != None and d.quote.destination_longitude != None %} · <a class="font-semibold text-[#8f172d]" target="_blank" rel="noopener" href="https://www.openstreetmap.org/?mlat={{ d.quote.destination_latitude }}&mlon={{ d.quote.destination_longitude }}#map=17/{{ d.quote.destination_latitude }}/{{ d.quote.destination_longitude }}">Open map ↗</a>{% endif %}</div>{% if d.driver %}<div class="mt-1 text-xs text-sky-700">Assigned rider/courier: {{ d.driver.name }}{% if d.driver.user %} · login linked{% endif %}</div>{% endif %}{% if d.eta_at %}<div class="mt-1 text-xs text-emerald-700">ETA by {{ d.eta_at|date:"M j, g:i A" }}</div>{% endif %}</div>
@@ -56,6 +57,7 @@
     {% if d.events.all %}<details class="mt-2"><summary class="cursor-pointer text-xs text-stone-500">Timeline ({{ d.events.count }})</summary><div class="mt-2 space-y-1 border-l-2 border-[#E7DFCC] pl-3">{% for e in d.events.all %}<div class="text-xs text-stone-600"><span class="font-medium">{{ e.get_status_display }}</span> · {{ e.created_at|date:"M j, g:i A" }}{% if e.note %} — {{ e.note }}{% endif %}</div>{% endfor %}</div></details>{% endif %}
   </article>{% endfor %}</div>{% else %}<div class="p-10 text-center text-sm text-stone-400">No deliveries yet. Paid checkouts using a valid delivery quote will appear here automatically.</div>{% endif %}
 </section>
+</div>
 
 {% if can_manage_delivery %}<section class="delivery-config-grid mt-5 grid gap-3">
   <div class="rounded-xl border border-[#E7DFCC] bg-white p-3"><div class="flex items-center justify-between gap-3"><h3 class="font-semibold">Provider plug-ins</h3><span class="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold text-stone-500">{{ provider_accounts|length }}</span></div><p class="mt-1 text-[11px] leading-4 text-stone-500">Optional tenant-owned partners remain interchangeable with the in-house fleet.</p>{% for provider in provider_accounts %}<div class="mt-2 rounded-lg border border-stone-200 p-2 text-xs"><div class="delivery-config-row flex justify-between gap-2"><span class="delivery-config-copy font-medium">{{ provider.get_provider_code_display }} · {{ provider.name }}{% if provider.auto_dispatch %}<span class="text-emerald-700"> · auto</span>{% endif %}{% if provider.provider_code == 'glovo' and provider.use_live_quotes %}<span class="text-sky-700"> · live quote</span>{% endif %}{% if not provider.is_configured_for_dispatch %}<span class="text-amber-700"> · setup needed</span>{% endif %}</span><a class="delivery-config-action text-[#8f172d]" href="{% url 'delivery_provider_account_edit' provider.pk %}">Edit</a></div>{% if provider.provider_code == 'glovo' %}<div class="delivery-config-copy mt-1 text-[11px] leading-4 text-stone-500">LaaS v2 · OAuth credentials{% if provider.address_book_id %} · pickup {{ provider.address_book_id }}{% endif %}</div><form method="post" action="{% url 'delivery_provider_register_glovo_webhooks' provider.pk %}" class="mt-2">{% csrf_token %}<button class="w-full rounded border border-[#D9CFB4] bg-[#FAF8F1] px-2 py-1.5 text-[11px] font-semibold text-stone-700">Register / verify webhooks</button></form>{% endif %}</div>{% endfor %}<div class="mt-2 rounded-lg bg-stone-50 p-2 text-[11px] text-stone-500"><span class="font-medium">Webhook path</span><code class="delivery-config-code mt-0.5">{{ glovo_webhook_path }}</code></div></div>
@@ -63,5 +65,29 @@
   <div class="rounded-xl border border-[#E7DFCC] bg-white p-3"><div class="flex items-center justify-between gap-3"><h3 class="font-semibold">Price bands & destinations</h3><span class="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold text-stone-500">{{ rate_bands|length }} / {{ areas|length }}</span></div>{% for b in rate_bands %}<div class="delivery-config-row mt-2 flex justify-between gap-2 border-t border-stone-100 pt-2 text-xs"><span class="delivery-config-copy">{{ b.name }} · {{ request.business.currency_symbol }}{{ b.base_fee }} + {{ request.business.currency_symbol }}{{ b.per_km_fee }}/km <span class="text-stone-400">· fallback {{ b.min_distance_km }}–{% if b.max_distance_km %}{{ b.max_distance_km }}{% else %}∞{% endif %} km</span></span><a class="delivery-config-action text-[#8f172d]" href="{% url 'delivery_rate_band_edit' b.pk %}">Edit</a></div>{% endfor %}{% for a in areas %}<div class="delivery-config-row mt-2 flex justify-between gap-2 border-t border-stone-100 pt-2 text-xs"><span class="delivery-config-copy">{{ a.name }} · {{ a.radius_km }} km radius{% if a.extension_ne_km or a.extension_se_km or a.extension_sw_km or a.extension_nw_km %} + corridor extensions{% endif %}{% if a.centre_distance_from_base_km != None %} · centre {{ a.centre_distance_from_base_km }} km from base · far edge ≈ {{ a.maximum_distance_from_base_km }} km{% endif %}{% if a.rate_band %} · {{ a.rate_band.name }}{% endif %}{% if a.latitude != None and a.longitude != None %} · <a class="font-semibold text-[#8f172d]" target="_blank" rel="noopener" href="https://www.openstreetmap.org/?mlat={{ a.latitude }}&mlon={{ a.longitude }}#map=17/{{ a.latitude }}/{{ a.longitude }}">Map ↗</a>{% endif %}</span><a class="delivery-config-action text-[#8f172d]" href="{% url 'delivery_area_edit' a.pk %}">Edit</a></div>{% endfor %}</div>
   <div class="rounded-xl border border-[#E7DFCC] bg-white p-3"><div class="flex items-center justify-between gap-3"><h3 class="font-semibold">Riders / couriers</h3><span class="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold text-stone-500">{{ drivers|length }}</span></div>{% for driver in drivers %}<div class="delivery-config-row mt-2 flex justify-between gap-2 border-t border-stone-100 pt-2 text-xs"><span class="delivery-config-copy">{{ driver.name }} · {{ driver.get_provider_display }}{% if driver.user %}<span class="text-emerald-700"> · app linked</span>{% endif %}</span><a class="delivery-config-action text-[#8f172d]" href="{% url 'delivery_driver_edit' driver.pk %}">Edit</a></div>{% empty %}<p class="mt-2 text-xs text-stone-400">Add in-house riders or manual courier records.</p>{% endfor %}</div>
 </section>{% endif %}
+<script>
+(() => {
+  const root = document.getElementById('delivery-live-root');
+  if (!root) return;
+  let refreshTimer = null;
+  let refreshing = false;
+  async function refreshDeliveryQueue() {
+    if (refreshing) return;
+    refreshing = true;
+    try {
+      const response = await fetch(window.location.href, {headers:{'X-Requested-With':'XMLHttpRequest'}, cache:'no-store'});
+      if (!response.ok) return;
+      const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+      const fresh = doc.getElementById('delivery-live-root');
+      if (fresh) root.innerHTML = fresh.innerHTML;
+    } catch (_) { /* the next realtime signal or manual action will retry */ }
+    finally { refreshing = false; }
+  }
+  document.addEventListener('inprofic:delivery-changed', () => {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(refreshDeliveryQueue, 120);
+  });
+})();
+</script>
 </div>
 {% endblock %}

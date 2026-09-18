@@ -949,6 +949,9 @@ export const checkoutStatus = checkoutId =>
   inprofic(`/checkouts/${checkoutId}/payments/current`);
 
 export const orderStatus = orderId => inprofic(`/orders/${orderId}`);
+
+export const deliveryTracking = deliveryId =>
+  inprofic(`/deliveries/${deliveryId}/tracking`);
 ```
 
 The browser calls the website’s own API routes; the website server attaches the secret.
@@ -976,6 +979,10 @@ The browser calls the website’s own API routes; the website server attaches th
 - [ ] Website stores checkout history before redirect.
 - [ ] Customer history is protected by website login/session, or customers use the hosted INPROFIC account pages.
 - [ ] Browser return starts polling and never confirms payment.
+- [ ] Delivery tracking is fetched through the website backend from `/deliveries/{delivery_id}/tracking`; the INPROFIC API key is never exposed to the browser.
+- [ ] Customer timeline begins at order confirmation; pending/assigned/ready/picked-up/out-for-delivery/delivered states are rendered from INPROFIC values rather than invented locally.
+- [ ] Delivery ETA is shown only after `picked_up_at` exists, using `eta_min_at`/`eta_max_at`; before pickup the website explains that ETA starts at pickup.
+- [ ] Realtime `delivery.changed` is treated only as a wake-up signal followed by an authoritative tracking re-fetch, with an 8–10 second polling fallback if no relay/socket is available.
 - [ ] `paid_review` prevents repeat charging.
 - [ ] Order UUID and display number are stored separately.
 - [ ] Duplicate requests and cross-tenant UUID/key attempts are tested.
@@ -1006,3 +1013,48 @@ Delivery Rider is a purpose-specific staff access surface: rider-only users can 
 ## Two-way delivery address/map synchronization
 
 For delivery UI, do not let the address textbox and map pin drift apart. Use `POST /api/v1/storefronts/{business_slug}/delivery/location` in both directions: send `area_id + address` to obtain validated coordinates and move/zoom the map pin; send `area_id + latitude + longitude` to reverse-geocode a manually placed pin and update the address field. Because this endpoint requires `X-INPROFIC-Key`, the browser should call the website's own backend/serverless proxy; that proxy calls INPROFIC and returns only the normalized location result. Never expose the tenant API key in browser JavaScript. Then send the synchronized address, coordinates and returned `location_source` to `/delivery/quote`. Coverage and minimum-order errors returned by INPROFIC should be displayed as red customer-facing validation text. See `COMMERCE_INTEGRATION.md` for the complete payload/response contract.
+
+## 18. Live delivery status, customer updates and pickup-based ETA
+
+Once a paid delivery order exists, store the returned delivery UUID alongside the order UUID. Fetch the current customer-safe delivery state from the website server:
+
+```http
+GET /api/v1/storefronts/{business_slug}/deliveries/{delivery_id}/tracking
+X-INPROFIC-Key: <server-side secret>
+```
+
+A website backend helper can reuse the client above:
+
+```js
+export const deliveryTracking = deliveryId =>
+  inprofic(`/deliveries/${deliveryId}/tracking`);
+```
+
+Return only the customer-safe response from your own backend route to browser JavaScript. The response contains:
+
+- `order`: confirmation/order state and confirmation time;
+- `delivery`: current status, driver/provider display, pickup time, pickup-anchored ETA window, delivered time and provider tracking URL when available;
+- `timeline`: confirmation plus each delivery event in chronological order;
+- `realtime`: change-event metadata and fallback polling guidance.
+
+Before pickup, `picked_up_at`, `eta_min_at` and `eta_max_at` are null. Display wording such as **“ETA starts when your order is picked up.”** Do not start a countdown from payment/confirmation. When the first pickup/out-for-delivery transition occurs, INPROFIC anchors the ETA range to the pickup timestamp using the accepted delivery quote.
+
+Recommended customer timeline presentation:
+
+```text
+Order confirmed     -> confirmation/check indicator
+Pending             -> waiting/clock indicator
+Assigned            -> rider/assignment indicator
+Ready                -> package/ready indicator
+Picked up            -> motorbike indicator
+Out for delivery     -> route/movement indicator
+Delivered            -> checkmark indicator
+Failed/returned      -> warning/return indicator
+```
+
+Hosted INPROFIC pages receive a customer-safe WebSocket event named `delivery.changed`, but the event intentionally contains no order/customer details. It means **re-fetch the status snapshot now**. The same transport is triggered for dispatcher updates, rider updates and supported provider/webhook updates.
+
+For external/headless websites, do not place `X-INPROFIC-Key` in the browser. The most portable approach is for your backend to poll INPROFIC and expose a customer-authenticated/session-protected tracking route to the browser every 8–10 seconds. If your website backend can maintain or proxy the INPROFIC WebSocket and your deployment/origin policy permits it, use `delivery.changed` to trigger an immediate backend re-fetch and relay the refreshed state with your own SSE/WebSocket channel. Keep polling as a fallback.
+
+A persistent customer “Order updates” tray can be built entirely from `timeline`: retain the last-seen event keys in the customer's website session/profile/local storage and mark newly returned timeline events unread. No INPROFIC staff account or storefront-customer registration is required for this presentation.
+

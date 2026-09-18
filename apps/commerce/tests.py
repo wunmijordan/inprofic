@@ -5,16 +5,20 @@ from django.core.files.base import ContentFile
 from django.test import override_settings
 from django.core.exceptions import ValidationError
 from django.test import TestCase
+from django.utils import timezone
+from accounts.models import BusinessModuleAccess
 from core.models import Business
 from inventory.models import FinishedGood, FinishedGoodChannelPrice, ProductCategory
 from .forms import StorefrontProductForm
 from .models import (
-    CommerceIntake, CommerceSettings, DeliveryArea, DeliveryOrigin,
-    DeliveryRateBand, DeliverySettings, StorefrontProduct,
+    CommerceIntegration, CommerceIntake, CommerceSettings, DeliveryArea, DeliveryAssignment,
+    DeliveryDriver, DeliveryEvent, DeliveryOrigin, DeliveryQuote, DeliveryRateBand, DeliverySettings,
+    StorefrontProduct,
 )
 from .services import accept_intake, create_intake
 from .delivery_services import (
     _destination, _haversine_km, delivery_area_coverage_polygon, resolve_delivery_location,
+    serialize_delivery_tracking, update_delivery_status,
 )
 
 
@@ -270,6 +274,109 @@ class DeliveryCoverageTests(TestCase):
                 business=self.business, origin=self.origin, address="Far away", area_id=self.area.pk,
                 latitude="6.4500000", longitude="3.5000000",
             )
+
+
+class DeliveryRealtimeTrackingTests(TestCase):
+    def setUp(self):
+        self.business = Business.objects.create(name="Realtime Store", slug="realtime-store")
+        BusinessModuleAccess.objects.create(business=self.business, module="commerce", enabled=True)
+        BusinessModuleAccess.objects.create(business=self.business, module="delivery", enabled=True)
+        CommerceSettings.raw_objects.create(
+            business=self.business, enabled=True, api_enabled=True, hosted_storefront_enabled=True,
+        )
+        DeliverySettings.raw_objects.create(
+            business=self.business, enabled=True, customer_tracking_enabled=True,
+        )
+        self.integration = CommerceIntegration.raw_objects.create(
+            business=self.business, name="Website", integration_type=CommerceIntegration.TYPE_API,
+        )
+        self.origin = DeliveryOrigin.raw_objects.create(
+            business=self.business, name="Base", address="1 Base Road",
+            latitude="6.4500000", longitude="3.4000000", is_default=True,
+        )
+        self.band = DeliveryRateBand.raw_objects.create(
+            business=self.business, name="Local", min_distance_km=0, max_distance_km=20,
+            base_fee="500.00", per_km_fee="0", eta_min_minutes=15, eta_max_minutes=35,
+        )
+        self.area = DeliveryArea.raw_objects.create(
+            business=self.business, name="Local Area", latitude="6.4500000", longitude="3.4200000",
+            radius_km="5.00", rate_band=self.band,
+        )
+        self.quote = DeliveryQuote.raw_objects.create(
+            business=self.business, origin=self.origin, area=self.area,
+            destination_address="12 Customer Road", destination_latitude="6.4501000",
+            destination_longitude="3.4210000", distance_km="3.00", subtotal="2500.00",
+            fee="500.00", total="3000.00", eta_min_minutes=15, eta_max_minutes=35,
+            expires_at=timezone.now() + timezone.timedelta(hours=1), status=DeliveryQuote.STATUS_USED,
+        )
+        self.intake = CommerceIntake.raw_objects.create(
+            business=self.business, ordering_mode=CommerceIntake.MODE_STOCK,
+            sales_channel=CommerceIntake.CHANNEL_ONLINE, customer_name="Ada Customer",
+            customer_address="12 Customer Road", payment_state=CommerceIntake.PAYMENT_CONFIRMED,
+            delivery_quote=self.quote, delivery_fee="500.00",
+        )
+        self.driver = DeliveryDriver.raw_objects.create(
+            business=self.business, name="Rider One", provider=DeliveryDriver.PROVIDER_INHOUSE,
+            vehicle_type="Motorbike",
+        )
+        self.assignment = DeliveryAssignment.raw_objects.create(
+            business=self.business, intake=self.intake, quote=self.quote, origin=self.origin,
+            driver=self.driver, provider=DeliverySettings.PROVIDER_INHOUSE,
+            status=DeliveryAssignment.STATUS_ASSIGNED, eta_at=None,
+        )
+        DeliveryEvent.raw_objects.create(
+            business=self.business, assignment=self.assignment,
+            status=DeliveryAssignment.STATUS_PENDING, note="Delivery created.",
+        )
+
+    @patch("commerce.delivery_services.publish_delivery_changed")
+    def test_pickup_starts_eta_window_and_emits_realtime_signal(self, publish):
+        before = timezone.now()
+        with self.captureOnCommitCallbacks(execute=True):
+            updated = update_delivery_status(
+                assignment=self.assignment, status=DeliveryAssignment.STATUS_PICKED_UP,
+                driver=self.driver, note="Collected from base.",
+            )
+        self.assertIsNotNone(updated.picked_up_at)
+        self.assertGreaterEqual(updated.picked_up_at, before)
+        self.assertEqual(
+            updated.eta_at,
+            updated.picked_up_at + timezone.timedelta(minutes=self.quote.eta_max_minutes),
+        )
+        payload = serialize_delivery_tracking(
+            DeliveryAssignment.raw_objects.select_related("intake", "driver", "quote").prefetch_related("events").get(pk=updated.pk)
+        )
+        self.assertEqual(payload["delivery"]["status"], "picked_up")
+        self.assertEqual(
+            payload["delivery"]["eta_min_at"],
+            (updated.picked_up_at + timezone.timedelta(minutes=15)).isoformat(),
+        )
+        self.assertEqual(payload["timeline"][0]["status"], "confirmed")
+        self.assertEqual(payload["timeline"][-1]["status"], "picked_up")
+        publish.assert_called_once()
+
+    def test_public_tracking_snapshot_is_customer_safe_and_pickup_based(self):
+        response = self.client.get(
+            f"/shop/{self.business.slug}/deliveries/{self.assignment.public_id}/status/"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["order"]["number"], self.intake.public_number)
+        self.assertIsNone(data["delivery"]["eta_min_at"])
+        self.assertIsNone(data["delivery"]["eta_max_at"])
+        self.assertEqual(data["realtime"]["event_type"], "delivery.changed")
+        self.assertIn(str(self.assignment.public_id), data["realtime"]["websocket_path"])
+
+    def test_headless_tracking_requires_api_key_and_exposes_timeline(self):
+        url = f"/api/v1/storefronts/{self.business.slug}/deliveries/{self.assignment.public_id}/tracking"
+        denied = self.client.get(url)
+        allowed = self.client.get(url, HTTP_X_INPROFIC_KEY=self.integration.api_key)
+        self.assertEqual(denied.status_code, 403)
+        self.assertEqual(allowed.status_code, 200)
+        data = allowed.json()
+        self.assertEqual(data["delivery"]["id"], str(self.assignment.public_id))
+        self.assertEqual(data["timeline"][0]["status_label"], "Order confirmed")
+        self.assertEqual(data["realtime"]["api_status_path"], url)
 
 
 class StorefrontTenantLogoTests(TestCase):

@@ -36,6 +36,7 @@ from .checkout_services import (
     serialize_checkout,
 )
 from .payment_gateways import GatewayError
+from .delivery_services import serialize_delivery_tracking
 from .payment_services import (
     capture_checkout_gateway_email,
     current_checkout_payment,
@@ -406,15 +407,29 @@ def _delivery_payload(intake):
     ).select_related("driver", "quote").first()
     if not assignment:
         return None
+    pickup_at = assignment.picked_up_at
+    eta_min_at = None
+    eta_max_at = None
+    if pickup_at and assignment.quote_id:
+        eta_min_at = pickup_at + timezone.timedelta(minutes=assignment.quote.eta_min_minutes)
+        eta_max_at = pickup_at + timezone.timedelta(minutes=assignment.quote.eta_max_minutes)
     return {
         "id": str(assignment.public_id),
         "status": assignment.status,
         "status_label": assignment.get_status_display(),
         "provider": assignment.provider,
         "driver": assignment.driver.name if assignment.driver_id else None,
-        "eta_at": assignment.eta_at.isoformat() if assignment.eta_at else None,
+        "picked_up_at": pickup_at.isoformat() if pickup_at else None,
+        # eta_at is retained for backwards compatibility and now represents the
+        # upper bound of the pickup-anchored window.
+        "eta_at": eta_max_at.isoformat() if eta_max_at else None,
+        "eta_min_at": eta_min_at.isoformat() if eta_min_at else None,
+        "eta_max_at": eta_max_at.isoformat() if eta_max_at else None,
         "delivered_at": assignment.delivered_at.isoformat() if assignment.delivered_at else None,
         "tracking_path": f"/shop/{intake.business.slug}/deliveries/{assignment.public_id}/",
+        "tracking_status_path": f"/shop/{intake.business.slug}/deliveries/{assignment.public_id}/status/",
+        "tracking_api_path": f"/api/v1/storefronts/{intake.business.slug}/deliveries/{assignment.public_id}/tracking",
+        "tracking_websocket_path": f"/ws/storefront/{intake.business.slug}/deliveries/{assignment.public_id}/",
         "external_tracking_url": assignment.external_tracking_url or None,
         "fee": f"{intake.delivery_fee:.2f}",
     }
@@ -843,10 +858,22 @@ def storefront_order_status(request, business_slug, public_id):
     if not _commerce_enabled(business):
         return render(request, "404.html", status=404)
     intake = get_object_or_404(CommerceIntake.raw_objects.prefetch_related("items__finished_good"), business=business, public_id=public_id)
+    delivery = DeliveryAssignment.raw_objects.filter(
+        business=business, intake=intake
+    ).select_related("driver", "quote", "origin", "intake").prefetch_related("events").first()
+    tracking_payload = None
+    if delivery:
+        tracking_payload = serialize_delivery_tracking(delivery)
+        tracking_payload["realtime"] = {
+            "websocket_path": f"/ws/storefront/{business.slug}/deliveries/{delivery.public_id}/",
+            "public_status_path": f"/shop/{business.slug}/deliveries/{delivery.public_id}/status/",
+            "event_type": "delivery.changed",
+            "fallback_poll_seconds": 10,
+        }
     return render(
         request,
         "commerce/storefront_status.html",
-        {**_public_storefront_context(business), "intake": intake, "delivery": DeliveryAssignment.raw_objects.filter(business=business, intake=intake).select_related("driver", "quote").first()},
+        {**_public_storefront_context(business), "intake": intake, "delivery": delivery, "tracking_payload": tracking_payload},
     )
 
 

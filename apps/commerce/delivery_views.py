@@ -19,7 +19,7 @@ from core.services import audit
 from .delivery_forms import DeliveryAreaForm, DeliveryDriverForm, DeliveryOriginForm, DeliveryProviderAccountForm, DeliveryRateBandForm, DeliverySettingsForm
 from .delivery_services import (
     create_delivery_quote_options, delivery_area_distance_summary, delivery_available, raise_delivery_issue,
-    resolve_delivery_location, select_delivery_quote, serialize_delivery_quote, switch_delivery_method, update_delivery_status,
+    resolve_delivery_location, select_delivery_quote, serialize_delivery_quote, serialize_delivery_tracking, switch_delivery_method, update_delivery_status,
 )
 from .notification_services import queue_commerce_notification
 from .models import (
@@ -574,23 +574,79 @@ def api_delivery_quote(request, business_slug):
         return JsonResponse({"detail": _detail(exc)}, status=400)
 
 
+def _tracking_assignment(business, public_id):
+    return get_object_or_404(
+        DeliveryAssignment.raw_objects.select_related("intake", "driver", "origin", "quote").prefetch_related("events"),
+        business=business, public_id=public_id,
+    )
+
+
+def _tracking_payload(business, assignment):
+    payload = serialize_delivery_tracking(assignment)
+    payload["realtime"] = {
+        "websocket_path": f"/ws/storefront/{business.slug}/deliveries/{assignment.public_id}/",
+        "public_status_path": f"/shop/{business.slug}/deliveries/{assignment.public_id}/status/",
+        "event_type": "delivery.changed",
+        "fallback_poll_seconds": 10,
+    }
+    return payload
+
+
 @require_http_methods(["GET"])
 def storefront_delivery_tracking(request, business_slug, public_id):
     business = get_object_or_404(Business, slug=business_slug)
     settings = DeliverySettings.raw_objects.filter(business=business, enabled=True, customer_tracking_enabled=True).first()
     if not settings or not business_has_module(business, "delivery"):
         return render(request, "404.html", status=404)
-    assignment = get_object_or_404(
-        DeliveryAssignment.raw_objects.select_related("intake", "driver", "origin").prefetch_related("events"),
-        business=business, public_id=public_id,
-    )
+    assignment = _tracking_assignment(business, public_id)
     commerce_settings = getattr(business, "commerce_settings", None) or CommerceSettings.raw_objects.filter(business=business).first()
     return render(request, "commerce/delivery/tracking.html", {
         "store_business": business,
         "assignment": assignment,
+        "tracking_payload": _tracking_payload(business, assignment),
         "commerce_settings": commerce_settings,
         "storefront_copy": vertical_config(business)["storefront"],
     })
+
+
+@require_http_methods(["GET"])
+def storefront_delivery_status(request, business_slug, public_id):
+    """Customer-safe status snapshot for the unguessable hosted tracking URL."""
+    business = get_object_or_404(Business, slug=business_slug)
+    settings = DeliverySettings.raw_objects.filter(business=business, enabled=True, customer_tracking_enabled=True).first()
+    if not settings or not business_has_module(business, "delivery"):
+        return JsonResponse({"detail": "Delivery tracking is unavailable."}, status=404)
+    assignment = _tracking_assignment(business, public_id)
+    return JsonResponse(_tracking_payload(business, assignment))
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def api_delivery_tracking(request, business_slug, public_id):
+    """Headless delivery tracking snapshot; API key stays on the website server."""
+    business = get_object_or_404(Business, slug=business_slug)
+    commerce_settings = CommerceSettings.raw_objects.filter(business=business).first()
+    delivery_settings = DeliverySettings.raw_objects.filter(
+        business=business, enabled=True, customer_tracking_enabled=True
+    ).first()
+    if (
+        not business_has_module(business, "commerce")
+        or not business_has_module(business, "delivery")
+        or not commerce_settings
+        or not commerce_settings.enabled
+        or not commerce_settings.api_enabled
+        or not delivery_settings
+    ):
+        return JsonResponse({"detail": "Delivery tracking API unavailable."}, status=404)
+    key = request.headers.get("X-INPROFIC-Key", "")
+    if not CommerceIntegration.raw_objects.filter(
+        business=business, active=True, integration_type=CommerceIntegration.TYPE_API, api_key=key
+    ).exists():
+        return JsonResponse({"detail": "Invalid commerce API credential."}, status=403)
+    assignment = _tracking_assignment(business, public_id)
+    payload = _tracking_payload(business, assignment)
+    payload["realtime"]["api_status_path"] = f"/api/v1/storefronts/{business.slug}/deliveries/{assignment.public_id}/tracking"
+    return JsonResponse(payload)
 
 
 @csrf_exempt

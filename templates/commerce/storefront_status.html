@@ -8,7 +8,7 @@
       <div class="mt-1 flex flex-wrap items-center justify-between gap-3"><h1 class="font-display text-3xl font-semibold text-stone-900">{{ intake.public_number }}</h1><span class="rounded-full px-3 py-1.5 text-xs font-semibold text-white" style="background:var(--brand)">{{ intake.get_status_display }}</span></div>
       <p class="mt-3 text-sm text-stone-500">For {{ intake.customer_name }} · {{ intake.display_sales_channel }}</p>
       {% if intake.rejection_reason %}<div class="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{{ intake.rejection_reason }}</div>{% endif %}
-      {% if delivery %}<a href="{% url 'storefront_delivery_tracking' store_business.slug delivery.public_id %}" class="mt-6 block rounded-2xl border border-emerald-200 bg-emerald-50 p-4 transition hover:border-emerald-300"><div class="flex flex-wrap items-center justify-between gap-2"><div><p class="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Delivery</p><p class="mt-1 font-semibold text-stone-900">{{ delivery.get_status_display }}</p></div><span class="text-xs font-semibold text-emerald-800">Open live timeline →</span></div>{% if delivery.eta_at and delivery.status != 'delivered' %}<p class="mt-2 text-xs text-emerald-800">Estimated by {{ delivery.eta_at|date:"M j, g:i A" }}{% if delivery.driver %} · {{ delivery.driver.name }}{% endif %}</p>{% endif %}</a>{% endif %}
+      {% if delivery %}<a href="{% url 'storefront_delivery_tracking' store_business.slug delivery.public_id %}" class="mt-6 block rounded-2xl border border-emerald-200 bg-emerald-50 p-4 transition hover:border-emerald-300"><div class="flex flex-wrap items-center justify-between gap-2"><div><p class="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Delivery <span id="order-delivery-live" class="ml-1 text-[9px] text-emerald-500">connecting…</span></p><p id="order-delivery-status" class="mt-1 font-semibold text-stone-900">{{ delivery.get_status_display }}</p></div><span class="text-xs font-semibold text-emerald-800">Open live timeline →</span></div><p id="order-delivery-eta" class="mt-2 text-xs text-emerald-800">{% if delivery.picked_up_at and delivery.eta_at and delivery.status != 'delivered' %}Pickup-based ETA by {{ delivery.eta_at|date:"M j, g:i A" }}{% elif delivery.status != 'delivered' %}ETA starts when your order is picked up.{% endif %}{% if delivery.driver %} · {{ delivery.driver.name }}{% endif %}</p></a>{% endif %}
       <div class="mt-7 grid gap-3 sm:grid-cols-3">
         <div class="rounded-2xl bg-stone-50 p-4"><p class="text-[10px] font-bold uppercase tracking-wider text-stone-400">Payment</p><p class="mt-2 font-semibold text-stone-900">{{ intake.get_payment_state_display }}</p></div>
         <div class="rounded-2xl bg-stone-50 p-4"><p class="text-[10px] font-bold uppercase tracking-wider text-stone-400">Fulfilment</p><p class="mt-2 font-semibold text-stone-900">{{ intake.get_fulfilment_state_display }}</p></div>
@@ -22,5 +22,46 @@
   </section>
   {% if intake.status == 'awaiting_preorder' %}<form method="post" action="{% url 'storefront_switch_preorder' store_business.slug intake.public_id %}" class="mt-5">{% csrf_token %}<button class="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 shadow-sm">Switch to {{ commerce_channels.online }}</button></form>{% endif %}
 </main>
+{% if tracking_payload %}
+<aside id="order-update-dock" class="fixed bottom-3 right-3 z-[75] w-[min(19rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-stone-200 bg-[#FFFDF8] shadow-[0_20px_55px_rgba(33,29,26,.26)]">
+  <button id="order-update-toggle" type="button" class="flex w-full items-center gap-3 px-3 py-3 text-left text-white" style="background:var(--brand, #8f172d)" aria-expanded="false"><svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span class="min-w-0 flex-1"><span class="block text-[10px] font-semibold uppercase tracking-[.16em] text-amber-200">Order updates</span><span class="block text-sm font-semibold"><span id="order-update-count">0</span> unread</span></span></button>
+  <div id="order-update-body" class="hidden max-h-72 overflow-y-auto bg-[#FFFDF8]"><div id="order-update-list" class="divide-y divide-stone-100"></div><div class="border-t border-stone-200 px-3 py-2 text-right"><button id="order-update-read" type="button" class="text-xs font-semibold text-stone-500">Mark all read</button></div></div>
+</aside>
+{{ tracking_payload|json_script:"order-tracking-data" }}
+<script>
+(() => {
+  let data = JSON.parse(document.getElementById('order-tracking-data').textContent);
+  const status = document.getElementById('order-delivery-status');
+  const eta = document.getElementById('order-delivery-eta');
+  const live = document.getElementById('order-delivery-live');
+  const toggle = document.getElementById('order-update-toggle');
+  const body = document.getElementById('order-update-body');
+  const count = document.getElementById('order-update-count');
+  const list = document.getElementById('order-update-list');
+  const read = document.getElementById('order-update-read');
+  const key = `inprofic-order-updates-seen:${data.delivery.id}`;
+  let seen = new Set(); let socket = null; let poll = null; let reconnect = null;
+  try { seen = new Set(JSON.parse(localStorage.getItem(key) || '[]')); } catch (_) {}
+  const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+  const fmt = value => value ? new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(new Date(value)) : '';
+  function expand(value){ body.classList.toggle('hidden', !value); toggle.setAttribute('aria-expanded', value ? 'true' : 'false'); }
+  function render(next, announce=false){
+    data = next; const d = next.delivery; status.textContent = d.status_label;
+    eta.textContent = d.picked_up_at && d.eta_max_at && !['delivered','returned','cancelled'].includes(d.status) ? `Picked up ${fmt(d.picked_up_at)} · ETA by ${fmt(d.eta_max_at)}${d.driver ? ' · '+d.driver : ''}` : (!d.picked_up_at && !['delivered','returned','cancelled'].includes(d.status) ? `ETA starts when your order is picked up.${d.driver ? ' · '+d.driver : ''}` : '');
+    const unread = next.timeline.filter(item => !seen.has(item.key)); count.textContent = unread.length;
+    const source = unread.length ? unread.slice().reverse() : next.timeline.slice(-1).reverse();
+    list.innerHTML = source.map(item => `<div class="px-4 py-3"><div class="text-sm font-semibold text-stone-900">${esc(item.status_label)}</div><div class="mt-0.5 text-[10px] text-stone-400">${esc(fmt(item.created_at))}</div>${item.note ? `<p class="mt-1 text-xs text-stone-500">${esc(item.note)}</p>` : ''}</div>`).join('');
+    if (announce && unread.length) expand(true);
+  }
+  async function refresh(){ try{ const r=await fetch(data.realtime.public_status_path,{headers:{Accept:'application/json'},cache:'no-store'}); if(r.ok) render(await r.json(),true); }catch(_){} }
+  function fallback(){ clearTimeout(poll); poll=setTimeout(async()=>{await refresh();fallback();},Math.max(5,data.realtime.fallback_poll_seconds||10)*1000); }
+  function connect(){ const scheme=location.protocol==='https:'?'wss:':'ws:'; const ws=new WebSocket(`${scheme}//${location.host}${data.realtime.websocket_path}`); socket=ws; ws.addEventListener('open',()=>{live.textContent='live';clearTimeout(poll)}); ws.addEventListener('message',e=>{try{const m=JSON.parse(e.data);if(m.type==='delivery.changed')refresh()}catch(_){}}); ws.addEventListener('close',()=>{if(socket===ws)socket=null;live.textContent='reconnecting…';fallback();clearTimeout(reconnect);reconnect=setTimeout(connect,2500)}); ws.addEventListener('error',()=>ws.close()); }
+  toggle.addEventListener('click',()=>expand(toggle.getAttribute('aria-expanded')!=='true'));
+  read.addEventListener('click',()=>{data.timeline.forEach(item=>seen.add(item.key));try{localStorage.setItem(key,JSON.stringify([...seen].slice(-100)))}catch(_){}render(data,false);expand(false)});
+  render(data,false); if(data.timeline.some(item=>!seen.has(item.key))) expand(true); connect();
+  window.addEventListener('pagehide',()=>{clearTimeout(poll);clearTimeout(reconnect);if(socket)socket.close()});
+})();
+</script>
+{% endif %}
 {% include "commerce/_storefront_history_record.html" with intake=intake %}
 {% endblock %}
