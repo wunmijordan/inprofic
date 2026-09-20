@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% block content %}
+<div class="max-w-4xl">
+  <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div><h1 class="font-display text-2xl font-semibold text-[#8f172d]">Inventory alerts</h1><p class="mt-1 text-sm text-stone-500">Control persistent low-stock and warning alerts. Each condition has its own switch and repeat timing.</p></div>
+    <a href="{% url 'inventory' %}" class="rounded-md border border-[#D9CFB4] px-3 py-2 text-sm">Back to Inventory</a>
+  </div>
+  <div class="mb-5 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm leading-6 text-sky-900"><strong>Acknowledgement is personal.</strong> A staff member can quiet an alert for themselves without hiding it from colleagues. Set repeat to <strong>0</strong> to keep it quiet until the stock condition clears; if it later happens again, the alert returns automatically.</div>
+  <div class="mb-5">{% include "commerce/_device_push_panel.html" with push_panel_title="Inventory background alerts on this device" push_panel_copy="Enable Web Push so due stock warnings can continue to reach this device while INPROFIC is in the background or closed. Your selected INPROFIC tune applies while the app is active; the operating system controls closed-app notification sound." %}</div>
+  <form method="post" class="space-y-5">{% csrf_token %}
+    {% if form.non_field_errors %}<div class="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{{ form.non_field_errors }}</div>{% endif %}
+    <section class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
+      <label class="flex cursor-pointer items-center justify-between gap-4"><span><strong>Persistent inventory alerts</strong><span class="mt-1 block text-xs text-stone-500">Master switch for this business.</span></span><span class="cf-switch shrink-0">{{ form.enabled }}<span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label>
+      <div class="mt-4 grid gap-4 sm:grid-cols-2">
+        <div>{% include '_field.html' with field=form.poll_seconds %}<p class="mt-1 text-[11px] text-stone-500">How often open INPROFIC pages refresh stock conditions (15–300 seconds).</p></div>
+        <div>{% include '_field.html' with field=form.sound_repeat_minutes %}<p class="mt-1 text-[11px] text-stone-500">Repeat the stock-attention sound while an alert is visible. Acknowledging/snoozing that alert stops its sound until the existing condition-specific repeat window brings it back.</p></div>
+        <div>{% include '_field.html' with field=form.sound_tune %}<p class="mt-1 text-[11px] text-stone-500">Choose one of five foreground tunes. Background Web Push uses the notification sound provided by the device/browser.</p></div>
+        <div>{% include '_field.html' with field=form.sound_enabled %}</div>
+      </div>
+    </section>
+    <div class="grid gap-4 md:grid-cols-2">
+      <section class="rounded-xl border border-amber-200 bg-amber-50/50 p-5"><h2 class="font-semibold text-amber-900">Raw material · warning</h2><p class="mt-1 text-xs text-stone-600">Approaching the reorder threshold.</p><div class="mt-4 space-y-3">{% include '_field.html' with field=form.raw_warning_enabled %}{% include '_field.html' with field=form.raw_warning_repeat_minutes %}</div></section>
+      <section class="rounded-xl border border-rose-200 bg-rose-50/50 p-5"><h2 class="font-semibold text-rose-900">Raw material · low</h2><p class="mt-1 text-xs text-stone-600">At or below the reorder threshold.</p><div class="mt-4 space-y-3">{% include '_field.html' with field=form.raw_low_enabled %}{% include '_field.html' with field=form.raw_low_repeat_minutes %}</div></section>
+      <section class="rounded-xl border border-amber-300 bg-yellow-50 p-5"><h2 class="font-semibold text-amber-950">Finished good · warning</h2><p class="mt-1 text-xs text-stone-600">Shelf stock is approaching its reorder threshold.</p><div class="mt-4 space-y-3">{% include '_field.html' with field=form.finished_warning_enabled %}{% include '_field.html' with field=form.finished_warning_repeat_minutes %}</div></section>
+      <section class="rounded-xl border border-red-300 bg-red-50 p-5"><h2 class="font-semibold text-red-950">Finished good · low</h2><p class="mt-1 text-xs text-stone-600">Shelf stock is at or below its reorder threshold.</p><div class="mt-4 space-y-3">{% include '_field.html' with field=form.finished_low_enabled %}{% include '_field.html' with field=form.finished_low_repeat_minutes %}</div></section>
+    </div>
+    <button class="rounded-md bg-[#8f172d] px-4 py-2.5 text-sm font-semibold text-white">Save alert settings</button>
+  </form>
+</div>
+{% endblock %}

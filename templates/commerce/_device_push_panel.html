@@ -1,0 +1,107 @@
+<div data-operational-push-panel class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4"
+     data-config-url="{% url 'commerce_push_config' %}"
+     data-subscribe-url="{% url 'commerce_push_subscribe' %}"
+     data-unsubscribe-url="{% url 'commerce_push_unsubscribe' %}">
+  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <h3 class="text-sm font-semibold text-stone-900">{{ push_panel_title|default:'Background alerts on this device' }}</h3>
+      <p class="mt-1 text-xs leading-5 text-stone-500">{{ push_panel_copy|default:'Enable Web Push so operational alerts can reach this browser or installed app while INPROFIC is in the background or closed.' }}</p>
+    </div>
+    <button type="button" data-push-toggle class="shrink-0 rounded-lg border border-[#8f172d] bg-white px-3.5 py-2 text-xs font-semibold text-[#8f172d] hover:bg-rose-50">Enable alerts</button>
+  </div>
+  <p data-push-status class="mt-3 text-xs text-stone-500" aria-live="polite"></p>
+</div>
+<script>
+(function(){
+  const script = document.currentScript;
+  const panel = script && script.previousElementSibling;
+  if (!panel || !panel.matches('[data-operational-push-panel]')) return;
+  const button = panel.querySelector('[data-push-toggle]');
+  const status = panel.querySelector('[data-push-status]');
+  let config = null;
+
+  function csrfToken() {
+    const formToken = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value;
+    if (formToken) return formToken;
+    const match = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : '';
+  }
+  function base64UrlToBytes(value) {
+    const padding = '='.repeat((4 - value.length % 4) % 4);
+    const raw = atob((value + padding).replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from(raw, char => char.charCodeAt(0));
+  }
+  async function subscription() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
+    const registration = await navigator.serviceWorker.ready;
+    return registration.pushManager.getSubscription();
+  }
+  async function bind(existing) {
+    const response = await fetch(panel.dataset.subscribeUrl, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-CSRFToken':csrfToken(),'Accept':'application/json'},
+      body: JSON.stringify(existing.toJSON()),
+    });
+    if (!response.ok) throw new Error('Unable to register this device.');
+  }
+  async function refresh() {
+    if (!button || !status) return;
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+      button.disabled = true;
+      status.textContent = 'This browser does not support Web Push. In-app alerts still work while INPROFIC is open.';
+      return;
+    }
+    try {
+      const response = await fetch(panel.dataset.configUrl, {headers:{'Accept':'application/json'}, cache:'no-store'});
+      config = response.ok ? await response.json() : null;
+    } catch (_) { config = null; }
+    if (!config?.configured) {
+      button.disabled = true;
+      status.textContent = 'Background Web Push is not configured on this INPROFIC installation yet.';
+      return;
+    }
+    if (Notification.permission === 'denied') {
+      button.disabled = true;
+      button.textContent = 'Notifications blocked';
+      status.textContent = 'Allow notifications in the browser/site settings to receive background alerts.';
+      return;
+    }
+    const existing = await subscription().catch(() => null);
+    if (Notification.permission === 'granted' && existing) {
+      try { await bind(existing); } catch (_) {}
+    }
+    button.disabled = false;
+    button.textContent = existing ? 'Disable on this device' : 'Enable background alerts';
+    status.textContent = existing
+      ? 'Background Web Push is active on this device. The operating system controls the sound used while the app is closed.'
+      : 'Enable this device to keep receiving due operational reminders when INPROFIC is in the background or closed.';
+  }
+  button?.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      let existing = await subscription();
+      if (existing) {
+        await fetch(panel.dataset.unsubscribeUrl, {
+          method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken(),'Accept':'application/json'},
+          body: JSON.stringify({endpoint: existing.endpoint}),
+        });
+        await existing.unsubscribe();
+      } else {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') throw new Error('Notification permission was not granted.');
+        const registration = await navigator.serviceWorker.ready;
+        existing = await registration.pushManager.subscribe({
+          userVisibleOnly:true,
+          applicationServerKey:base64UrlToBytes(config.public_key),
+        });
+        await bind(existing);
+      }
+    } catch (error) {
+      status.textContent = error?.message || 'Unable to update background alerts on this device.';
+    } finally {
+      await refresh();
+    }
+  });
+  refresh();
+})();
+</script>

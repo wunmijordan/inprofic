@@ -1,4 +1,5 @@
 from django import forms
+from django.forms.models import BaseInlineFormSet
 from .models import Business
 
 INPUT_CLS = "w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 focus:border-[#8f172d]"
@@ -49,3 +50,22 @@ class BusinessForm(forms.ModelForm):
         if image and getattr(image, "size", 0) > 4 * 1024 * 1024:
             raise forms.ValidationError("Upload a storefront logo no larger than 4 MB.")
         return image
+
+
+class ExistingAwareInlineFormSet(BaseInlineFormSet):
+    """Keep create-mode starter rows without injecting blank rows on edit.
+
+    Existing records render exactly as saved.  When an existing parent has no
+    rows at all, one starter row remains available so the section is still
+    discoverable.  Bound POST data remains authoritative.
+    """
+
+    starter_extra = 1
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.is_bound:
+            return
+        instance = getattr(self, "instance", None)
+        if instance is not None and getattr(instance, "pk", None):
+            self.extra = 0 if self.get_queryset().exists() else self.starter_extra

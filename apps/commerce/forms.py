@@ -21,7 +21,7 @@ class CommerceSettingsForm(forms.ModelForm):
             "storefront_hero_image_position", "public_note",
             "notifications_enabled", "notify_order_activity",
             "notify_payment_activity", "notify_delivery_activity", "notification_sound_enabled",
-            "notification_desktop_enabled", "insufficient_stock_policy",
+            "notification_sound_repeat_minutes", "notification_sound_tune", "notification_desktop_enabled", "insufficient_stock_policy",
             "checkout_reservation_minutes",
         ]
         widgets = {
@@ -46,16 +46,30 @@ class CommerceSettingsForm(forms.ModelForm):
             "notify_payment_activity": "Payment activity alerts",
             "notify_delivery_activity": "Delivery activity & exception alerts",
             "notification_sound_enabled": "Notification sound",
+            "notification_sound_repeat_minutes": "Repeat sound every (minutes)",
+            "notification_sound_tune": "Alert tune",
             "notification_desktop_enabled": "Browser & PWA alerts",
         }
         self.fields["public_note"].label = "Storefront supporting message"
         self.fields["storefront_hero_image"].help_text = (
             "Use a wide landscape image, ideally around 1600 × 700 pixels (maximum 8 MB)."
         )
+        self.fields["notification_sound_repeat_minutes"].widget.attrs.update({"min": 0, "max": 1440})
+        self.fields["notification_sound_repeat_minutes"].help_text = (
+            "While unread Commerce alerts remain, repeat the in-app sound at this interval. "
+            "Use 0 to sound only when a new alert first appears."
+        )
         for name, f in self.fields.items():
             if name in labels: f.label = labels[name]
             if isinstance(f.widget, forms.CheckboxInput): f.widget.attrs["class"]="sr-only peer"
             else: f.widget.attrs["class"] = CLS
+
+
+    def clean_notification_sound_repeat_minutes(self):
+        value = self.cleaned_data.get("notification_sound_repeat_minutes")
+        if value is not None and value > 1440:
+            raise forms.ValidationError("Use 1,440 minutes (24 hours) or less.")
+        return value
 
     def clean_storefront_hero_image(self):
         image = self.cleaned_data.get("storefront_hero_image")
@@ -82,6 +96,14 @@ class StorefrontProductForm(forms.ModelForm):
         self.fields["min_quantity"].label = "Physical Store / direct minimum"
         self.fields["preorder_min_quantity"].label = "Online minimum"
         self.fields["distribution_min_quantity"].label = "Distribution / bulk minimum"
+        self.fields["published"].help_text = (
+            "Publish this finished/procured good as its own customer-buyable catalogue item. "
+            "Raw and packaging materials used inside composed products are not published automatically."
+        )
+        self.fields["preorder_min_quantity"].help_text = "Minimum standard customer portions for the Online channel."
+        self.fields["distribution_min_quantity"].help_text = (
+            "Minimum standard customer portions when no Bulk Pack is selected. Each configured Bulk Pack can have its own minimum."
+        )
         if business and not business.uses_production:
             self.fields.pop("preorder_lead_time")
         for f in self.fields.values():
@@ -116,6 +138,7 @@ class CommercePaymentConfigurationForm(forms.ModelForm):
         fields = [
             "currency",
             "paystack_enabled", "paystack_secret_key", "paystack_account",
+            "transfer_enabled", "bank_name", "bank_account_name", "bank_account_number", "bank_instructions", "transfer_account",
             "bank_transfer_enabled", "bank_transfer_provider", "monnify_transfer_bank_code", "bank_cash_account",
             "paystack_terminal_enabled", "paystack_terminal_id",
             "paystack_terminal_customer_email", "paystack_terminal_account",
@@ -127,6 +150,7 @@ class CommercePaymentConfigurationForm(forms.ModelForm):
             "paystack_secret_key": forms.PasswordInput(render_value=False),
             "monnify_api_key": forms.PasswordInput(render_value=False),
             "monnify_secret_key": forms.PasswordInput(render_value=False),
+            "bank_instructions": forms.Textarea(attrs={"rows": 2}),
             "cash_instructions": forms.Textarea(attrs={"rows": 2}),
         }
 
@@ -134,11 +158,12 @@ class CommercePaymentConfigurationForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["paystack_enabled"].label = "Paystack"
         self.fields["monnify_enabled"].label = "Monnify"
-        self.fields["bank_transfer_enabled"].label = "Confirmed bank transfer"
+        self.fields["transfer_enabled"].label = "Transfer (no gateway)"
+        self.fields["bank_transfer_enabled"].label = "Instant bank transfer (gateway)"
         self.fields["paystack_terminal_enabled"].label = "Paystack Terminal"
         self.fields["cash_enabled"].label = "Cash at the in-premise POS"
         accounts = CashAccount.raw_objects.filter(business=business, active=True).order_by("name")
-        for name in ("paystack_account", "monnify_account", "bank_cash_account", "paystack_terminal_account", "cash_account"):
+        for name in ("paystack_account", "monnify_account", "transfer_account", "bank_cash_account", "paystack_terminal_account", "cash_account"):
             self.fields[name].queryset = accounts
             self.fields[name].required = False
         for name, field in self.fields.items():
@@ -175,6 +200,16 @@ class CommercePaymentConfigurationForm(forms.ModelForm):
                     self.add_error(name, "This information is required when Monnify is enabled.")
             if not cleaned.get("monnify_account"):
                 self.add_error("monnify_account", "Choose the INPROFIC settlement account before enabling Monnify.")
+        if cleaned.get("transfer_enabled"):
+            for field_name, message in (
+                ("bank_name", "Enter the bank name customers should transfer to."),
+                ("bank_account_name", "Enter the account name customers should see."),
+                ("bank_account_number", "Enter the account number customers should transfer to."),
+            ):
+                if not (cleaned.get(field_name) or "").strip():
+                    self.add_error(field_name, message)
+            if not cleaned.get("transfer_account"):
+                self.add_error("transfer_account", "Choose the INPROFIC Finance account that receives direct transfers.")
         if cleaned.get("bank_transfer_enabled"):
             provider = cleaned.get("bank_transfer_provider")
             if provider == CommercePaymentConfiguration.BANK_TRANSFER_PROVIDER_PAYSTACK:

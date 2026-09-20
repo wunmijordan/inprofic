@@ -4,6 +4,8 @@ import json
 from decimal import Decimal
 from unittest.mock import patch
 
+from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
 from accounts.models import BusinessModuleAccess, CustomUser, UserBusiness
@@ -33,7 +35,7 @@ from .models import (
 from .payment_gateways import GatewayError, monnify_signature_valid, verify_monnify, verify_paystack
 from .checkout_services import create_checkout
 from .delivery_services import create_delivery_quote
-from .payment_services import initiate_payment, record_verified_payment, reverse_payment_receipt
+from .payment_services import eligible_payment_methods, initiate_payment, record_verified_payment, reverse_payment_receipt, serialize_payment, submit_bank_claim
 from .services import create_intake
 
 
@@ -122,6 +124,50 @@ class CommercePaymentTestBase(TestCase):
         return CommercePayment.raw_objects.create(**values)
 
 
+class DirectTransferPaymentTests(CommercePaymentTestBase):
+    def setUp(self):
+        super().setUp()
+        self.config.transfer_enabled = True
+        self.config.transfer_account = self.settlement_account
+        self.config.save(update_fields=["transfer_enabled", "transfer_account", "updated_at"])
+
+    def test_public_transfer_is_exposed_separately_from_gateway_transfer(self):
+        methods = {row["code"]: row for row in eligible_payment_methods(self.business)}
+        self.assertIn(CommercePayment.METHOD_TRANSFER, methods)
+        self.assertIn(CommercePayment.METHOD_BANK_TRANSFER, methods)
+        self.assertTrue(methods[CommercePayment.METHOD_TRANSFER]["requires_payment_proof"])
+        self.assertEqual(methods[CommercePayment.METHOD_TRANSFER]["confirmation"], "staff_review")
+
+    def test_direct_transfer_requires_proof_and_keeps_finance_sync_when_finance_is_plan_hidden(self):
+        payment = initiate_payment(
+            intake=self.intake, method=CommercePayment.METHOD_TRANSFER,
+            idempotency_key="direct-transfer-1",
+        )
+        payload = serialize_payment(payment)
+        self.assertEqual(payload["bank_account"]["account_number"], "0000000000")
+        self.assertTrue(payload["proof_required"])
+        with self.assertRaisesMessage(ValidationError, "Attach the transfer payment proof"):
+            submit_bank_claim(
+                payment=payment, payer_name="Sample Customer", transfer_reference="TX-NO-PROOF"
+            )
+        proof = SimpleUploadedFile("receipt.pdf", b"%PDF-1.4 test receipt", content_type="application/pdf")
+        claim, created = submit_bank_claim(
+            payment=payment, payer_name="Sample Customer", transfer_reference="TX-001", payment_proof=proof
+        )
+        self.assertTrue(created)
+        self.assertTrue(bool(claim.payment_proof))
+        BusinessModuleAccess.objects.update_or_create(
+            business=self.business, module="finance", defaults={"enabled": False, "source": "plan"}
+        )
+        receipt, created = record_verified_payment(
+            payment=payment, amount=payment.amount, actor=None, claim=claim,
+            idempotency_key="direct-transfer-settle-1",
+        )
+        self.assertTrue(created)
+        self.assertTrue(FinancialTransaction.raw_objects.filter(pk=receipt.financial_transaction_id).exists())
+
+
+
 class PosCashNotificationTests(CommercePaymentTestBase):
     def test_staff_pos_cash_skips_transient_payment_started_notification(self):
         with self.captureOnCommitCallbacks(execute=True):
@@ -182,7 +228,7 @@ class HeadlessPaymentApiTests(CommercePaymentTestBase):
         checkout_response = self.api_post(
             f"/api/v1/storefronts/{self.business.slug}/checkouts",
             {
-                "order_mode": "physical_store",
+                "order_mode": "online",
                 "customer": {"name": "Ada", "phone": "08010000000", "address": "Changed address"},
                 "delivery_quote_id": quote_id,
                 "items": [{"product_id": str(self.product.public_id), "quantity": "1"}],
@@ -225,7 +271,7 @@ class HeadlessPaymentApiTests(CommercePaymentTestBase):
         reused = self.api_post(
             f"/api/v1/storefronts/{self.business.slug}/checkouts",
             {
-                "order_mode": "physical_store",
+                "order_mode": "online",
                 "customer": {"name": "Another Customer", "phone": "08020000000"},
                 "delivery_quote_id": quote_id,
                 "items": [{"product_id": str(self.product.public_id), "quantity": "1"}],
@@ -616,6 +662,23 @@ class StorefrontPosGuardTests(CommercePaymentTestBase):
         self.assertEqual(payload["items"][0]["unit_price"], "2500.00")
         self.assertEqual(payload["delivery_fee"], "0.00")
         self.assertEqual(payload["total"], "2500.00")
+
+    def test_staff_pos_transfer_uses_counter_confirmation_without_customer_proof(self):
+        self.config.transfer_enabled = True
+        self.config.transfer_account = self.settlement_account
+        self.config.save(update_fields=["transfer_enabled", "transfer_account", "updated_at"])
+        response = self.client.post("/commerce/storefront-pos/", {
+            "method": CommercePayment.METHOD_TRANSFER,
+            "manual_payment_received": "on",
+            f"qty_{self.product.public_id}": "1",
+            "customer_name": "Walk-in Customer",
+            "pos_key": "pos-direct-transfer",
+        })
+        self.assertEqual(response.status_code, 302)
+        payment = CommercePayment.raw_objects.get(business=self.business, method=CommercePayment.METHOD_TRANSFER)
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, CommercePayment.STATUS_PAID)
+        self.assertFalse(payment.claims.exists())
 
     def test_cash_must_be_confirmed_before_checkout_reserves_stock(self):
         response = self.client.post("/commerce/storefront-pos/", {

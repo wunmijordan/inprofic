@@ -17,6 +17,10 @@ from .forms import (
     DistributionReturnForm,
     FinishedGoodForm,
     FinishedGoodChannelPriceFormSet,
+    BulkPackProfileFormSet,
+    IndividualSaleOptionFormSet,
+    ProductCompositionItemFormSet,
+    ProductPortionProfileForm,
     MarketStockReleaseForm,
     MarketStockTransferForm,
     ProductionMaterialFormSet,
@@ -33,6 +37,10 @@ from .models import (
     OperationalSupplyDispense,
     ProductionMaterial,
     ProductCategory,
+    BulkPackProfile,
+    IndividualSaleOption,
+    ProductCompositionItem,
+    ProductPortionProfile,
     RawMaterial,
     RecipeItem,
     StockMovement,
@@ -579,6 +587,46 @@ def product_category_toggle(request, pk):
 def finished_good_form(request, pk=None):
     obj = get_object_or_404(FinishedGood, pk=pk) if pk else None
     uses_production = request.business.uses_production
+
+    existing_portion = None
+    if obj:
+        existing_portion = ProductPortionProfile.raw_objects.filter(
+            business=request.business, finished_good=obj
+        ).first()
+
+    def profile_choices_from_submission():
+        choices = [("standard", "Standard portion")]
+        seen = {"standard"}
+        if obj:
+            for pack in BulkPackProfile.raw_objects.filter(
+                business=request.business, finished_good=obj
+            ).order_by("sort_order", "name", "id"):
+                key = pack.profile_key
+                if key not in seen:
+                    choices.append((key, f"Bulk · {pack.name}"))
+                    seen.add(key)
+        if request.method == "POST":
+            try:
+                total = int(request.POST.get("bulk_packs-TOTAL_FORMS") or 0)
+            except (TypeError, ValueError):
+                total = 0
+            for index in range(total):
+                if request.POST.get(f"bulk_packs-{index}-DELETE"):
+                    continue
+                key = (request.POST.get(f"bulk_packs-{index}-profile_key") or "").strip()
+                name = (request.POST.get(f"bulk_packs-{index}-name") or "").strip() or "New bulk pack"
+                if key.startswith("bulk:") and key not in seen:
+                    choices.append((key, f"Bulk · {name}"))
+                    seen.add(key)
+        return choices
+
+    portion_instance = existing_portion or ProductPortionProfile(
+        business=request.business,
+        finished_good=obj if obj else None,
+        created_by=request.user,
+    )
+    profile_choices = profile_choices_from_submission()
+
     if request.method == "POST":
         form = FinishedGoodForm(request.POST, instance=obj, business=request.business)
         selected_source = (
@@ -586,18 +634,44 @@ def finished_good_form(request, pk=None):
             or getattr(obj, "source_type", FinishedGood.SOURCE_MADE_IN_HOUSE)
         )
         show_production_fields = uses_production and selected_source != FinishedGood.SOURCE_PURCHASED_FOR_RESALE
+        parent_instance = obj if obj else FinishedGood()
         formset = RecipeItemFormSet(
-            request.POST, instance=obj if obj else FinishedGood(), prefix="recipe_items"
+            request.POST, instance=parent_instance, prefix="recipe_items"
         ) if uses_production else None
         production_formset = ProductionMaterialFormSet(
-            request.POST, instance=obj if obj else FinishedGood(), prefix="production_materials"
+            request.POST, instance=parent_instance, prefix="production_materials"
         ) if uses_production else None
         channel_price_formset = FinishedGoodChannelPriceFormSet(
-            request.POST, instance=obj if obj else FinishedGood(), prefix="channel_prices",
+            request.POST, instance=parent_instance, prefix="channel_prices",
             form_kwargs={"business": request.business},
         )
+        portion_form = ProductPortionProfileForm(
+            request.POST, instance=portion_instance, prefix="portion", business=request.business
+        )
+        bulk_pack_formset = BulkPackProfileFormSet(
+            request.POST, instance=parent_instance, prefix="bulk_packs",
+            form_kwargs={"business": request.business},
+        )
+        individual_option_formset = IndividualSaleOptionFormSet(
+            request.POST, instance=parent_instance, prefix="individual_options",
+            form_kwargs={"business": request.business},
+        )
+        composition_formset = ProductCompositionItemFormSet(
+            request.POST, instance=parent_instance, prefix="composition_items",
+            form_kwargs={
+                "business": request.business,
+                "parent_good": obj,
+                "profile_choices": profile_choices,
+            },
+        )
+
         production_forms_valid = not show_production_fields or (formset.is_valid() and production_formset.is_valid())
         form_valid = form.is_valid()
+        portion_valid = portion_form.is_valid()
+        bulk_valid = bulk_pack_formset.is_valid()
+        individual_options_valid = individual_option_formset.is_valid()
+        composition_valid = composition_formset.is_valid()
+
         if form_valid and production_forms_valid and show_production_fields:
             base_material = form.cleaned_data.get("base_material")
             if base_material is not None:
@@ -612,22 +686,107 @@ def finished_good_form(request, pk=None):
                 if base_material.pk not in recipe_material_ids:
                     form.add_error("base_material", "Choose a material that is included in the recipe with a quantity greater than zero.")
                     form_valid = False
-        if form_valid and production_forms_valid and channel_price_formset.is_valid():
-            good = form.save(commit=False)
-            good.business = request.business
-            if obj is None:
-                good.created_by = request.user
-            good.save()
-            if show_production_fields:
-                formset.instance = good
-                production_formset.instance = good
-            channel_price_formset.instance = good
-            if show_production_fields:
-                formset.save()
-                production_formset.save()
-            channel_price_formset.save()
-            audit(request.business, request.user, "create" if obj is None else "update", good, f"Finished good {good.name} saved")
-            messages.success(request, "Product saved.")
+
+        # Composition rows are allowed to target the standard portion or a
+        # bulk pack submitted in this same form. Validate those stable keys
+        # before anything is written.
+        submitted_profile_keys = {"standard"}
+        if bulk_valid:
+            for bulk_form in bulk_pack_formset.forms:
+                cleaned = getattr(bulk_form, "cleaned_data", None) or {}
+                if cleaned.get("DELETE"):
+                    continue
+                key = (cleaned.get("profile_key") or "").strip()
+                name = (cleaned.get("name") or "").strip()
+                if key and name:
+                    submitted_profile_keys.add(key)
+        if composition_valid:
+            for component_form in composition_formset.forms:
+                cleaned = getattr(component_form, "cleaned_data", None) or {}
+                if cleaned.get("DELETE") or not cleaned:
+                    continue
+                key = (cleaned.get("profile_key") or "").strip()
+                if key not in submitted_profile_keys:
+                    component_form.add_error("profile_key", "Choose a standard portion or a bulk pack that is being saved with this product.")
+                    composition_valid = False
+
+        if form_valid and production_forms_valid and channel_price_formset.is_valid() and portion_valid and bulk_valid and individual_options_valid and composition_valid:
+            with transaction.atomic():
+                good = form.save(commit=False)
+                good.business = request.business
+                if obj is None:
+                    good.created_by = request.user
+                good.save()
+
+                if show_production_fields:
+                    formset.instance = good
+                    production_formset.instance = good
+                    formset.save()
+                    production_formset.save()
+
+                channel_price_formset.instance = good
+                channel_price_formset.save()
+
+                portion = portion_form.save(commit=False)
+                portion.business = request.business
+                portion.finished_good = good
+                if not portion.pk:
+                    portion.created_by = request.user
+                portion.save()
+
+                # Individual/plain selling options reuse this FinishedGood's
+                # existing stock/recipe. Save them tenant-scoped; no duplicate
+                # stock or production record is created.
+                individual_option_formset.instance = good
+                for option_form in individual_option_formset.forms:
+                    cleaned = getattr(option_form, "cleaned_data", None) or {}
+                    if cleaned.get("DELETE"):
+                        if option_form.instance.pk:
+                            option_form.instance.delete()
+                        continue
+                    if not (cleaned.get("name") or "").strip():
+                        continue
+                    option = option_form.save(commit=False)
+                    option.business = request.business
+                    option.finished_good = good
+                    if not option.pk:
+                        option.created_by = request.user
+                    option.save()
+
+                # Save bulk pack formset manually because BulkPackProfile is a
+                # BusinessOwnedModel and the tenant is never trusted from POST.
+                bulk_pack_formset.instance = good
+                for bulk_form in bulk_pack_formset.forms:
+                    cleaned = getattr(bulk_form, "cleaned_data", None) or {}
+                    if cleaned.get("DELETE"):
+                        # ``deleted_objects`` is populated only after a model
+                        # formset save cycle.  These tenant-owned rows are saved
+                        # manually, so delete the validated existing instance
+                        # directly instead of consulting that late-bound list.
+                        if bulk_form.instance.pk:
+                            bulk_form.instance.delete()
+                        continue
+                    if not (cleaned.get("name") or "").strip():
+                        continue
+                    pack = bulk_form.save(commit=False)
+                    pack.business = request.business
+                    pack.finished_good = good
+                    if not pack.pk:
+                        from uuid import UUID
+                        key = (cleaned.get("profile_key") or "").strip()
+                        if key.startswith("bulk:"):
+                            try:
+                                pack.public_id = UUID(key.split(":", 1)[1])
+                            except (TypeError, ValueError):
+                                pass
+                        pack.created_by = request.user
+                    pack.save()
+
+                composition_formset.instance = good
+                composition_formset.save()
+
+                audit(request.business, request.user, "create" if obj is None else "update", good, f"Finished good {good.name} saved")
+            messages.success(request, "Product, selling portions, individual options and bulk packs saved.")
             return redirect("finished_good_add" if "save_add_new" in request.POST else "inventory")
     else:
         form = FinishedGoodForm(instance=obj, business=request.business)
@@ -638,18 +797,47 @@ def finished_good_form(request, pk=None):
         channel_price_formset = FinishedGoodChannelPriceFormSet(
             instance=obj, prefix="channel_prices", form_kwargs={"business": request.business}
         )
+        portion_form = ProductPortionProfileForm(
+            instance=portion_instance, prefix="portion", business=request.business
+        )
+        bulk_pack_formset = BulkPackProfileFormSet(
+            instance=obj, prefix="bulk_packs", form_kwargs={"business": request.business}
+        )
+        individual_option_formset = IndividualSaleOptionFormSet(
+            instance=obj, prefix="individual_options", form_kwargs={"business": request.business}
+        )
+        composition_formset = ProductCompositionItemFormSet(
+            instance=obj, prefix="composition_items",
+            form_kwargs={
+                "business": request.business,
+                "parent_good": obj,
+                "profile_choices": profile_choices,
+            },
+        )
+
     raw_material_units = {
         str(material.pk): material.usage_unit
         for material in RawMaterial.objects.all()
+    }
+    finished_good_units = {
+        str(good.pk): good.unit
+        for good in FinishedGood.raw_objects.filter(business=request.business)
     }
     return render(request, "inventory/finishedgood_form.html", {
         "form": form,
         "formset": formset,
         "production_formset": production_formset,
         "channel_price_formset": channel_price_formset,
+        "portion_form": portion_form,
+        "bulk_pack_formset": bulk_pack_formset,
+        "individual_option_formset": individual_option_formset,
+        "composition_formset": composition_formset,
         "obj": obj,
         "raw_material_units": raw_material_units,
+        "finished_good_units": finished_good_units,
+        "profile_choices": profile_choices,
         "show_production_fields": show_production_fields,
+        "bulk_channel_label": vertical_config(request.business).get("commerce_channels", {}).get("distribution", "Bulk / Distribution"),
     })
 
 

@@ -18,6 +18,7 @@ from procurement.models import PurchaseOrder, RawMaterialCostSnapshot
 from production.models import ProductionBatch, ProductionCostSnapshot, ProductionQualityCheck
 from sales.models import CustomerPayment, Sale
 from accounts.services import is_business_admin, user_has_permission
+from accounts.platform_integrations import redact_disabled_integrations
 
 from .models import AuditLog, AuditQuery, CashAccount, FinancialTransaction
 from .services import audit
@@ -82,7 +83,7 @@ def _audit_detail_value(value):
         return "Recorded securely"
     if isinstance(value, (list, tuple)):
         value = ", ".join(str(item) for item in value)
-    text = str(value)
+    text = str(redact_disabled_integrations(value))
     return f"{text[:177]}…" if len(text) > 180 else text
 
 
@@ -100,6 +101,7 @@ def _public_audit_details(metadata):
 
 
 def _prepare_audit_log(log):
+    log.description = redact_disabled_integrations(log.description)
     log.action_label = (log.action or "Activity").replace("_", " ").title()
     model = (log.model_name or "Record").split(".")[-1]
     log.record_type_label = re.sub(r"(?<!^)(?=[A-Z])", " ", model)
@@ -379,14 +381,14 @@ def audit_export_xlsx(request):
             [d.created_at.isoformat(), d.intake.public_number, d.intake.customer_name, d.provider, d.driver.name if d.driver else "", d.status, float(d.intake.delivery_fee or 0), d.external_reference] for d in data["deliveries"]
         ]),
         ("Delivery events", ["When", "Order", "Delivery", "Status", "Note", "Metadata"], [
-            [event.created_at.isoformat(), delivery.intake.public_number, str(delivery.public_id), event.status, event.note, str(event.metadata)]
+            [event.created_at.isoformat(), delivery.intake.public_number, str(delivery.public_id), event.status, redact_disabled_integrations(event.note), redact_disabled_integrations(str(event.metadata))]
             for delivery in data["deliveries"] for event in delivery.events.all()
         ]),
         ("Audit queries", ["When", "Status", "Severity", "Module", "Record", "Subject", "Query", "Response", "Raised by", "Answered by"], [
             [q.created_at.isoformat(), q.status, q.severity, q.module, q.record_label or q.record_id, q.subject, q.message, q.response, str(q.created_by or ""), str(q.answered_by or "")] for q in data["audit_queries"]
         ]),
         ("Audit trail", ["When", "Action", "Model", "Object", "Description", "Actor"], [
-            [a.created_at.isoformat(), a.action, a.model_name, a.object_id, a.description, str(a.created_by or "System")] for a in data["logs"]
+            [a.created_at.isoformat(), a.action, a.model_name, a.object_id, redact_disabled_integrations(a.description), str(a.created_by or "System")] for a in data["logs"]
         ]),
     ]
     for title, headers, rows in sheets:

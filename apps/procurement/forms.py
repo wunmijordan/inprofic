@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django import forms
 from django.forms import inlineformset_factory
+from core.forms import ExistingAwareInlineFormSet
 from .models import PurchaseOrder, PurchaseOrderItem
 from inventory.models import FinishedGood, RawMaterial
 from core.models import CashAccount
@@ -160,4 +161,4 @@ class PurchaseOrderItemForm(StyledModelForm):
         return cleaned
 
 
-PurchaseOrderItemFormSet = inlineformset_factory(PurchaseOrder, PurchaseOrderItem, form=PurchaseOrderItemForm, extra=1, can_delete=True)
+PurchaseOrderItemFormSet = inlineformset_factory(PurchaseOrder, PurchaseOrderItem, form=PurchaseOrderItemForm, formset=ExistingAwareInlineFormSet, extra=1, can_delete=True)

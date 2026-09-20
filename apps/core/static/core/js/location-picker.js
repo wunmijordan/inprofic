@@ -156,9 +156,24 @@
     root.querySelectorAll('[data-radius-handle],[data-extension-handle]').forEach(handle=>handle.addEventListener('pointerdown',event=>{event.preventDefault();event.stopPropagation();coverageDrag=handle.dataset.extensionHandle||'radius';handle.setPointerCapture(event.pointerId);}));
     canvas.addEventListener('keydown',event=>{const movement={ArrowUp:[0,-32],ArrowDown:[0,32],ArrowLeft:[-32,0],ArrowRight:[32,0]}[event.key];if(movement){event.preventDefault();moveByPixels(movement[0],movement[1],'Map pin moved. Updating the address…');}else if(event.key==='+'||event.key==='='){event.preventDefault();zoom=clampZoom(zoom+1);render();}else if(event.key==='-'){event.preventDefault();zoom=clampZoom(zoom-1);render();}});
     latitude.addEventListener('change',syncFromInputs);longitude.addEventListener('change',syncFromInputs);radiusInput?.addEventListener('change',render);Object.values(extensionInputs).forEach(input=>input?.addEventListener('change',render));
-    addressInput?.addEventListener('input',()=>{if(!resolveUrl)return;clearTimeout(addressTimer);addressTimer=setTimeout(()=>resolveLocation('address'),700);});
-    addressInput?.addEventListener('blur',()=>{if(resolveUrl&&addressInput.value.trim().length>=4){clearTimeout(addressTimer);resolveLocation('address');}});
-    areaInput?.addEventListener('change',()=>{const area=areas.find(row=>row.id===areaInput.value);if(!area){render();return;}center={lat:area.lat,lng:area.lng};zoom=13;const reach=Math.max(area.radius+area.ne,area.radius+area.se,area.radius+area.sw,area.radius+area.nw);while(zoom>2&&reach/(156.54303392*Math.cos(area.lat*Math.PI/180)/(2**zoom))>canvas.clientWidth*.36)zoom-=1;openPanel();render();setStatus(`${area.name} coverage is outlined. Enter the exact address or place the pin inside it.`);if(resolveUrl&&addressInput?.value.trim().length>=4)resolveLocation('address');});
+    const ADDRESS_IDLE_DELAY_MS=2000;
+    function cancelAddressLookup(){
+      clearTimeout(addressTimer);
+      addressTimer=null;
+      // Any correction/edit invalidates both the scheduled lookup and an older
+      // request already in flight, so stale suggestions can never rewrite the
+      // customer's newer address.
+      resolveSequence+=1;
+      if(resolveController){resolveController.abort();resolveController=null;}
+    }
+    function scheduleAddressLookup(){
+      if(!resolveUrl)return;
+      cancelAddressLookup();
+      if((addressInput?.value.trim()||'').length<4)return;
+      addressTimer=setTimeout(()=>{addressTimer=null;resolveLocation('address');},ADDRESS_IDLE_DELAY_MS);
+    }
+    addressInput?.addEventListener('input',scheduleAddressLookup);
+    areaInput?.addEventListener('change',()=>{const area=areas.find(row=>row.id===areaInput.value);if(!area){render();return;}center={lat:area.lat,lng:area.lng};zoom=13;const reach=Math.max(area.radius+area.ne,area.radius+area.se,area.radius+area.sw,area.radius+area.nw);while(zoom>2&&reach/(156.54303392*Math.cos(area.lat*Math.PI/180)/(2**zoom))>canvas.clientWidth*.36)zoom-=1;openPanel();render();setStatus(`${area.name} coverage is outlined. Enter the exact address or place the pin inside it.`);if(resolveUrl&&addressInput?.value.trim().length>=4)scheduleAddressLookup();});
     window.addEventListener('resize',()=>{if(!panel.hidden)render();},{passive:true});root.dataset.mapReady='true';
   }
   const boot=()=>document.querySelectorAll('[data-location-picker]').forEach(initialize);if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();

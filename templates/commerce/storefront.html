@@ -8,11 +8,12 @@
   <title>{{ store_business.name }} · {% if order_now_mode %}Order Now{% else %}Catalogue{% endif %}</title>
   <link rel="icon" type="image/png" href="{% static 'core/brand/inprofic-mark.png' %}">
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
+  <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}">
   <style>
     @font-face { font-family:'Inter'; src:url('{% static "core/fonts/Inter-Regular.ttf" %}') format('truetype'); font-weight:400; font-style:normal; font-display:swap; }
     @font-face { font-family:'Inter'; src:url('{% static "core/fonts/Inter-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
     @font-face { font-family:'Fraunces'; src:url('{% static "core/fonts/Fraunces-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
-    :root { --brand: {{ store_business.accent_color }}; --brand-dark: {{ store_business.background_color }}; }
+    :root { --brand: {{ store_business.accent_color }}; --brand-dark: {{ store_business.background_color }}; --tenant-button: {{ store_business.accent_color }}; --tenant-button-contrast: {{ store_business.button_text_color|default:'#FFFFFF' }}; }
     body { font-family: 'Inter', sans-serif; background: #f7f4ee; color: #211d1a; }
     .font-display { font-family: 'Fraunces', serif; }
     .catalogue-noise { background-image: radial-gradient(rgba(255,255,255,.16) 1px, transparent 1px); background-size: 18px 18px; }
@@ -26,6 +27,7 @@
     @media (prefers-reduced-motion: reduce) { .product-card, .product-card img { transition: none; } }
     @media (max-width: 640px) { dialog[open] { margin: auto 0 0; width: 100%; max-width: none; border-radius: 1.5rem 1.5rem 0 0; } }
   </style>
+  <script src="{% static 'core/js/form-experience.js' %}" defer></script>
 </head>
 <body class="min-h-screen">
   <header class="relative isolate overflow-hidden text-white" style="background:var(--brand-dark)">
@@ -57,11 +59,10 @@
       <label class="relative block min-w-0 flex-1">
         <span class="sr-only">Search products</span>
         <svg viewBox="0 0 24 24" class="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 fill-none stroke-stone-400" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
-        <input id="catalogue-search" type="search" placeholder="Search {{ storefront_copy.range_label|lower }}" autocomplete="off" class="h-12 w-full rounded-xl border border-stone-200 bg-stone-50 pl-11 pr-4 text-sm outline-none transition focus:border-stone-400 focus:bg-white focus:ring-4 focus:ring-stone-100">
+        <input id="catalogue-search" data-no-form-enhance type="search" placeholder="Search {{ storefront_copy.range_label|lower }}" autocomplete="off" class="h-12 w-full rounded-xl border border-stone-200 bg-stone-50 pl-11 pr-4 text-sm outline-none transition focus:border-stone-400 focus:bg-white focus:ring-4 focus:ring-stone-100">
       </label>
       <div class="mt-3 flex gap-2 overflow-x-auto pb-1 sm:mt-0 sm:pb-0" aria-label="Filter by ordering option">
         <button type="button" class="channel-filter shrink-0 rounded-xl border border-stone-200 px-3.5 py-3 text-xs font-semibold transition" data-channel="all" aria-pressed="true">{{ storefront_copy.all_label }}</button>
-        <button type="button" class="channel-filter shrink-0 rounded-xl border border-stone-200 px-3.5 py-3 text-xs font-semibold transition" data-channel="physical_store" aria-pressed="false">{{ commerce_channels.physical_store }}</button>
         <button type="button" class="channel-filter shrink-0 rounded-xl border border-stone-200 px-3.5 py-3 text-xs font-semibold transition" data-channel="online" aria-pressed="false">{{ commerce_channels.online }}</button>
         <button type="button" class="channel-filter shrink-0 rounded-xl border border-stone-200 px-3.5 py-3 text-xs font-semibold transition" data-channel="distribution" aria-pressed="false">{{ commerce_channels.distribution }}</button>
       </div>
@@ -79,13 +80,12 @@
 
       <div id="catalogue-grid" class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {% for p in products %}
-        <article class="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white" data-product-card data-product-id="{{ p.public_id }}" data-product-name="{{ p.display_name }}" data-category="{% if p.finished_good.product_category_id %}{{ p.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-unit="{{ p.finished_good.unit }}" data-search="{{ p.display_name|lower }} {{ p.description|lower }}" data-modes="{% if p.allow_stock_order %} physical_store{% endif %}{% if p.allow_online_order %} online{% endif %}{% if p.allow_distribution_order %} distribution{% endif %}" data-min-physical_store="{{ p.min_quantity }}" data-min-online="{{ p.preorder_min_quantity }}" data-min-distribution="{{ p.distribution_min_quantity }}" data-price-physical_store="{{ p.stock_price }}" data-price-online="{{ p.preorder_price }}" data-price-distribution="{{ p.distribution_price }}" data-max="{% if p.max_quantity %}{{ p.max_quantity }}{% endif %}">
+        {% if p.allow_online_order or p.allow_distribution_order %}<article class="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white" data-product-card data-basket-key="{{ p.public_id }}" data-product-id="{{ p.public_id }}" data-individual-option-id="" data-product-name="{{ p.display_name }}" data-category="{% if p.finished_good.product_category_id %}{{ p.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-unit="{{ p.customer_unit }}" data-search="{{ p.display_name|lower }} {{ p.description|lower }}" data-modes="{% if p.allow_online_order %} online{% endif %}{% if p.allow_distribution_order %} distribution{% endif %}" data-min-online="{{ p.preorder_min_quantity }}" data-min-distribution="{{ p.distribution_min_quantity }}" data-price-online="{{ p.preorder_price }}" data-price-distribution="{{ p.distribution_price }}" data-max="{% if p.max_quantity %}{{ p.max_quantity }}{% endif %}">
           <div class="relative aspect-[16/10] overflow-hidden bg-stone-100">
             {% if p.public_image_url %}<img src="{{ p.public_image_url }}" alt="{{ p.display_name }}" class="h-full w-full object-cover" loading="lazy">
             {% else %}<div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-stone-100 via-[#efe8dc] to-stone-200"><div class="flex h-20 w-20 items-center justify-center rounded-full border border-white/80 bg-white/55 shadow-inner backdrop-blur"><svg viewBox="0 0 24 24" class="h-8 w-8 fill-none stroke-stone-400" stroke-width="1.35"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg></div></div>{% endif %}
             <div class="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/45 to-transparent"></div>
             <div class="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
-              {% if p.allow_stock_order %}<span class="rounded-full border border-white/25 bg-black/35 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">{{ commerce_channels.physical_store }}</span>{% endif %}
               {% if p.allow_online_order %}<span class="rounded-full border border-white/25 bg-black/35 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">{{ commerce_channels.online }}</span>{% endif %}
               {% if p.allow_distribution_order %}<span class="rounded-full border border-white/25 bg-black/35 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">{{ commerce_channels.distribution }}</span>{% endif %}
             </div>
@@ -94,14 +94,57 @@
             <div class="mb-2"><span class="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-500">{% if p.finished_good.product_category %}{{ p.finished_good.product_category.name }}{% else %}Uncategorised{% endif %}</span></div>
             <h3 class="font-display text-lg font-semibold leading-tight text-stone-900">{{ p.display_name }}</h3>
             <p class="line-clamp-2 mt-1.5 min-h-[2rem] text-xs leading-4 text-stone-500">{{ p.description|default:"Choose from the ordering options below." }}</p>
+            {% if p.standard_public_contents|length > 1 or p.bulk_pack_options %}
+            <details class="relative mt-2" data-contents-popover>
+              <summary class="inline-flex cursor-pointer list-none items-center gap-1 text-[11px] font-semibold underline decoration-stone-300 underline-offset-4" style="color:var(--brand)">What's included? <span aria-hidden="true">ⓘ</span></summary>
+              <div class="absolute left-0 top-7 z-20 w-[min(18rem,78vw)] rounded-2xl border border-stone-200 bg-white p-3.5 text-left shadow-xl">
+                <p class="text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">Standard portion</p>
+                <ul class="mt-2 space-y-1.5 text-xs text-stone-700">
+                  {% for item in p.standard_public_contents %}<li class="flex items-start justify-between gap-3"><span>{{ item.name }}</span>{% if item.quantity_label %}<span class="shrink-0 text-stone-400">{{ item.quantity_label }}</span>{% endif %}</li>{% endfor %}
+                </ul>
+                {% for pack in p.bulk_pack_options %}
+                  <div class="mt-3 border-t border-stone-100 pt-3">
+                    <p class="text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">{{ pack.name }}</p>
+                    <ul class="mt-2 space-y-1.5 text-xs text-stone-700">
+                      {% for item in pack.public_contents %}<li class="flex items-start justify-between gap-3"><span>{{ item.name }}</span>{% if item.quantity_label %}<span class="shrink-0 text-stone-400">{{ item.quantity_label }}</span>{% endif %}</li>{% endfor %}
+                    </ul>
+                  </div>
+                {% endfor %}
+              </div>
+            </details>
+            {% endif %}
             <div class="mt-3 space-y-1.5 border-y border-stone-100 py-2.5 text-[11px]">
-              {% if p.allow_stock_order %}<div class="flex items-center justify-between gap-3"><span class="truncate text-stone-500">{{ commerce_channels.physical_store }}</span><span class="shrink-0 font-semibold text-stone-900">{{ p.stock_price|money:store_business.currency_symbol }} <span class="font-normal text-stone-400">/ {{ p.finished_good.unit }}</span></span></div>{% endif %}
-              {% if p.allow_online_order %}<div class="flex items-center justify-between gap-3"><span class="truncate text-stone-500">{{ commerce_channels.online }}</span><span class="shrink-0 font-semibold text-stone-900">{{ p.preorder_price|money:store_business.currency_symbol }} <span class="font-normal text-stone-400">/ {{ p.finished_good.unit }}</span></span></div>{% endif %}
-              {% if p.allow_distribution_order %}<div class="flex items-center justify-between gap-3"><span class="truncate text-stone-500">{{ commerce_channels.distribution }}</span><span class="shrink-0 font-semibold text-stone-900">{{ p.distribution_price|money:store_business.currency_symbol }} <span class="font-normal text-stone-400">/ {{ p.finished_good.unit }}</span></span></div>{% endif %}
+              {% if p.allow_online_order %}<div class="flex items-center justify-between gap-3"><span class="truncate text-stone-500">{{ commerce_channels.online }}</span><span class="shrink-0 font-semibold text-stone-900">{{ p.preorder_price|money:store_business.currency_symbol }} <span class="font-normal text-stone-400">/ {{ p.customer_unit }}</span></span></div>{% endif %}
+              {% if p.allow_distribution_order %}<div class="flex items-center justify-between gap-3"><span class="truncate text-stone-500">{{ commerce_channels.distribution }}</span><span class="shrink-0 font-semibold text-stone-900">{{ p.distribution_price|money:store_business.currency_symbol }} <span class="font-normal text-stone-400">/ {{ p.customer_unit }}</span></span></div>{% endif %}
             </div>
+            {% if p.allow_distribution_order and p.bulk_pack_options %}
+            <label class="mt-3 block text-[10px] font-bold uppercase tracking-[.14em] text-stone-400">{{ commerce_channels.distribution }} option
+              <select data-bulk-pack-select class="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold normal-case tracking-normal text-stone-700 outline-none focus:border-stone-400">
+                <option value="">Standard {{ p.customer_unit }} · {{ p.distribution_price|money:store_business.currency_symbol }}</option>
+                {% for pack in p.bulk_pack_options %}<option value="{{ pack.public_id }}" data-name="{{ pack.name }}" data-unit="{{ pack.name }}" data-price="{{ pack.price }}" data-min="{{ pack.min_order_quantity }}">{{ pack.name }} · {{ pack.price|money:store_business.currency_symbol }}{% if pack.min_order_quantity > 1 %} · min {{ pack.min_order_quantity }}{% endif %}</option>{% endfor %}
+              </select>
+            </label>
+            {% endif %}
+            <button type="button" class="add-product mt-auto flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-semibold text-white transition hover:brightness-90 focus:outline-none focus:ring-4 focus:ring-stone-200" style="background:var(--brand)"><span class="add-product-label">Add to basket</span><span aria-hidden="true">+</span></button>
+          </div>
+        </article>{% endif %}
+        {% for option in p.public_individual_options %}
+        <article class="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white" data-product-card data-basket-key="individual:{{ option.public_id }}" data-product-id="{{ p.public_id }}" data-individual-option-id="{{ option.public_id }}" data-product-name="{{ option.name }}" data-category="{% if p.finished_good.product_category_id %}{{ p.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-unit="{{ option.customer_unit|default:p.finished_good.unit }}" data-search="{{ option.name|lower }} {{ option.public_note|lower }} {{ p.finished_good.name|lower }}" data-modes="{% if option.online_enabled and option.online_price != None %} online{% endif %}{% if option.distribution_enabled and option.distribution_price != None %} distribution{% endif %}" data-min-online="{{ option.online_min_quantity }}" data-min-distribution="{{ option.distribution_min_quantity }}" data-price-online="{% if option.online_price != None %}{{ option.online_price }}{% endif %}" data-price-distribution="{% if option.distribution_price != None %}{{ option.distribution_price }}{% endif %}" data-max="{% if p.max_quantity %}{{ p.max_quantity }}{% endif %}">
+          <div class="relative aspect-[16/10] overflow-hidden bg-stone-100">
+            {% if p.public_image_url %}<img src="{{ p.public_image_url }}" alt="{{ option.name }}" class="h-full w-full object-cover" loading="lazy">{% else %}<div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-stone-100 via-[#efe8dc] to-stone-200"><div class="flex h-20 w-20 items-center justify-center rounded-full border border-white/80 bg-white/55 shadow-inner backdrop-blur"><svg viewBox="0 0 24 24" class="h-8 w-8 fill-none stroke-stone-400" stroke-width="1.35"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg></div></div>{% endif %}
+            <div class="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/45 to-transparent"></div>
+            <div class="absolute bottom-3 left-3 flex flex-wrap gap-1.5">{% if option.online_enabled and option.online_price != None %}<span class="rounded-full border border-white/25 bg-black/35 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">{{ commerce_channels.online }}</span>{% endif %}{% if option.distribution_enabled and option.distribution_price != None %}<span class="rounded-full border border-white/25 bg-black/35 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">{{ commerce_channels.distribution }}</span>{% endif %}</div>
+          </div>
+          <div class="flex flex-1 flex-col p-4">
+            <div class="mb-2 flex items-center justify-between gap-2"><span class="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-500">{% if p.finished_good.product_category %}{{ p.finished_good.product_category.name }}{% else %}Uncategorised{% endif %}</span><span class="rounded-full bg-amber-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-amber-700">Individual</span></div>
+            <h3 class="font-display text-lg font-semibold leading-tight text-stone-900">{{ option.name }}</h3>
+            <p class="line-clamp-2 mt-1.5 min-h-[2rem] text-xs leading-4 text-stone-500">{{ option.public_note|default:p.finished_good.name }}</p>
+            <details class="relative mt-2" data-contents-popover><summary class="inline-flex cursor-pointer list-none items-center gap-1 text-[11px] font-semibold underline decoration-stone-300 underline-offset-4" style="color:var(--brand)">What's included? <span aria-hidden="true">ⓘ</span></summary><div class="absolute left-0 top-7 z-20 w-[min(18rem,78vw)] rounded-2xl border border-stone-200 bg-white p-3.5 text-left shadow-xl"><p class="text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">Plain individual option</p><ul class="mt-2 space-y-1.5 text-xs text-stone-700"><li>{{ p.finished_good.name }}{% if option.public_note %}<span class="ml-1 text-stone-400">· {{ option.public_note }}</span>{% endif %}</li></ul></div></details>
+            <div class="mt-3 space-y-1.5 border-y border-stone-100 py-2.5 text-[11px]">{% if option.online_enabled and option.online_price != None %}<div class="flex items-center justify-between gap-3"><span class="truncate text-stone-500">{{ commerce_channels.online }}</span><span class="shrink-0 font-semibold text-stone-900">{{ option.online_price|money:store_business.currency_symbol }} <span class="font-normal text-stone-400">/ {{ option.customer_unit|default:p.finished_good.unit }}</span></span></div>{% endif %}{% if option.distribution_enabled and option.distribution_price != None %}<div class="flex items-center justify-between gap-3"><span class="truncate text-stone-500">{{ commerce_channels.distribution }}</span><span class="shrink-0 font-semibold text-stone-900">{{ option.distribution_price|money:store_business.currency_symbol }} <span class="font-normal text-stone-400">/ {{ option.customer_unit|default:p.finished_good.unit }}</span></span></div>{% endif %}</div>
             <button type="button" class="add-product mt-auto flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-semibold text-white transition hover:brightness-90 focus:outline-none focus:ring-4 focus:ring-stone-200" style="background:var(--brand)"><span class="add-product-label">Add to basket</span><span aria-hidden="true">+</span></button>
           </div>
         </article>
+        {% endfor %}
         {% empty %}
         <div class="col-span-full rounded-2xl border border-dashed border-stone-300 bg-white/60 px-6 py-16 text-center"><p class="font-display text-xl font-semibold text-stone-700">The catalogue is being prepared.</p><p class="mt-2 text-sm text-stone-500">Please check back soon.</p></div>
         {% endfor %}
@@ -132,9 +175,8 @@
         <label class="text-xs font-semibold text-stone-600">Phone <span class="text-rose-600">*</span><input required name="phone" autocomplete="tel" inputmode="tel" value="{% if storefront_customer %}{{ storefront_customer.phone }}{% endif %}" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"></label>
         <label class="text-xs font-semibold text-stone-600 sm:col-span-2">Email <span class="font-normal text-stone-400">(optional)</span><input name="email" type="email" autocomplete="email" value="{% if storefront_customer %}{{ storefront_customer.email }}{% endif %}" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"></label>
       </div>
-      {% if delivery_enabled %}<section class="mt-5 rounded-2xl border border-stone-200 bg-white p-4"><label class="flex cursor-pointer items-start gap-3"><input id="request-delivery" name="request_delivery" type="checkbox" class="mt-1 h-4 w-4 rounded border-stone-300"><span><strong class="block text-sm text-stone-900">Deliver this order</strong><span class="text-xs leading-5 text-stone-500">A live distance-based quote is locked into checkout before payment.</span></span></label><div id="delivery-fields" class="mt-4 hidden"><label class="block text-xs font-semibold text-stone-600">Delivery destination / zone<select id="delivery-area" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal"><option value="">Use map coordinates</option>{% for area in delivery_areas %}<option value="{{ area.pk }}">{{ area.name }} · {{ area.radius_km }} km radius{% if area.extension_ne_km or area.extension_se_km or area.extension_sw_km or area.extension_nw_km %} + extended corridors{% endif %}{% if area.rate_band %} · {{ area.rate_band.name }}{% endif %}</option>{% endfor %}</select></label><label class="mt-3 block text-xs font-semibold text-stone-600">Precise delivery address<textarea id="checkout-address" name="address" rows="2" autocomplete="street-address" class="mt-1.5 w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100" placeholder="House or building, street, area and landmark">{% if storefront_customer %}{{ storefront_customer.default_address }}{% endif %}</textarea><span class="mt-1 block text-[11px] font-normal leading-4 text-stone-500">INPROFIC first tries to locate this address inside the selected coverage shape. If it cannot, correct the address or place the map pin at the exact destination.</span></label>{% url 'storefront_delivery_location' store_business.slug as storefront_location_url %}{% include "commerce/delivery/_location_picker.html" with latitude_selector="#delivery-latitude" longitude_selector="#delivery-longitude" area_selector="#delivery-area" address_selector="#checkout-address" resolve_url=storefront_location_url picker_label="delivery destination" %}<div id="delivery-quote-status" class="mt-3 rounded-xl border border-transparent bg-stone-50 px-3 py-2.5 text-xs leading-5 text-stone-500" role="alert">Choose a destination zone and enter the precise address, or place the destination pin.</div><div id="delivery-method-options" class="mt-3 hidden space-y-2"></div><div id="delivery-switch-policy" class="mt-3 hidden rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs leading-5 text-sky-900"></div></div></section>{% endif %}
+      {% if delivery_enabled %}<section class="mt-5 rounded-2xl border border-stone-200 bg-white p-4"><label class="flex cursor-pointer items-start justify-between gap-3"><span><strong class="block text-sm text-stone-900">Deliver this order</strong><span class="text-xs leading-5 text-stone-500">A live distance-based quote is locked into checkout before payment.</span></span><span class="cf-switch shrink-0"><input id="request-delivery" name="request_delivery" type="checkbox"><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label><div id="delivery-fields" class="mt-4 hidden"><label class="block text-xs font-semibold text-stone-600">Delivery destination / zone<select id="delivery-area" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal"><option value="">Use map coordinates</option>{% for area in delivery_areas %}<option value="{{ area.pk }}">{{ area.name }} · {{ area.radius_km }} km radius{% if area.extension_ne_km or area.extension_se_km or area.extension_sw_km or area.extension_nw_km %} + extended corridors{% endif %}{% if area.rate_band %} · {{ area.rate_band.name }}{% endif %}</option>{% endfor %}</select></label><label class="mt-3 block text-xs font-semibold text-stone-600">Precise delivery address<textarea id="checkout-address" name="address" rows="2" autocomplete="street-address" class="mt-1.5 w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100" placeholder="House or building, street, area and landmark">{% if storefront_customer %}{{ storefront_customer.default_address }}{% endif %}</textarea><span class="mt-1 block text-[11px] font-normal leading-4 text-stone-500">INPROFIC first tries to locate this address inside the selected coverage shape. If it cannot, correct the address or place the map pin at the exact destination.</span></label>{% url 'storefront_delivery_location' store_business.slug as storefront_location_url %}{% include "commerce/delivery/_location_picker.html" with latitude_selector="#delivery-latitude" longitude_selector="#delivery-longitude" area_selector="#delivery-area" address_selector="#checkout-address" resolve_url=storefront_location_url picker_label="delivery destination" %}<div id="delivery-quote-status" class="mt-3 rounded-xl border border-transparent bg-stone-50 px-3 py-2.5 text-xs leading-5 text-stone-500" role="alert">Choose a destination zone and enter the precise address, or place the destination pin.</div><div id="delivery-method-options" class="mt-3 hidden space-y-2"></div><div id="delivery-switch-policy" class="mt-3 hidden rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs leading-5 text-sky-900"></div></div></section>{% endif %}
       <div class="mt-6"><p class="text-xs font-semibold text-stone-600">Choose one ordering option for this basket</p><div class="mt-2 grid gap-2">
-        <button type="submit" name="order_mode" value="physical_store" data-checkout-mode="physical_store" class="channel-submit flex items-center justify-between rounded-xl border border-stone-200 bg-white px-3.5 py-3 text-left text-sm shadow-sm transition hover:border-stone-400 disabled:cursor-not-allowed disabled:opacity-45"><span><strong class="block text-stone-900">{{ commerce_channels.physical_store }}</strong><small class="mode-note text-stone-500">{{ storefront_copy.immediate_order }}</small></span><strong class="mode-total shrink-0 text-stone-900"></strong></button>
         <button type="submit" name="order_mode" value="online" data-checkout-mode="online" class="channel-submit flex items-center justify-between rounded-xl border border-stone-200 bg-white px-3.5 py-3 text-left text-sm shadow-sm transition hover:border-stone-400 disabled:cursor-not-allowed disabled:opacity-45"><span><strong class="block text-stone-900">{{ commerce_channels.online }}</strong><small class="mode-note text-stone-500">{% if store_business.uses_production and not p.finished_good.is_purchased_for_resale %}{{ storefront_copy.prepared_order }}{% else %}{{ storefront_copy.immediate_order }}{% endif %}</small></span><strong class="mode-total shrink-0 text-stone-900"></strong></button>
         <button type="submit" name="order_mode" value="distribution" data-checkout-mode="distribution" class="channel-submit flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-left text-sm shadow-sm transition hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-45"><span><strong class="block text-stone-900">{{ commerce_channels.distribution }}</strong><small class="mode-note text-stone-500">{% if store_business.uses_production and not p.finished_good.is_purchased_for_resale %}{{ storefront_copy.prepared_order }}{% else %}{{ storefront_copy.immediate_order }}{% endif %}</small></span><strong class="mode-total shrink-0 text-stone-900"></strong></button>
       </div></div>
@@ -173,6 +215,10 @@
       const historyDialog = document.getElementById('order-history-dialog');
       const historyItems = document.getElementById('order-history-items');
       const basket = new Map();
+      const channelLabels = {
+        online: '{{ commerce_channels.online|escapejs }}',
+        distribution: '{{ commerce_channels.distribution|escapejs }}',
+      };
       const basketStorageKey = 'storetrack:storefront-basket:{{ store_business.slug|escapejs }}';
       const historyStorageKey = 'storetrack:storefront-order-history:{{ store_business.slug|escapejs }}';
       let activeChannel = 'all';
@@ -250,8 +296,25 @@
         const modes = card.dataset.modes.trim().split(/\s+/).filter(Boolean);
         const minimums = {}; const prices = {};
         modes.forEach(mode => { minimums[mode] = Number(card.dataset[`min${mode[0].toUpperCase()}${mode.slice(1)}`] || 0); prices[mode] = Number(card.dataset[`price${mode[0].toUpperCase()}${mode.slice(1)}`] || 0); });
-        const preferred = modes.includes('physical_store') ? 'physical_store' : modes[0];
-        return { id: card.dataset.productId, name: card.dataset.productName, unit: card.dataset.unit, modes, minimums, prices, max: Number(card.dataset.max || 0), quantity: minimums[preferred] || 1, card };
+        const packSelect = card.querySelector('[data-bulk-pack-select]');
+        const packOption = packSelect?.selectedOptions?.[0];
+        const bulkPack = packOption?.value ? {
+          id: packOption.value,
+          name: packOption.dataset.name || packOption.textContent.trim(),
+          unit: packOption.dataset.unit || packOption.dataset.name || 'pack',
+          price: Number(packOption.dataset.price || 0),
+          minimum: Number(packOption.dataset.min || 1),
+        } : null;
+        const preferred = modes.includes('online') ? 'online' : modes[0];
+        const product = { id: card.dataset.basketKey || card.dataset.productId, productId: card.dataset.productId, individualOptionId: card.dataset.individualOptionId || '', name: card.dataset.productName, unit: card.dataset.unit, modes, minimums, prices, bulkPack, max: Number(card.dataset.max || 0), quantity: minimums[preferred] || 1, card };
+        if (preferred === 'distribution' && bulkPack) product.quantity = bulkPack.minimum || 1;
+        return product;
+      }
+      function modePricing(product, mode) {
+        if (mode === 'distribution' && product.bulkPack) {
+          return {price: product.bulkPack.price, minimum: product.bulkPack.minimum, unit: product.bulkPack.unit};
+        }
+        return {price: Number(product.prices[mode] || 0), minimum: Number(product.minimums[mode] || 0), unit: product.unit};
       }
       function setAddedState(product, added) {
         const label = product.card.querySelector('.add-product-label');
@@ -261,7 +324,7 @@
       function saveBasket() {
         try {
           if (!basket.size) { localStorage.removeItem(basketStorageKey); return; }
-          localStorage.setItem(basketStorageKey, JSON.stringify(Array.from(basket.values()).map(product => ({ id: product.id, quantity: product.quantity }))));
+          localStorage.setItem(basketStorageKey, JSON.stringify(Array.from(basket.values()).map(product => ({ id: product.id, quantity: product.quantity, bulkPackId: product.bulkPack?.id || '' }))));
         } catch (error) { /* Private browsing/storage restrictions must not block checkout. */ }
       }
       function restoreBasket() {
@@ -272,6 +335,8 @@
           const card = cards.find(item => item.dataset.productId === String(row.id || ''));
           const quantity = Number(row.quantity);
           if (!card || !Number.isFinite(quantity) || quantity <= 0) return;
+          const packSelect = card.querySelector('[data-bulk-pack-select]');
+          if (packSelect && row.bulkPackId && Array.from(packSelect.options).some(option => option.value === String(row.bulkPackId))) packSelect.value = String(row.bulkPackId);
           const product = productFromCard(card); product.quantity = quantity;
           basket.set(product.id, product); setAddedState(product, true);
         });
@@ -286,19 +351,20 @@
           if (!supported) return;
           anyAvailable = true; let total = 0; const short = [];
           basket.forEach(product => {
-            total += product.quantity * product.prices[mode];
-            if (product.quantity < product.minimums[mode]) short.push(`${product.name}: minimum ${product.minimums[mode]} ${product.unit}`);
-            if (product.max && product.quantity > product.max) short.push(`${product.name}: maximum ${product.max} ${product.unit}`);
+            const pricing = modePricing(product, mode);
+            total += product.quantity * pricing.price;
+            if (product.quantity < pricing.minimum) short.push(`${product.name}: minimum ${pricing.minimum} ${pricing.unit}`);
+            if (product.max && product.quantity > product.max) short.push(`${product.name}: maximum ${product.max} ${pricing.unit}`);
           });
           button.disabled = short.length > 0;
           button.querySelector('.mode-total').textContent = `{{ store_business.currency_symbol }}${total.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-          const modeNote=button.querySelector('.mode-note'); modeNote.textContent = short.length ? short.join(' · ') : button.value === 'physical_store' ? '{{ storefront_copy.immediate_order|escapejs }}' : '{% if store_business.uses_production %}{{ storefront_copy.prepared_order|escapejs }}{% else %}{{ storefront_copy.immediate_order|escapejs }}{% endif %}'; modeNote.classList.toggle('text-rose-700',short.length>0); modeNote.classList.toggle('font-semibold',short.length>0); modeNote.classList.toggle('text-stone-500',short.length===0);
+          const modeNote=button.querySelector('.mode-note'); modeNote.textContent = short.length ? short.join(' · ') : '{% if store_business.uses_production %}{{ storefront_copy.prepared_order|escapejs }}{% else %}{{ storefront_copy.immediate_order|escapejs }}{% endif %}'; modeNote.classList.toggle('text-rose-700',short.length>0); modeNote.classList.toggle('font-semibold',short.length>0); modeNote.classList.toggle('text-stone-500',short.length===0);
         });
         modeError.textContent = anyAvailable ? '' : 'These products do not share an ordering option. Remove one item or create separate checkouts.';
         modeError.classList.toggle('hidden', anyAvailable);
       }
-      function basketSubtotal(mode) { let total = 0; basket.forEach(product => { total += product.quantity * Number(product.prices[mode] || 0); }); return total; }
-      function deliverySignature(mode) { return JSON.stringify({mode, area: deliveryArea?.value || '', address: deliveryAddress?.value.trim() || '', latitude: deliveryLatitude?.value || '', longitude: deliveryLongitude?.value || '', items: Array.from(basket.values()).map(p => [p.id, p.quantity, p.prices[mode]])}); }
+      function basketSubtotal(mode) { let total = 0; basket.forEach(product => { total += product.quantity * modePricing(product, mode).price; }); return total; }
+      function deliverySignature(mode) { return JSON.stringify({mode, area: deliveryArea?.value || '', address: deliveryAddress?.value.trim() || '', latitude: deliveryLatitude?.value || '', longitude: deliveryLongitude?.value || '', items: Array.from(basket.values()).map(p => [p.id, p.quantity, modePricing(p, mode).price, mode === 'distribution' ? (p.bulkPack?.id || '') : ''])}); }
       function setDeliveryStatus(message, isError=false) { if (!deliveryQuoteStatus) return; deliveryQuoteStatus.textContent=message||''; deliveryQuoteStatus.classList.toggle('border-rose-200',isError); deliveryQuoteStatus.classList.toggle('bg-rose-50',isError); deliveryQuoteStatus.classList.toggle('text-rose-700',isError); deliveryQuoteStatus.classList.toggle('font-semibold',isError); deliveryQuoteStatus.classList.toggle('border-transparent',!isError); deliveryQuoteStatus.classList.toggle('bg-stone-50',!isError); deliveryQuoteStatus.classList.toggle('text-stone-500',!isError); }
       function invalidateDeliveryQuote(message, isError=false) { if (deliveryQuoteId) deliveryQuoteId.value = ''; deliveryQuoteSignature = ''; if (deliveryMethodOptions) { deliveryMethodOptions.replaceChildren(); deliveryMethodOptions.classList.add('hidden'); } if (deliverySwitchPolicy) { deliverySwitchPolicy.textContent=''; deliverySwitchPolicy.classList.add('hidden'); } if (deliveryQuoteStatus && deliveryToggle?.checked) setDeliveryStatus(message || 'Basket or destination changed. A fresh quote will be calculated at checkout.', isError); }
       if (deliveryToggle) deliveryToggle.addEventListener('change', () => { deliveryFields.classList.toggle('hidden', !deliveryToggle.checked); invalidateDeliveryQuote(deliveryToggle.checked ? 'Choose an area and ordering option to get a live quote.' : ''); });
@@ -313,9 +379,9 @@
           const row = document.createElement('div'); row.className = 'flex items-center gap-3 p-3.5';
           const copy = document.createElement('div'); copy.className = 'min-w-0 flex-1';
           const name = document.createElement('strong'); name.className = 'block truncate text-sm text-stone-900'; name.textContent = product.name;
-          const unit = document.createElement('span'); unit.className = 'mt-0.5 block text-xs text-stone-400'; unit.textContent = `Measured in ${product.unit}`;
+          const unit = document.createElement('span'); unit.className = 'mt-0.5 block text-xs text-stone-400'; unit.textContent = product.bulkPack ? `Bulk option: ${product.bulkPack.name}` : `Measured in ${product.unit}`;
           const priceLine = document.createElement('span'); priceLine.className = 'mt-1 block text-[11px] font-semibold text-stone-600';
-          const labels={physical_store:'Counter',online:'Online',distribution:'Distribution'}; priceLine.textContent=product.modes.map(mode=>`${labels[mode]||mode}: {{ store_business.currency_symbol }}${Number(product.prices[mode]||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} / ${product.unit}`).join(' · ');
+          priceLine.textContent=product.modes.map(mode=>{ const pricing=modePricing(product,mode); return `${channelLabels[mode]||mode}: {{ store_business.currency_symbol }}${Number(pricing.price||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} / ${pricing.unit}`; }).join(' · ');
           copy.append(name, unit, priceLine);
           const input = document.createElement('input'); input.type = 'number'; input.inputMode = 'decimal'; input.step = '0.01'; input.min = '0.01'; if (product.max) input.max = product.max; input.value = product.quantity; input.setAttribute('aria-label', `Quantity for ${product.name}`); input.className = 'h-10 w-24 rounded-xl border border-stone-300 px-2.5 text-sm outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100';
           input.addEventListener('input', () => { product.quantity = Number(input.value || 0); invalidateDeliveryQuote(); saveBasket(); refreshModes(); });
@@ -325,8 +391,17 @@
         });
         basketCount.textContent = basket.size; basketDock.classList.toggle('hidden', basket.size === 0); saveBasket(); refreshModes();
       }
+      document.querySelectorAll('[data-bulk-pack-select]').forEach(select => select.addEventListener('change', function () {
+        const card = select.closest('[data-product-card]');
+        const existing = basket.get(card.dataset.basketKey || card.dataset.productId);
+        if (!existing) return;
+        const replacement = productFromCard(card);
+        replacement.quantity = Math.max(existing.quantity, replacement.bulkPack?.minimum || replacement.minimums.distribution || 1);
+        basket.set(replacement.id, replacement);
+        invalidateDeliveryQuote(); renderBasket();
+      }));
       document.querySelectorAll('.add-product').forEach(button => button.addEventListener('click', function () {
-        const card = button.closest('[data-product-card]'); const id = card.dataset.productId;
+        const card = button.closest('[data-product-card]'); const id = card.dataset.basketKey || card.dataset.productId;
         if (!basket.has(id)) { const product = productFromCard(card); basket.set(id, product); invalidateDeliveryQuote(); setAddedState(product, true); }
         renderBasket();
       }));
@@ -341,12 +416,12 @@
       basketForm.addEventListener('submit', async function (event) {
         const submitter = event.submitter;
         if (!basket.size || !submitter || submitter.disabled) { event.preventDefault(); return; }
+        const mode = submitter.dataset.checkoutMode;
         basketForm.querySelectorAll('.generated-basket-field').forEach(field => field.remove());
         basket.forEach(product => {
-          [['product_id', product.id], ['quantity', product.quantity]].forEach(([name, value]) => { const input = document.createElement('input'); input.type = 'hidden'; input.name = name; input.value = value; input.className = 'generated-basket-field'; basketForm.append(input); });
+          [['product_id', product.productId], ['quantity', product.quantity], ['bulk_pack_id', mode === 'distribution' ? (product.bulkPack?.id || '') : ''], ['individual_option_id', product.individualOptionId || '']].forEach(([name, value]) => { const input = document.createElement('input'); input.type = 'hidden'; input.name = name; input.value = value; input.className = 'generated-basket-field'; basketForm.append(input); });
         });
         if (!deliveryToggle?.checked) { if (deliveryQuoteId) deliveryQuoteId.value = ''; return; }
-        const mode = submitter.dataset.checkoutMode;
         const signature = deliverySignature(mode);
         if (deliveryQuoteId?.value && deliveryQuoteSignature === signature) return;
         event.preventDefault();

@@ -21,11 +21,14 @@ from django.utils import timezone
 from accounts.models import RoleModulePermission, UserBusiness, UserModulePermission
 from accounts.services import business_has_module
 
+from accounts.platform_integrations import redact_disabled_integrations
+
 from .models import (
     CommerceNotification,
     CommercePushDelivery,
     CommercePushSubscription,
     CommerceSettings,
+    DeliverySettings,
 )
 
 logger = logging.getLogger(__name__)
@@ -83,6 +86,102 @@ def _eligible_subscription_ids(business, subscriptions, module):
     return {subscription.pk for subscription in subscriptions if subscription.user_id in allowed}
 
 
+def _access_sets(business, subscriptions):
+    commerce_ids = _eligible_subscription_ids(business, subscriptions, "commerce")
+    delivery_ids = _eligible_subscription_ids(business, subscriptions, "delivery")
+    rider_ids = _eligible_subscription_ids(business, subscriptions, "delivery_rider")
+    inventory_ids = _eligible_subscription_ids(business, subscriptions, "inventory")
+    return {
+        "commerce": commerce_ids,
+        "delivery": delivery_ids,
+        "rider": rider_ids,
+        "inventory": inventory_ids,
+        "delivery_staff": commerce_ids | delivery_ids,
+        "activity": commerce_ids | delivery_ids | rider_ids,
+    }
+
+
+def _sync_inventory_push_notices():
+    """Materialize one targeted Web Push carrier per subscribed inventory user.
+
+    Inventory's in-app state remains in InventoryAlertState. CommerceNotification
+    is used only as the existing durable Web Push outbox carrier and is excluded
+    from the Commerce tray/feed.
+    """
+    from inventory.alert_services import inventory_alert_feed
+    from inventory.models import InventoryAlertState
+
+    subscriptions = list(
+        CommercePushSubscription.objects.filter(active=True)
+        .select_related("business", "user")
+        .order_by("business_id", "user_id", "pk")
+    )
+    by_business = {}
+    for subscription in subscriptions:
+        bucket = by_business.setdefault(subscription.business_id, {"business": subscription.business, "subscriptions": []})
+        bucket["subscriptions"].append(subscription)
+
+    visible = {}
+    now = timezone.now()
+    for bucket in by_business.values():
+        business = bucket["business"]
+        subs = bucket["subscriptions"]
+        inventory_ids = _eligible_subscription_ids(business, subs, "inventory")
+        users = {}
+        for subscription in subs:
+            if subscription.pk in inventory_ids:
+                users.setdefault(subscription.user_id, {"user": subscription.user, "subscriptions": []})["subscriptions"].append(subscription)
+        for user_bucket in users.values():
+            user = user_bucket["user"]
+            feed = inventory_alert_feed(business=business, user=user)
+            alerts = feed.get("alerts") or []
+            if not feed.get("enabled") or not alerts:
+                continue
+            raw_count = int(feed.get("raw_count") or 0)
+            finished_count = int(feed.get("finished_count") or 0)
+            parts = []
+            if raw_count:
+                parts.append(f"{raw_count} raw material{'s' if raw_count != 1 else ''}")
+            if finished_count:
+                parts.append(f"{finished_count} finished good{'s' if finished_count != 1 else ''}")
+            low_count = sum(1 for row in alerts if row.get("severity") == "low")
+            title = "Inventory stock needs attention"
+            message = f"{', '.join(parts)} need attention" + (f" · {low_count} low-stock" if low_count else "") + "."
+            notice, created = CommerceNotification.raw_objects.get_or_create(
+                business=business, recipient_user=user, dedupe_key="inventory-alert-summary",
+                defaults={
+                    "event_type": CommerceNotification.EVENT_INVENTORY_ALERT,
+                    "title": title, "message": message, "target_url": "/inventory/",
+                },
+            )
+            changed = []
+            for field, value in (("event_type", CommerceNotification.EVENT_INVENTORY_ALERT), ("title", title), ("message", message), ("target_url", "/inventory/")):
+                if getattr(notice, field) != value:
+                    setattr(notice, field, value); changed.append(field)
+            if changed:
+                notice.save(update_fields=changed + ["updated_at"])
+
+            tokens = {(row.get("type"), int(row.get("item_id"))) for row in alerts if row.get("type") and row.get("item_id")}
+            states = list(InventoryAlertState.raw_objects.filter(
+                business=business, user=user, is_active=True,
+                alert_type__in={token[0] for token in tokens}, object_id__in={token[1] for token in tokens},
+            )) if tokens else []
+            latest_state_change = max((state.updated_at for state in states), default=None)
+            user_sub_ids = {subscription.pk for subscription in user_bucket["subscriptions"]}
+            last_sent = (
+                CommercePushDelivery.objects.filter(
+                    notification=notice, subscription_id__in=user_sub_ids, sent_at__isnull=False
+                ).order_by("-sent_at").values_list("sent_at", flat=True).first()
+            )
+            force = bool(created or (latest_state_change and (last_sent is None or latest_state_change > last_sent)))
+            visible[notice.pk] = {
+                "force": force,
+                "repeat": int(feed.get("sound_repeat_minutes") or 0) if feed.get("sound_enabled") else 0,
+                "subscription_ids": user_sub_ids,
+            }
+    return visible
+
+
 def _enqueue_notifications(limit=30):
     """Create delivery outbox rows once for each durable notification."""
     if not configured():
@@ -90,9 +189,6 @@ def _enqueue_notifications(limit=30):
 
     now = timezone.now()
     recent_cutoff = now - timedelta(minutes=30)
-    # Web Push is for timely alerts, not replaying an old unread history after
-    # keys are first configured. Old notices remain visible in the durable
-    # in-app feed but are retired from the push outbox.
     CommerceNotification.raw_objects.filter(
         push_processed_at__isnull=True, created_at__lt=recent_cutoff
     ).update(push_processed_at=now)
@@ -111,54 +207,136 @@ def _enqueue_notifications(limit=30):
     by_business = {}
     for notice in notices:
         processed_ids.append(notice.pk)
-        by_business.setdefault(
-            notice.business_id, {"business": notice.business, "notices": []}
-        )["notices"].append(notice)
+        by_business.setdefault(notice.business_id, {"business": notice.business, "notices": []})["notices"].append(notice)
 
     for bucket in by_business.values():
         business = bucket["business"]
         commerce_settings = CommerceSettings.raw_objects.filter(business=business).only(
             "notifications_enabled", "notification_desktop_enabled"
         ).first()
-        if commerce_settings and (
-            not commerce_settings.notifications_enabled
-            or not commerce_settings.notification_desktop_enabled
-        ):
-            continue
-
         subscriptions = list(
-            CommercePushSubscription.objects.filter(business=business, active=True)
-            .select_related("user")
+            CommercePushSubscription.objects.filter(business=business, active=True).select_related("user")
         )
-        commerce_subscription_ids = _eligible_subscription_ids(business, subscriptions, "commerce")
-        delivery_subscription_ids = _eligible_subscription_ids(business, subscriptions, "delivery")
-        rider_subscription_ids = _eligible_subscription_ids(business, subscriptions, "delivery_rider")
-        any_delivery_ids = commerce_subscription_ids | delivery_subscription_ids
-        any_activity_ids = any_delivery_ids | rider_subscription_ids
+        access = _access_sets(business, subscriptions)
         rows = []
         for notice in bucket["notices"]:
+            if notice.event_type in CommerceNotification.INVENTORY_EVENTS:
+                category_ids = access["inventory"]
+            else:
+                if commerce_settings and (not commerce_settings.notifications_enabled or not commerce_settings.notification_desktop_enabled):
+                    continue
+                category_ids = access["delivery_staff"] if notice.event_type in CommerceNotification.DELIVERY_EVENTS else access["commerce"]
             if notice.recipient_user_id:
                 allowed_ids = {
                     subscription.pk for subscription in subscriptions
-                    if subscription.user_id == notice.recipient_user_id and subscription.pk in any_activity_ids
+                    if subscription.user_id == notice.recipient_user_id
+                    and subscription.pk in (access["inventory"] if notice.event_type in CommerceNotification.INVENTORY_EVENTS else access["activity"])
                 }
-            elif notice.event_type in CommerceNotification.DELIVERY_EVENTS:
-                allowed_ids = any_delivery_ids
             else:
-                allowed_ids = commerce_subscription_ids
+                allowed_ids = category_ids
             rows.extend(
                 CommercePushDelivery(notification=notice, subscription=subscription)
-                for subscription in subscriptions
-                if subscription.pk in allowed_ids
+                for subscription in subscriptions if subscription.pk in allowed_ids
             )
         if rows:
             CommercePushDelivery.objects.bulk_create(rows, ignore_conflicts=True, batch_size=250)
             created += len(rows)
 
-    CommerceNotification.raw_objects.filter(pk__in=processed_ids).update(
-        push_processed_at=timezone.now()
-    )
+    CommerceNotification.raw_objects.filter(pk__in=processed_ids).update(push_processed_at=timezone.now())
     return created
+
+
+def _requeue_due_repeats(inventory_visible=None, *, limit=800):
+    """Re-arm at most one unread Commerce/Rider reminder per device plus due Inventory summary pushes."""
+    now = timezone.now()
+    inventory_visible = inventory_visible or {}
+    changed = []
+
+    # Inventory summaries use the Inventory alert/snooze state supplied by the sync pass.
+    if inventory_visible:
+        deliveries = list(CommercePushDelivery.objects.filter(
+            status=CommercePushDelivery.STATUS_SENT,
+            notification_id__in=inventory_visible.keys(),
+            subscription__active=True,
+        ).select_related("subscription")[:limit])
+        for delivery in deliveries:
+            meta = inventory_visible.get(delivery.notification_id) or {}
+            if delivery.subscription_id not in meta.get("subscription_ids", set()):
+                continue
+            repeat = int(meta.get("repeat") or 0)
+            due = bool(meta.get("force")) or bool(repeat and delivery.sent_at and delivery.sent_at <= now - timedelta(minutes=repeat))
+            if not due:
+                continue
+            delivery.status = CommercePushDelivery.STATUS_PENDING
+            delivery.attempts = 0
+            delivery.next_attempt_at = now
+            delivery.sent_at = None
+            delivery.last_error = ""
+            delivery.updated_at = now
+            changed.append(delivery)
+
+    # Commerce and rider reminders repeat only while still unread. Keep one newest unread reminder per device.
+    sent = list(CommercePushDelivery.objects.filter(
+        status=CommercePushDelivery.STATUS_SENT, subscription__active=True,
+    ).exclude(notification__event_type__in=CommerceNotification.INVENTORY_EVENTS).select_related(
+        "notification__business", "subscription__user", "subscription__business"
+    ).prefetch_related("notification__reads").order_by("subscription_id", "-notification__created_at", "-notification_id")[:limit])
+    business_cache = {}
+    chosen_subscriptions = set()
+    for delivery in sent:
+        subscription = delivery.subscription
+        if subscription.pk in chosen_subscriptions:
+            continue
+        if any(read.user_id == subscription.user_id for read in delivery.notification.reads.all()):
+            continue
+        business = delivery.notification.business
+        cache = business_cache.get(business.pk)
+        if cache is None:
+            subs = list(CommercePushSubscription.objects.filter(business=business, active=True).select_related("user"))
+            cache = {
+                "access": _access_sets(business, subs),
+                "commerce": CommerceSettings.raw_objects.filter(business=business).first(),
+                "delivery": DeliverySettings.raw_objects.filter(business=business).first(),
+            }
+            business_cache[business.pk] = cache
+        access = cache["access"]
+        notice = delivery.notification
+        if notice.recipient_user_id:
+            eligible = notice.recipient_user_id == subscription.user_id and subscription.pk in access["activity"]
+        elif notice.event_type in CommerceNotification.DELIVERY_EVENTS:
+            eligible = subscription.pk in access["delivery_staff"]
+        else:
+            eligible = subscription.pk in access["commerce"]
+        if not eligible:
+            continue
+        chosen_subscriptions.add(subscription.pk)
+        commerce_settings = cache["commerce"]
+        if commerce_settings and (not commerce_settings.notifications_enabled or not commerce_settings.notification_desktop_enabled):
+            continue
+        rider_only = subscription.pk in access["rider"] and subscription.pk not in access["commerce"] and subscription.pk not in access["delivery"]
+        if rider_only:
+            delivery_settings = cache["delivery"]
+            enabled = delivery_settings.rider_alert_sound_enabled if delivery_settings else True
+            repeat = delivery_settings.rider_alert_sound_repeat_minutes if delivery_settings else 2
+        else:
+            enabled = commerce_settings.notification_sound_enabled if commerce_settings else True
+            repeat = commerce_settings.notification_sound_repeat_minutes if commerce_settings else 2
+        repeat = min(1440, max(0, int(repeat or 0)))
+        if not enabled or not repeat or not delivery.sent_at or delivery.sent_at > now - timedelta(minutes=repeat):
+            continue
+        delivery.status = CommercePushDelivery.STATUS_PENDING
+        delivery.attempts = 0
+        delivery.next_attempt_at = now
+        delivery.sent_at = None
+        delivery.last_error = ""
+        delivery.updated_at = now
+        changed.append(delivery)
+
+    if changed:
+        CommercePushDelivery.objects.bulk_update(
+            changed, ["status", "attempts", "next_attempt_at", "sent_at", "last_error", "updated_at"], batch_size=250
+        )
+    return len(changed)
 
 
 def _payload(delivery):
@@ -166,9 +344,10 @@ def _payload(delivery):
     return json.dumps(
         {
             "type": "commerce.notification",
+            "channel": "inventory" if notice.event_type in CommerceNotification.INVENTORY_EVENTS else ("delivery" if notice.event_type in CommerceNotification.DELIVERY_EVENTS else "commerce"),
             "id": str(notice.public_id),
-            "title": notice.title,
-            "body": notice.message,
+            "title": redact_disabled_integrations(notice.title),
+            "body": redact_disabled_integrations(notice.message),
             "url": notice.target_url or "/commerce/",
             "business": notice.business.name,
             "icon": "/static/core/pwa/icon-192.png",
@@ -252,6 +431,7 @@ def _send_pending(limit=40):
             logger.warning("Commerce Web Push delivery failed: %s", type(exc).__name__)
         else:
             delivery.status = CommercePushDelivery.STATUS_SENT
+            delivery.attempts = 0
             delivery.sent_at = now
             delivery.last_error = ""
             subscription.failure_count = 0
@@ -278,14 +458,16 @@ def _send_pending(limit=40):
 
 
 def dispatch_pending_pushes(*, notice_limit=30, delivery_limit=40):
-    """Idempotently enqueue recent notifications and drain the durable outbox."""
+    """Sync due operational alerts, enqueue new pushes, re-arm repeats, and drain the durable outbox."""
     if not configured():
-        return {"configured": False, "queued": 0, "sent": 0, "failed": 0, "expired": 0}
+        return {"configured": False, "queued": 0, "requeued": 0, "sent": 0, "failed": 0, "expired": 0}
     close_old_connections()
     try:
+        inventory_visible = _sync_inventory_push_notices()
         queued = _enqueue_notifications(limit=notice_limit)
+        requeued = _requeue_due_repeats(inventory_visible)
         counts = _send_pending(limit=delivery_limit)
-        return {"configured": True, "queued": queued, **counts}
+        return {"configured": True, "queued": queued, "requeued": requeued, **counts}
     finally:
         close_old_connections()
 

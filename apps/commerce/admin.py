@@ -1,4 +1,5 @@
 from django.contrib import admin
+from accounts.platform_integrations import glovo_platform_enabled
 from .models import (
     CommerceCheckoutItem,
     CommerceCheckoutSession,
@@ -28,7 +29,7 @@ admin.site.register(CommerceIntakeItem)
 class CommercePaymentConfigurationAdmin(admin.ModelAdmin):
     list_display = (
         "business", "currency", "paystack_enabled", "monnify_enabled",
-        "bank_transfer_enabled", "cash_enabled",
+        "transfer_enabled", "bank_transfer_enabled", "cash_enabled",
     )
     exclude = ("paystack_secret_key", "monnify_api_key", "monnify_secret_key")
 
@@ -55,4 +56,23 @@ admin.site.register(CommerceNotification, ImmutablePaymentAdmin)
 admin.site.register(CommerceNotificationRead, ImmutablePaymentAdmin)
 
 from .models import DeliveryProviderAccount
-admin.site.register(DeliveryProviderAccount)
+
+
+@admin.register(DeliveryProviderAccount)
+class DeliveryProviderAccountAdmin(admin.ModelAdmin):
+    list_display = ("business", "name", "provider_code", "active", "auto_dispatch", "sandbox")
+    list_filter = ("provider_code", "active", "auto_dispatch", "sandbox")
+
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request)
+        if not glovo_platform_enabled():
+            queryset = queryset.exclude(provider_code=DeliveryProviderAccount.PROVIDER_GLOVO)
+        return queryset
+
+    def formfield_for_choice_field(self, db_field, request, **kwargs):
+        if db_field.name == "provider_code" and not glovo_platform_enabled():
+            kwargs["choices"] = [
+                choice for choice in DeliveryProviderAccount.PROVIDER_CHOICES
+                if choice[0] != DeliveryProviderAccount.PROVIDER_GLOVO
+            ]
+        return super().formfield_for_choice_field(db_field, request, **kwargs)

@@ -90,8 +90,9 @@ Create active settlement accounts in **Finance**, then open **Commerce → Payme
 | --- | --- |
 | Paystack | Enabled, secret key, active tenant settlement account |
 | Monnify | Enabled, API key, secret key, contract code, base URL, active tenant settlement account |
-| Instant bank transfer | Enabled, Paystack or Monnify selected as transfer provider, that provider fully configured, active tenant transfer settlement account; Monnify also needs the configured transfer bank code |
-| Cash / physical POS | **Not exposed to headless/public checkout.** These are authenticated in-premise staff methods only. |
+| Transfer (no gateway) | Enabled, static bank name/account name/account number, instructions if desired, and an active tenant settlement account. Customer proof is required on hosted/headless checkout. |
+| Instant bank transfer | Enabled, Paystack or Monnify selected as transfer provider, that provider fully configured, active tenant transfer settlement account; Monnify also needs the configured transfer bank code. This is the gateway-backed `bank_transfer` method. |
+| Cash / physical POS | **Not exposed to headless/public checkout.** These are authenticated in-premise staff methods only. Staff-operated POS can also use native `transfer`, with staff confirmation instead of a customer proof upload. |
 
 Only fully configured methods are exposed. Credentials remain server-side.
 
@@ -142,8 +143,7 @@ order:
    the centre pin, then drag the radius handle to define its maximum normal
    coverage. Optional NE/SE/SW/NW handles extend diagonal corridors that a
    circle cannot cover cleanly;
-5. add active in-house riders, a manual courier, or a configured provider
-   plug-in;
+5. add active in-house riders or a configured external delivery-partner account. A partner may remain staff-managed or use the provider-neutral API adapter for automatic dispatch and status callbacks;
 6. open **Delivery → Settings**, choose In-house, External provider or Hybrid,
    review its routing/switch policy, then enable delivery.
 
@@ -152,14 +152,36 @@ serviceable. The linked price band supplies the base fee, per-kilometre rate,
 minimum order and ETA. The quoted kilometre distance is always measured from
 the delivery base to the customer's precise validated address or map pin.
 
-For Glovo LaaS v2, save the tenant's production or sandbox base URL, client
-credentials, quote/order endpoints and Address Book pickup ID. Register/verify
-the tenant webhook from the Delivery dashboard. Provider and payment webhooks
-must point directly to INPROFIC, not through the customer website.
+For a custom delivery partner, INPROFIC remains the control engine: customer pricing comes from INPROFIC price bands and the accepted quote remains authoritative. The provider account can be manual or can point to the courier/merchant adapter's API base URL and dispatch endpoint, with optional health-check endpoint, credentials, tracking URL, webhook secret and status mapping. Automatic dispatch uses the `inprofic.delivery.v1` payload documented below, and provider status callbacks return to the account-specific INPROFIC webhook.
+
+Glovo LaaS v2 is an optional built-in adapter only when the Founder enables it platform-wide. It stays inactive until the business completes its own approved Glovo account/API setup (base URL, client credentials, quote/order endpoints, Address Book pickup ID and webhook secret). INPROFIC does not provide or resell Glovo accounts. When the Founder switch is off, Glovo is omitted from tenant/customer/API-facing software surfaces while saved configuration remains dormant for possible later re-enable. Provider and payment webhooks point directly to INPROFIC, not through the customer website.
 
 The Delivery dashboard shows whether the public checkout prerequisites are
 ready. Turning Delivery off removes it from new public/POS/API checkouts without
-rewriting historical orders or assignments.
+rewriting historical orders or assignments. Existing provider callbacks remain synchronization writes for already-created deliveries, so a plan upgrade can reveal complete status history.
+
+### Custom delivery-provider adapter contract
+
+Custom partner accounts use INPROFIC pricing/routing and can remain entirely manual. When `auto_dispatch` is enabled, INPROFIC POSTs a normalized JSON body to the configured dispatch endpoint:
+
+```json
+{
+  "schema": "inprofic.delivery.v1",
+  "event": "dispatch",
+  "partner": {"store_id": "optional-merchant-or-location-id"},
+  "delivery": {
+    "id": "<delivery uuid>",
+    "order_number": "WEB-000123",
+    "customer": {"name": "...", "phone": "...", "email": "..."},
+    "pickup": {"name": "...", "address": "...", "latitude": 6.4, "longitude": 3.4},
+    "destination": {"address": "...", "latitude": 6.5, "longitude": 3.5},
+    "amounts": {"currency": "NGN", "delivery_fee": "2500.00", "order_total": "12500.00"},
+    "quote": {"id": "<quote uuid>", "distance_km": "7.20", "eta_min_minutes": 20, "eta_max_minutes": 35}
+  }
+}
+```
+
+`partner.store_id` is the optional merchant/store/location identifier configured for that courier account. The adapter may return `external_reference` (or `tracking_number`/`id`), `status`, and `tracking_url`. If it does not return a tracking URL, INPROFIC can build one from the account's configured public tracking URL/template; use `{external_reference}` as the placeholder, or configure a base URL to have the escaped reference appended. For later updates it POSTs to `/api/v1/delivery/providers/custom/{business_slug}/{provider_id}/webhook` with `Authorization: Bearer <webhook secret>` and a minimal body such as `{"external_reference":"partner-123","status":"delivered","tracking_url":"https://..."}`. The account's status mapping converts provider terminology to INPROFIC statuses.
 
 ## 3. HTTP conventions
 
@@ -258,16 +280,6 @@ enough ordered boundary points for the website to draw the configured coverage s
       "available_now": "18.00",
       "order_modes": [
         {
-          "code": "physical_store",
-          "label": "Retail / Pickup Order",
-          "price": "1000.00",
-          "min_quantity": "1.00",
-          "max_quantity": null,
-          "fulfilment_mode": "stock",
-          "available_now": "18.00",
-          "lead_time": ""
-        },
-        {
           "code": "distribution",
           "label": "Bulk Customer Order",
           "price": "875.00",
@@ -314,15 +326,18 @@ const productsFor = (catalogue, categoryId) => catalogue.products.filter(
 
 ### 4.2 Vertical-aware sales-channel language
 
+**External-channel boundary:** never synthesize or expose a Physical Store option on a website. INPROFIC rejects `physical_store` on hosted-storefront, API and connector checkout creation even if an older/custom client submits it. This prevents a lower/different in-premise price from leaking into Online checkout. Distribution/bulk is deliberately available on both external and POS surfaces subject to the product minimum.
+
 The channel codes are stable integration keys, but their labels are selected
 for the tenant's business vertical. Always submit the code and display the
 returned label from each product's `order_modes` array.
 
 | Stable code | Example labels returned by INPROFIC |
 | --- | --- |
-| `physical_store` | Physical Store / Pickup, Counter / Pickup, Direct Warehouse Order, Retail / Pickup Order |
 | `online` | Online Order, Delivery / Online Order, Online Trade Order |
 | `distribution` | Distribution Order, Catering / Bulk Order, Wholesale / Customer Order, Wholesale Order, Bulk Customer Order |
+
+`physical_store` is intentionally not exposed by the hosted storefront or headless API. It is reserved for INPROFIC's staff-operated in-premise POS, where the physical-store/direct price actually applies.
 
 Do not hard-code “retail,” “catering,” “wholesale,” or “pre-order” based only on
 the code. Use:
@@ -336,11 +351,11 @@ the code. Use:
 
 No image produces empty `image` and `image_url` strings. Use `image` in new code.
 
-The stable mode codes are `physical_store`, `online` and `distribution`. Display the returned vertical-specific `label`. Production services normally use `preorder` fulfilment for online/distribution; wholesale and retail remain stock-based and are never forced through production.
+External storefront/headless mode codes are `online` and `distribution`. Display the returned vertical-specific `label`. Distribution/bulk remains available on external surfaces whenever the product enables it, with its configured minimum quantity enforced by INPROFIC. The in-premise POS additionally supports the tenant vertical's direct/physical-store channel. Production services normally use `preorder` fulfilment for online/distribution; wholesale and retail remain stock-based and are never forced through production.
 
 The hosted catalogue hides product counts. A headless website may similarly use `available_now` only for validation/UI disabling. INPROFIC always rechecks it during checkout.
 
-Older top-level fields such as `ordering_modes`, `stock_price` and `preorder_price` remain for compatibility. New code should use `order_modes`.
+`order_modes` is authoritative. The legacy `ordering_modes`, `preorder_price`, and `preorder_min_quantity` aliases remain for website compatibility and refer only to the Online path. `stock_price` is no longer returned externally because it is an in-premise POS price. New code should use `order_modes`.
 
 ## 5. Delivery discovery and quote
 
@@ -376,9 +391,7 @@ A basic map implementation can use Leaflet, MapLibre, Google Maps, or another
 map library. The only required geometry input is the returned
 `coverage_polygon`: convert each point to `[latitude, longitude]` (or the
 coordinate order required by the chosen library), draw a non-editable polygon,
-and highlight the currently selected area's polygon. The website may provide
-its own address autocomplete for convenience, but that **does not replace** the
-server quote validation.
+and highlight the currently selected area's polygon. The website may provide its own address autocomplete for convenience, but it should match the hosted INPROFIC behavior: wait for **2,000 ms of continuous idleness** after the latest address edit before requesting suggestions/location resolution. Every keystroke, deletion, paste or correction resets the timer. Cancel any older in-flight lookup where possible, or ignore its eventual response if the input has changed, so stale suggestions cannot replace the corrected address. This autocomplete behavior **does not replace** the server quote validation.
 
 After the customer chooses one order mode and completes the basket, calculate
 the candidate subtotal from that mode's current `order_modes[].price` using
@@ -528,12 +541,13 @@ X-INPROFIC-Key: <tenant API key>
   "methods": [
     {"code": "paystack", "label": "Card / secure checkout (Paystack)"},
     {"code": "monnify", "label": "Secure checkout (Monnify)"},
+    {"code": "transfer", "label": "Transfer", "requires_payment_proof": true, "confirmation": "staff_review"},
     {"code": "bank_transfer", "label": "Instant bank transfer (Monnify)"}
   ]
 }
 ```
 
-Public/headless codes are `paystack`, `monnify` and `bank_transfer`. **Cash and `pos_card` are never returned on this surface.** Render only what is returned. INPROFIC revalidates eligibility when payment starts.
+Public/headless codes can be `paystack`, `monnify`, `transfer` and `bank_transfer`. `transfer` is the native no-gateway option; `bank_transfer` is the provider-backed temporary-account option. **Cash and `pos_card` are never returned on this surface.** Render only what is returned. INPROFIC revalidates eligibility when payment starts.
 
 ## 7. Create checkout
 
@@ -657,7 +671,6 @@ Minimum HTTP `400`:
   "detail": "Everyday Item requires at least 20.00 pack for Bulk Customer Order pricing.",
   "code": "minimum_not_met",
   "suggested_order_modes": [
-    {"code": "physical_store", "label": "Retail / Pickup Order"},
     {"code": "online", "label": "Online Order"}
   ]
 }
@@ -747,7 +760,53 @@ INPROFIC uses the tenant's configured transfer provider (`paystack` or `monnify`
 
 The provider webhook is signature-checked and INPROFIC independently queries the provider before settlement. The intake/order is materialized only after the verified amount, currency, tenant/payment metadata and provider status match. Poll the current-payment endpoint while the transfer is pending.
 
-The historical `/payments/current/claim` endpoint remains only for pre-migration manual-transfer records; gateway-backed new transfers reject manual claims.
+Gateway-backed new `bank_transfer` payments reject manual claims.
+
+### Transfer (no gateway)
+
+```json
+{"method": "transfer"}
+```
+
+This method does not call Paystack, Monnify, or another payment gateway. INPROFIC returns the business's configured static account details and marks `proof_required: true`:
+
+```json
+{
+  "method": "transfer",
+  "status": "awaiting_customer",
+  "gateway_provider": "",
+  "authorization_url": "",
+  "proof_required": true,
+  "bank_account": {
+    "bank_name": "Example Bank",
+    "account_name": "Example Business Ltd",
+    "account_number": "0123456789",
+    "account_expires_at": null,
+    "display_text": "Use your order name as narration where possible."
+  },
+  "claim": null
+}
+```
+
+Show the exact amount returned by INPROFIC together with those account details. Once the customer has made the transfer, upload the evidence through the website's own backend/serverless route; do not expose the `X-INPROFIC-Key` in browser JavaScript:
+
+```http
+POST /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}/payments/current/claim
+X-INPROFIC-Key: <tenant API key>
+Content-Type: multipart/form-data
+
+payer_name=<customer name>
+transfer_reference=<bank/reference value>
+payment_proof=<JPG|JPEG|PNG|WEBP|PDF file, max 10 MB>
+```
+
+Both `payer_name` and `transfer_reference` are required, and `payment_proof` is required for every newly created native `transfer` claim. A successful claim moves the payment to `awaiting_verification`. The serialized claim intentionally returns `proof_received: true/false` rather than a public media URL. An authorized INPROFIC staff member reviews the evidence and verifies the actual bank credit before settlement; only then can the checkout materialize an order. Poll the normal current-payment endpoint while review is pending.
+
+Inside INPROFIC, that pending claim is surfaced to authorized Commerce staff in the shared movable alert tray. If the business enables repeating Commerce sounds, the payment-attention sound repeats at the configured interval while the notification remains unread. This operator alert is deliberately separate from the API payment state: headless clients must continue polling the authoritative payment endpoint and must never treat an alert or sound as proof of verification.
+
+For authenticated in-premise POS, `transfer` uses the same static account configuration but follows the cash-style staff confirmation guard. The staff operator confirms only after verifying the business bank account; no customer proof upload is required on that trusted staff surface.
+
+Historical non-gateway `bank_transfer` records can still use the claim endpoint for compatibility, but new integrations should use the explicit `transfer` code for manual/no-gateway bank transfer.
 
 ### Cash and physical POS
 
@@ -987,8 +1046,9 @@ The browser calls the website’s own API routes; the website server attaches th
 - [ ] Order UUID and display number are stored separately.
 - [ ] Duplicate requests and cross-tenant UUID/key attempts are tested.
 - [ ] Public/headless methods contain no cash/POS option.
-- [ ] Instant bank transfer displays the provider-issued temporary account and settles only after webhook + provider verification.
-- [ ] Cash and physical terminal payments are tested only from the authenticated in-premise Storefront POS.
+- [ ] Native `transfer`, when enabled, displays only the tenant-configured static account, submits required proof as multipart through the website backend, and remains pending until staff verification.
+- [ ] Instant `bank_transfer` displays the provider-issued temporary account and settles only after webhook + provider verification.
+- [ ] Cash and physical terminal payments are tested only from the authenticated in-premise Storefront POS; POS `transfer` is staff-confirmed like cash and does not require customer proof.
 
 ## 16. Earlier integration compatibility
 
@@ -1000,7 +1060,7 @@ Read/status and payment routes for already-existing historical intake UUIDs rema
 GET  /api/v1/storefronts/{business_slug}/orders/{order_id}
 POST /api/v1/storefronts/{business_slug}/orders/{order_id}/payments/initiate
 GET  /api/v1/storefronts/{business_slug}/orders/{order_id}/payments/current
-POST /api/v1/storefronts/{business_slug}/orders/{order_id}/payments/current/claim   # historical manual transfers only
+POST /api/v1/storefronts/{business_slug}/orders/{order_id}/payments/current/claim   # historical non-gateway records; use checkout-scoped claim for new native `transfer`
 ```
 
 For every new or migrated website: create `/checkouts`, pay using the checkout UUID, poll until verified settlement returns an `order_id`, then begin order tracking.
@@ -1012,7 +1072,7 @@ Delivery Rider is a purpose-specific staff access surface: rider-only users can 
 
 ## Two-way delivery address/map synchronization
 
-For delivery UI, do not let the address textbox and map pin drift apart. Use `POST /api/v1/storefronts/{business_slug}/delivery/location` in both directions: send `area_id + address` to obtain validated coordinates and move/zoom the map pin; send `area_id + latitude + longitude` to reverse-geocode a manually placed pin and update the address field. Because this endpoint requires `X-INPROFIC-Key`, the browser should call the website's own backend/serverless proxy; that proxy calls INPROFIC and returns only the normalized location result. Never expose the tenant API key in browser JavaScript. Then send the synchronized address, coordinates and returned `location_source` to `/delivery/quote`. Coverage and minimum-order errors returned by INPROFIC should be displayed as red customer-facing validation text. See `COMMERCE_INTEGRATION.md` for the complete payload/response contract.
+For delivery UI, do not let the address textbox and map pin drift apart. Use `POST /api/v1/storefronts/{business_slug}/delivery/location` in both directions: send `area_id + address` to obtain validated coordinates and move/zoom the map pin; send `area_id + latitude + longitude` to reverse-geocode a manually placed pin and update the address field. For typed addresses, wait until the customer has stopped editing for **2 seconds**; every correction resets the debounce window, and an older request/result must be cancelled or ignored after the text changes. Because this endpoint requires `X-INPROFIC-Key`, the browser should call the website's own backend/serverless proxy; that proxy calls INPROFIC and returns only the normalized location result. Never expose the tenant API key in browser JavaScript. Then send the synchronized address, coordinates and returned `location_source` to `/delivery/quote`. Coverage and minimum-order errors returned by INPROFIC should be displayed as red customer-facing validation text. See `COMMERCE_INTEGRATION.md` for the complete payload/response contract.
 
 ## 18. Live delivery status, customer updates and pickup-based ETA
 
@@ -1058,3 +1118,81 @@ For external/headless websites, do not place `X-INPROFIC-Key` in the browser. Th
 
 A persistent customer “Order updates” tray can be built entirely from `timeline`: retain the last-seen event keys in the customer's website session/profile/local storage and mark newly returned timeline events unread. No INPROFIC staff account or storefront-customer registration is required for this presentation.
 
+
+## Standard portions, composed products and Bulk Packs
+
+INPROFIC can keep a Finished Good in its operational production/stock unit while exposing a friendlier customer unit. For example, a restaurant may produce Jollof Rice in `scoop` units while the storefront sells a standard `plate`. The private base conversion (for example, `1 plate = 3 scoops`) is never sent to a hosted/headless customer.
+
+`GET /api/v1/storefronts/{business_slug}/products` returns the customer-safe fields:
+
+```json
+{
+  "id": "<product uuid>",
+  "name": "Jollof Rice",
+  "unit": "plate",
+  "contents": [
+    {"name": "Jollof Rice", "quantity_label": "", "kind": "base_product"},
+    {"name": "Chicken", "quantity_label": "1 piece", "kind": "finished_good"}
+  ],
+  "bulk_packs": [
+    {
+      "id": "<bulk-pack uuid>",
+      "name": "2 L Bowl",
+      "customer_quantity": "2.00",
+      "customer_unit": "litre",
+      "price": "9000.00",
+      "min_order_quantity": "1.00",
+      "contents": []
+    }
+  ]
+}
+```
+
+`contents` is intentionally presentation-safe: internal scoop/ladle/ml conversions and private material quantities are not exposed unless the business explicitly supplied a public quantity label. Raw/packaging materials included in a composed product are not published automatically.
+
+A published Finished Good can also expose `individual_options[]` without duplicating its stock or recipe. This is useful when a composed item (for example a Jollof + Chicken plate) must coexist with plain/add-on choices such as Extra Jollof Rice or Single Chicken. Each individual option returns its own public `id`, `name`, `unit`, `contents` and external `order_modes`. For renderers that want every purchasable choice already flattened, use the top-level `catalogue_items[]`; entries have `kind: "standard_product"` or `kind: "individual_option"`.
+
+Example individual option entry:
+
+```json
+{
+  "id": "individual:<option uuid>",
+  "kind": "individual_option",
+  "product_id": "<parent product uuid>",
+  "individual_option_id": "<option uuid>",
+  "name": "Extra Jollof Rice",
+  "unit": "serving",
+  "contents": [{"name": "Jollof Rice", "kind": "base_product"}],
+  "order_modes": [
+    {"code": "online", "label": "Online Order", "price": "2500.00", "min_quantity": "1.00"}
+  ]
+}
+```
+
+For a normal Online item, submit the existing `product_id` + `quantity`. For an individual/plain option, submit the parent `product_id`, its `individual_option_id`, and `quantity`:
+
+```json
+{
+  "order_mode": "online",
+  "items": [
+    {"product_id": "<product uuid>", "individual_option_id": "<option uuid>", "quantity": 2}
+  ]
+}
+```
+
+Do not submit `bulk_pack_id` on the same line as `individual_option_id`. The option is accepted only when it is enabled and priced for the selected external channel. Physical Store availability/pricing for the same option stays private to INPROFIC POS and is never returned by this API.
+
+For a Distribution/Bulk pack, submit its public `bulk_pack_id` on that line:
+
+```json
+{
+  "order_mode": "distribution",
+  "items": [
+    {"product_id": "<product uuid>", "bulk_pack_id": "<bulk-pack uuid>", "quantity": 3}
+  ]
+}
+```
+
+A `bulk_pack_id` is rejected outside the Distribution/Bulk channel. External storefront/headless contracts continue to expose only **Online** plus the vertical-specific Distribution/Bulk channel; `physical_store` and its price remain exclusive to the in-premise POS. Use the `order_modes[].label` value returned by INPROFIC instead of hardcoding the word “Distribution” (restaurants, for example, receive `Catering / Bulk Order`).
+
+The `contents` array is informational for customers; INPROFIC separately snapshots and consumes the applicable internal package components when fulfilment occurs. Headless clients must not attempt to calculate or deduct component stock themselves.

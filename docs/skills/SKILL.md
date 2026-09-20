@@ -28,6 +28,7 @@ Django, change application permissions, or require a model/provider/API key.
 | `migration-safety` | Any model/schema change or when remote migrations exist |
 | `systematic-debugging` | Tracebacks, silent forms, dynamic formsets, multi-app bugs |
 | `code-reviewer` | Deep review before packaging substantial/cross-domain changes |
+| `release-communications` | User-visible releases; update feature catalogue, Q4 social calendar and externally consumed docs |
 
 ## Skill format
 

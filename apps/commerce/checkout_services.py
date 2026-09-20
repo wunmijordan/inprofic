@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from datetime import timedelta
 
 from django.core.exceptions import ValidationError
@@ -12,6 +12,7 @@ from django.utils import timezone
 from core.services import audit
 from core.verticals import vertical_config
 from inventory.models import FinishedGood
+from inventory.portioning import find_bulk_pack, find_individual_option, internal_contents_snapshot, selection_for
 
 from .models import (
     CommerceCheckoutItem,
@@ -33,6 +34,8 @@ from .services import (
     _channel_minimum,
     auto_process_paid_intake,
     resolve_channel_and_fulfilment,
+    validate_channel_for_source,
+    EXTERNAL_COMMERCE_SOURCES,
 )
 
 
@@ -93,17 +96,23 @@ def available_physical_stock(good, *, exclude_checkout=None, now=None):
     return max(Decimal("0"), physical - reserved)
 
 
-def _mode_alternatives(product, business, quantity):
+def _mode_alternatives(product, business, quantity, *, source=None, individual_option=None):
     labels = vertical_config(business)["commerce_channels"]
     alternatives = []
-    for code in (
-        CommerceIntake.CHANNEL_PHYSICAL_STORE,
-        CommerceIntake.CHANNEL_ONLINE,
-        CommerceIntake.CHANNEL_DISTRIBUTION,
-    ):
-        if not _channel_allowed(product, code):
-            continue
-        minimum = _channel_minimum(product, code)
+    codes = (
+        (CommerceIntake.CHANNEL_ONLINE, CommerceIntake.CHANNEL_DISTRIBUTION)
+        if source in EXTERNAL_COMMERCE_SOURCES else
+        (CommerceIntake.CHANNEL_PHYSICAL_STORE, CommerceIntake.CHANNEL_ONLINE, CommerceIntake.CHANNEL_DISTRIBUTION)
+    )
+    for code in codes:
+        if individual_option is not None:
+            if not individual_option.channel_enabled(code) or individual_option.price_for(code) is None:
+                continue
+            minimum = individual_option.minimum_for(code)
+        else:
+            if not _channel_allowed(product, code):
+                continue
+            minimum = _channel_minimum(product, code)
         if quantity < minimum:
             continue
         alternatives.append({
@@ -183,6 +192,7 @@ def create_checkout(
     sales_channel, fulfilment_mode = resolve_channel_and_fulfilment(
         business=business, sales_channel=order_mode, ordering_mode=ordering_mode
     )
+    validate_channel_for_source(source, sales_channel)
     customer = customer or {}
     if storefront_customer is not None:
         if storefront_customer.business_id != business.pk or not storefront_customer.active:
@@ -193,9 +203,16 @@ def create_checkout(
     if not items:
         raise ValidationError("Add at least one product.")
 
-    product_ids = [row["storefront_product"].pk for row in items]
-    if len(product_ids) != len(set(product_ids)):
-        raise ValidationError("Submit each product only once per checkout.")
+    product_keys = [
+        (
+            row["storefront_product"].pk,
+            str(row.get("bulk_pack_id") or getattr(row.get("bulk_pack"), "public_id", "") or ""),
+            str(row.get("individual_option_id") or getattr(row.get("individual_option"), "public_id", "") or ""),
+        )
+        for row in items
+    ]
+    if len(product_keys) != len(set(product_keys)):
+        raise ValidationError("Submit each product / selling-option combination only once per checkout.")
 
     # Lock every relevant FinishedGood in a deterministic order. All INPROFIC
     # checkout reservation writers use this same lock boundary.
@@ -225,23 +242,45 @@ def create_checkout(
         qty = _decimal_quantity(row.get("quantity"))
         if product.business_id != business.pk or not product.published:
             raise ValidationError("One of the selected products is not available for this storefront.")
-        if not _channel_allowed(product, sales_channel):
+
+        good = locked_goods[product.finished_good_id]
+        submitted_pack = row.get("bulk_pack")
+        bulk_pack_id = row.get("bulk_pack_id") or getattr(submitted_pack, "public_id", None)
+        bulk_pack = submitted_pack or find_bulk_pack(good, bulk_pack_id)
+        submitted_option = row.get("individual_option")
+        individual_option_id = row.get("individual_option_id") or getattr(submitted_option, "public_id", None)
+        individual_option = submitted_option or find_individual_option(good, individual_option_id, channel=sales_channel)
+        if bulk_pack_id and bulk_pack is None:
+            raise ValidationError(f"The selected bulk option for {product.display_name} is unavailable.")
+        if individual_option_id and individual_option is None:
+            raise ValidationError(f"The selected individual option for {product.display_name} is unavailable for this sales channel.")
+        if bulk_pack is not None and individual_option is not None:
+            raise ValidationError("Choose either a bulk pack or an individual product option, not both.")
+        if bulk_pack is not None and sales_channel != CommerceIntake.CHANNEL_DISTRIBUTION:
+            raise ValidationError("Bulk pack options are available only through the distribution / bulk channel.")
+        if individual_option is None and not _channel_allowed(product, sales_channel):
             raise ValidationError(f"{product.display_name} is not available through the selected order mode.")
-        minimum = _channel_minimum(product, sales_channel)
+
+        selection = selection_for(good, bulk_pack=bulk_pack, individual_option=individual_option, channel=sales_channel)
+        multiplier = Decimal(selection["multiplier"] or 1)
+        if multiplier <= 0:
+            raise ValidationError(f"{product.display_name} has an invalid portion conversion.")
+        customer_unit = selection["customer_unit"] or good.unit
+        minimum = Decimal(selection["minimum"] if (bulk_pack is not None or individual_option is not None) else _channel_minimum(product, sales_channel))
         if qty < minimum:
             raise ChannelMinimumError(
-                f"{product.display_name} requires at least {minimum} {product.finished_good.unit} for this order mode.",
-                alternatives=_mode_alternatives(product, business, qty),
+                f"{product.display_name} requires at least {minimum} {customer_unit} for this order mode.",
+                alternatives=_mode_alternatives(product, business, qty, source=source, individual_option=individual_option),
             )
         if product.max_quantity is not None and qty > product.max_quantity:
             raise ValidationError(
                 f"Quantity for {product.display_name} exceeds the maximum of {product.max_quantity}."
             )
 
-        good = locked_goods[product.finished_good_id]
-        price = Decimal(good.selling_price_for(sales_channel)).quantize(Decimal("0.01"))
+        price = Decimal(selection["unit_price"] if (bulk_pack is not None or individual_option is not None) else good.selling_price_for(sales_channel)).quantize(Decimal("0.01"))
         payable_qty = qty
         reserve_qty = Decimal("0")
+        internal_requested = (qty * multiplier).quantize(Decimal("0.01"))
         # Bought-in resale products are always fulfilled from purchased stock,
         # even inside a production vertical and even when the storefront sales
         # channel would normally mean made-to-order production.
@@ -249,32 +288,35 @@ def create_checkout(
             fulfilment_mode == CommerceIntake.MODE_STOCK
             or good.source_type == FinishedGood.SOURCE_PURCHASED_FOR_RESALE
         )
-        production_qty = qty if (not stock_fulfilment and fulfilment_mode == CommerceIntake.MODE_PREORDER) else Decimal("0")
+        production_qty = internal_requested if (not stock_fulfilment and fulfilment_mode == CommerceIntake.MODE_PREORDER) else Decimal("0")
 
         if stock_fulfilment:
             available = available_physical_stock(good, now=now)
-            reserve_qty = min(qty, available)
-            shortage = qty - reserve_qty
+            customer_available = (available / multiplier).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+            reserved_customer_qty = min(qty, customer_available)
+            reserve_qty = (reserved_customer_qty * multiplier).quantize(Decimal("0.01"))
+            shortage = qty - reserved_customer_qty
             if shortage > 0:
                 policy = settings.insufficient_stock_policy
                 details = [{
                     "product_id": str(product.public_id),
                     "product": product.display_name,
                     "requested": str(qty),
-                    "available_now": str(available),
+                    "available_now": str(customer_available),
                     "shortfall": str(shortage),
+                    "unit": customer_unit,
                 }]
-                if policy == CommerceSettings.POLICY_REDUCE and reserve_qty > 0:
-                    payable_qty = reserve_qty
+                if policy == CommerceSettings.POLICY_REDUCE and reserved_customer_qty > 0:
+                    payable_qty = reserved_customer_qty
                 elif (
                     policy == CommerceSettings.POLICY_SPLIT
                     and business.uses_production
                     and good.source_type == FinishedGood.SOURCE_MADE_IN_HOUSE
-                    and product.allow_online_order
+                    and (individual_option.online_enabled if individual_option is not None else product.allow_online_order)
                 ):
-                    production_qty = shortage
+                    production_qty = (shortage * multiplier).quantize(Decimal("0.01"))
                 elif policy == CommerceSettings.POLICY_INVITE:
-                    suggestions = [m for m in _mode_alternatives(product, business, qty) if m["code"] != sales_channel]
+                    suggestions = [m for m in _mode_alternatives(product, business, qty, source=source, individual_option=individual_option) if m["code"] != sales_channel]
                     raise CheckoutAvailabilityError(
                         "Insufficient stock. The customer may switch to a Pre-order mode before paying.",
                         suggested_order_modes=suggestions,
@@ -283,19 +325,29 @@ def create_checkout(
                 else:
                     raise CheckoutAvailabilityError(
                         "Insufficient sellable stock for one or more products.",
-                        suggested_order_modes=_mode_alternatives(product, business, qty),
+                        suggested_order_modes=_mode_alternatives(product, business, qty, source=source, individual_option=individual_option),
                         details=details,
                     )
             if reserve_qty <= 0 and payable_qty <= 0:
                 raise CheckoutAvailabilityError(
                     f"{product.display_name} is currently out of sellable stock.",
-                    suggested_order_modes=_mode_alternatives(product, business, qty),
-                    details=[{"product_id": str(product.public_id), "requested": str(qty), "available_now": "0"}],
+                    suggested_order_modes=_mode_alternatives(product, business, qty, source=source, individual_option=individual_option),
+                    details=[{"product_id": str(product.public_id), "requested": str(qty), "available_now": "0", "unit": customer_unit}],
                 )
 
         line_total = (payable_qty * price).quantize(Decimal("0.01"))
         total += line_total
-        prepared.append((product, good, qty, payable_qty, reserve_qty, production_qty, price))
+        profile_key = selection["profile_key"]
+        contents_snapshot = internal_contents_snapshot(
+            good,
+            profile_key=profile_key,
+            base_multiplier=multiplier,
+            customer_quantity=payable_qty,
+        )
+        prepared.append((
+            product, good, qty, payable_qty, reserve_qty, production_qty, price,
+            bulk_pack, individual_option, customer_unit, multiplier, contents_snapshot,
+        ))
 
     total = total.quantize(Decimal("0.01"))
     if total <= 0:
@@ -359,8 +411,13 @@ def create_checkout(
             reserved_stock_quantity=reserve_qty,
             production_quantity=production_qty,
             unit_price=price,
+            bulk_pack=bulk_pack,
+            individual_option=individual_option,
+            customer_unit=customer_unit,
+            fulfilment_quantity_per_unit=multiplier,
+            contents_snapshot=contents_snapshot,
         )
-        for product, good, qty, payable_qty, reserve_qty, production_qty, price in prepared
+        for product, good, qty, payable_qty, reserve_qty, production_qty, price, bulk_pack, individual_option, customer_unit, multiplier, contents_snapshot in prepared
     ])
     audit(
         business, None, "commerce_checkout_create", checkout,
@@ -448,15 +505,22 @@ def serialize_checkout(checkout):
         "items": [
             {
                 "product_id": str(row.storefront_product.public_id),
-                "name": row.storefront_product.display_name,
+                "name": row.individual_option.name if row.individual_option_id else row.storefront_product.display_name,
                 "requested_quantity": str(row.requested_quantity),
                 "payable_quantity": str(row.payable_quantity),
-                "reserved_stock_quantity": str(row.reserved_stock_quantity),
-                "production_quantity": str(row.production_quantity),
+                "unit": row.customer_unit or row.storefront_product.customer_unit,
+                "bulk_pack_id": str(row.bulk_pack.public_id) if row.bulk_pack_id else None,
+                "bulk_pack_name": row.bulk_pack.name if row.bulk_pack_id else None,
+                "individual_option_id": str(row.individual_option.public_id) if row.individual_option_id else None,
+                "individual_option_name": row.individual_option.name if row.individual_option_id else None,
+                # These legacy fields remain customer-facing; internal base-unit
+                # conversions are intentionally not exposed through the public API.
+                "reserved_stock_quantity": str((row.reserved_stock_quantity / (row.fulfilment_quantity_per_unit or Decimal("1"))).quantize(Decimal("0.01"))),
+                "production_quantity": str((row.production_quantity / (row.fulfilment_quantity_per_unit or Decimal("1"))).quantize(Decimal("0.01"))),
                 "unit_price": f"{row.unit_price:.2f}",
                 "line_total": f"{row.line_total:.2f}",
             }
-            for row in checkout.items.select_related("storefront_product").all()
+            for row in checkout.items.select_related("storefront_product", "bulk_pack", "individual_option").all()
         ],
     }
 
@@ -470,7 +534,7 @@ def materialize_paid_checkout(checkout, *, actor=None, allow_expired_recovery=Fa
     the physical stock mutation occurs.
     """
     checkout = CommerceCheckoutSession.raw_objects.select_for_update().prefetch_related(
-        "items__storefront_product", "items__finished_good"
+        "items__storefront_product", "items__finished_good", "items__bulk_pack", "items__individual_option"
     ).get(pk=checkout.pk, business=checkout.business)
     if checkout.materialized_intake_id:
         return checkout.materialized_intake, False
@@ -542,6 +606,12 @@ def materialize_paid_checkout(checkout, *, actor=None, allow_expired_recovery=Fa
             # split/preorder checkouts keep the full requested quantity.
             requested_quantity=row.payable_quantity,
             unit_price=row.unit_price,
+            production_quantity=row.production_quantity,
+            bulk_pack=row.bulk_pack,
+            individual_option=row.individual_option,
+            customer_unit=row.customer_unit,
+            fulfilment_quantity_per_unit=row.fulfilment_quantity_per_unit,
+            contents_snapshot=row.contents_snapshot,
         )
         for row in checkout.items.all()
     ])

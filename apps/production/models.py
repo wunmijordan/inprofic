@@ -221,6 +221,18 @@ class OrderItem(TimestampedModel):
     discount = models.DecimalField(max_digits=12, decimal_places=2, default=0, blank=True)
     price = models.DecimalField(max_digits=12, decimal_places=2, default=0,
         help_text="Snapshot of the product's selling price at order time — set automatically.")
+    commercial_quantity = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        help_text="Optional customer-facing quantity snapshot for commerce portion/bulk orders.",
+    )
+    commercial_unit = models.CharField(
+        max_length=100, blank=True, default="",
+        help_text="Customer-facing unit snapshot for commerce portion/bulk orders.",
+    )
+    commercial_unit_price = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        help_text="Exact customer-facing unit price snapshot for commerce portion/bulk orders.",
+    )
 
     def __str__(self):
         return f"{self.finished_good.name} — {self.total_units} units"
@@ -272,9 +284,15 @@ class OrderItem(TimestampedModel):
 
     @property
     def line_total(self):
-        """Discount is applied PER UNIT, not once on the line total — e.g.
-        50 units at 1500 with a 200 discount is (1500-200)*50 = 65,000,
-        not 1500*50-200. Matches how a per-item price cut actually works."""
+        """Return the exact commercial total without corrupting production units.
+
+        Commerce portion/bulk orders may produce in an internal base unit (for
+        example scoops) while the customer pays per plate/bowl.  Optional
+        commercial snapshots preserve that exact customer total; ordinary
+        production orders retain the historical per-unit calculation.
+        """
+        if self.commercial_quantity is not None and self.commercial_unit_price is not None:
+            return self.commercial_quantity * self.commercial_unit_price
         return self.total_units * ((self.price or Decimal("0")) - (self.discount or Decimal("0")))
 class OrderMaterialUsage(BusinessOwnedModel):
     """Actual raw-material quantity released for one production order item.

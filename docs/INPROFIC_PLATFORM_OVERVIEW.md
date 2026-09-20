@@ -41,6 +41,8 @@ When the measurement basis of a live material changes, INPROFIC uses a controlle
 
 Sellable products can also be placed into tenant-defined Product Categories such as Meals, Drinks, Accessories or Bulk Packs. Categories are independent of whether an item is made in-house or purchased for resale and are shared by the hosted storefront, POS and product API.
 
+Inventory also has a persistent tenant/user-aware alert layer for raw materials and finished goods. Warning and low-stock states are treated as four distinct alert conditions, can be enabled and repeated independently, and stay visible to inventory-authorized staff until acknowledged or the stock condition is corrected. An acknowledgement is per user and never changes stock; if a condition remains unresolved, the tenant-configured repeat interval can surface it again.
+
 ## Procurement and suppliers
 
 Procurement manages purchase orders, received quantities, supplier costs and supplier payments.
@@ -80,6 +82,8 @@ Commerce is the shared boundary for public and staff checkout flows. It supports
 Public checkout is payment-first. INPROFIC validates the basket, calculates authoritative prices and delivery charges where applicable, creates a checkout, and waits for trusted payment confirmation. Operational sales/orders are materialized only after verified settlement.
 
 This prevents an abandoned or unpaid web basket from altering inventory, production, finance or delivery records.
+
+For payment, a tenant can use gateway-backed Paystack/Monnify flows, provider-issued instant bank transfer, or a native no-gateway **Transfer** mode. The native mode shows the tenant's static bank details and requires customer proof on public/headless checkout before authorized staff verifies the real credit. In-premise POS can use the same Transfer setup with an explicit staff confirmation guard, like cash.
 
 ## In-Premise POS
 
@@ -127,13 +131,13 @@ Tenants can register their own riders or drivers. A rider can be linked to a ded
 
 The rider sees only deliveries assigned to that rider profile, together with the information needed to complete the job. The rider can update allowed delivery stages, record proof details where required, and lodge delivery issues or complaints for dispatch staff to review.
 
-### Glovo and external providers
+### External delivery partners and optional Glovo adapter
 
-The delivery engine is not built around one courier. Provider plug-ins attach external transport to the same INPROFIC delivery record.
+The delivery engine is not built around one courier. A business can configure any delivery partner as a manual courier or connect a courier/merchant integration service through the provider-neutral Delivery Adapter v1 contract. INPROFIC remains authoritative for customer pricing, routing, assignment, status history and tracking.
 
-Glovo LaaS v2 is available as a built-in optional provider. A tenant enters its own Glovo onboarding credentials and pickup Address Book ID. INPROFIC can use Glovo live quotes, create the parcel after verified payment, store tracking references and synchronize delivery status through webhooks.
+Glovo LaaS v2 is a built-in optional adapter only when the Founder enables it platform-wide. It remains inactive until the tenant supplies its own approved Glovo account/API configuration. Turning the Founder switch off hides and blocks Glovo runtime use while preserving saved tenant configuration and history.
 
-The tenant remains free to use in-house delivery, Glovo, a manual external courier or a future provider without changing the core Commerce workflow.
+The tenant remains free to use in-house delivery, a custom delivery partner, the optional Glovo adapter when available, or Hybrid routing without changing the core Commerce workflow.
 
 ### True Hybrid delivery
 
@@ -143,13 +147,15 @@ The tenant can choose policies such as customer choice, dispatcher choice, lowes
 
 The customer-facing switch policy is displayed before payment. INPROFIC never silently adds a higher delivery charge after the customer has already paid.
 
-## Delivery notifications
+## Shared operational alert tray
 
-Delivery uses the durable Commerce notification system so important actions are not dependent on someone repeatedly refreshing a page.
+Commerce, Delivery and Inventory surface urgent work through one movable in-app alert tray without merging their underlying acknowledgement rules. Access remains permission-aware: staff only see channels they are authorized to use. Commerce/Delivery entries remain unread until marked read, while Inventory acknowledgements keep their existing per-user, per-condition snooze/re-alert behavior.
 
-Notifications can cover assignments, reassignments, delivery-status changes, rider issues, issue responses, provider failures and method switches. Assigned riders can receive targeted notifications, while staff with the appropriate Commerce/Delivery permissions receive the broader operational alerts they are meant to handle.
+The tray opens each channel independently. Inventory expands into **Raw Materials** and **Finished Goods** tabs so warning and low-stock conditions remain easy to identify without disturbing Commerce activity.
 
-Where supported by the deployment and browser, notification delivery can include live updates and Web Push.
+Commerce notifications can cover orders, payment activity—including native `transfer` claims waiting for staff verification—delivery assignments, status changes, rider issues, provider failures and method switches. Inventory alerts cover raw-material and finished-good warning/low conditions. Both channels support configurable repeating in-app sounds while attention is still required; Inventory sound stops for an acknowledged condition until its configured snooze/re-alert window makes that condition visible again. Browser autoplay rules can require one interaction with the page before sound is permitted.
+
+Where supported by the deployment and browser, Commerce/Delivery notification delivery can also include live updates and Web Push.
 
 ## Storefront customer profiles
 
@@ -189,7 +195,7 @@ Actions that alter protected business data still require the corresponding effec
 
 Founder-level subscription management controls plan pricing, billing periods, module entitlements and commercial access ceilings.
 
-Modules such as Delivery and Audit Workspace can therefore be switched on only for the plans that should include them. Tenant records are not deleted simply because entitlement changes; access and new activity are controlled while historical evidence remains intact.
+Modules such as Delivery and Audit Workspace can therefore be switched on only for the plans that should include them. Entitlements control user-visible surfaces and direct user authorization; they do not disable required cross-module bookkeeping or synchronization underneath a workflow the tenant is still allowed to perform. Tenant records are not deleted simply because entitlement changes, so an upgrade can reveal already-synchronized history instead of starting with gaps.
 
 ## Reporting, exports and backup
 
@@ -199,9 +205,9 @@ Backups and deployment storage should preserve both database records and uploade
 
 ## Notifications and operational attention
 
-Commerce and Delivery use durable notifications so staff can see work that needs attention. Notification records remain available even when a browser was not open at the exact moment an event occurred.
+The movable operational tray keeps Commerce/Delivery and Inventory attention in one place while preserving separate permission checks, read/snooze state and settings for each channel. Commerce/Delivery records are durable even when a browser was not open at the exact moment an event occurred; Inventory conditions are recalculated from authoritative stock and retain per-user acknowledgement state. Configurable repeating sounds continue while visible work remains unresolved, including payment-review alerts for direct Transfer claims.
 
-The platform is designed so payment, delivery and fulfilment state changes are explicit rather than hidden inside a generic order status.
+The platform is designed so payment, delivery, fulfilment and stock-attention state changes are explicit rather than hidden inside a generic order status.
 
 ## What INPROFIC intentionally keeps separate
 
@@ -228,7 +234,7 @@ A well-configured tenant should be able to answer questions such as:
 - Which customer ordered or bought each product and through which sales channel?
 - What do customers owe us and what do we owe suppliers?
 - Which payments actually reached or left our settlement accounts?
-- Which deliveries are awaiting dispatch, with a rider, with Glovo, delayed, completed or disputed?
+- Which deliveries are awaiting dispatch, with a rider or delivery partner, delayed, completed or disputed?
 - Was a destination inside the configured delivery radius and what precise base-to-customer distance was priced?
 - What evidence changed after a measurement conversion and what historical evidence remained frozen?
 - What questions has an auditor raised and who has responded?
@@ -243,3 +249,19 @@ Advanced planning areas such as full MRP, WIP scheduling, comprehensive labour/o
 ## The short description
 
 **INPROFIC is a production-aware, commerce-connected business operations platform that links procurement, inventory, manufacturing/preparation, sales, payments, delivery, finance and audit in one tenant-safe operating record.**
+
+
+### Commerce channel boundaries and operational alerts
+
+- Physical-store/direct prices are POS-only. Hosted storefronts and headless/connector APIs expose Online plus Distribution/Bulk only; Distribution/Bulk minimum quantities remain server-enforced on every surface.
+- Commerce, Inventory and rider alerts share durable Web Push delivery while preserving separate permissions and read/snooze semantics. Five foreground INPROFIC tunes are available per alert system, including two aggressive buzzer patterns. Closed/background Web Push repeats when due, while the operating system/browser controls the notification sound.
+
+### Standard Portions, composed products and Bulk Packs
+
+INPROFIC separates the operational production unit from the customer selling unit. A product can be produced/tracked in scoops, pieces, ml, metres or another base unit while a Standard Portion is sold as a plate, serving, bottle or set. Distribution/Bulk can additionally expose named packs such as 1 L/2 L bowls, trays, cartons, sacks or bales with pack-specific prices/minimums, with vertical-aware pack/container choices in the product form. Additional product/material contents remain in their existing inventory categories. The same Finished Good can also publish independently priced plain/add-on options (for example Extra Jollof Rice or Single Chicken) on Physical Store, Online and/or Distribution/Bulk without creating duplicate stock or recipes. Customer channels never receive Physical Store prices or the private base-unit conversion.
+
+### Founder product analytics and form experience
+
+Founder Console records first-party operational milestones such as signup visits, completed registrations, logins/logouts, subscription lifecycle events and throttled module usage. The analytics stream deliberately avoids request bodies, passwords and payment secrets, and failures never block an operational workflow. Founder Console summarizes recent leads/conversion, registrations, active businesses, subscription events, module usage and recent platform activity.
+
+INPROFIC's shared form layer uses HTML5 constraints plus authoritative Django validation. Internal forms and hosted storefront forms receive consistent animated valid/invalid states, contextual SVG input icons, accessible inline messages and the existing INPROFIC toggle-switch treatment for Boolean controls. Dynamic formset rows receive the same enhancement automatically. Existing-record edit forms no longer inject a fresh blank inline row when saved rows already exist; a truly empty section keeps one starter row and users can explicitly add more rows.

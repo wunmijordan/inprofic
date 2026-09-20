@@ -7,6 +7,7 @@
   <title>{% if biz %}{{ biz.name }} · {% endif %}INPROFIC</title>
   <link rel="icon" type="image/png" href="{% static 'core/brand/inprofic-mark.png' %}">
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
+  <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}">
   <link rel="stylesheet" href="{% static 'core/css/workspace.css' %}">
   <script src="{% static 'core/js/workspace.js' %}"></script>
   {% include "pwa/head.html" %}
@@ -79,6 +80,7 @@
       .desktop-main { margin-left: 14rem; min-height: 100vh; }
     }
   </style>
+  <script src="{% static 'core/js/form-experience.js' %}" defer></script>
 </head>
 <body class="min-h-screen flex">
   <div class="page-progress" aria-hidden="true"></div>
@@ -176,67 +178,143 @@
     </div>
   </main>
 
-  {% if user.is_authenticated and module_permissions.commerce.view or user.is_authenticated and module_permissions.delivery.view or user.is_authenticated and module_permissions.delivery_rider.view %}
+  {% if user.is_authenticated and module_permissions.commerce.view or user.is_authenticated and module_permissions.delivery.view or user.is_authenticated and module_permissions.delivery_rider.view or user.is_authenticated and module_permissions.inventory.view %}
   <aside id="commerce-notification-dock"
          class="fixed bottom-3 z-[80] hidden overflow-hidden rounded-2xl border border-stone-200 bg-[#FFFDF8] shadow-[0_20px_55px_rgba(33,29,26,.32)]"
-         style="right:.75rem;width:min(19rem,calc(100vw - 1.5rem));"
+         style="right:.75rem;width:min(22rem,calc(100vw - 1.5rem));"
+         data-has-commerce="{% if module_permissions.commerce.view or module_permissions.delivery.view or module_permissions.delivery_rider.view %}1{% else %}0{% endif %}"
+         data-has-inventory="{% if module_permissions.inventory.view %}1{% else %}0{% endif %}"
          data-feed-url="{% url 'commerce_notification_feed' %}"
          data-read-url="{% url 'commerce_notification_read' %}"
          data-socket-path="/ws/commerce/notifications/"
+         data-inventory-feed-url="{% url 'inventory_alert_feed' %}"
+         data-inventory-ack-url="{% url 'inventory_alert_acknowledge' %}"
          aria-live="polite">
     <div id="commerce-notification-drag-handle" class="flex cursor-grab select-none items-center gap-2.5 border-b border-white/10 px-3 py-2.5 text-white active:cursor-grabbing" style="background:var(--tenant-background)" title="Drag left or right to move alerts">
       <span class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10" aria-hidden="true">
         <svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
-        <span class="absolute -right-1 -top-1 h-2.5 w-2.5 animate-pulse rounded-full bg-amber-400 ring-2 ring-white/80"></span>
+        <span id="notification-tray-pulse" class="absolute -right-1 -top-1 h-2.5 w-2.5 animate-pulse rounded-full bg-amber-400 ring-2 ring-white/80"></span>
       </span>
-      <button type="button" id="commerce-notification-expand" class="min-w-0 flex-1 text-left" aria-expanded="false" aria-controls="commerce-notification-body">
-        <span class="block text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-300">{% if module_permissions.delivery_rider.view and not module_permissions.delivery.view and not module_permissions.commerce.view %}My delivery updates{% elif module_permissions.delivery.view and not module_permissions.commerce.view %}Delivery activity{% else %}Commerce & delivery activity{% endif %}</span>
-        <span class="block truncate text-sm font-semibold"><span id="commerce-notification-count">0</span> unread alert<span id="commerce-notification-plural">s</span></span>
+      <button type="button" id="commerce-notification-expand" class="min-w-0 flex-1 text-left" aria-expanded="false" aria-controls="notification-tray-body">
+        <span class="block text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-300">Activity alerts</span>
+        <span class="block truncate text-sm font-semibold"><span id="notification-tray-total-count">0</span> alert<span id="notification-tray-total-plural">s</span> need attention</span>
       </button>
       <button type="button" id="commerce-notification-minimize" class="rounded-lg p-2 text-stone-300 transition hover:bg-white/10 hover:text-white" aria-label="Minimize activity alerts">
         <svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
       </button>
     </div>
-    <div id="commerce-notification-body" class="hidden h-72 flex-col" aria-hidden="true">
-      <div class="flex items-center justify-between border-b border-stone-200 px-4 py-2.5">
-        <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-stone-500">Unread activity</span>
-        <button type="button" id="commerce-notification-read-all" class="text-xs font-semibold text-stone-500 hover:text-stone-900">Mark all read</button>
+
+    <div id="notification-tray-body" class="hidden min-h-0 flex-col" style="height:min(30rem,calc(100dvh - 7rem));" aria-hidden="true">
+      <div class="flex gap-2 border-b border-stone-200 bg-stone-50 p-2">
+        {% if module_permissions.commerce.view or module_permissions.delivery.view or module_permissions.delivery_rider.view %}
+        <button type="button" id="notification-channel-commerce" data-alert-channel="commerce" class="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-stone-600 transition hover:bg-white">
+          <span class="truncate">{% if module_permissions.delivery_rider.view and not module_permissions.delivery.view and not module_permissions.commerce.view %}My delivery{% elif module_permissions.delivery.view and not module_permissions.commerce.view %}Delivery{% else %}Commerce{% endif %}</span>
+          <span id="commerce-notification-count" class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-900">0</span>
+        </button>
+        {% endif %}
+        {% if module_permissions.inventory.view %}
+        <button type="button" id="notification-channel-inventory" data-alert-channel="inventory" class="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-stone-600 transition hover:bg-white">
+          <span class="truncate">Inventory</span>
+          <span id="inventory-alert-count" class="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-black text-rose-800">0</span>
+        </button>
+        {% endif %}
       </div>
-      <div id="commerce-notification-list" class="min-h-0 flex-1 divide-y divide-stone-100 overflow-y-auto overscroll-contain"></div>
-      <p class="border-t border-stone-200 px-4 py-2.5 text-[10px] leading-4 text-stone-400">Your unread list remains available until you mark its entries as read.</p>
+
+      {% if module_permissions.commerce.view or module_permissions.delivery.view or module_permissions.delivery_rider.view %}
+      <section id="notification-panel-commerce" data-alert-panel="commerce" class="hidden min-h-0 flex-1 flex-col">
+        <div class="flex items-center justify-between border-b border-stone-200 px-4 py-2.5">
+          <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-stone-500">Unread commerce & delivery activity</span>
+          <div class="flex items-center gap-1.5">
+            {% if module_permissions.commerce.edit %}<a href="{% url 'commerce_settings' %}#activity-notifications" class="rounded-lg p-2 text-stone-400 transition hover:bg-stone-100 hover:text-stone-900" aria-label="Commerce alert settings" title="Commerce alert settings"><svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.8" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.12 2.12-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V20.3h-3v-.08a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-2.12-2.12.06-.06A1.7 1.7 0 0 0 7 15a1.7 1.7 0 0 0-1.56-1.03H5.3v-3h.14A1.7 1.7 0 0 0 7 9.94a1.7 1.7 0 0 0-.34-1.88L6.6 8l2.12-2.12.06.06a1.7 1.7 0 0 0 1.88.34A1.7 1.7 0 0 0 11.7 4.7v-.08h3v.08a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 8l-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03h.14v3h-.14A1.7 1.7 0 0 0 19.4 15Z"/></svg></a>{% endif %}
+            <button type="button" id="commerce-notification-read-all" class="rounded-lg p-2 text-stone-500 transition hover:bg-stone-100 hover:text-stone-900" aria-label="Mark all Commerce alerts read" title="Mark all read"><svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="2" aria-hidden="true"><path d="m4 12 4 4 8-8"/><path d="m12 16 2 2 6-6"/></svg></button>
+          </div>
+        </div>
+        <div id="commerce-notification-list" class="min-h-0 flex-1 divide-y divide-stone-100 overflow-y-auto overscroll-contain"></div>
+        <p class="border-t border-stone-200 px-4 py-2.5 text-[10px] leading-4 text-stone-400">Unread entries keep repeating while the app is open. Background/closed-app reminders use Web Push and the device notification sound.</p>
+      </section>
+      {% endif %}
+
+      {% if module_permissions.inventory.view %}
+      <section id="notification-panel-inventory" data-alert-panel="inventory" class="hidden min-h-0 flex-1 flex-col">
+        <div class="flex items-center justify-between border-b border-stone-200 px-3 py-2">
+          <div class="flex min-w-0 flex-1 gap-1.5" role="tablist" aria-label="Inventory alert type">
+            <button type="button" id="inventory-tab-raw" data-inventory-tab="raw" class="flex min-w-0 flex-1 items-center justify-between rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-stone-600" role="tab" aria-selected="true">
+              <span class="truncate">Raw materials</span><span id="inventory-raw-count" class="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-black text-amber-900">0</span>
+            </button>
+            <button type="button" id="inventory-tab-finished" data-inventory-tab="finished" class="flex min-w-0 flex-1 items-center justify-between rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-stone-600" role="tab" aria-selected="false">
+              <span class="truncate">Finished goods</span><span id="inventory-finished-count" class="rounded-full bg-rose-100 px-1.5 py-0.5 text-[9px] font-black text-rose-800">0</span>
+            </button>
+          </div>
+          {% if module_permissions.inventory.edit %}<a href="{% url 'inventory_alert_settings' %}" class="ml-2 shrink-0 rounded-lg p-2 text-stone-400 transition hover:bg-stone-100 hover:text-stone-900" aria-label="Inventory alert settings" title="Inventory alert settings"><svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.8" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.12 2.12-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V20.3h-3v-.08a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-2.12-2.12.06-.06A1.7 1.7 0 0 0 7 15a1.7 1.7 0 0 0-1.56-1.03H5.3v-3h.14A1.7 1.7 0 0 0 7 9.94a1.7 1.7 0 0 0-.34-1.88L6.6 8l2.12-2.12.06.06a1.7 1.7 0 0 0 1.88.34A1.7 1.7 0 0 0 11.7 4.7v-.08h3v.08a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 8l-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03h.14v3h-.14A1.7 1.7 0 0 0 19.4 15Z"/></svg></a>{% endif %}
+        </div>
+        <div id="inventory-alert-raw-list" data-inventory-list="raw" class="min-h-0 flex-1 divide-y divide-stone-100 overflow-y-auto overscroll-contain"></div>
+        <div id="inventory-alert-finished-list" data-inventory-list="finished" class="hidden min-h-0 flex-1 divide-y divide-stone-100 overflow-y-auto overscroll-contain"></div>
+        <p class="border-t border-stone-200 px-4 py-2.5 text-[10px] leading-4 text-stone-400">Acknowledge for now uses the existing per-condition snooze. Background/closed-app reminders follow the same due state through Web Push.</p>
+      </section>
+      {% endif %}
     </div>
   </aside>
   <script>
     document.addEventListener('DOMContentLoaded', function () {
       const dock = document.getElementById('commerce-notification-dock');
       if (!dock) return;
-      const body = document.getElementById('commerce-notification-body');
+      const hasCommerce = dock.dataset.hasCommerce === '1';
+      const hasInventory = dock.dataset.hasInventory === '1';
+      let commerceAvailable = hasCommerce;
+      let inventoryAvailable = hasInventory;
+      const trayBody = document.getElementById('notification-tray-body');
       const expand = document.getElementById('commerce-notification-expand');
       const minimize = document.getElementById('commerce-notification-minimize');
-      const count = document.getElementById('commerce-notification-count');
-      const plural = document.getElementById('commerce-notification-plural');
-      const list = document.getElementById('commerce-notification-list');
-      const readAll = document.getElementById('commerce-notification-read-all');
+      const totalCount = document.getElementById('notification-tray-total-count');
+      const totalPlural = document.getElementById('notification-tray-total-plural');
       const dragHandle = document.getElementById('commerce-notification-drag-handle');
-      let latestId = null;
-      let initialized = false;
-      let suppressNextAnnouncement = false;
-      let timer = null;
+      const channelButtons = Array.from(dock.querySelectorAll('[data-alert-channel]'));
+      const panels = Array.from(dock.querySelectorAll('[data-alert-panel]'));
+      const commerceCount = document.getElementById('commerce-notification-count');
+      const inventoryCount = document.getElementById('inventory-alert-count');
+      const commerceList = document.getElementById('commerce-notification-list');
+      const commerceReadAll = document.getElementById('commerce-notification-read-all');
+      const rawList = document.getElementById('inventory-alert-raw-list');
+      const finishedList = document.getElementById('inventory-alert-finished-list');
+      const rawCount = document.getElementById('inventory-raw-count');
+      const finishedCount = document.getElementById('inventory-finished-count');
+      const inventoryTabs = Array.from(dock.querySelectorAll('[data-inventory-tab]'));
+      let expanded = false;
+      let activeChannel = window.localStorage.getItem('inprofic-alert-tray-channel') || (hasCommerce ? 'commerce' : 'inventory');
+      let activeInventoryTab = window.localStorage.getItem('inprofic-inventory-alert-tab') || 'raw';
+      let commerceData = { enabled: false, unread_count: 0, notifications: [], sound_enabled: false, sound_repeat_minutes: 0, sound_tune: 'double_ping' };
+      let inventoryData = { enabled: false, count: 0, raw_count: 0, finished_count: 0, alerts: [], sound_enabled: false, sound_repeat_minutes: 0, sound_tune: 'urgent_pulse' };
+      let commerceTimer = null;
+      let inventoryTimer = null;
       let socket = null;
       let socketConnected = false;
       let reconnectTimer = null;
       let reconnectAttempt = 0;
       let pageClosing = false;
-      let accessUnavailable = false;
       let refreshSequence = 0;
+      let latestCommerceId = null;
+      let commerceInitialized = false;
+      let previousCommerceIds = new Set();
+      let previousInventoryIds = new Set();
+      let suppressNextCommerceDesktop = false;
 
-      const positionKey = 'inprofic-commerce-dock-left';
+      const soundState = {
+        commerce: { timer: null, active: false, enabled: false, repeat: 0, signature: '', tune: 'double_ping' },
+        inventory: { timer: null, active: false, enabled: false, repeat: 0, signature: '', tune: 'urgent_pulse' },
+      };
+      let audioContext = null;
+      let audioUnlocked = false;
+      const pendingSounds = new Set();
+
+      const positionKey = 'inprofic-alert-tray-left';
       function clampDockLeft(left) {
         const margin = 12;
         return Math.max(margin, Math.min(left, window.innerWidth - dock.offsetWidth - margin));
       }
       function restoreDockPosition() {
-        const stored = Number(window.localStorage.getItem(positionKey));
+        const modern = Number(window.localStorage.getItem(positionKey));
+        const legacy = Number(window.localStorage.getItem('inprofic-commerce-dock-left'));
+        const stored = Number.isFinite(modern) ? modern : legacy;
         if (!Number.isFinite(stored)) return;
         dock.style.right = 'auto';
         dock.style.left = `${clampDockLeft(stored)}px`;
@@ -272,217 +350,338 @@
         const match = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);
         return match ? decodeURIComponent(match[1]) : '';
       }
+      function channelIsAvailable(channel) {
+        return channel === 'commerce' ? commerceAvailable : inventoryAvailable;
+      }
+      function selectChannel(channel, userChoice) {
+        if (!channelIsAvailable(channel)) return;
+        activeChannel = channel;
+        if (userChoice) window.localStorage.setItem('inprofic-alert-tray-channel', channel);
+        channelButtons.forEach(button => {
+          const active = button.dataset.alertChannel === channel;
+          button.classList.toggle('shadow-sm', active);
+          button.classList.toggle('text-stone-600', !active);
+          button.style.backgroundColor = active ? 'var(--tenant-background)' : '';
+          button.style.color = active ? 'var(--tenant-background-contrast)' : '';
+          button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+        panels.forEach(panel => {
+          const active = panel.dataset.alertPanel === channel && expanded;
+          panel.classList.toggle('hidden', !active);
+          panel.classList.toggle('flex', active);
+        });
+      }
       function setExpanded(value) {
-        body.classList.toggle('hidden', !value);
-        body.classList.toggle('flex', value);
-        body.setAttribute('aria-hidden', value ? 'false' : 'true');
-        expand.setAttribute('aria-expanded', value ? 'true' : 'false');
-        minimize.classList.toggle('rotate-180', !value);
-        minimize.setAttribute('aria-label', value ? 'Minimize commerce alerts' : 'Expand commerce alerts');
+        expanded = !!value;
+        trayBody.classList.toggle('hidden', !expanded);
+        trayBody.classList.toggle('flex', expanded);
+        trayBody.setAttribute('aria-hidden', expanded ? 'false' : 'true');
+        expand.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        minimize.classList.toggle('rotate-180', !expanded);
+        minimize.setAttribute('aria-label', expanded ? 'Minimize activity alerts' : 'Expand activity alerts');
+        selectChannel(activeChannel, false);
       }
-      function playSound() {
+      function selectInventoryTab(tab, userChoice) {
+        activeInventoryTab = tab === 'finished' ? 'finished' : 'raw';
+        if (userChoice) window.localStorage.setItem('inprofic-inventory-alert-tab', activeInventoryTab);
+        inventoryTabs.forEach(button => {
+          const active = button.dataset.inventoryTab === activeInventoryTab;
+          button.classList.toggle('text-stone-600', !active);
+          button.style.backgroundColor = active ? 'var(--tenant-background)' : '';
+          button.style.color = active ? 'var(--tenant-background-contrast)' : '';
+          button.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        if (rawList) rawList.classList.toggle('hidden', activeInventoryTab !== 'raw');
+        if (finishedList) finishedList.classList.toggle('hidden', activeInventoryTab !== 'finished');
+      }
+
+      function ensureAudioContext() {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return null;
+        if (!audioContext) audioContext = new AudioContext();
+        return audioContext;
+      }
+      async function unlockAudio() {
+        const audio = ensureAudioContext();
+        if (!audio) return;
         try {
-          const AudioContext = window.AudioContext || window.webkitAudioContext;
-          if (!AudioContext) return;
-          const audio = new AudioContext();
-          const oscillator = audio.createOscillator();
-          const gain = audio.createGain();
-          oscillator.type = 'sine';
-          oscillator.frequency.setValueAtTime(740, audio.currentTime);
-          oscillator.frequency.exponentialRampToValueAtTime(980, audio.currentTime + .16);
-          gain.gain.setValueAtTime(.0001, audio.currentTime);
-          gain.gain.exponentialRampToValueAtTime(.16, audio.currentTime + .025);
-          gain.gain.exponentialRampToValueAtTime(.0001, audio.currentTime + .34);
-          oscillator.connect(gain); gain.connect(audio.destination);
-          oscillator.start(); oscillator.stop(audio.currentTime + .35);
-          oscillator.addEventListener('ended', () => audio.close());
-        } catch (error) { /* Browser autoplay policy may suppress background audio. */ }
+          if (audio.state !== 'running') await audio.resume();
+          audioUnlocked = audio.state === 'running';
+          if (audioUnlocked && pendingSounds.size) {
+            const channels = Array.from(pendingSounds);
+            pendingSounds.clear();
+            channels.forEach((channel, index) => window.setTimeout(() => playAlertSound(channel), index * 650));
+          }
+        } catch (_error) { /* Browser policy can keep audio suspended. */ }
       }
+      function tone(audio, frequency, start, duration, volume, type='sine') {
+        const oscillator = audio.createOscillator();
+        const gain = audio.createGain();
+        oscillator.type = type;
+        oscillator.frequency.setValueAtTime(frequency, start);
+        gain.gain.setValueAtTime(.0001, start);
+        gain.gain.exponentialRampToValueAtTime(volume, start + .015);
+        gain.gain.exponentialRampToValueAtTime(.0001, start + duration);
+        oscillator.connect(gain); gain.connect(audio.destination);
+        oscillator.start(start); oscillator.stop(start + duration + .02);
+      }
+      function playTune(audio, tune, start) {
+        if (tune === 'gentle_chime') { tone(audio, 660, start, .28, .10, 'sine'); tone(audio, 880, start + .22, .34, .08, 'sine'); return; }
+        if (tune === 'urgent_pulse') { tone(audio, 760, start, .16, .14, 'triangle'); tone(audio, 760, start + .22, .16, .14, 'triangle'); tone(audio, 980, start + .44, .22, .15, 'triangle'); return; }
+        if (tune === 'hard_buzzer') { tone(audio, 190, start, .42, .19, 'square'); tone(audio, 150, start + .48, .42, .19, 'square'); return; }
+        if (tune === 'alarm_buzzer') { tone(audio, 210, start, .32, .22, 'sawtooth'); tone(audio, 520, start + .34, .32, .20, 'square'); tone(audio, 210, start + .68, .36, .22, 'sawtooth'); return; }
+        tone(audio, 780, start, .22, .13, 'sine'); tone(audio, 1040, start + .25, .25, .13, 'sine');
+      }
+      function playAlertSound(channel) {
+        const state = soundState[channel];
+        if (!state || !state.active || !state.enabled) return;
+        const audio = ensureAudioContext();
+        if (!audio || !audioUnlocked || audio.state !== 'running') { pendingSounds.add(channel); return; }
+        playTune(audio, state.tune || 'double_ping', audio.currentTime + .01);
+      }
+      function schedulePersistentSound(channel) {
+        const state = soundState[channel];
+        clearTimeout(state.timer);
+        state.timer = null;
+        if (!state.active || !state.enabled || !state.repeat) return;
+        state.timer = window.setTimeout(function repeatSound() {
+          if (!state.active || !state.enabled) return;
+          playAlertSound(channel);
+          schedulePersistentSound(channel);
+        }, state.repeat * 60 * 1000);
+      }
+      function syncPersistentSound(channel, options) {
+        const state = soundState[channel];
+        const oldEnabled = state.enabled;
+        const oldRepeat = state.repeat;
+        state.active = !!options.active;
+        state.enabled = !!options.enabled;
+        state.repeat = Math.max(0, Number(options.repeat || 0));
+        state.signature = options.signature || '';
+        state.tune = options.tune || state.tune || 'double_ping';
+        if (!state.active || !state.enabled) {
+          clearTimeout(state.timer); state.timer = null; pendingSounds.delete(channel);
+          if (!state.active) state.signature = '';
+          return;
+        }
+        const soundConfigChanged = oldEnabled !== state.enabled || oldRepeat !== state.repeat;
+        if (options.immediate) {
+          playAlertSound(channel);
+          schedulePersistentSound(channel);
+        } else if (soundConfigChanged || (!state.timer && state.repeat)) {
+          schedulePersistentSound(channel);
+        }
+      }
+      document.addEventListener('pointerdown', unlockAudio, { once: true, capture: true });
+      document.addEventListener('keydown', unlockAudio, { once: true, capture: true });
+
+      function updateDock() {
+        const cCount = commerceAvailable && commerceData.enabled ? Number(commerceData.unread_count || 0) : 0;
+        const iCount = inventoryAvailable && inventoryData.enabled ? Number(inventoryData.count || 0) : 0;
+        const total = cCount + iCount;
+        if (commerceCount) commerceCount.textContent = cCount;
+        if (inventoryCount) inventoryCount.textContent = iCount;
+        totalCount.textContent = total;
+        totalPlural.textContent = total === 1 ? '' : 's';
+        if (!total) {
+          dock.classList.add('hidden');
+          setExpanded(false);
+          return;
+        }
+        dock.classList.remove('hidden');
+        if (!channelIsAvailable(activeChannel)) activeChannel = commerceAvailable ? 'commerce' : 'inventory';
+        if (!expanded) selectChannel(activeChannel, false);
+      }
+
       function desktopAlert(item) {
         if (!('Notification' in window) || Notification.permission !== 'granted') return;
         const alert = new Notification(item.title, { body: item.message, tag: item.id, renotify: true });
         alert.onclick = function () { window.focus(); window.location.href = item.target_url || '/commerce/'; alert.close(); };
       }
-      function render(data) {
+      function renderCommerce(data) {
+        commerceData = data;
         document.dispatchEvent(new CustomEvent('inprofic:commerce-notifications', { detail: data }));
-        if (!data.enabled || !data.unread_count || !data.notifications.length) {
-          dock.classList.add('hidden');
-          setExpanded(false);
-          latestId = null;
-          initialized = true;
-          suppressNextAnnouncement = false;
-          return;
+        const notices = Array.isArray(data.notifications) ? data.notifications : [];
+        if (commerceList) commerceList.replaceChildren();
+        if (data.enabled && notices.length && commerceList) {
+          notices.forEach(item => {
+            const row = document.createElement('article');
+            row.className = 'px-4 py-3 transition hover:bg-stone-50';
+            const top = document.createElement('div'); top.className = 'flex items-start justify-between gap-3';
+            const copy = document.createElement('div'); copy.className = 'min-w-0';
+            const label = document.createElement('span');
+            label.className = (item.event_type === 'payment_review' || item.event_type === 'payment_claim') ? 'inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-rose-800' : 'inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-900';
+            label.textContent = item.event_type === 'payment_claim' ? 'Needs verification' : item.event_type === 'payment_review' ? 'Needs attention' : item.event_type.replaceAll('_', ' ');
+            const heading = document.createElement('h2'); heading.className = 'mt-1.5 text-sm font-semibold leading-5 text-stone-900'; heading.textContent = item.title;
+            const detail = document.createElement('p'); detail.className = 'mt-0.5 text-xs leading-4 text-stone-500'; detail.textContent = item.message;
+            copy.append(label, heading, detail);
+            const itemTime = document.createElement('time'); itemTime.className = 'shrink-0 pt-0.5 text-[10px] text-stone-400'; itemTime.textContent = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric' }).format(new Date(item.created_at));
+            top.append(copy, itemTime);
+            const actions = document.createElement('div'); actions.className = 'mt-2 flex items-center gap-3';
+            const openItem = document.createElement('a'); openItem.href = item.target_url || '/commerce/'; openItem.className = 'text-[11px] font-semibold text-[#d14900] hover:underline'; openItem.textContent = 'Open';
+            const readItem = document.createElement('button'); readItem.type = 'button'; readItem.dataset.notificationId = item.id; readItem.className = 'commerce-notification-read text-[11px] font-semibold text-stone-400 hover:text-stone-800'; readItem.textContent = 'Mark read';
+            actions.append(openItem, readItem); row.append(top, actions); commerceList.append(row);
+          });
         }
-        const newest = data.notifications[0];
-        count.textContent = data.unread_count;
-        plural.textContent = data.unread_count === 1 ? '' : 's';
-        list.replaceChildren();
-        data.notifications.forEach(item => {
-          const row = document.createElement('article');
-          row.className = 'px-4 py-3 transition hover:bg-stone-50';
-          const top = document.createElement('div');
-          top.className = 'flex items-start justify-between gap-3';
-          const copy = document.createElement('div');
-          copy.className = 'min-w-0';
-          const label = document.createElement('span');
-          label.className = item.event_type === 'payment_review'
-            ? 'inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-rose-800'
-            : 'inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-900';
-          label.textContent = item.event_type === 'payment_review' ? 'Needs attention' : item.event_type.replaceAll('_', ' ');
-          const heading = document.createElement('h2');
-          heading.className = 'mt-1.5 text-sm font-semibold leading-5 text-stone-900';
-          heading.textContent = item.title;
-          const detail = document.createElement('p');
-          detail.className = 'mt-0.5 text-xs leading-4 text-stone-500';
-          detail.textContent = item.message;
-          copy.append(label, heading, detail);
-          const itemTime = document.createElement('time');
-          itemTime.className = 'shrink-0 pt-0.5 text-[10px] text-stone-400';
-          itemTime.textContent = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric' }).format(new Date(item.created_at));
-          top.append(copy, itemTime);
-          const actions = document.createElement('div');
-          actions.className = 'mt-2 flex items-center gap-3';
-          const openItem = document.createElement('a');
-          openItem.href = item.target_url || '/commerce/';
-          openItem.className = 'text-[11px] font-semibold text-[#d14900] hover:underline';
-          openItem.textContent = 'Open';
-          const readItem = document.createElement('button');
-          readItem.type = 'button';
-          readItem.dataset.notificationId = item.id;
-          readItem.className = 'commerce-notification-read text-[11px] font-semibold text-stone-400 hover:text-stone-800';
-          readItem.textContent = 'Mark read';
-          actions.append(openItem, readItem);
-          row.append(top, actions);
-          list.append(row);
+        const newest = notices[0] || null;
+        if (commerceInitialized && newest && latestCommerceId !== newest.id && !suppressNextCommerceDesktop && data.desktop_enabled) desktopAlert(newest);
+        suppressNextCommerceDesktop = false;
+        latestCommerceId = newest ? newest.id : null;
+        const currentCommerceIds = new Set(notices.map(item => item.id));
+        const commerceHasNew = notices.length > 0 && (!commerceInitialized || notices.some(item => !previousCommerceIds.has(item.id)));
+        syncPersistentSound('commerce', {
+          active: !!(data.enabled && data.unread_count && notices.length), enabled: data.sound_enabled,
+          repeat: data.sound_repeat_minutes, tune: data.sound_tune, signature: newest ? newest.id : '', immediate: commerceHasNew,
         });
-        dock.classList.remove('hidden');
-        if (initialized && latestId !== newest.id && !suppressNextAnnouncement) {
-          setExpanded(true);
-          if (data.sound_enabled) playSound();
-          if (data.desktop_enabled) desktopAlert(newest);
-        }
-        suppressNextAnnouncement = false;
-        latestId = newest.id;
-        initialized = true;
+        previousCommerceIds = currentCommerceIds;
+        commerceInitialized = true;
+        updateDock();
       }
-      async function poll() {
-        if (accessUnavailable || pageClosing) return;
+      function inventoryRow(item) {
+        const palette = {
+          raw_warning: ['Raw material','Warning','bg-amber-100 text-amber-900','border-amber-200'], raw_low: ['Raw material','LOW','bg-rose-100 text-rose-800','border-rose-300'],
+          finished_warning: ['Finished good','Warning','bg-yellow-100 text-amber-950','border-yellow-300'], finished_low: ['Finished good','LOW','bg-red-100 text-red-900','border-red-300'],
+        };
+        const meta = palette[item.type] || ['Stock','Alert','bg-stone-100 text-stone-800','border-stone-200'];
+        const row = document.createElement('article'); row.className = `p-3 border-l-4 ${meta[3]} bg-white`;
+        const badges = document.createElement('div'); badges.className = 'flex flex-wrap gap-1.5';
+        const resource = document.createElement('span'); resource.className = 'rounded-full bg-stone-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-stone-700'; resource.textContent = meta[0];
+        const severity = document.createElement('span'); severity.className = `rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${meta[2]}`; severity.textContent = meta[1];
+        badges.append(resource, severity);
+        const title = document.createElement('h3'); title.className = 'mt-1.5 text-sm font-semibold text-stone-900'; title.textContent = item.item_name;
+        const detail = document.createElement('p'); detail.className = 'mt-0.5 text-xs leading-5 text-stone-500'; detail.textContent = `Stock ${item.stock} ${item.unit} · reorder at ${item.reorder_level} ${item.unit}`;
+        const actions = document.createElement('div'); actions.className = 'mt-2 flex gap-3';
+        const open = document.createElement('a'); open.href = item.target_url; open.className = 'text-[11px] font-semibold text-[#d14900] hover:underline'; open.textContent = 'Open inventory';
+        const ack = document.createElement('button'); ack.type = 'button'; ack.dataset.alertId = item.id; ack.className = 'inventory-alert-ack text-[11px] font-semibold text-stone-500 hover:text-stone-900'; ack.textContent = 'Acknowledge for now';
+        actions.append(open, ack); row.append(badges, title, detail, actions); return row;
+      }
+      function renderInventory(data) {
+        inventoryData = data;
+        const alerts = Array.isArray(data.alerts) ? data.alerts : [];
+        if (rawList) rawList.replaceChildren();
+        if (finishedList) finishedList.replaceChildren();
+        alerts.forEach(item => {
+          const target = item.resource === 'finished_good' ? finishedList : rawList;
+          if (target) target.append(inventoryRow(item));
+        });
+        if (rawCount) rawCount.textContent = Number(data.raw_count || 0);
+        if (finishedCount) finishedCount.textContent = Number(data.finished_count || 0);
+        const resource = data.raw_count && data.finished_count ? 'both' : data.finished_count ? 'finished' : 'raw';
+        const currentInventoryIds = new Set(alerts.map(item => item.id));
+        const inventoryHasNew = alerts.some(item => !previousInventoryIds.has(item.id));
+        syncPersistentSound('inventory', {
+          active: !!(data.enabled && data.count && alerts.length), enabled: data.sound_enabled,
+          repeat: data.sound_repeat_minutes, tune: data.sound_tune, signature: alerts.map(item => item.id).sort().join('|'), immediate: inventoryHasNew,
+        });
+        previousInventoryIds = currentInventoryIds;
+        if (activeInventoryTab === 'raw' && !data.raw_count && data.finished_count) activeInventoryTab = 'finished';
+        else if (activeInventoryTab === 'finished' && !data.finished_count && data.raw_count) activeInventoryTab = 'raw';
+        selectInventoryTab(activeInventoryTab, false);
+        updateDock();
+      }
+
+      async function pollCommerce() {
+        if (!commerceAvailable || pageClosing) return;
         const sequence = ++refreshSequence;
         try {
-          const response = await fetch(dock.dataset.feedUrl, { headers: { 'Accept': 'application/json' }, cache: 'no-store' });
+          const response = await fetch(dock.dataset.feedUrl, { headers: { Accept: 'application/json' }, cache: 'no-store' });
           if (response.ok) {
             const data = await response.json();
             if (sequence !== refreshSequence) return;
-            render(data);
-            clearTimeout(timer);
-            if (!socketConnected) {
-              timer = setTimeout(poll, Math.max(5, data.poll_seconds || 8) * 1000);
-            }
+            renderCommerce(data);
+            clearTimeout(commerceTimer);
+            if (!socketConnected) commerceTimer = setTimeout(pollCommerce, Math.max(5, data.poll_seconds || 8) * 1000);
             return;
           }
           if (response.status === 401 || response.status === 403) {
-            accessUnavailable = true;
-            pageClosing = true;
-            clearTimeout(timer);
-            clearTimeout(reconnectTimer);
-            if (socket) socket.close();
-            dock.classList.add('hidden');
-            return;
+            commerceAvailable = false;
+            const button = document.getElementById('notification-channel-commerce'); if (button) button.classList.add('hidden');
+            updateDock(); return;
           }
-        } catch (error) { /* A later poll retries transient connectivity failures. */ }
-        if (sequence !== refreshSequence) return;
-        clearTimeout(timer);
-        timer = setTimeout(poll, 15000);
+        } catch (_error) { /* Retry below. */ }
+        clearTimeout(commerceTimer); commerceTimer = setTimeout(pollCommerce, 15000);
+      }
+      async function pollInventory() {
+        if (!inventoryAvailable || pageClosing) return;
+        try {
+          const response = await fetch(dock.dataset.inventoryFeedUrl, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+          if (response.ok) {
+            const data = await response.json(); renderInventory(data);
+            clearTimeout(inventoryTimer); inventoryTimer = setTimeout(pollInventory, Math.max(15, Math.min(300, data.poll_seconds || 45)) * 1000); return;
+          }
+          if (response.status === 401 || response.status === 403) {
+            inventoryAvailable = false;
+            const button = document.getElementById('notification-channel-inventory'); if (button) button.classList.add('hidden');
+            updateDock(); return;
+          }
+        } catch (_error) { /* Retry below. */ }
+        clearTimeout(inventoryTimer); inventoryTimer = setTimeout(pollInventory, 30000);
       }
       function connectSocket() {
-        if (!('WebSocket' in window) || pageClosing || accessUnavailable || socket) return;
+        if (!commerceAvailable || !('WebSocket' in window) || pageClosing || socket) return;
         const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const connection = new WebSocket(`${scheme}//${window.location.host}${dock.dataset.socketPath}`);
-        socket = connection;
-        connection.addEventListener('open', () => {
-          socketConnected = true;
-          reconnectAttempt = 0;
-          clearTimeout(timer);
-          clearTimeout(reconnectTimer);
-          poll();
-        });
+        const connection = new WebSocket(`${scheme}//${window.location.host}${dock.dataset.socketPath}`); socket = connection;
+        connection.addEventListener('open', () => { socketConnected = true; reconnectAttempt = 0; clearTimeout(commerceTimer); clearTimeout(reconnectTimer); pollCommerce(); });
         connection.addEventListener('message', event => {
           try {
             const message = JSON.parse(event.data);
-            if (message.type === 'notifications.changed') poll();
-            if (message.type === 'delivery.changed') {
-              document.dispatchEvent(new CustomEvent('inprofic:delivery-changed', { detail: message }));
-            }
-          } catch (error) { /* Ignore malformed transport messages. */ }
+            if (message.type === 'notifications.changed') pollCommerce();
+            if (message.type === 'delivery.changed') document.dispatchEvent(new CustomEvent('inprofic:delivery-changed', { detail: message }));
+          } catch (_error) { /* Ignore malformed transport messages. */ }
         });
         connection.addEventListener('close', () => {
-          if (socket === connection) socket = null;
-          socketConnected = false;
-          if (pageClosing) return;
-          clearTimeout(timer);
-          timer = setTimeout(poll, 1000);
-          const delay = Math.min(30000, 1000 * (2 ** reconnectAttempt)) + Math.random() * 500;
-          reconnectAttempt += 1;
-          clearTimeout(reconnectTimer);
-          reconnectTimer = setTimeout(connectSocket, delay);
+          if (socket === connection) socket = null; socketConnected = false;
+          if (pageClosing || !commerceAvailable) return;
+          clearTimeout(commerceTimer); commerceTimer = setTimeout(pollCommerce, 1000);
+          const delay = Math.min(30000, 1000 * (2 ** reconnectAttempt)) + Math.random() * 500; reconnectAttempt += 1;
+          clearTimeout(reconnectTimer); reconnectTimer = setTimeout(connectSocket, delay);
         });
         connection.addEventListener('error', () => connection.close());
       }
-      async function acknowledge(payload) {
-        const readButtons = list.querySelectorAll('.commerce-notification-read');
-        readButtons.forEach(button => { button.disabled = true; });
-        readAll.disabled = true;
+      async function acknowledgeCommerce(payload) {
+        if (!commerceAvailable || !commerceList) return;
+        const buttons = commerceList.querySelectorAll('.commerce-notification-read'); buttons.forEach(button => { button.disabled = true; });
+        if (commerceReadAll) commerceReadAll.disabled = true;
         try {
-          const response = await fetch(dock.dataset.readUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken(), 'Accept': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-          if (response.ok) {
-            suppressNextAnnouncement = true;
-            await poll();
-          }
+          const response = await fetch(dock.dataset.readUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken(), Accept: 'application/json' }, body: JSON.stringify(payload) });
+          if (response.ok) { suppressNextCommerceDesktop = true; await pollCommerce(); }
         } finally {
-          readButtons.forEach(button => { button.disabled = false; });
-          readAll.disabled = false;
+          buttons.forEach(button => { button.disabled = false; }); if (commerceReadAll) commerceReadAll.disabled = false;
         }
       }
-      minimize.addEventListener('click', () => setExpanded(expand.getAttribute('aria-expanded') !== 'true'));
-      expand.addEventListener('click', () => setExpanded(expand.getAttribute('aria-expanded') !== 'true'));
-      list.addEventListener('click', event => {
-        const button = event.target.closest('.commerce-notification-read');
-        if (button) acknowledge({ notification_ids: [button.dataset.notificationId] });
-      });
-      readAll.addEventListener('click', () => acknowledge({ all: true }));
-      document.addEventListener('click', event => {
-        if (expand.getAttribute('aria-expanded') === 'true' && !dock.contains(event.target)) setExpanded(false);
-      });
-      document.addEventListener('keydown', event => { if (event.key === 'Escape') setExpanded(false); });
-      document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) { poll(); connectSocket(); }
-      });
-      window.addEventListener('pagehide', () => {
-        pageClosing = true;
-        clearTimeout(timer);
-        clearTimeout(reconnectTimer);
-        if (socket) socket.close();
-      });
-      // Avoid competing with the page's critical render path. The socket's
-      // open handler performs the first feed refresh, so starting both a poll
-      // and a socket here used to create two near-simultaneous authenticated
-      // requests after every full-page navigation.
-      const startNotifications = () => {
-        if ('WebSocket' in window) connectSocket();
-        else poll();
-      };
-      if ('requestIdleCallback' in window) {
-        window.requestIdleCallback(startNotifications, { timeout: 1000 });
-      } else {
-        window.setTimeout(startNotifications, 250);
+      async function acknowledgeInventory(id) {
+        if (!inventoryAvailable) return;
+        const response = await fetch(dock.dataset.inventoryAckUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken(), Accept: 'application/json' }, body: JSON.stringify({ alert_ids: [id] }) });
+        if (response.ok) pollInventory();
       }
+
+      channelButtons.forEach(button => button.addEventListener('click', () => { selectChannel(button.dataset.alertChannel, true); setExpanded(true); }));
+      inventoryTabs.forEach(button => button.addEventListener('click', () => selectInventoryTab(button.dataset.inventoryTab, true)));
+      expand.addEventListener('click', () => setExpanded(!expanded));
+      minimize.addEventListener('click', () => setExpanded(!expanded));
+      if (commerceList) commerceList.addEventListener('click', event => { const button = event.target.closest('.commerce-notification-read'); if (button) acknowledgeCommerce({ notification_ids: [button.dataset.notificationId] }); });
+      if (commerceReadAll) commerceReadAll.addEventListener('click', () => acknowledgeCommerce({ all: true }));
+      [rawList, finishedList].filter(Boolean).forEach(list => list.addEventListener('click', event => { const button = event.target.closest('.inventory-alert-ack'); if (button) acknowledgeInventory(button.dataset.alertId); }));
+      document.addEventListener('click', event => { if (expanded && !dock.contains(event.target)) setExpanded(false); });
+      document.addEventListener('keydown', event => { if (event.key === 'Escape') setExpanded(false); });
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (commerceAvailable) { pollCommerce(); connectSocket(); } if (inventoryAvailable) pollInventory(); } });
+      window.addEventListener('pagehide', () => {
+        pageClosing = true; clearTimeout(commerceTimer); clearTimeout(inventoryTimer); clearTimeout(reconnectTimer);
+        clearTimeout(soundState.commerce.timer); clearTimeout(soundState.inventory.timer); if (socket) socket.close(); if (audioContext) audioContext.close();
+      });
+
+      selectInventoryTab(activeInventoryTab, false);
+      selectChannel(activeChannel, false);
+      const startAlerts = () => {
+        if (commerceAvailable) { if ('WebSocket' in window) connectSocket(); else pollCommerce(); }
+        if (inventoryAvailable) pollInventory();
+      };
+      if ('requestIdleCallback' in window) window.requestIdleCallback(startAlerts, { timeout: 1000 });
+      else window.setTimeout(startAlerts, 250);
     });
   </script>
   {% endif %}
+
 
   <script>
     document.addEventListener("DOMContentLoaded", function () {
@@ -773,6 +972,7 @@
     });
   </script>
   {% endif %}
+
   {% include "pwa/install_prompt.html" %}
 </body>
 </html>

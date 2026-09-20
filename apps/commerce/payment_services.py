@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from urllib.parse import urlparse
 from uuid import uuid4
 
@@ -33,6 +34,7 @@ PAYMENT_METHOD_TO_SALE_METHOD = {
     CommercePayment.METHOD_PAYSTACK: "Card",
     CommercePayment.METHOD_MONNIFY: "Card",
     CommercePayment.METHOD_BANK_TRANSFER: "Transfer",
+    CommercePayment.METHOD_TRANSFER: "Transfer",
     CommercePayment.METHOD_CASH: "Cash",
     CommercePayment.METHOD_POS_CARD: "Card / POS",
 }
@@ -60,6 +62,7 @@ def _method_enabled(config, method):
         CommercePayment.METHOD_PAYSTACK: config.paystack_enabled,
         CommercePayment.METHOD_MONNIFY: config.monnify_enabled,
         CommercePayment.METHOD_BANK_TRANSFER: config.bank_transfer_enabled,
+        CommercePayment.METHOD_TRANSFER: config.transfer_enabled,
         CommercePayment.METHOD_CASH: config.cash_enabled,
         CommercePayment.METHOD_POS_CARD: config.paystack_terminal_enabled,
     }
@@ -73,14 +76,25 @@ def _configured_active_account(account, business):
 def eligible_payment_methods(business, *, surface="public"):
     """Return configured methods for the requested trust surface.
 
-    Public/headless commerce is gateway-confirmed only. Cash and physical POS
-    are intentionally available only on the authenticated in-premise staff UI.
+    Public/headless commerce may use provider-confirmed methods or the native
+    proof-backed Transfer method. Cash and physical POS card flows remain
+    available only on the authenticated in-premise staff UI.
     """
     config = payment_configuration(business)
     methods = []
     if surface == "pos":
         if config.cash_enabled and _configured_active_account(config.cash_account, business):
             methods.append({"code": CommercePayment.METHOD_CASH, "label": "Cash"})
+        if config.transfer_enabled and _configured_active_account(config.transfer_account, business):
+            methods.append({
+                "code": CommercePayment.METHOD_TRANSFER,
+                "label": "Transfer",
+                "confirmation": "staff_confirmation",
+                "bank_name": (config.bank_name or "").strip(),
+                "account_name": (config.bank_account_name or "").strip(),
+                "account_number": (config.bank_account_number or "").strip(),
+                "instructions": (config.bank_instructions or "").strip(),
+            })
         if (
             config.paystack_terminal_enabled
             and config.paystack_enabled
@@ -102,6 +116,19 @@ def eligible_payment_methods(business, *, surface="public"):
         and _configured_active_account(config.monnify_account, business)
     ):
         methods.append({"code": CommercePayment.METHOD_MONNIFY, "label": "Secure checkout (Monnify)"})
+    if (
+        config.transfer_enabled
+        and _configured_active_account(config.transfer_account, business)
+        and (config.bank_name or "").strip()
+        and (config.bank_account_name or "").strip()
+        and (config.bank_account_number or "").strip()
+    ):
+        methods.append({
+            "code": CommercePayment.METHOD_TRANSFER,
+            "label": "Transfer",
+            "requires_payment_proof": True,
+            "confirmation": "staff_review",
+        })
     if config.bank_transfer_enabled and _configured_active_account(config.bank_cash_account, business):
         provider = config.bank_transfer_provider
         provider_ready = False
@@ -130,6 +157,8 @@ def _assert_method_eligible(business, method, *, surface="public"):
 
 
 def _manual_instructions(config, method):
+    if method == CommercePayment.METHOD_TRANSFER:
+        return config.bank_instructions or "Transfer the exact amount to the account shown, then upload your payment proof. An authorized staff member will verify it before the order is marked paid."
     if method == CommercePayment.METHOD_BANK_TRANSFER:
         return "Transfer the exact amount to the temporary account shown. INPROFIC will confirm it automatically through the payment provider."
     if method == CommercePayment.METHOD_CASH:
@@ -170,7 +199,15 @@ def serialize_payment(payment, config=None):
         return None
     config = config or payment_configuration(payment.business)
     bank_account = None
-    if payment.method == CommercePayment.METHOD_BANK_TRANSFER:
+    if payment.method == CommercePayment.METHOD_TRANSFER:
+        bank_account = {
+            "bank_name": config.bank_name,
+            "account_name": config.bank_account_name,
+            "account_number": config.bank_account_number,
+            "account_expires_at": None,
+            "display_text": config.bank_instructions or "",
+        }
+    elif payment.method == CommercePayment.METHOD_BANK_TRANSFER:
         meta = payment.gateway_metadata or {}
         if meta.get("account_number"):
             bank_account = {
@@ -181,7 +218,9 @@ def serialize_payment(payment, config=None):
                 "display_text": meta.get("display_text", ""),
             }
     latest_claim = None
-    if payment.method == CommercePayment.METHOD_BANK_TRANSFER and not payment.gateway_provider:
+    if payment.method == CommercePayment.METHOD_TRANSFER or (
+        payment.method == CommercePayment.METHOD_BANK_TRANSFER and not payment.gateway_provider
+    ):
         latest_claim = payment.claims.order_by("-created_at", "-id").first()
     latest_receipt = payment.receipts.filter(reversed_at__isnull=True).order_by("-verified_at", "-id").first()
     return {
@@ -196,6 +235,7 @@ def serialize_payment(payment, config=None):
         "authorization_url": payment.authorization_url or "",
         "instructions": payment.instructions or "",
         "bank_account": bank_account,
+        "proof_required": payment.method == CommercePayment.METHOD_TRANSFER,
         "expires_at": payment.expires_at.isoformat() if payment.expires_at else None,
         "amount_paid": f"{payment.amount_paid:.2f}",
         "balance": f"{payment.balance:.2f}",
@@ -209,6 +249,7 @@ def serialize_payment(payment, config=None):
             "payer_name": latest_claim.payer_name,
             "transfer_reference": latest_claim.transfer_reference,
             "status": latest_claim.status,
+            "proof_received": bool(latest_claim.payment_proof),
             "submitted_at": latest_claim.created_at.isoformat(),
             "reviewed_at": latest_claim.reviewed_at.isoformat() if latest_claim.reviewed_at else None,
             "mismatch_reason": latest_claim.mismatch_reason,
@@ -221,6 +262,7 @@ def _account_for(config, method, business, actor):
         CommercePayment.METHOD_PAYSTACK: config.paystack_account,
         CommercePayment.METHOD_MONNIFY: config.monnify_account,
         CommercePayment.METHOD_BANK_TRANSFER: config.bank_cash_account,
+        CommercePayment.METHOD_TRANSFER: config.transfer_account,
         CommercePayment.METHOD_CASH: config.cash_account,
         CommercePayment.METHOD_POS_CARD: config.paystack_terminal_account,
     }.get(method)
@@ -385,7 +427,7 @@ def initiate_payment(*, intake=None, checkout=None, method, idempotency_key, ret
     # settlement; on SQLite its push-dispatch writer could race the financial
     # ledger write. The normal verified-payment notification is emitted once
     # settlement succeeds. Other payment methods retain the pending alert.
-    if payment_created and not (surface == "pos" and method == CommercePayment.METHOD_CASH):
+    if payment_created and not (surface == "pos" and method in {CommercePayment.METHOD_CASH, CommercePayment.METHOD_TRANSFER}):
         queue_commerce_notification(
             business=payment.business,
             event_type=CommerceNotification.EVENT_PAYMENT_STARTED,
@@ -401,10 +443,17 @@ def initiate_payment(*, intake=None, checkout=None, method, idempotency_key, ret
 
 
 @transaction.atomic
-def submit_bank_claim(*, payment, payer_name, transfer_reference):
+def submit_bank_claim(*, payment, payer_name, transfer_reference, payment_proof=None):
+    """Submit manual evidence for the native no-gateway Transfer flow.
+
+    The legacy no-gateway bank-transfer branch remains accepted for historical
+    records, but newly eligible public methods use METHOD_TRANSFER.
+    """
     payment = CommercePayment.raw_objects.select_for_update().get(pk=payment.pk, business=payment.business)
-    if payment.method != CommercePayment.METHOD_BANK_TRANSFER:
-        raise ValidationError("Transfer evidence can only be submitted for a bank-transfer payment.")
+    manual_transfer = payment.method == CommercePayment.METHOD_TRANSFER
+    legacy_manual = payment.method == CommercePayment.METHOD_BANK_TRANSFER and not payment.gateway_provider
+    if not (manual_transfer or legacy_manual):
+        raise ValidationError("Transfer evidence can only be submitted for a manual transfer payment.")
     if payment.gateway_provider:
         raise ValidationError("This bank transfer is verified automatically by the payment provider; no manual claim is required.")
     if payment.status in {CommercePayment.STATUS_PAID, CommercePayment.STATUS_CANCELLED, CommercePayment.STATUS_REFUNDED}:
@@ -413,6 +462,13 @@ def submit_bank_claim(*, payment, payer_name, transfer_reference):
     transfer_reference = (transfer_reference or "").strip().upper()
     if not payer_name or not transfer_reference:
         raise ValidationError("Payer name and transfer reference are required.")
+    if manual_transfer:
+        if payment_proof is None:
+            raise ValidationError("Attach the transfer payment proof before submitting.")
+        if getattr(payment_proof, "size", 0) > 10 * 1024 * 1024:
+            raise ValidationError("Payment proof must be 10 MB or smaller.")
+        if Path(getattr(payment_proof, "name", "")).suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp", ".pdf"}:
+            raise ValidationError("Payment proof must be a JPG, PNG, WEBP or PDF file.")
     existing = CommercePaymentClaim.raw_objects.filter(
         business=payment.business, transfer_reference=transfer_reference
     ).first()
@@ -426,6 +482,7 @@ def submit_bank_claim(*, payment, payer_name, transfer_reference):
             payment=payment,
             payer_name=payer_name,
             transfer_reference=transfer_reference,
+            payment_proof=payment_proof if manual_transfer else None,
         )
     except IntegrityError as exc:
         raise ValidationError("That transfer reference has already been submitted.") from exc
@@ -433,13 +490,13 @@ def submit_bank_claim(*, payment, payer_name, transfer_reference):
     payment.save(update_fields=["status", "updated_at"])
     audit(
         payment.business, None, "payment_claim", claim,
-        f"Bank transfer claim submitted for {_payment_display_reference(payment)}",
-        {"payment_reference": payment.reference, "transfer_reference": transfer_reference},
+        f"Transfer claim submitted for {_payment_display_reference(payment)}",
+        {"payment_reference": payment.reference, "transfer_reference": transfer_reference, "proof_received": bool(claim.payment_proof)},
     )
     queue_commerce_notification(
         business=payment.business,
         event_type=CommerceNotification.EVENT_PAYMENT_CLAIM,
-        title="Bank transfer claim needs verification",
+        title="Transfer claim needs verification",
         message=(
             f"{payer_name} submitted transfer reference {transfer_reference} "
             f"for payment {payment.reference}."
@@ -539,7 +596,7 @@ def _refresh_payment(payment):
     elif payment.gateway_provider or payment.method in {CommercePayment.METHOD_PAYSTACK, CommercePayment.METHOD_MONNIFY}:
         payment.status = CommercePayment.STATUS_AWAITING_CUSTOMER
         payment.settled_at = None
-    elif payment.method == CommercePayment.METHOD_BANK_TRANSFER and payment.claims.filter(status=CommercePaymentClaim.STATUS_SUBMITTED).exists():
+    elif payment.method in {CommercePayment.METHOD_TRANSFER, CommercePayment.METHOD_BANK_TRANSFER} and payment.claims.filter(status=CommercePaymentClaim.STATUS_SUBMITTED).exists():
         payment.status = CommercePayment.STATUS_AWAITING_VERIFICATION
         payment.settled_at = None
     else:
@@ -558,7 +615,7 @@ def _refresh_payment(payment):
 @transaction.atomic
 def record_verified_payment(
     *, payment, amount, actor, idempotency_key, external_reference="", note="",
-    location="", claim=None, verified_at=None,
+    location="", claim=None, verified_at=None, staff_pos_confirmed=False,
 ):
     payment = CommercePayment.raw_objects.select_for_update().select_related("intake", "checkout").get(
         pk=payment.pk, business=payment.business
@@ -577,13 +634,13 @@ def record_verified_payment(
         raise ValidationError("Confirmed amount must be greater than zero and cannot exceed the payment balance.")
     if payment.status == CommercePayment.STATUS_REFUNDED or (
         payment.status == CommercePayment.STATUS_CANCELLED
-        and payment.method in {CommercePayment.METHOD_BANK_TRANSFER, CommercePayment.METHOD_CASH}
+        and payment.method in {CommercePayment.METHOD_BANK_TRANSFER, CommercePayment.METHOD_TRANSFER, CommercePayment.METHOD_CASH}
     ):
         raise ValidationError("This payment cannot receive funds in its current state.")
-    if payment.method == CommercePayment.METHOD_BANK_TRANSFER and not payment.gateway_provider and claim is None:
+    if payment.method in {CommercePayment.METHOD_TRANSFER, CommercePayment.METHOD_BANK_TRANSFER} and not payment.gateway_provider and claim is None:
         claim = payment.claims.filter(status=CommercePaymentClaim.STATUS_SUBMITTED).order_by("created_at", "id").first()
-        if claim is None:
-            raise ValidationError("A submitted bank transfer claim is required before verification.")
+        if claim is None and not (payment.method == CommercePayment.METHOD_TRANSFER and staff_pos_confirmed and actor is not None):
+            raise ValidationError("A submitted transfer claim is required before verification.")
     external_reference = (external_reference or (claim.transfer_reference if claim else "")).strip()
     if external_reference and CommercePaymentReceipt.raw_objects.filter(
         business=payment.business, external_reference=external_reference

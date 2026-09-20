@@ -222,23 +222,29 @@ WEB_PUSH_VAPID_SUBJECT=mailto:your-admin-email@example.com
 Keep the private key stable and secret. Rotating the pair invalidates existing
 browser subscriptions and users must enable background alerts again.
 
-Immediate delivery is best-effort in a short daemon thread after the commerce
-transaction commits. For durable retries, create an additional cron-job.org
-job every 5 minutes:
+Immediate delivery is best-effort in a short daemon thread after the operational
+transaction commits. For durable retries and persistent Commerce, Inventory and
+rider reminders while users have INPROFIC backgrounded or closed, create an
+additional cron-job.org job every 1 minute:
 
 ```text
 POST https://<production-domain>/ops/dispatch-web-push/
 Authorization: Bearer <CRON_SECRET>
 ```
 
-The endpoint processes a bounded batch so it cannot monopolize the free Render
-instance. The existing daily `/ops/run-jobs/` maintenance schedule remains
-unchanged and does not run push delivery work.
+The endpoint processes a bounded batch so it cannot monopolize the web service.
+Run it at least as frequently as the shortest background reminder interval you
+intend to honor; the supported default is one minute. The existing daily
+`/ops/run-jobs/` maintenance schedule remains unchanged and does not run push
+delivery work.
 
-Users enable/disable Web Push per device from **Commerce settings → Browser &
-PWA alerts on this device**. Signing out deactivates that account's server-side
-push subscriptions for privacy; the user can explicitly enable the device again
-on a later session.
+Users enable/disable Web Push per device from the relevant operational surface:
+Commerce settings, Inventory alert settings, or the rider's My Deliveries
+workspace. Signing out deactivates that account's server-side push subscriptions
+for privacy; the user can explicitly enable the device again on a later session.
+INPROFIC's five selectable tunes are synthesized for foreground/in-app alerts.
+When the app/browser is backgrounded or closed, Web Push is durable and repeats
+when due, but the operating system/browser controls the notification sound.
 
 ### Tenant backups and Founder Console backup restore
 

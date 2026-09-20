@@ -45,7 +45,7 @@
       </div>
     </section>
 
-    <section class="mt-7 border-t border-[#E7DFCC] pt-6">
+    <section id="activity-notifications" class="mt-7 border-t border-[#E7DFCC] pt-6">
       <div class="mb-3">
         <h2 class="text-xs font-bold uppercase tracking-[0.16em] text-[#8f172d]">Activity notifications</h2>
         <p class="mt-1 text-xs leading-5 text-stone-500">INPROFIC checks every few seconds and keeps unread activity available to each staff member until they acknowledge it.</p>
@@ -54,8 +54,11 @@
         {% include "commerce/_settings_toggle.html" with field=form.notifications_enabled %}
         {% include "commerce/_settings_toggle.html" with field=form.notify_order_activity %}
         {% include "commerce/_settings_toggle.html" with field=form.notify_payment_activity %}
+        {% include "commerce/_settings_toggle.html" with field=form.notify_delivery_activity %}
         {% include "commerce/_settings_toggle.html" with field=form.notification_sound_enabled %}
         {% include "commerce/_settings_toggle.html" with field=form.notification_desktop_enabled %}
+        <div class="rounded-xl border border-[#E7DFCC] bg-white p-4">{% include '_field.html' with field=form.notification_sound_tune %}<p class="mt-1 text-[11px] leading-4 text-stone-500">The selected tune is synthesized in the foreground so the same pattern works without audio-file codec differences. Background Web Push uses the device notification sound.</p></div>
+        <div class="rounded-xl border border-[#E7DFCC] bg-white p-4">{% include '_field.html' with field=form.notification_sound_repeat_minutes %}<p class="mt-1 text-[11px] leading-4 text-stone-500">Unread alerts—including direct Transfer claims waiting for verification—keep repeating at this interval until they are read. Set 0 for new-alert sound only.</p></div>
       </div>
     </section>
 

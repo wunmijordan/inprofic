@@ -1,12 +1,15 @@
 import logging
-from decimal import Decimal
+from decimal import Decimal, ROUND_DOWN
 
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 
-from inventory.models import StockMovement
-from inventory.services import consume_transferred_physical_stock, record_finished_good_movement
+from inventory.models import FinishedGood, RawMaterial, StockMovement
+from inventory.services import (
+    consume_transferred_physical_stock, record_finished_good_movement,
+    record_raw_material_movement,
+)
 from production.models import Order, OrderItem, ProductionCostSnapshot
 from sales.models import Sale, SaleItem
 from core.services import audit
@@ -16,6 +19,26 @@ from .notification_services import queue_commerce_notification
 
 logger = logging.getLogger(__name__)
 
+
+
+EXTERNAL_SALES_CHANNELS = {
+    CommerceIntake.CHANNEL_ONLINE,
+    CommerceIntake.CHANNEL_DISTRIBUTION,
+}
+EXTERNAL_COMMERCE_SOURCES = {
+    CommerceIntake.SOURCE_STOREFRONT,
+    CommerceIntake.SOURCE_API,
+    CommerceIntake.SOURCE_CONNECTOR,
+}
+
+
+def validate_channel_for_source(source, channel):
+    if source in EXTERNAL_COMMERCE_SOURCES and channel not in EXTERNAL_SALES_CHANNELS:
+        raise ValidationError(
+            "External storefronts and integrations support online or distribution/bulk pricing only. "
+            "Physical-store pricing is reserved for the in-premise POS."
+        )
+    return channel
 
 
 def _current_unit_cost(good, on_date):
@@ -83,6 +106,7 @@ def create_intake(*, business, source, ordering_mode=None, sales_channel=None, c
     sales_channel, ordering_mode = resolve_channel_and_fulfilment(
         business=business, sales_channel=sales_channel, ordering_mode=ordering_mode
     )
+    validate_channel_for_source(source, sales_channel)
     if idempotency_key:
         existing = CommerceIntake.raw_objects.filter(business=business, source=source, idempotency_key=idempotency_key).first()
         if existing:
@@ -112,9 +136,10 @@ def create_intake(*, business, source, ordering_mode=None, sales_channel=None, c
         minimum = _channel_minimum(product, sales_channel)
         if sales_channel == CommerceIntake.CHANNEL_DISTRIBUTION and qty < minimum:
             labels = vertical_config(business)["commerce_channels"]
+            candidate_codes = (CommerceIntake.CHANNEL_ONLINE,) if source in EXTERNAL_COMMERCE_SOURCES else (CommerceIntake.CHANNEL_PHYSICAL_STORE, CommerceIntake.CHANNEL_ONLINE)
             alternatives = [
                 {"code": code, "label": labels[code]}
-                for code in (CommerceIntake.CHANNEL_PHYSICAL_STORE, CommerceIntake.CHANNEL_ONLINE)
+                for code in candidate_codes
                 if _channel_allowed(product, code)
             ]
             raise ChannelMinimumError(
@@ -176,6 +201,109 @@ def _commerce_payment_snapshot(intake):
     return "paid", method, receipt.account if receipt else None
 
 
+def _item_multiplier(item):
+    value = Decimal(getattr(item, "fulfilment_quantity_per_unit", None) or 1)
+    return value if value > 0 else Decimal("1")
+
+
+def _internal_quantity(item, customer_quantity):
+    return (Decimal(customer_quantity or 0) * _item_multiplier(item)).quantize(Decimal("0.01"))
+
+
+def _customer_available(item, internal_available):
+    return (Decimal(internal_available or 0) / _item_multiplier(item)).quantize(
+        Decimal("0.01"), rounding=ROUND_DOWN
+    )
+
+
+def _composition_scope_applies(intake, scope):
+    scope = (scope or "all").strip()
+    if scope == "all":
+        return True
+    if scope == "bulk":
+        return intake.sales_channel == CommerceIntake.CHANNEL_DISTRIBUTION
+    return scope == (intake.service_mode or "").strip()
+
+
+@transaction.atomic
+def consume_intake_item_assembly(intake, item, *, user=None):
+    """Consume snapshotted additional portion/package contents exactly once.
+
+    The base FinishedGood is handled by the existing stock/production flow.
+    Additional finished/procured goods and raw/packaging materials retain their
+    own inventory identity and are released only when their fulfilment scope
+    applies to this order.
+    """
+    locked_item = type(item).objects.select_for_update().get(pk=item.pk)
+    if locked_item.assembly_consumed_at:
+        return False
+    reference = intake.public_number
+    for row in locked_item.contents_snapshot or []:
+        kind = row.get("kind")
+        if kind == "base_product" or not _composition_scope_applies(intake, row.get("scope")):
+            continue
+        try:
+            quantity = Decimal(str(row.get("total_quantity") or 0))
+        except Exception as exc:
+            raise ValidationError("A saved package component has an invalid quantity.") from exc
+        if quantity <= 0:
+            continue
+        if kind == "finished_good":
+            component = FinishedGood.raw_objects.select_for_update().get(
+                pk=row.get("id"), business=intake.business
+            )
+            from .checkout_services import available_physical_stock
+            available = available_physical_stock(component)
+            if quantity > available:
+                raise ValidationError(
+                    f"{component.name} is required by {locked_item.finished_good.name}, "
+                    f"but only {available:.2f} {component.unit} is available."
+                )
+            unit_cost = _current_unit_cost(component, timezone.localdate())
+            record_finished_good_movement(
+                component, -quantity, StockMovement.FG_SALE,
+                note=f"Component used in commerce package {reference}", reference=reference,
+                affects_stock=True, unit_value=unit_cost,
+            )
+            consume_transferred_physical_stock(component, quantity)
+        elif kind == "raw_material":
+            material = RawMaterial.raw_objects.select_for_update().get(
+                pk=row.get("id"), business=intake.business
+            )
+            if quantity > Decimal(material.stock or 0):
+                raise ValidationError(
+                    f"{material.name} is required by {locked_item.finished_good.name}, "
+                    f"but only {material.stock:.3f} {material.usage_unit} is available."
+                )
+            record_raw_material_movement(
+                material, -quantity, StockMovement.RAW_CONSUMPTION,
+                note=f"Component used in commerce package {reference}", reference=reference,
+                unit_value=material.cost_per_unit,
+            )
+    locked_item.assembly_consumed_at = timezone.now()
+    locked_item.save(update_fields=["assembly_consumed_at"])
+    audit(
+        intake.business, user, "commerce_assembly_consume", intake,
+        f"Package contents consumed for {intake.public_number} / {locked_item.finished_good.name}",
+        {"intake_item_id": locked_item.pk},
+    )
+    item.assembly_consumed_at = locked_item.assembly_consumed_at
+    return True
+
+
+def consume_commerce_assembly_for_order(order, *, user=None):
+    good_ids = set(order.items.values_list("finished_good_id", flat=True))
+    intakes = CommerceIntake.raw_objects.filter(business=order.business).filter(
+        models.Q(accepted_order=order) | models.Q(split_order=order)
+    ).prefetch_related("items")
+    consumed = 0
+    for intake in intakes:
+        for item in intake.items.all():
+            if item.finished_good_id in good_ids and not item.assembly_consumed_at:
+                consumed += int(consume_intake_item_assembly(intake, item, user=user))
+    return consumed
+
+
 def _make_production_order(intake, quantities, *, user=None):
     payment_status, payment_method, payment_account = _commerce_payment_snapshot(intake)
     order = Order.raw_objects.create(
@@ -191,17 +319,21 @@ def _make_production_order(intake, quantities, *, user=None):
         unpaid_description=("" if payment_status == "paid" else "Customer receivable — payment to be recorded through Finance."),
         notes=f"Commerce {intake.public_number} — paid order intake awaiting production" if payment_status == "paid" else f"Commerce {intake.public_number} — made-to-order/pre-order demand",
     )
-    for item, qty in quantities:
-        if qty <= 0:
+    for item, customer_qty in quantities:
+        if customer_qty <= 0:
             continue
         if item.finished_good.is_purchased_for_resale:
             raise ValidationError(f"{item.finished_good.name} is purchased for resale and cannot enter a production order.")
+        internal_qty = _internal_quantity(item, customer_qty)
         OrderItem.objects.create(
-            order=order, finished_good=item.finished_good, batch_qty=Decimal("0"), piece_qty=qty,
-            production_batch_qty=Decimal("0"), production_piece_qty=qty, discount=Decimal("0"),
+            order=order, finished_good=item.finished_good, batch_qty=Decimal("0"), piece_qty=internal_qty,
+            production_batch_qty=Decimal("0"), production_piece_qty=internal_qty, discount=Decimal("0"),
             price=item.unit_price,
+            commercial_quantity=customer_qty,
+            commercial_unit=item.customer_unit or item.finished_good.unit,
+            commercial_unit_price=item.unit_price,
         )
-        item.production_quantity = qty
+        item.production_quantity = internal_qty
         item.save(update_fields=["production_quantity"])
     return order
 
@@ -213,25 +345,38 @@ def _make_physical_sale(intake, quantities, *, user=None):
         source=(f"{intake.sales_channel}_order" if intake.sales_channel in {"distribution", "online"} else "walkin"),
         service_mode=intake.service_mode, table_reference=intake.table_reference,
     )
-    for item, qty in quantities:
-        if qty <= 0: continue
+    for item, customer_qty in quantities:
+        if customer_qty <= 0:
+            continue
         good = item.finished_good
+        internal_qty = _internal_quantity(item, customer_qty)
         locked = type(good).raw_objects.select_for_update().get(pk=good.pk, business=intake.business)
         from .checkout_services import available_physical_stock
         checkout = getattr(intake, "checkout_session", None)
         available = available_physical_stock(locked, exclude_checkout=checkout)
-        if qty > available:
-            raise ValidationError(f"{good.name} stock changed; only {available:.2f} is now available.")
+        if internal_qty > available:
+            customer_available = _customer_available(item, available)
+            raise ValidationError(
+                f"{good.name} stock changed; only {customer_available:.2f} "
+                f"{item.customer_unit or good.unit} is now available."
+            )
         upb = good.units_per_batch or Decimal("1")
-        batches = qty // upb if upb else Decimal("0")
-        pieces = qty - batches * upb
+        batches = internal_qty // upb if upb else Decimal("0")
+        pieces = internal_qty - batches * upb
         price = item.unit_price
         unit_cost = _current_unit_cost(good, sale.date)
-        SaleItem.objects.create(sale=sale, finished_good=good, batch_qty=batches, piece_qty=pieces, discount=0, price=price, unit_cost=unit_cost)
-        record_finished_good_movement(good, -qty, StockMovement.FG_SALE, note=f"Commerce stock order {intake.public_number}", reference=intake.public_number, affects_stock=True, unit_value=unit_cost)
-        consume_transferred_physical_stock(good, qty)
-        item.accepted_stock_quantity = qty
+        SaleItem.objects.create(
+            sale=sale, finished_good=good, batch_qty=batches, piece_qty=pieces, discount=0,
+            price=price, unit_cost=unit_cost,
+            commercial_quantity=customer_qty,
+            commercial_unit=item.customer_unit or good.unit,
+            commercial_unit_price=item.unit_price,
+        )
+        record_finished_good_movement(good, -internal_qty, StockMovement.FG_SALE, note=f"Commerce stock order {intake.public_number}", reference=intake.public_number, affects_stock=True, unit_value=unit_cost)
+        consume_transferred_physical_stock(good, internal_qty)
+        item.accepted_stock_quantity = internal_qty
         item.save(update_fields=["accepted_stock_quantity"])
+        consume_intake_item_assembly(intake, item, user=user)
     return sale
 
 
@@ -289,7 +434,15 @@ def accept_intake(intake, *, user=None):
     from .checkout_services import available_physical_stock
     checkout = getattr(intake, "checkout_session", None)
     availability = [
-        (item, min(item.requested_quantity, available_physical_stock(item.finished_good, exclude_checkout=checkout)))
+        (
+            item,
+            min(
+                item.requested_quantity,
+                _customer_available(
+                    item, available_physical_stock(item.finished_good, exclude_checkout=checkout)
+                ),
+            ),
+        )
         for item in items
     ]
     shortages = [(item, item.requested_quantity - available) for item, available in availability if item.requested_quantity > available]
@@ -409,15 +562,23 @@ def attempt_auto_process_paid_intake(intake, *, user=None):
 
 @transaction.atomic
 def switch_intake_to_preorder(intake, *, user=None):
-    intake = CommerceIntake.raw_objects.select_for_update().prefetch_related("items__finished_good").get(pk=intake.pk)
+    intake = CommerceIntake.raw_objects.select_for_update().prefetch_related("items__finished_good", "items__individual_option").get(pk=intake.pk)
     if intake.status != CommerceIntake.STATUS_AWAITING_PREORDER:
         raise ValidationError("This request is not waiting for a Pre-order decision.")
     if not intake.business.uses_production:
         raise ValidationError("Pre-order production is not available for this service profile.")
     for item in intake.items.all():
-        if not item.storefront_product.allow_online_order:
-            raise ValidationError(f"{item.finished_good.name} does not allow Pre-order.")
-        item.unit_price = item.finished_good.selling_price_for("online")
+        if item.bulk_pack_id:
+            raise ValidationError("Bulk-pack orders cannot be converted into the standard Online channel. Start a new Online checkout instead.")
+        if item.individual_option_id:
+            option = item.individual_option
+            if not option.active or not option.online_enabled or option.online_price is None:
+                raise ValidationError(f"{option.name} is not available through the Online channel.")
+            item.unit_price = option.online_price
+        else:
+            if not item.storefront_product.allow_online_order:
+                raise ValidationError(f"{item.finished_good.name} does not allow Pre-order.")
+            item.unit_price = item.finished_good.selling_price_for("online")
         item.save(update_fields=["unit_price"])
     intake.ordering_mode = CommerceIntake.MODE_PREORDER
     intake.sales_channel = CommerceIntake.CHANNEL_ONLINE

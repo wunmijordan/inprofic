@@ -5,11 +5,36 @@
   <div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Delivery setup</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{{ title }}</h2>{% if form_intro %}<p class="mt-2 max-w-xl text-sm leading-6 text-stone-500">{{ form_intro }}</p>{% endif %}</div>
   <form method="post" class="rounded-xl border border-[#E7DFCC] bg-white p-4 sm:p-5 space-y-3">{% csrf_token %}
     {% if setup_tip %}<div class="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs leading-5 text-sky-900"><strong class="block">Good to know</strong>{{ setup_tip }}</div>{% endif %}
+    {% if form_notice %}<div {% if form_notice_scope %}data-provider-notice="{{ form_notice_scope }}"{% endif %} class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950"><strong class="block">Third-party account requirement</strong>{{ form_notice }}</div>{% endif %}
     {% if form.non_field_errors %}<div class="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{{ form.non_field_errors }}</div>{% endif %}
     {% for field in form %}{% include "_field.html" with field=field %}{% if field.name == "longitude" and location_label %}{% include "commerce/delivery/_location_picker.html" with latitude_selector="#id_latitude" longitude_selector="#id_longitude" radius_input_selector="#id_radius_km" picker_label=location_label %}{% endif %}{% endfor %}
     <div class="flex flex-wrap items-center justify-between gap-2 border-t border-stone-100 pt-3"><p class="text-[11px] text-stone-400">You can edit this setup later without changing completed delivery records.</p><div class="flex gap-2"><a href="{% url 'delivery_dashboard' %}" class="px-3 py-2 text-sm text-stone-500">Cancel</a><button class="rounded-md bg-[#8f172d] px-3 py-2 text-sm font-semibold text-white">Save</button></div></div>
   </form>
 </div>
+{% if form.provider_code %}
+<script>
+(() => {
+  const provider = document.getElementById('id_provider_code');
+  if (!provider) return;
+  const scoped = Array.from(document.querySelectorAll('[data-provider-scope]'));
+  const notices = Array.from(document.querySelectorAll('[data-provider-notice]'));
+  function syncProviderFields() {
+    const value = provider.value;
+    scoped.forEach((input) => {
+      const scope = input.dataset.providerScope;
+      const wrapper = input.closest('label');
+      if (!wrapper) return;
+      const visible = !scope || scope === value;
+      wrapper.classList.toggle('hidden', !visible);
+      if (!visible && input.type === 'checkbox' && !input.disabled) input.checked = false;
+    });
+    notices.forEach((notice) => notice.classList.toggle('hidden', notice.dataset.providerNotice !== value));
+  }
+  provider.addEventListener('change', syncProviderFields);
+  syncProviderFields();
+})();
+</script>
+{% endif %}
 {% if delivery_user_directory %}
   {{ delivery_user_directory|json_script:"delivery-user-directory" }}
   <script>

@@ -24,6 +24,7 @@ It applies to the repository unless a more-specific nested `AGENTS.md` overrides
 | `migration-safety` | Models/schema/migrations, especially when remote migrations may exist |
 | `systematic-debugging` | Tracebacks, silent forms, formsets, JS wiring, cross-app bugs |
 | `code-reviewer` | Deep review of substantial or cross-domain changes |
+| `release-communications` | User-visible feature additions/changes; keep marketing catalogue, social calendar and public integration docs synchronized |
 | `simplify` | Post-implementation cleanup and invariant check |
 
 All skill files live at `.codex/skills/<skill>/SKILL.md`.
@@ -38,6 +39,7 @@ All skill files live at `.codex/skills/<skill>/SKILL.md`.
 - Keep customer demand, planned production/offcut, unexpected excess, wastage, and shortage distinct.
 - Reversal is compensating/auditable; deletion must never be used as an implicit stock/finance reversal.
 - Inspect the actual latest migration files in the working tree before creating a new migration number.
+- Subscription/module entitlements gate user surfaces and authorization only; never use a disabled entitlement to suppress interconnected stock, sales, finance, payment, audit, or other domain records that the active workflow must keep synchronized.
 
 ## Validation
 

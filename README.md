@@ -36,9 +36,12 @@ what was borrowed and what was deliberately left out).
   transaction, with a shortage warning you can override.
 - **Reports** — CSV export for stock, procurement, production, sales, plus
   a full JSON backup.
+- **Shared operational alert tray** — one movable, access-aware tray keeps Commerce/Delivery and Inventory attention together without merging their read/snooze state; Inventory has separate Raw Materials and Finished Goods tabs, and both channels can repeat audible reminders until staff acts.
+- **Persistent inventory alerts** — separate warning/low conditions for raw materials and finished goods, with tenant-configurable repeat timing, repeating attention sounds, and per-user acknowledgement that never mutates stock.
+- **Commerce payments** — Paystack/Monnify, provider-backed instant bank transfer, and a native no-gateway **Transfer** mode that shows the tenant's bank details, requires proof on public/headless checkout, and uses explicit staff confirmation on in-premise POS.
 - **Delivery** — plan-gated delivery setup with mapped destination centres, radius/diagonal coverage guides,
   precise-address geocoding with map-pin fallback, in-house riders, true interchangeable Hybrid routing, external
-  providers and a built-in Glovo LaaS v2 plug-in, with live base-to-destination delivery-fee quoting before payment,
+  provider-neutral custom courier adapters plus an optional Founder-gated Glovo LaaS v2 plug-in, with live base-to-destination delivery-fee quoting before payment,
   customer tracking, proof-of-delivery records and delivery timelines across hosted storefront, POS and headless API.
 - **Audit Workspace** — plan-gated read-only cross-module evidence review for
   external auditors, with auditor queries/flags and response tracking for
@@ -218,3 +221,17 @@ references include `docs/DELIVERY_GLOVO_PROVIDER.md` and
 New tenant memberships receive a one-time, replayable dashboard tour with module-aware highlights, Previous/Next/Skip/Do-not-show-again controls and extensible animated illustrations. Existing memberships are not interrupted on rollout; use **Tour INPROFIC** to replay it. Optional per-step GIF/WebP/PNG/MP4/WebM media lives under `apps/core/static/core/tour/` and is configured without replacing the built-in artwork; see [`docs/ONBOARDING_TOUR.md`](docs/ONBOARDING_TOUR.md).
 
 For a detailed explanation of the stack, tenancy, access control, transaction flows, Commerce, Delivery, performance, deployment, security and common architecture-defense questions, read [`docs/INPROFIC_TECHNICAL_DEFENSE_GUIDE.md`](docs/INPROFIC_TECHNICAL_DEFENSE_GUIDE.md).
+
+
+### Commerce surface safety
+
+External storefronts/connectors/headless API expose Online and Distribution/Bulk pricing only; POS-only physical-store pricing never appears in those catalogue contracts and external checkout creation rejects that channel. Distribution/Bulk remains available in POS and external commerce with minimum quantity enforcement. Operational Commerce, Inventory and rider alerts use the durable Web Push outbox for background/closed-app reminders and configurable foreground alert tunes.
+
+- **Portion & Bulk Pack selling layer:** keep production in its real base unit while storefronts sell standard portions or vertical-friendly bulk packs; composed-product contents are customer-safe, and finished/procured components can remain independently publishable without exposing raw/packaging inventory.
+
+
+### Recent platform capabilities
+
+- **Founder product analytics:** first-party registration, login/logout, subscription milestone and throttled module-usage events surfaced in Founder Console without capturing form bodies or secrets.
+- **Unified form experience:** shared HTML5/Django validation states, animated contextual SVG field affordances and toggle switches across internal and hosted-storefront forms.
+- **Individual/plain selling options:** expose channel-aware add-ons/standalone portions from the same Finished Good stock/recipe, alongside composed Standard Portions and Bulk Packs. External surfaces remain Online + Distribution/Bulk only.

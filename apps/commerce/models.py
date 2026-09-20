@@ -8,6 +8,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models, transaction
 from django.utils import timezone
 
+from core.alert_tunes import ALERT_TUNE_CHOICES
 from core.models import BusinessOwnedModel, TimestampedModel
 
 
@@ -18,6 +19,15 @@ def storefront_product_image_upload_to(instance, filename):
         extension = ".jpg"
     business_id = instance.business_id or "unassigned"
     return f"commerce/products/business-{business_id}/{uuid.uuid4().hex}{extension}"
+
+
+def commerce_payment_proof_upload_to(instance, filename):
+    """Store transfer evidence in a tenant-partitioned path with a random name."""
+    extension = Path(filename or "").suffix.lower()
+    if extension not in {".jpeg", ".jpg", ".png", ".webp", ".pdf"}:
+        extension = ".bin"
+    business_id = instance.business_id or "unassigned"
+    return f"commerce/payment-proofs/business-{business_id}/{uuid.uuid4().hex}{extension}"
 
 
 def storefront_hero_image_upload_to(instance, filename):
@@ -111,7 +121,17 @@ class CommerceSettings(BusinessOwnedModel):
     )
     notification_sound_enabled = models.BooleanField(
         default=True,
-        help_text="Play a short sound when new activity arrives while INPROFIC is open.",
+        help_text="Play an alert sound while unread Commerce activity needs attention.",
+    )
+    notification_sound_repeat_minutes = models.PositiveSmallIntegerField(
+        default=2,
+        help_text="Repeat the Commerce alert sound while unread activity remains. Use 0 to sound only when activity first appears.",
+    )
+    notification_sound_tune = models.CharField(
+        max_length=24,
+        choices=ALERT_TUNE_CHOICES,
+        default="double_ping",
+        help_text="Foreground alert tune used by open INPROFIC pages and the installed app.",
     )
     notification_desktop_enabled = models.BooleanField(
         default=True,
@@ -147,14 +167,16 @@ class DeliverySettings(BusinessOwnedModel):
     HYBRID_ROUTE_LOWEST = "lowest_fee"
     HYBRID_ROUTE_FASTEST = "fastest_eta"
     HYBRID_ROUTE_INHOUSE_FIRST = "inhouse_first"
-    HYBRID_ROUTE_GLOVO_FIRST = "glovo_first"
+    # Keep the persisted value for backward compatibility; the routing policy is provider-neutral.
+    HYBRID_ROUTE_PROVIDER_FIRST = "glovo_first"
+    HYBRID_ROUTE_GLOVO_FIRST = HYBRID_ROUTE_PROVIDER_FIRST
     HYBRID_ROUTE_CHOICES = [
         (HYBRID_ROUTE_DISPATCHER, "Dispatcher chooses per order"),
         (HYBRID_ROUTE_CUSTOMER, "Customer chooses at checkout"),
         (HYBRID_ROUTE_LOWEST, "Automatically use the lowest fee"),
         (HYBRID_ROUTE_FASTEST, "Automatically use the fastest ETA"),
-        (HYBRID_ROUTE_INHOUSE_FIRST, "Prefer in-house; Glovo remains available"),
-        (HYBRID_ROUTE_GLOVO_FIRST, "Prefer Glovo; in-house remains available"),
+        (HYBRID_ROUTE_INHOUSE_FIRST, "Prefer in-house; delivery partner remains available"),
+        (HYBRID_ROUTE_PROVIDER_FIRST, "Prefer delivery partner; in-house remains available"),
     ]
     SWITCH_LOCKED = "locked"
     SWITCH_EQUAL_OR_LOWER = "equal_or_lower"
@@ -169,13 +191,25 @@ class DeliverySettings(BusinessOwnedModel):
 
     enabled = models.BooleanField(default=False)
     default_provider = models.CharField(max_length=16, choices=PROVIDER_CHOICES, default=PROVIDER_INHOUSE)
-    default_provider_account = models.ForeignKey("commerce.DeliveryProviderAccount", null=True, blank=True, on_delete=models.SET_NULL, related_name="default_for_settings", help_text="Optional configured plug-in provider account, such as Glovo. Leave blank for in-house/manual dispatch.")
+    default_provider_account = models.ForeignKey("commerce.DeliveryProviderAccount", null=True, blank=True, on_delete=models.SET_NULL, related_name="default_for_settings", help_text="Optional configured delivery-partner account. Leave blank for in-house dispatch.")
     hybrid_routing_policy = models.CharField(max_length=24, choices=HYBRID_ROUTE_CHOICES, default=HYBRID_ROUTE_DISPATCHER, help_text="When Hybrid is enabled, decide who/what chooses between in-house delivery and the configured provider.")
     hybrid_switch_policy = models.CharField(max_length=24, choices=SWITCH_POLICY_CHOICES, default=SWITCH_BUSINESS_ABSORBS, help_text="Controls whether dispatch staff may change the paid order's delivery method before pickup.")
     customer_switch_policy_note = models.CharField(max_length=255, blank=True, default="", help_text="Optional customer-facing clarification shown beside the standard Hybrid switching policy.")
     quote_valid_minutes = models.PositiveSmallIntegerField(default=20, validators=[MinValueValidator(5), MaxValueValidator(120)])
     customer_tracking_enabled = models.BooleanField(default=True)
     require_proof_of_delivery = models.BooleanField(default=False)
+    rider_alert_sound_enabled = models.BooleanField(
+        default=True,
+        help_text="Play repeating foreground alert sounds for riders who have an assigned delivery requiring attention.",
+    )
+    rider_alert_sound_repeat_minutes = models.PositiveSmallIntegerField(
+        default=2,
+        help_text="Repeat a rider alert while their unread delivery activity remains. Use 0 for new-alert sound only.",
+    )
+    rider_alert_sound_tune = models.CharField(
+        max_length=24, choices=ALERT_TUNE_CHOICES, default="urgent_pulse",
+        help_text="Foreground alert tune used for rider-only notification sessions.",
+    )
 
     @property
     def customer_switch_policy_text(self):
@@ -198,33 +232,34 @@ class DeliveryProviderAccount(BusinessOwnedModel):
 
     The delivery engine remains provider neutral: INPROFIC owns quotes, order
     totals, dispatch state and customer tracking. Provider accounts only add an
-    outbound/inbound bridge for partners such as Glovo.
+    outbound/inbound bridge for optional delivery partners.
     """
 
     PROVIDER_GENERIC = "generic"
     PROVIDER_GLOVO = "glovo"
     PROVIDER_CHOICES = [
-        (PROVIDER_GENERIC, "Generic courier / manual API"),
+        (PROVIDER_GENERIC, "Custom delivery partner"),
         (PROVIDER_GLOVO, "Glovo"),
     ]
 
-    name = models.CharField(max_length=100, default="Glovo")
-    provider_code = models.CharField(max_length=20, choices=PROVIDER_CHOICES, default=PROVIDER_GLOVO)
-    active = models.BooleanField(default=True)
+    name = models.CharField(max_length=100, default="Delivery partner")
+    provider_code = models.CharField(max_length=20, choices=PROVIDER_CHOICES, default=PROVIDER_GENERIC)
+    active = models.BooleanField(default=False)
     sandbox = models.BooleanField(default=True)
     auto_dispatch = models.BooleanField(default=False, help_text="When enabled, paid delivery checkouts are pushed to this provider automatically.")
     base_url = models.URLField(max_length=255, blank=True, default="", help_text="Provider API base URL issued for this tenant/environment by the provider.")
-    auth_endpoint = models.CharField(max_length=160, blank=True, default="/oauth/token", help_text="OAuth token endpoint. Glovo LaaS v2 uses /oauth/token.")
-    quote_endpoint = models.CharField(max_length=160, blank=True, default="", help_text="Relative/absolute quote endpoint. Glovo LaaS v2 uses /v2/laas/quotes.")
-    use_live_quotes = models.BooleanField(default=True, help_text="Use the provider's live quote/ETA when configured; hybrid mode can fall back to INPROFIC rate bands.")
+    health_endpoint = models.CharField(max_length=160, blank=True, default="", help_text="Optional non-mutating endpoint used to test a custom provider or adapter connection.")
+    auth_endpoint = models.CharField(max_length=160, blank=True, default="", help_text="Optional authentication endpoint used by a dedicated provider adapter.")
+    quote_endpoint = models.CharField(max_length=160, blank=True, default="", help_text="Optional live-quote endpoint used by a dedicated provider adapter.")
+    use_live_quotes = models.BooleanField(default=False, help_text="Use the provider's live quote/ETA when a dedicated provider adapter supports it; otherwise INPROFIC rate bands remain authoritative.")
     order_endpoint = models.CharField(max_length=160, blank=True, default="", help_text="Relative/absolute endpoint used to create a delivery job.")
     cancel_endpoint = models.CharField(max_length=160, blank=True, default="", help_text="Optional endpoint template for cancellation; {external_reference} is replaced when present.")
     api_key = models.CharField(max_length=255, blank=True, default="")
     api_secret = models.CharField(max_length=255, blank=True, default="")
-    store_id = models.CharField(max_length=120, blank=True, default="", help_text="Optional legacy/provider store identifier.")
-    address_book_id = models.CharField(max_length=120, blank=True, default="", help_text="Glovo LaaS Address Book pickup ID. Required for live Glovo quotes.")
+    store_id = models.CharField(max_length=120, blank=True, default="", help_text="Optional merchant, store or location identifier required by the configured delivery partner.")
+    address_book_id = models.CharField(max_length=120, blank=True, default="", help_text="Optional pickup/location identifier used by a dedicated provider adapter.")
     webhook_secret = models.CharField(max_length=255, blank=True, default="")
-    tracking_base_url = models.URLField(max_length=255, blank=True, default="")
+    tracking_base_url = models.URLField(max_length=255, blank=True, default="", help_text="Optional public tracking URL or template. Use {external_reference} as the courier-reference placeholder.")
     status_mapping = models.JSONField(default=dict, blank=True, help_text='Map provider statuses to INPROFIC statuses. Example: {"delivered": "delivered"}.')
     metadata = models.JSONField(default=dict, blank=True)
 
@@ -237,12 +272,30 @@ class DeliveryProviderAccount(BusinessOwnedModel):
 
     @property
     def is_configured_for_dispatch(self):
+        """Whether this account can participate in delivery operations.
+
+        A custom partner may be intentionally manual: INPROFIC still owns the
+        quote, routing, assignment, tracking timeline and staff controls.
+        Automatic dispatch is validated separately.
+        """
         if self.provider_code == self.PROVIDER_GLOVO:
             return bool(
                 self.active and self.use_live_quotes and self.is_configured_for_quote
                 and self.order_endpoint
             )
-        return bool(self.active and self.order_endpoint and (self.api_key or self.api_secret))
+        return bool(self.active)
+
+    @property
+    def is_configured_for_automatic_dispatch(self):
+        if self.provider_code == self.PROVIDER_GLOVO:
+            return self.is_configured_for_dispatch
+        metadata = self.metadata if isinstance(self.metadata, dict) else {}
+        auth_type = str(metadata.get("auth_type") or "api_key").strip().lower()
+        has_auth = bool(
+            self.api_key or self.api_secret or metadata.get("headers")
+            or auth_type == "none"
+        )
+        return bool(self.active and self.order_endpoint and has_auth)
 
     @property
     def is_configured_for_quote(self):
@@ -605,6 +658,31 @@ class StorefrontProduct(BusinessOwnedModel):
     def distribution_price(self):
         return self.finished_good.selling_price_for("distribution")
 
+    @property
+    def customer_unit(self):
+        from inventory.portioning import customer_unit
+        return customer_unit(self.finished_good)
+
+    @property
+    def standard_base_quantity(self):
+        from inventory.portioning import standard_multiplier
+        return standard_multiplier(self.finished_good)
+
+    @property
+    def standard_public_contents(self):
+        from inventory.portioning import public_contents
+        return public_contents(self.finished_good)
+
+    @property
+    def bulk_pack_options(self):
+        from inventory.portioning import active_bulk_packs
+        return active_bulk_packs(self.finished_good)
+
+    @property
+    def individual_sale_options(self):
+        from inventory.portioning import active_individual_options
+        return active_individual_options(self.finished_good)
+
     def __str__(self):
         return self.display_name
 
@@ -743,6 +821,22 @@ class CommerceIntakeItem(models.Model):
     accepted_stock_quantity = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     production_quantity = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     unit_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    bulk_pack = models.ForeignKey(
+        "inventory.BulkPackProfile", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="commerce_intake_items",
+    )
+    individual_option = models.ForeignKey(
+        "inventory.IndividualSaleOption", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="commerce_intake_items",
+    )
+    customer_unit = models.CharField(max_length=100, blank=True, default="")
+    fulfilment_quantity_per_unit = models.DecimalField(max_digits=14, decimal_places=3, default=1)
+    contents_snapshot = models.JSONField(default=list, blank=True)
+    assembly_consumed_at = models.DateTimeField(null=True, blank=True)
+
+    @property
+    def fulfilment_quantity(self):
+        return self.requested_quantity * self.fulfilment_quantity_per_unit
 
     @property
     def line_total(self):
@@ -841,6 +935,17 @@ class CommerceCheckoutItem(models.Model):
     reserved_stock_quantity = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     production_quantity = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     unit_price = models.DecimalField(max_digits=14, decimal_places=2)
+    bulk_pack = models.ForeignKey(
+        "inventory.BulkPackProfile", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="commerce_checkout_items",
+    )
+    individual_option = models.ForeignKey(
+        "inventory.IndividualSaleOption", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="commerce_checkout_items",
+    )
+    customer_unit = models.CharField(max_length=100, blank=True, default="")
+    fulfilment_quantity_per_unit = models.DecimalField(max_digits=14, decimal_places=3, default=1)
+    contents_snapshot = models.JSONField(default=list, blank=True)
 
     class Meta:
         indexes = [models.Index(fields=["finished_good", "reserved_stock_quantity"], name="commerce_checkout_good_idx")]
@@ -907,6 +1012,14 @@ class CommercePaymentConfiguration(BusinessOwnedModel):
         "core.CashAccount", null=True, blank=True, on_delete=models.PROTECT,
         related_name="commerce_bank_transfer_configurations",
     )
+    transfer_enabled = models.BooleanField(
+        default=False,
+        help_text="Offer a direct bank transfer that does not use a payment gateway.",
+    )
+    transfer_account = models.ForeignKey(
+        "core.CashAccount", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="commerce_direct_transfer_configurations",
+    )
     cash_enabled = models.BooleanField(default=False)
     cash_instructions = models.CharField(max_length=255, blank=True, default="")
     cash_account = models.ForeignKey(
@@ -925,12 +1038,14 @@ class CommercePayment(BusinessOwnedModel):
     METHOD_PAYSTACK = "paystack"
     METHOD_MONNIFY = "monnify"
     METHOD_BANK_TRANSFER = "bank_transfer"
+    METHOD_TRANSFER = "transfer"
     METHOD_CASH = "cash"
     METHOD_POS_CARD = "pos_card"
     METHOD_CHOICES = [
         (METHOD_PAYSTACK, "Paystack secure checkout"),
         (METHOD_MONNIFY, "Monnify secure checkout"),
         (METHOD_BANK_TRANSFER, "Instant bank transfer"),
+        (METHOD_TRANSFER, "Transfer"),
         (METHOD_CASH, "Cash"),
         (METHOD_POS_CARD, "Card on POS terminal"),
     ]
@@ -1033,6 +1148,11 @@ class CommercePaymentClaim(BusinessOwnedModel):
     payment = models.ForeignKey(CommercePayment, on_delete=models.PROTECT, related_name="claims")
     payer_name = models.CharField(max_length=160)
     transfer_reference = models.CharField(max_length=160)
+    payment_proof = models.FileField(
+        upload_to=commerce_payment_proof_upload_to,
+        blank=True,
+        help_text="Customer-supplied transfer receipt/evidence. Required for new direct Transfer claims.",
+    )
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_SUBMITTED)
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
@@ -1158,6 +1278,7 @@ class CommerceNotification(BusinessOwnedModel):
     EVENT_DELIVERY_SWITCH = "delivery_switch"
     EVENT_DELIVERY_ISSUE = "delivery_issue"
     EVENT_DELIVERY_PROVIDER = "delivery_provider"
+    EVENT_INVENTORY_ALERT = "inventory_alert"
     EVENT_CHOICES = [
         (EVENT_CHECKOUT_RECEIVED, "Checkout received"),
         (EVENT_INTAKE_RECEIVED, "Order received"),
@@ -1171,6 +1292,7 @@ class CommerceNotification(BusinessOwnedModel):
         (EVENT_DELIVERY_SWITCH, "Delivery method switched"),
         (EVENT_DELIVERY_ISSUE, "Delivery issue raised"),
         (EVENT_DELIVERY_PROVIDER, "Delivery provider update"),
+        (EVENT_INVENTORY_ALERT, "Inventory stock alert"),
     ]
     ORDER_EVENTS = {EVENT_CHECKOUT_RECEIVED, EVENT_INTAKE_RECEIVED}
     PAYMENT_EVENTS = {
@@ -1183,6 +1305,7 @@ class CommerceNotification(BusinessOwnedModel):
         EVENT_DELIVERY_CREATED, EVENT_DELIVERY_ASSIGNED, EVENT_DELIVERY_STATUS,
         EVENT_DELIVERY_SWITCH, EVENT_DELIVERY_ISSUE, EVENT_DELIVERY_PROVIDER,
     }
+    INVENTORY_EVENTS = {EVENT_INVENTORY_ALERT}
 
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     event_type = models.CharField(max_length=28, choices=EVENT_CHOICES)

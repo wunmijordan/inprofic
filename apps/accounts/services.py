@@ -280,7 +280,12 @@ def seed_business_modules(business, source=BusinessModuleAccess.SOURCE_DEFAULT):
 
 
 def business_has_module(business, module):
-    """Return the business entitlement. Explicit disabled rows are a hard ceiling.
+    """Return the business entitlement used to gate user-facing access.
+
+    This function is an authorization/UI ceiling, not a domain-persistence switch.
+    Cross-module services must keep authoritative stock, sales, finance, payment,
+    audit and related records synchronized even when this returns False, so a later
+    plan upgrade reveals complete history rather than starting sync at upgrade time.
 
     Existing businesses with no subscription keep the current missing-row=enabled
     rule. Once a subscription exists, expiry is enforced dynamically even before

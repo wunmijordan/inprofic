@@ -335,3 +335,47 @@ def vertical_config(business):
     config["pos"] = POS_CONFIG.get(key, POS_CONFIG[Business.VERTICAL_GENERAL])
     config["product_sources"] = PRODUCT_SOURCE_LABELS.get(key, PRODUCT_SOURCE_LABELS[Business.VERTICAL_GENERAL])
     return config
+
+
+def bulk_package_type_choices(business):
+    """Customer-facing bulk container/pack vocabulary by business vertical.
+
+    Stored values remain simple stable strings so changing labels later does
+    not rewrite historical orders.  A custom option remains available for
+    businesses whose packaging is not represented by the common list.
+    """
+    common = [
+        ("pack", "Pack"), ("box", "Box"), ("carton", "Carton"),
+        ("crate", "Crate"), ("tray", "Tray"), ("bundle", "Bundle"),
+        ("bag", "Bag"), ("set", "Set"), ("container", "Container"),
+        ("custom", "Other / custom"),
+    ]
+    vertical = getattr(business, "vertical", None)
+    if vertical == Business.VERTICAL_RESTAURANT:
+        return [
+            ("bowl", "Bowl"), ("tray", "Tray"), ("platter", "Platter"),
+            ("pan", "Pan"), ("bucket", "Bucket"), ("food_pack", "Food pack"),
+            ("box", "Box"), ("cooler", "Cooler"), ("bottle", "Bottle"),
+            ("jug", "Jug"), ("container", "Container"), ("custom", "Other / custom"),
+        ]
+    if vertical == Business.VERTICAL_BAKERY:
+        return [
+            ("box", "Box"), ("tray", "Tray"), ("pack", "Pack"),
+            ("carton", "Carton"), ("dozen", "Dozen"), ("crate", "Crate"),
+            ("bag", "Bag"), ("basket", "Basket"), ("bundle", "Bundle"),
+            ("custom", "Other / custom"),
+        ]
+    if vertical == Business.VERTICAL_WHOLESALE:
+        return [
+            ("carton", "Carton"), ("case", "Case"), ("crate", "Crate"),
+            ("pallet", "Pallet"), ("sack", "Sack"), ("bag", "Bag"),
+            ("bundle", "Bundle"), ("drum", "Drum"), ("box", "Box"),
+            ("pack", "Pack"), ("custom", "Other / custom"),
+        ]
+    if vertical == Business.VERTICAL_RETAIL:
+        return [
+            ("pack", "Pack"), ("box", "Box"), ("carton", "Carton"),
+            ("case", "Case"), ("bundle", "Bundle"), ("bag", "Bag"),
+            ("set", "Set"), ("crate", "Crate"), ("custom", "Other / custom"),
+        ]
+    return common

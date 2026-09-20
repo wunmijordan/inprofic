@@ -165,6 +165,18 @@ class SaleItem(TimestampedModel):
     discount = models.DecimalField(max_digits=12, decimal_places=2, default=0, blank=True)
     price = models.DecimalField(max_digits=12, decimal_places=2, default=0,
         help_text="Snapshot of the product's selling price at sale time — set automatically.")
+    commercial_quantity = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        help_text="Optional customer-facing quantity snapshot for commerce portion/bulk sales.",
+    )
+    commercial_unit = models.CharField(
+        max_length=100, blank=True, default="",
+        help_text="Customer-facing unit snapshot for commerce portion/bulk sales.",
+    )
+    commercial_unit_price = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        help_text="Exact customer-facing unit price snapshot for commerce portion/bulk sales.",
+    )
     unit_cost = models.DecimalField(max_digits=16, decimal_places=6, null=True, blank=True,
         help_text="Product cost per unit captured at the time of sale.")
     production_batch = models.ForeignKey("production.ProductionBatch", null=True, blank=True, on_delete=models.SET_NULL, related_name="sale_items")
@@ -179,6 +191,8 @@ class SaleItem(TimestampedModel):
 
     @property
     def line_total(self):
+        if self.commercial_quantity is not None and self.commercial_unit_price is not None:
+            return self.commercial_quantity * self.commercial_unit_price
         return self.total_units * ((self.price or Decimal("0")) - (self.discount or Decimal("0")))
 
 

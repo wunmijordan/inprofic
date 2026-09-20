@@ -195,7 +195,7 @@ Owns the public/staff digital commerce boundary:
 - web-push subscriptions/outbox records;
 - optional tenant storefront customer accounts;
 - delivery configuration, zones, providers, drivers, quotes, assignments, events and issues;
-- provider adapters including Glovo LaaS v2;
+- provider-neutral custom courier adapters plus the optional Founder-gated Glovo LaaS v2 adapter;
 - hosted storefront, in-premise POS and headless API flows.
 
 This app division keeps domain responsibilities readable without pretending they are independent systems. They intentionally connect through service-layer functions and explicit foreign keys.
@@ -567,9 +567,9 @@ Geocoding candidates can be cached. Coverage remains an INPROFIC decision, not a
 A delivery assignment resolves to a real execution method:
 
 - in-house;
-- configured external provider such as Glovo.
+- configured external delivery partner (including the optional Glovo adapter when Founder-enabled).
 
-Hybrid means both are available rather than “Glovo with an emergency fallback.” Routing policies can include customer choice, dispatcher choice, lowest fee, fastest ETA, in-house first and provider first.
+Hybrid means both are available rather than “one named courier with an emergency fallback.” Routing policies can include customer choice, dispatcher choice, lowest fee, fastest ETA, in-house first and provider first.
 
 The tenant also controls post-payment switching rules. The customer-facing switch policy is snapshotted and shown before payment so a later administrative settings change does not silently alter the promise accepted by the customer.
 
@@ -579,7 +579,7 @@ A Delivery Rider is a dedicated staff access profile tied to an active driver. T
 
 ### Glovo adapter
 
-Glovo LaaS v2 is a provider plug-in. Tenant credentials remain tenant-owned. Live quote, paid-order parcel dispatch, tracking-link retrieval, cancellation and webhook status sync attach to INPROFIC's own delivery quote/assignment/event model.
+Glovo LaaS v2 is a Founder-gated optional provider adapter. Tenant credentials remain tenant-owned, the tenant connection stays inactive until configured, and disabling platform availability preserves saved configuration while blocking runtime execution. Live quote, paid-order parcel dispatch, tracking-link retrieval, cancellation and webhook status sync attach to INPROFIC's own delivery quote/assignment/event model.
 
 Provider callbacks update delivery state/timeline; they do not directly mutate stock, production or finance.
 

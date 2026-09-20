@@ -13,7 +13,7 @@ USER_OVERRIDE_MODULES = tuple(RoleModulePermission.MODULE_CHOICES)
 class BusinessSignupForm(forms.Form):
     business_name = forms.CharField(max_length=120, label="Business name")
     vertical = forms.ChoiceField(label="Service", choices=Business.VERTICAL_CHOICES)
-    fullname = forms.CharField(max_length=160, label="Your full name")
+    fullname = forms.CharField(max_length=160, label="Full Name")
     username = forms.CharField(max_length=80)
     email = forms.EmailField()
     phone = forms.CharField(max_length=30, required=False)

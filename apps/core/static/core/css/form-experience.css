@@ -1,0 +1,30 @@
+/* INPROFIC form experience v2 — shared by internal and hosted storefront forms. */
+.cf-field, .inprofic-field-shell { position: relative; }
+.inprofic-control-wrap { position: relative; display: block; }
+.inprofic-control-wrap > :is(input,select,textarea) { width: 100%; transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease, transform .18s ease; }
+.inprofic-control-wrap[data-icon] > :is(input,select) { padding-left: 2.35rem !important; }
+.inprofic-input-icon { position:absolute; left:.72rem; top:50%; width:1rem; height:1rem; transform:translateY(-50%); pointer-events:none; color:color-mix(in srgb,var(--tenant-button,#D14900) 62%,#78716c); opacity:.72; transition:transform .22s ease,color .22s ease,opacity .22s ease; }
+.inprofic-control-wrap:focus-within .inprofic-input-icon { color:var(--tenant-button,#D14900); opacity:1; transform:translateY(-50%) scale(1.12); }
+.inprofic-input-icon path,.inprofic-input-icon circle,.inprofic-input-icon rect,.inprofic-input-icon line { vector-effect:non-scaling-stroke; }
+.inprofic-control-wrap:focus-within .inprofic-input-icon [data-draw] { stroke-dasharray:32; animation:inproficIconDraw .55s ease both; }
+@keyframes inproficIconDraw { from{stroke-dashoffset:32} to{stroke-dashoffset:0} }
+@keyframes inproficFieldInvalid { 0%,100%{transform:translateX(0)} 30%{transform:translateX(-3px)} 60%{transform:translateX(3px)} }
+@keyframes inproficFieldValid { 0%{transform:scale(.985)} 65%{transform:scale(1.008)} 100%{transform:scale(1)} }
+.inprofic-control-wrap.is-invalid > :is(input,select,textarea),
+.field-has-error .inprofic-control-wrap > :is(input,select,textarea) { border-color:#e11d48 !important; box-shadow:0 0 0 3px rgba(225,29,72,.10) !important; animation:inproficFieldInvalid .28s ease; }
+.inprofic-control-wrap.is-valid > :is(input,select,textarea) { border-color:#059669 !important; box-shadow:0 0 0 3px rgba(5,150,105,.08) !important; animation:inproficFieldValid .28s ease; }
+.inprofic-validation-mark { position:absolute; right:.72rem; top:50%; width:1rem; height:1rem; transform:translateY(-50%) scale(.78); opacity:0; pointer-events:none; transition:opacity .16s ease,transform .2s ease; }
+.inprofic-control-wrap.is-valid .inprofic-validation-mark[data-state="valid"], .inprofic-control-wrap.is-invalid .inprofic-validation-mark[data-state="invalid"] { opacity:1; transform:translateY(-50%) scale(1); }
+.inprofic-validation-mark[data-state="valid"]{color:#059669}.inprofic-validation-mark[data-state="invalid"]{color:#e11d48}
+.inprofic-control-wrap.has-validation-mark > :is(input,select) { padding-right:2.25rem !important; }
+.inprofic-client-message { display:block; max-height:0; overflow:hidden; opacity:0; color:#be123c; font-size:.68rem; line-height:1rem; transition:max-height .18s ease,opacity .18s ease,margin .18s ease; }
+.inprofic-client-message[data-visible="true"] { max-height:2.5rem; opacity:1; margin-top:.28rem; }
+@media (prefers-reduced-motion: reduce){.inprofic-control-wrap > :is(input,select,textarea),.inprofic-input-icon,.inprofic-validation-mark,.inprofic-client-message{transition:none!important;animation:none!important}}
+/* Shared toggle skin for standalone/hosted pages that do not load workspace.css. */
+.cf-switch{position:relative;display:inline-flex;height:1.65rem;width:3rem;align-items:center;vertical-align:middle}
+.cf-switch>input[type="checkbox"]{position:absolute!important;inset:0!important;z-index:2;width:100%!important;height:100%!important;margin:0!important;cursor:pointer;opacity:0!important}
+.cf-switch-track{position:absolute;inset:0;border-radius:999px;background:#d6d3d1;box-shadow:inset 0 0 0 1px rgba(87,83,78,.12);transition:background .18s ease,box-shadow .18s ease}
+.cf-switch-thumb{position:absolute;left:.2rem;top:.2rem;width:1.25rem;height:1.25rem;border-radius:999px;background:white;box-shadow:0 2px 6px rgba(0,0,0,.22);transition:transform .18s ease}
+.cf-switch>input[type="checkbox"]:checked+.cf-switch-track{background:var(--tenant-button,var(--brand,#D14900))}
+.cf-switch>input[type="checkbox"]:checked+.cf-switch-track .cf-switch-thumb{transform:translateX(1.35rem)}
+.cf-switch>input[type="checkbox"]:focus-visible+.cf-switch-track{outline:3px solid color-mix(in srgb,var(--tenant-button,var(--brand,#D14900)) 22%,transparent);outline-offset:2px}

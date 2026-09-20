@@ -71,7 +71,7 @@ class CommerceNotificationTests(TestCase):
         request = {
             "business": self.business,
             "source": CommerceIntake.SOURCE_API,
-            "order_mode": "physical_store",
+            "order_mode": "online",
             "customer": {"name": "Ada"},
             "items": [{"storefront_product": self.product, "quantity": "2"}],
             "idempotency_key": "notification-checkout",
@@ -174,6 +174,8 @@ class CommerceNotificationTests(TestCase):
         response = self.client.get(reverse("commerce_notification_feed"))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["unread_count"], 2)
+        self.assertTrue(response.json()["sound_enabled"])
+        self.assertEqual(response.json()["sound_repeat_minutes"], 2)
         self.assertEqual(
             {row["title"] for row in response.json()["notifications"]},
             {"Own order", "Own payment claim"},
@@ -324,7 +326,7 @@ class CommerceNotificationTests(TestCase):
         )
         response = self.client.post(reverse("storefront_order", args=[self.business.slug]), {
             "checkout_key": "hosted-basket-one",
-            "order_mode": "physical_store",
+            "order_mode": "online",
             "customer_name": "Amina Shopper",
             "phone": "+2348000000000",
             "product_id": [str(self.product.public_id), str(other_product.public_id)],
@@ -403,7 +405,7 @@ class CommerceNotificationTests(TestCase):
     def test_hosted_checkout_requires_phone_but_not_email(self):
         response = self.client.post(reverse("storefront_order", args=[self.business.slug]), {
             "checkout_key": "hosted-without-phone",
-            "order_mode": "physical_store",
+            "order_mode": "online",
             "customer_name": "Phone Required",
             "product_id": [str(self.product.public_id)],
             "quantity": ["1"],

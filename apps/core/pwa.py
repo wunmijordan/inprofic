@@ -175,7 +175,7 @@ self.addEventListener('push', (event) => {{
       body: data.body || '',
       icon: data.icon || '/static/core/pwa/icon-192.png',
       badge: data.badge || '/static/core/pwa/icon-192.png',
-      tag: data.id ? `commerce-${{data.id}}` : 'commerce-notification',
+      tag: data.id ? `${{data.channel || 'commerce'}}-${{data.id}}` : `${{data.channel || 'commerce'}}-notification`,
       renotify: true,
       data: {{ url: target, notificationId: data.id || '' }},
     }});

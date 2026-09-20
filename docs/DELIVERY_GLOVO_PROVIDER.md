@@ -1,6 +1,6 @@
-# Delivery engine and Glovo LaaS v2 plug-in
+# Delivery engine, custom providers and optional Glovo LaaS v2 adapter
 
-INPROFIC's delivery system remains provider-neutral. INPROFIC owns the checkout delivery amount, quote snapshot, dispatch assignment, customer tracking surface, proof of delivery and immutable delivery-event timeline. Glovo is an optional provider plug-in available out of the box to each tenant; it does not replace the in-house or hybrid delivery workflows.
+INPROFIC's delivery system remains provider-neutral. INPROFIC owns the checkout delivery amount, quote snapshot, dispatch assignment, customer tracking surface, proof of delivery and immutable delivery-event timeline. Businesses can configure their own delivery partners as manual couriers or through the provider-neutral Delivery Adapter v1 contract. Glovo is only an optional built-in adapter, exposed when the Founder enables it platform-wide; it does not replace the in-house, custom-provider or hybrid delivery workflows.
 
 ## Entitlement and permissions
 
@@ -20,11 +20,15 @@ Removing the plan entitlement blocks new quotes/dispatch actions even when a use
 
 - `inhouse` — INPROFIC distance/rate bands, in-house drivers and POD;
 - `third_party` — a configured provider account is authoritative for dispatch;
-- `hybrid` — in-house and the configured provider remain simultaneously available. Routing can be customer choice, dispatcher choice, lowest fee, fastest ETA, in-house first or Glovo first. A paid order resolves to a real method (`inhouse` or `third_party`); `hybrid` itself is never treated as a courier.
+- `hybrid` — in-house and the configured provider remain simultaneously available. Routing can be customer choice, dispatcher choice, lowest fee, fastest ETA, in-house first or delivery-partner first. A paid order resolves to a real method (`inhouse` or `third_party`); `hybrid` itself is never treated as a courier.
 
-Each business gets a seeded **Glovo** `DeliveryProviderAccount`. It is inert until that tenant enters the credentials and environment details supplied by Glovo.
+Custom delivery-partner accounts are always available when the Delivery module is available. They can remain manual, or use the provider-neutral API adapter for dispatch/status synchronization. A dormant built-in **Glovo** account is created only while the Founder-level Glovo switch is enabled. Existing Glovo configuration is preserved when that switch is later turned off, but it is hidden and cannot execute until re-enabled.
 
-## Glovo onboarding values
+## Founder gate and Glovo onboarding values
+
+The Founder Console controls whether the built-in Glovo adapter exists as an available option. The platform switch is **off by default**. Turning it off removes Glovo from tenant/customer/API-facing runtime surfaces and blocks Glovo quote, dispatch, cancellation and webhook execution without deleting tenant credentials or historical delivery records. Turning it on only makes the adapter available; each business must still configure and activate its own approved Glovo account. INPROFIC does not provide or resell Glovo accounts and does not imply official Glovo partnership status.
+
+### Glovo onboarding values
 
 Open **Delivery → Provider plug-ins → Glovo** and enter the values issued for that tenant/environment:
 
@@ -115,7 +119,8 @@ Every inbound provider status creates a delivery event and audit-log entry. Prov
 - Provider credentials are tenant-owned server-side fields and never rendered into the public storefront.
 - Webhook authorization must match the tenant's stored partner secret.
 - Delivery remains plan-gated independently of Commerce.
-- Glovo remains a plug-in. In-house and hybrid operation continue without it.
+- Glovo remains a Founder-gated adapter. In-house, custom-provider and hybrid operation continue without it.
+- Hiding Delivery through a tenant plan blocks new user actions/surfaces but does not stop status callbacks for already-created assignments; synchronization continues underneath for upgrade continuity. The Founder Glovo switch is the stronger platform kill switch and blocks Glovo callbacks when off.
 
 
 ## In-house rider workspace

@@ -1,5 +1,6 @@
 from django import forms
 from django.forms import inlineformset_factory
+from core.forms import ExistingAwareInlineFormSet
 from django.db.models import Q
 from .models import Customer, Sale, SaleItem, CustomerProductPrice
 from core.models import CashAccount
@@ -106,7 +107,7 @@ class SaleItemForm(StyledModelForm):
         ).order_by("name")
 
 
-SaleItemFormSet = inlineformset_factory(Sale, SaleItem, form=SaleItemForm, extra=1, can_delete=True)
+SaleItemFormSet = inlineformset_factory(Sale, SaleItem, form=SaleItemForm, formset=ExistingAwareInlineFormSet, extra=1, can_delete=True)
 
 
 class CustomerProductPriceForm(StyledModelForm):
@@ -123,5 +124,6 @@ class CustomerProductPriceForm(StyledModelForm):
 
 CustomerProductPriceFormSet = inlineformset_factory(
     Customer, CustomerProductPrice, form=CustomerProductPriceForm,
+    formset=ExistingAwareInlineFormSet,
     extra=1, can_delete=True,
 )

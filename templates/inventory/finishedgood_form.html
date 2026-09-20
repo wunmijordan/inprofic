@@ -32,6 +32,126 @@
       {% endif %}
     </section>
 
+    <section class="cf-form-section mb-4" id="portion-config-section">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <span class="cf-form-section-title block mb-1">Selling portions &amp; product contents</span>
+          <p class="max-w-3xl text-[11px] leading-5 text-stone-500">Keep the product's base unit operational (for example scoop, piece, ml or bottle), then describe what customers buy. Existing products remain 1:1 unless this is enabled.</p>
+        </div>
+        <label class="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[#E7DFCC] bg-[#FAF8F1] px-3 py-2 text-xs font-semibold text-stone-700">
+          <span class="cf-switch">{{ portion_form.active }}<span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span>
+          Standard portion
+        </label>
+      </div>
+      {% if portion_form.non_field_errors %}<div class="mt-2 rounded-md border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">{{ portion_form.non_field_errors }}</div>{% endif %}
+      <div id="standard-portion-fields" class="mt-3 rounded-xl border border-[#E7DFCC] bg-white p-3">
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {% include "_field.html" with field=portion_form.customer_quantity %}
+          {% include "_field.html" with field=portion_form.customer_unit %}
+          {% include "_field.html" with field=portion_form.base_quantity %}
+          {% include "_field.html" with field=portion_form.public_note %}
+        </div>
+        <div id="portion-equation" class="mt-2 rounded-lg bg-[#FAF8F1] px-3 py-2 text-xs text-stone-600">Enable the standard portion to map a customer-facing unit onto the product's base unit.</div>
+      </div>
+
+      <div class="mt-5 flex items-end justify-between gap-3">
+        <div>
+          <p class="text-xs font-bold uppercase tracking-[.14em] text-stone-500">Individual / plain selling options</p>
+          <p class="mt-1 max-w-3xl text-[11px] leading-5 text-stone-400">Expose this same finished product separately without the standard portion's additional sides or packaging. Each option uses the existing stock/production balance and can be priced independently by channel.</p>
+        </div>
+      </div>
+      {{ individual_option_formset.management_form }}
+      {% if individual_option_formset.non_form_errors %}<div class="mt-2 rounded-md border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">{{ individual_option_formset.non_form_errors }}</div>{% endif %}
+      <div class="mt-2 overflow-hidden rounded-xl border border-[#E7DFCC]">
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[1540px] text-sm">
+            <thead class="bg-[#F0EAD9] text-[10px] font-bold uppercase tracking-wider text-stone-600"><tr>
+              <th class="px-2 py-2 text-left">Option name</th><th class="px-2 py-2 text-left">Qty</th><th class="px-2 py-2 text-left">Unit</th><th class="px-2 py-2 text-left">Base units</th><th class="px-2 py-2 text-left">Customer note</th>
+              <th class="px-2 py-2 text-center">Physical Store</th><th class="px-2 py-2 text-left">POS price</th><th class="px-2 py-2 text-left">POS min</th>
+              <th class="px-2 py-2 text-center">Online</th><th class="px-2 py-2 text-left">Online price</th><th class="px-2 py-2 text-left">Online min</th>
+              <th class="px-2 py-2 text-center">{{ bulk_channel_label }}</th><th class="px-2 py-2 text-left">Bulk price</th><th class="px-2 py-2 text-left">Bulk min</th>
+              <th class="px-2 py-2 text-center">Active</th><th class="px-2 py-2 text-left">Order</th><th class="w-16"></th>
+            </tr></thead>
+            <tbody id="individual-option-rows">
+              {% for f in individual_option_formset %}
+              <tr {% if forloop.first %}data-formset-row{% endif %} class="border-t border-[#E7DFCC]" data-individual-option-row>
+                <td class="px-2 py-2">{{ f.id }}{{ f.name }}{% for e in f.name.errors %}<span class="block text-[10px] text-rose-600">{{ e }}</span>{% endfor %}</td>
+                <td class="px-2 py-2">{{ f.customer_quantity }}</td><td class="px-2 py-2">{{ f.customer_unit }}</td><td class="px-2 py-2">{{ f.base_quantity }}</td><td class="px-2 py-2">{{ f.public_note }}</td>
+                <td class="px-2 py-2 text-center"><label class="inline-flex cursor-pointer"><span class="cf-switch">{{ f.physical_store_enabled }}<span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label></td><td class="px-2 py-2">{{ f.physical_store_price }}</td><td class="px-2 py-2">{{ f.physical_store_min_quantity }}</td>
+                <td class="px-2 py-2 text-center"><label class="inline-flex cursor-pointer"><span class="cf-switch">{{ f.online_enabled }}<span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label></td><td class="px-2 py-2">{{ f.online_price }}</td><td class="px-2 py-2">{{ f.online_min_quantity }}</td>
+                <td class="px-2 py-2 text-center"><label class="inline-flex cursor-pointer"><span class="cf-switch">{{ f.distribution_enabled }}<span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label></td><td class="px-2 py-2">{{ f.distribution_price }}</td><td class="px-2 py-2">{{ f.distribution_min_quantity }}</td>
+                <td class="px-2 py-2 text-center"><label class="inline-flex cursor-pointer"><span class="cf-switch">{{ f.active }}<span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label></td><td class="px-2 py-2">{{ f.sort_order }}</td>
+                <td class="px-2 py-2 text-center">{% if f.instance.pk %}<span class="hidden">{{ f.DELETE }}</span><button type="button" data-existing-formset-remove onclick="markExistingFormsetRowDeleted(this)" class="rounded px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50">Remove</button>{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <button type="button" id="add-individual-option" class="w-full border-t border-[#E7DFCC] py-2 text-xs font-semibold text-[#8f172d] hover:bg-[#F0EAD9]">+ Add individual option</button>
+      </div>
+
+      <div class="mt-5 flex items-end justify-between gap-3">
+        <div><p class="text-xs font-bold uppercase tracking-[.14em] text-stone-500">Bulk / distribution options</p><p class="mt-1 text-[11px] leading-5 text-stone-400">Optional customer-facing bulk sizes/containers. Each pack converts back to the same base unit before INPROFIC hands demand to the existing stock/production flow.</p></div>
+      </div>
+      {{ bulk_pack_formset.management_form }}
+      {% if bulk_pack_formset.non_form_errors %}<div class="mt-2 rounded-md border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">{{ bulk_pack_formset.non_form_errors }}</div>{% endif %}
+      <div class="mt-2 overflow-hidden rounded-xl border border-[#E7DFCC]">
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[980px] text-sm">
+            <thead class="bg-[#F0EAD9] text-[10px] font-bold uppercase tracking-wider text-stone-600"><tr><th class="px-2 py-2 text-left">Option name</th><th class="px-2 py-2 text-left">Container</th><th class="px-2 py-2 text-left">Size</th><th class="px-2 py-2 text-left">Measure unit</th><th class="px-2 py-2 text-left">Base units / option</th><th class="px-2 py-2 text-left">Price</th><th class="px-2 py-2 text-left">Minimum units</th><th class="px-2 py-2 text-center">Active</th><th class="px-2 py-2 text-left">Order</th><th class="w-16"></th></tr></thead>
+            <tbody id="bulk-pack-rows">
+              {% for f in bulk_pack_formset %}
+              <tr {% if forloop.first %}data-formset-row{% endif %} class="border-t border-[#E7DFCC]" data-bulk-pack-row>
+                <td class="px-2 py-2">{{ f.id }}{{ f.profile_key }}{{ f.name }}{% for e in f.name.errors %}<span class="block text-[10px] text-rose-600">{{ e }}</span>{% endfor %}</td>
+                <td class="px-2 py-2">{{ f.package_type }}{% for e in f.package_type.errors %}<span class="block text-[10px] text-rose-600">{{ e }}</span>{% endfor %}</td>
+                <td class="px-2 py-2">{{ f.customer_quantity }}{% for e in f.customer_quantity.errors %}<span class="block text-[10px] text-rose-600">{{ e }}</span>{% endfor %}</td>
+                <td class="px-2 py-2">{{ f.customer_unit }}{% for e in f.customer_unit.errors %}<span class="block text-[10px] text-rose-600">{{ e }}</span>{% endfor %}</td>
+                <td class="px-2 py-2">{{ f.base_quantity }}{% for e in f.base_quantity.errors %}<span class="block text-[10px] text-rose-600">{{ e }}</span>{% endfor %}</td>
+                <td class="px-2 py-2">{{ f.price }}{% for e in f.price.errors %}<span class="block text-[10px] text-rose-600">{{ e }}</span>{% endfor %}</td>
+                <td class="px-2 py-2">{{ f.min_order_quantity }}{% for e in f.min_order_quantity.errors %}<span class="block text-[10px] text-rose-600">{{ e }}</span>{% endfor %}</td>
+                <td class="px-2 py-2 text-center"><label class="inline-flex cursor-pointer"><span class="cf-switch">{{ f.active }}<span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label></td>
+                <td class="px-2 py-2">{{ f.sort_order }}</td>
+                <td class="px-2 py-2 text-center">{% if f.instance.pk %}<span class="hidden">{{ f.DELETE }}</span><button type="button" data-existing-formset-remove onclick="markExistingFormsetRowDeleted(this); syncCompositionTargets();" class="rounded px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50">Remove</button>{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <button type="button" id="add-bulk-pack" class="w-full border-t border-[#E7DFCC] py-2 text-xs font-semibold text-[#8f172d] hover:bg-[#F0EAD9]">+ Add bulk option</button>
+      </div>
+
+      <div class="mt-5">
+        <p class="text-xs font-bold uppercase tracking-[.14em] text-stone-500">Additional contents</p>
+        <p class="mt-1 text-[11px] leading-5 text-stone-400">The base product is already included automatically. Add only extra finished/procured goods, protein, sauce, packaging or other materials. Internal quantities are saved for operations; only items you mark public appear in the customer “What's included?” view.</p>
+      </div>
+      {{ composition_formset.management_form }}
+      {% if composition_formset.non_form_errors %}<div class="mt-2 rounded-md border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">{{ composition_formset.non_form_errors }}</div>{% endif %}
+      <div class="mt-2 overflow-hidden rounded-xl border border-[#E7DFCC]">
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[1180px] text-sm">
+            <thead class="bg-[#F0EAD9] text-[10px] font-bold uppercase tracking-wider text-stone-600"><tr><th class="px-2 py-2 text-left">Applies to</th><th class="px-2 py-2 text-left">Type</th><th class="px-2 py-2 text-left">Component</th><th class="px-2 py-2 text-left">Internal qty</th><th class="px-2 py-2 text-left">Unit</th><th class="px-2 py-2 text-left">When used</th><th class="px-2 py-2 text-left">Customer label</th><th class="px-2 py-2 text-left">Public amount</th><th class="px-2 py-2 text-center">Show publicly</th><th class="w-16"></th></tr></thead>
+            <tbody id="composition-rows">
+              {% for f in composition_formset %}
+              <tr {% if forloop.first %}data-formset-row{% endif %} class="border-t border-[#E7DFCC]" data-composition-row>
+                <td class="px-2 py-2">{{ f.id }}{{ f.profile_key }}{% for e in f.profile_key.errors %}<span class="block text-[10px] text-rose-600">{{ e }}</span>{% endfor %}</td>
+                <td class="px-2 py-2">{{ f.component_type }}</td>
+                <td class="px-2 py-2"><div data-component-finished>{{ f.component_finished_good }}{% for e in f.component_finished_good.errors %}<span class="block text-[10px] text-rose-600">{{ e }}</span>{% endfor %}</div><div data-component-raw>{{ f.component_raw_material }}{% for e in f.component_raw_material.errors %}<span class="block text-[10px] text-rose-600">{{ e }}</span>{% endfor %}</div></td>
+                <td class="px-2 py-2">{{ f.quantity }}{% for e in f.quantity.errors %}<span class="block text-[10px] text-rose-600">{{ e }}</span>{% endfor %}</td>
+                <td class="px-2 py-2 text-xs font-mono text-stone-500 component-unit">—</td>
+                <td class="px-2 py-2">{{ f.fulfilment_scope }}</td>
+                <td class="px-2 py-2">{{ f.public_label }}</td>
+                <td class="px-2 py-2">{{ f.public_quantity_label }}</td>
+                <td class="px-2 py-2 text-center"><label class="inline-flex cursor-pointer"><span class="cf-switch">{{ f.include_in_public_contents }}<span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label></td>
+                <td class="px-2 py-2 text-center">{% if f.instance.pk %}<span class="hidden">{{ f.DELETE }}</span><button type="button" data-existing-formset-remove onclick="markExistingFormsetRowDeleted(this)" class="rounded px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50">Remove</button>{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <button type="button" id="add-composition-item" class="w-full border-t border-[#E7DFCC] py-2 text-xs font-semibold text-[#8f172d] hover:bg-[#F0EAD9]">+ Add content item</button>
+      </div>
+    </section>
+
     <section class="cf-form-section mb-4">
     <span class="cf-form-section-title block mb-1">Channel selling prices</span>
     <p class="text-[11px] text-stone-400 mb-2">Optional channel-specific prices. If a channel is left blank, the default Selling Price above is used.</p>
@@ -140,7 +260,113 @@
 </div>
 </div>
 
-{% if vertical_ui.uses_production %}{{ raw_material_units|json_script:"raw-material-usage-units" }}
+{{ raw_material_units|json_script:"raw-material-usage-units" }}
+{{ finished_good_units|json_script:"finished-good-units" }}
+<script>
+  const portionRawUnits = JSON.parse(document.getElementById('raw-material-usage-units')?.textContent || '{}');
+  const portionFinishedUnits = JSON.parse(document.getElementById('finished-good-units')?.textContent || '{}');
+
+  function syncStandardPortionUI() {
+    const enabled = document.getElementById('id_portion-active')?.checked;
+    const fields = document.getElementById('standard-portion-fields');
+    if (fields) fields.classList.toggle('opacity-55', !enabled);
+    const baseUnit = document.getElementById('id_unit')?.value.trim() || 'base unit';
+    const customerQty = document.getElementById('id_portion-customer_quantity')?.value || '1';
+    const customerUnit = document.getElementById('id_portion-customer_unit')?.value.trim() || 'customer unit';
+    const baseQty = document.getElementById('id_portion-base_quantity')?.value || '1';
+    const equation = document.getElementById('portion-equation');
+    if (equation) equation.textContent = enabled
+      ? `${customerQty} ${customerUnit} = ${baseQty} ${baseUnit}. Customer orders are converted to ${baseUnit} before the existing production/stock flow runs.`
+      : `Standard selling stays 1 ${baseUnit} = 1 customer unit until this is enabled.`;
+  }
+
+  function bulkPackRows() {
+    return Array.from(document.querySelectorAll('#bulk-pack-rows [data-bulk-pack-row]')).filter(row => !row.classList.contains('hidden'));
+  }
+
+  function ensureBulkKey(row) {
+    const keyInput = row?.querySelector('input[name$="-profile_key"]');
+    if (!keyInput) return '';
+    if (!keyInput.value) {
+      const token = window.crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      keyInput.value = `bulk:${token}`;
+    }
+    return keyInput.value;
+  }
+
+  function syncCompositionTargets() {
+    const options = [{value:'standard', label:'Standard portion'}];
+    bulkPackRows().forEach(row => {
+      const name = row.querySelector('input[name$="-name"]')?.value.trim();
+      const key = ensureBulkKey(row);
+      if (name && key) options.push({value:key, label:`Bulk · ${name}`});
+    });
+    document.querySelectorAll('#composition-rows select[name$="-profile_key"]').forEach(select => {
+      const current = select.value;
+      select.replaceChildren(...options.map(option => {
+        const node = document.createElement('option');
+        node.value = option.value; node.textContent = option.label;
+        return node;
+      }));
+      if (options.some(option => option.value === current)) select.value = current;
+    });
+  }
+
+  function syncCompositionRow(row) {
+    if (!row) return;
+    const type = row.querySelector('select[name$="-component_type"]')?.value || 'finished_good';
+    const finishedWrap = row.querySelector('[data-component-finished]');
+    const rawWrap = row.querySelector('[data-component-raw]');
+    finishedWrap?.classList.toggle('hidden', type !== 'finished_good');
+    rawWrap?.classList.toggle('hidden', type !== 'raw_material');
+    const select = row.querySelector(type === 'finished_good' ? 'select[name$="-component_finished_good"]' : 'select[name$="-component_raw_material"]');
+    const unit = type === 'finished_good' ? portionFinishedUnits[String(select?.value || '')] : portionRawUnits[String(select?.value || '')];
+    const cell = row.querySelector('.component-unit');
+    if (cell) cell.textContent = unit || '—';
+  }
+
+  function syncAllCompositionRows() {
+    syncCompositionTargets();
+    document.querySelectorAll('#composition-rows [data-composition-row]').forEach(syncCompositionRow);
+  }
+
+  document.getElementById('add-individual-option')?.addEventListener('click', () => {
+    const row = addFormsetRow('individual_options', 'individual-option-rows');
+    if (!row) return;
+    row.dataset.individualOptionRow = '1';
+    ['customer_quantity','base_quantity','physical_store_min_quantity','online_min_quantity','distribution_min_quantity'].forEach(name => { const field=row.querySelector(`[name$="-${name}"]`); if(field && !field.value) field.value='1'; });
+    const active = row.querySelector('input[name$="-active"]'); if (active) active.checked = true;
+    const pos = row.querySelector('input[name$="-physical_store_enabled"]'); if (pos) pos.checked = true;
+    const online = row.querySelector('input[name$="-online_enabled"]'); if (online) online.checked = true;
+  });
+  document.getElementById('add-bulk-pack')?.addEventListener('click', () => {
+    const row = addFormsetRow('bulk_packs', 'bulk-pack-rows');
+    if (!row) return;
+    row.dataset.bulkPackRow = '1';
+    ensureBulkKey(row);
+    const active = row.querySelector('input[name$="-active"]'); if (active) active.checked = true;
+    ['customer_quantity','base_quantity','min_order_quantity'].forEach(name => { const field=row.querySelector(`[name$="-${name}"]`); if(field && !field.value) field.value='1'; });
+    syncCompositionTargets();
+  });
+  document.getElementById('add-composition-item')?.addEventListener('click', () => {
+    const row = addFormsetRow('composition_items', 'composition-rows');
+    if (!row) return;
+    row.dataset.compositionRow = '1';
+    const qty = row.querySelector('input[name$="-quantity"]'); if (qty) qty.value = '1';
+    syncCompositionTargets(); syncCompositionRow(row);
+  });
+  document.getElementById('bulk-pack-rows')?.addEventListener('input', event => {
+    if (event.target.matches('input[name$="-name"]')) syncCompositionTargets();
+  });
+  document.getElementById('composition-rows')?.addEventListener('change', event => {
+    if (event.target.matches('select[name$="-component_type"], select[name$="-component_finished_good"], select[name$="-component_raw_material"]')) syncCompositionRow(event.target.closest('[data-composition-row]'));
+  });
+  document.getElementById('id_portion-active')?.addEventListener('change', syncStandardPortionUI);
+  ['id_unit','id_portion-customer_quantity','id_portion-customer_unit','id_portion-base_quantity'].forEach(id => document.getElementById(id)?.addEventListener('input', syncStandardPortionUI));
+  document.addEventListener('DOMContentLoaded', () => { syncStandardPortionUI(); syncAllCompositionRows(); bulkPackRows().forEach(ensureBulkKey); });
+</script>
+
+{% if vertical_ui.uses_production %}
 <script>
   function syncProductSourceUI() {
     const source = document.getElementById('id_source_type');

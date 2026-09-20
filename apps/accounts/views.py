@@ -61,6 +61,12 @@ def signup(request):
                 start_trial_for_business(business)
             auth_login(request, user)
             request.session["active_business_id"] = business.pk
+            from .analytics import record_platform_event
+            from .models import PlatformEvent
+            record_platform_event(
+                PlatformEvent.EVENT_REGISTRATION, request=request, user=user, business=business,
+                metadata={"vertical": business.vertical},
+            )
             messages.success(request, f"Welcome to {business.name}. Your Business Admin account is ready.")
             return redirect("dashboard")
     else:
@@ -655,13 +661,14 @@ def founder_platform_user_delete(request, pk):
 @login_required
 def founder_subscriptions(request):
     from .forms import FounderGrantForm, BusinessRestoreForm, SubscriptionPromotionForm, MarketingPromoCampaignForm
-    from .models import BusinessSubscription, SubscriptionPlan, SubscriptionPayment, SubscriptionPaymentSettings, SubscriptionPromotion, MarketingPromoCampaign
+    from .models import BusinessSubscription, SubscriptionPlan, SubscriptionPayment, SubscriptionPaymentSettings, PlatformIntegrationSettings, SubscriptionPromotion, MarketingPromoCampaign
     from .subscription_services import ensure_default_plans, grant_founder_lifetime, mark_payment_paid, start_trial_for_business
     from .backup_restore import BackupRestoreError, analyze_backup, restore_backup
     if not request.user.is_superuser:
         return render(request, "403.html", status=403)
     ensure_default_plans()
     payment_settings = SubscriptionPaymentSettings.load()
+    integration_settings = PlatformIntegrationSettings.load()
     action = request.POST.get("action") if request.method == "POST" else ""
     form = FounderGrantForm(request.POST if action == "grant" else None)
     restore_form = BusinessRestoreForm(
@@ -914,6 +921,15 @@ def founder_subscriptions(request):
             ])
             messages.success(request, "Subscription payment channels updated. Existing payment callbacks remain active.")
             return redirect("founder_subscriptions")
+        if action == "save_platform_integrations":
+            integration_settings.glovo_enabled = request.POST.get("glovo_enabled") == "on"
+            integration_settings.updated_by = request.user
+            integration_settings.save(update_fields=["glovo_enabled", "updated_by", "updated_at"])
+            from .platform_integrations import set_glovo_platform_enabled
+            set_glovo_platform_enabled(integration_settings.glovo_enabled)
+            state = "available" if integration_settings.glovo_enabled else "hidden and unavailable"
+            messages.success(request, f"External integration availability updated. Optional delivery provider is now {state} outside the Founder Console.")
+            return redirect(f"{reverse('founder_subscriptions')}?workspace=management#platform-integrations")
         if action == "revoke_founder":
             from .subscription_services import revoke_founder_lifetime
             subscription = get_object_or_404(BusinessSubscription, pk=request.POST.get("subscription_id"))
@@ -933,12 +949,15 @@ def founder_subscriptions(request):
             | Q(email__icontains=platform_query)
             | Q(phone__icontains=platform_query)
         )
+    from .analytics import founder_analytics_summary
+    founder_analytics = founder_analytics_summary()
     return render(request, "accounts/founder_subscriptions.html", {
         "form": form,
         "subscriptions": subscriptions,
         "pending_payments": pending_payments,
         "plans": SubscriptionPlan.objects.prefetch_related("module_entitlements").all().order_by("monthly_price", "id"),
         "payment_settings": payment_settings,
+        "integration_settings": integration_settings,
         "restore_form": restore_form,
         "backup_restore_report": backup_restore_report,
         "promotion_form": promotion_form,
@@ -948,6 +967,7 @@ def founder_subscriptions(request):
         "campaign_editor_html": campaign_editor_html,
         "marketing_campaigns": MarketingPromoCampaign.objects.select_related("promotion__plan", "created_by").order_by("-active", "-priority", "id")[:50],
         "now": timezone.now(),
+        "founder_analytics": founder_analytics,
         "platform_stats": {
             "businesses": Business.objects.count(),
             "users": CustomUser.objects.count(),

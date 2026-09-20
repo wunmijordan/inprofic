@@ -163,7 +163,7 @@ main :is([data-pos-category][aria-pressed="false"],
   color: var(--ui-muted) !important;
 }
 
-.appearance-popover { border: 1px solid var(--ui-border); background: var(--ui-surface); color: var(--ui-text); box-shadow: var(--ui-shadow-raised); }
+.appearance-popover { border: 1px solid var(--ui-border); background: var(--ui-surface); color: var(--ui-text); box-shadow: var(--ui-shadow-raised); border-radius: var(--ui-card-radius); }
 .appearance-label { color: var(--ui-muted); font-size: .65rem; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; }
 .appearance-swatches { display: flex; flex-wrap: wrap; gap: .65rem; }
 .appearance-swatch, .background-swatch { width: 2rem; height: 2rem; flex: 0 0 auto; border: 1px solid rgba(255,255,255,.34); border-radius: 999px; box-shadow: 0 0 0 1px rgba(24,36,51,.14); }

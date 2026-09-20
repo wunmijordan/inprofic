@@ -134,3 +134,11 @@ Founder lifetime access applies the selected plan's exact module matrix with `Bu
 The tenant payment screen lists every service/business profile covered by the subscription, distinguishing the primary profile from discounted additional-service profiles. Monthly duration selections update the displayed amount immediately in the browser, while the server-side `payment_amount()` function remains authoritative when creating the Paystack/Monnify payment request. Plan and payment amounts are rendered with thousands separators and the application's IBM Plex Mono numeric style.
 
 The plan currently providing active access is visibly marked on its card. Its renewal payment remains locked until the final seven days before expiry, including during a trial; a founder lifetime grant stays permanently non-payable on its granted plan. Other plans remain selectable, but changing away from any active trial, paid plan or founder grant requires an explicit warning acknowledgement. INPROFIC enforces these rules server-side as well as in the browser, and does not change entitlements until a provider verifies payment.
+
+## Data continuity across plan changes
+
+Subscription/module entitlements control **which application surfaces a business may open and which actions its users may authorize**. They do not disable the internal consequences of an otherwise valid active workflow.
+
+For example, if a workflow that the current plan permits legitimately creates related stock, sale, payment, finance, delivery, audit or reporting records, INPROFIC keeps those records synchronized even when the destination module itself is hidden by the current plan. A later plan upgrade therefore reveals the already-complete tenant history; it does not begin bookkeeping only from the upgrade date.
+
+Implementation rule: `business_has_module()` belongs at request/navigation authorization boundaries. Domain services and signals must not use a disabled entitlement as a reason to skip required interconnected persistence. Records remain tenant-scoped and all ordinary transactional/audit invariants still apply.

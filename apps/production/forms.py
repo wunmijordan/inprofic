@@ -176,6 +176,8 @@ class OrderItemFormSetBase(BaseInlineFormSet):
         self.order_type = order_type or getattr(kwargs.get("instance"), "order_type", None)
         self.market_stock = bool(market_stock)
         super().__init__(*args, **kwargs)
+        if not self.is_bound and getattr(self.instance, "pk", None):
+            self.extra = 0 if self.get_queryset().exists() else 1
         made_in_house = FinishedGood.objects.filter(
             source_type=FinishedGood.SOURCE_MADE_IN_HOUSE
         )

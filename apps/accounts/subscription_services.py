@@ -26,6 +26,17 @@ from .models import (
 from .services import ensure_permissions, invalidate_business_access_cache, seed_business_roles
 
 
+def _track_subscription_event(event_type, subscription, *, user=None, metadata=None):
+    try:
+        from .analytics import record_platform_event
+        record_platform_event(
+            event_type, user=user, business=subscription.primary_business,
+            metadata={"plan": subscription.plan.code, **(metadata or {})},
+        )
+    except Exception:
+        pass
+
+
 # POS is an operational role permission, not a commercial plan entitlement.
 # This prevents a cashier from needing broad Commerce access simply to operate
 # the in-premise counter.
@@ -280,6 +291,8 @@ def start_trial_for_business(business, plan=None):
     if created:
         SubscriptionService.objects.create(subscription=subscription, business=business, is_primary=True)
         apply_subscription_entitlements(subscription)
+        from .models import PlatformEvent
+        _track_subscription_event(PlatformEvent.EVENT_SUBSCRIPTION_STARTED, subscription, metadata={"status": subscription.status})
     return subscription
 
 
@@ -346,7 +359,10 @@ def start_paid_plan_trial(subscription, plan, user):
     subscription.trial_ends_at = timezone.now() + timezone.timedelta(days=30)
     subscription.paid_until = None
     subscription.save(update_fields=["plan", "status", "trial_ends_at", "paid_until"])
-    return apply_subscription_entitlements(subscription)
+    subscription = apply_subscription_entitlements(subscription)
+    from .models import PlatformEvent
+    _track_subscription_event(PlatformEvent.EVENT_SUBSCRIPTION_TRIAL, subscription, user=user)
+    return subscription
 
 
 @transaction.atomic
@@ -400,7 +416,10 @@ def switch_subscription_plan(subscription, plan, *, keep_expiry=True):
         subscription.status = BusinessSubscription.STATUS_ACTIVE
         subscription.paid_until = timezone.now() + timezone.timedelta(days=30)
     subscription.save()
-    return apply_subscription_entitlements(subscription)
+    subscription = apply_subscription_entitlements(subscription)
+    from .models import PlatformEvent
+    _track_subscription_event(PlatformEvent.EVENT_SUBSCRIPTION_CHANGED, subscription)
+    return subscription
 
 
 @transaction.atomic
@@ -414,7 +433,10 @@ def grant_founder_lifetime(subscription, plan, actor, note=""):
     subscription.trial_ends_at = None
     subscription.paid_until = None
     subscription.save()
-    return apply_subscription_entitlements(subscription)
+    subscription = apply_subscription_entitlements(subscription)
+    from .models import PlatformEvent
+    _track_subscription_event(PlatformEvent.EVENT_SUBSCRIPTION_FOUNDER, subscription, user=actor)
+    return subscription
 
 
 @transaction.atomic
@@ -632,4 +654,9 @@ def mark_payment_paid(payment):
     subscription.paid_until = base + timezone.timedelta(days=duration_days)
     subscription.save()
     apply_subscription_entitlements(subscription)
+    from .models import PlatformEvent
+    _track_subscription_event(
+        PlatformEvent.EVENT_SUBSCRIPTION_PAID, subscription,
+        metadata={"amount": str(payment.amount), "billing_cycle": payment.billing_cycle, "provider": payment.provider},
+    )
     return payment

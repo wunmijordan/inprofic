@@ -51,7 +51,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         (ROLE_SUPERUSER, "Superuser"),
     )
 
-    fullname = models.CharField(max_length=160)
+    fullname = models.CharField("Full Name", max_length=160)
     username = models.CharField(max_length=80, unique=True)
     email = models.EmailField(blank=True, default="")
     phone = models.CharField(max_length=30, blank=True, default="")
@@ -695,3 +695,98 @@ class SubscriptionPaymentSettings(models.Model):
             SubscriptionPayment.PROVIDER_PAYSTACK: self.paystack_enabled,
             SubscriptionPayment.PROVIDER_MONNIFY: self.monnify_enabled,
         }.get(provider, False)
+
+
+class PlatformIntegrationSettings(models.Model):
+    """Founder-level availability gates for optional third-party integrations.
+
+    Turning an integration off hides and blocks it without deleting tenant
+    credentials, provider records, delivery history, or synchronized records.
+    """
+
+    glovo_enabled = models.BooleanField(
+        default=False,
+        help_text="Expose and allow the optional Glovo delivery-provider integration across INPROFIC.",
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="platform_integration_settings_updates",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "platform integration setting"
+        verbose_name_plural = "platform integration settings"
+
+    @classmethod
+    def load(cls):
+        row, _ = cls.objects.get_or_create(pk=1)
+        return row
+
+
+class PlatformEvent(models.Model):
+    """First-party Founder analytics event.
+
+    Events intentionally capture product/operational milestones rather than
+    arbitrary clickstreams.  They are platform-scoped and never participate in
+    tenant authorization or bookkeeping.
+    """
+
+    EVENT_SIGNUP_VIEW = "signup_view"
+    EVENT_REGISTRATION = "registration_completed"
+    EVENT_LOGIN = "login"
+    EVENT_LOGOUT = "logout"
+    EVENT_MODULE_VIEW = "module_view"
+    EVENT_SUBSCRIPTION_STARTED = "subscription_started"
+    EVENT_SUBSCRIPTION_TRIAL = "subscription_trial_started"
+    EVENT_SUBSCRIPTION_CHANGED = "subscription_changed"
+    EVENT_SUBSCRIPTION_PAID = "subscription_paid"
+    EVENT_SUBSCRIPTION_FOUNDER = "subscription_founder_grant"
+    EVENT_CHOICES = [
+        (EVENT_SIGNUP_VIEW, "Signup viewed"),
+        (EVENT_REGISTRATION, "Registration completed"),
+        (EVENT_LOGIN, "Login"),
+        (EVENT_LOGOUT, "Logout"),
+        (EVENT_MODULE_VIEW, "Module viewed"),
+        (EVENT_SUBSCRIPTION_STARTED, "Subscription started"),
+        (EVENT_SUBSCRIPTION_TRIAL, "Paid-plan trial started"),
+        (EVENT_SUBSCRIPTION_CHANGED, "Subscription changed"),
+        (EVENT_SUBSCRIPTION_PAID, "Subscription paid"),
+        (EVENT_SUBSCRIPTION_FOUNDER, "Founder subscription grant"),
+    ]
+    SUBSCRIPTION_EVENTS = (
+        EVENT_SUBSCRIPTION_STARTED,
+        EVENT_SUBSCRIPTION_TRIAL,
+        EVENT_SUBSCRIPTION_CHANGED,
+        EVENT_SUBSCRIPTION_PAID,
+        EVENT_SUBSCRIPTION_FOUNDER,
+    )
+
+    event_type = models.CharField(max_length=40, choices=EVENT_CHOICES, db_index=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="platform_events",
+    )
+    business = models.ForeignKey(
+        Business, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="platform_events",
+    )
+    session_key = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    module = models.CharField(max_length=40, blank=True, default="", db_index=True)
+    route_name = models.CharField(max_length=100, blank=True, default="")
+    path = models.CharField(max_length=255, blank=True, default="")
+    metadata = models.JSONField(default=dict, blank=True)
+    occurred_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-occurred_at", "-id"]
+        indexes = [
+            models.Index(fields=["event_type", "occurred_at"], name="platform_event_type_time"),
+            models.Index(fields=["business", "occurred_at"], name="platform_event_business_time"),
+        ]
+
+    def __str__(self):
+        return f"{self.event_type} · {self.business or 'platform'} · {self.occurred_at:%Y-%m-%d %H:%M}"

@@ -5,12 +5,18 @@ from django.forms import inlineformset_factory
 from django.db.models import Q
 from django.utils import timezone
 from core.models import CashAccount
-from core.verticals import vertical_config
+from core.forms import ExistingAwareInlineFormSet
+from core.verticals import vertical_config, bulk_package_type_choices
 from sales.models import Customer, SaleItem
 from .models import (
     DistributionReturn,
     FinishedGood,
     FinishedGoodChannelPrice,
+    BulkPackProfile,
+    IndividualSaleOption,
+    ProductCompositionItem,
+    ProductPortionProfile,
+    InventoryAlertSettings,
     ProductionMaterial,
     ProductCategory,
     RawMaterial,
@@ -221,6 +227,16 @@ class FinishedGoodForm(StyledModelForm):
         else:
             self.fields["product_category"].queryset = ProductCategory.objects.none()
         self.fields["product_category"].help_text = "Optional. Categories are business-defined and used to group products in both storefronts; product source remains separate."
+        if business and business.uses_production:
+            self.fields["unit"].label = "Base production / stock unit"
+            self.fields["unit"].help_text = (
+                "The internal output unit used by production and stock, e.g. scoop, piece, ml or loaf. "
+                "Use the Standard Portion section below when customers buy a plate, serving, bottle or set instead."
+            )
+            self.fields["units_per_batch"].label = "Base units per production batch"
+            self.fields["units_per_batch"].help_text = (
+                "How many base units one normal production batch yields. Example: 120 scoops, 48 bottles or 30 pieces."
+            )
         if "base_material" in self.fields:
             self.fields["base_material"].required = False
             self.fields["base_material"].queryset = RawMaterial.objects.filter(
@@ -264,6 +280,242 @@ class FinishedGoodForm(StyledModelForm):
         if source == FinishedGood.SOURCE_PURCHASED_FOR_RESALE:
             cleaned["base_material"] = None
         return cleaned
+
+
+class ProductPortionProfileForm(StyledModelForm):
+    class Meta:
+        model = ProductPortionProfile
+        fields = ["active", "customer_quantity", "customer_unit", "base_quantity", "public_note"]
+
+    def __init__(self, *args, business=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.business = business
+        self.fields["active"].label = "Use a standard customer portion"
+        self.fields["customer_quantity"].label = "Customer quantity"
+        self.fields["customer_unit"].label = "Customer unit"
+        self.fields["base_quantity"].label = "Base units per portion"
+        self.fields["public_note"].label = "Customer note"
+        self.fields["active"].widget.attrs["class"] = "sr-only peer"
+        self.fields["customer_quantity"].widget.attrs["data-formset-default"] = "1"
+        self.fields["base_quantity"].widget.attrs["data-formset-default"] = "1"
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("active"):
+            if not (cleaned.get("customer_unit") or "").strip():
+                self.add_error("customer_unit", "Enter the customer-facing unit, e.g. plate, serving, bottle or set.")
+            if (cleaned.get("customer_quantity") or Decimal("0")) <= 0:
+                self.add_error("customer_quantity", "Customer quantity must be greater than zero.")
+            if (cleaned.get("base_quantity") or Decimal("0")) <= 0:
+                self.add_error("base_quantity", "Base units per portion must be greater than zero.")
+        return cleaned
+
+
+class IndividualSaleOptionForm(StyledModelForm):
+    class Meta:
+        model = IndividualSaleOption
+        fields = [
+            "name", "customer_quantity", "customer_unit", "base_quantity", "public_note",
+            "physical_store_enabled", "physical_store_price", "physical_store_min_quantity",
+            "online_enabled", "online_price", "online_min_quantity",
+            "distribution_enabled", "distribution_price", "distribution_min_quantity",
+            "active", "sort_order",
+        ]
+
+    def __init__(self, *args, business=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.business = business
+        self.fields["name"].label = "Individual option name"
+        self.fields["customer_quantity"].label = "Customer quantity"
+        self.fields["customer_unit"].label = "Customer unit"
+        self.fields["base_quantity"].label = "Base units consumed"
+        self.fields["public_note"].label = "Customer note"
+        labels = {
+            "physical_store_enabled": "Physical Store / in-premise POS",
+            "online_enabled": "Online / website",
+            "distribution_enabled": "Bulk / distribution",
+            "physical_store_price": "Physical Store price",
+            "online_price": "Online price",
+            "distribution_price": "Bulk / distribution price",
+            "physical_store_min_quantity": "Physical Store minimum",
+            "online_min_quantity": "Online minimum",
+            "distribution_min_quantity": "Bulk / distribution minimum",
+        }
+        for key, label in labels.items():
+            self.fields[key].label = label
+        for key in ("physical_store_enabled", "online_enabled", "distribution_enabled", "active"):
+            self.fields[key].widget.attrs["class"] = "sr-only peer"
+        for key in ("customer_quantity", "base_quantity", "physical_store_min_quantity", "online_min_quantity", "distribution_min_quantity"):
+            self.fields[key].widget.attrs["data-formset-default"] = "1"
+        self.fields["sort_order"].widget.attrs["data-formset-default"] = "0"
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("DELETE"):
+            return cleaned
+        populated = bool((cleaned.get("name") or "").strip()) or any(
+            cleaned.get(key) is not None for key in ("physical_store_price", "online_price", "distribution_price")
+        )
+        if not populated:
+            return cleaned
+        if not (cleaned.get("name") or "").strip():
+            self.add_error("name", "Enter the customer-facing individual option name.")
+        if not (cleaned.get("customer_unit") or "").strip():
+            self.add_error("customer_unit", "Enter the customer unit, e.g. scoop, piece, serving or bottle.")
+        if (cleaned.get("base_quantity") or Decimal("0")) <= 0:
+            self.add_error("base_quantity", "Base units consumed must be greater than zero.")
+        for enabled_key, price_key, min_key, label in (
+            ("physical_store_enabled", "physical_store_price", "physical_store_min_quantity", "Physical Store"),
+            ("online_enabled", "online_price", "online_min_quantity", "Online"),
+            ("distribution_enabled", "distribution_price", "distribution_min_quantity", "Bulk / distribution"),
+        ):
+            if cleaned.get(enabled_key) and cleaned.get(price_key) is None:
+                self.add_error(price_key, f"Enter a price when {label} is enabled.")
+            if cleaned.get(enabled_key) and (cleaned.get(min_key) or Decimal("0")) <= 0:
+                self.add_error(min_key, "Minimum quantity must be greater than zero.")
+        return cleaned
+
+
+class BulkPackProfileForm(StyledModelForm):
+    profile_key = forms.CharField(widget=forms.HiddenInput(), required=False)
+
+    class Meta:
+        model = BulkPackProfile
+        fields = [
+            "name", "package_type", "customer_quantity", "customer_unit", "base_quantity",
+            "price", "min_order_quantity", "active", "sort_order",
+        ]
+
+    def __init__(self, *args, business=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.business = business
+        self.fields["profile_key"].initial = (
+            f"bulk:{self.instance.public_id}" if getattr(self.instance, "public_id", None) else ""
+        )
+        self.fields["package_type"].label = "Bulk container / pack type"
+        self.fields["package_type"].widget = forms.Select(choices=[("", "Choose type…"), *bulk_package_type_choices(business)] if business else [("", "Choose type…")])
+        self.fields["package_type"].widget.attrs["class"] = INPUT_CLS
+        self.fields["customer_quantity"].label = "Displayed size"
+        self.fields["customer_unit"].label = "Size / measure unit"
+        self.fields["base_quantity"].label = "Base units in one bulk option"
+        self.fields["min_order_quantity"].label = "Minimum bulk units"
+        self.fields["active"].widget.attrs["class"] = "sr-only peer"
+        for name in ("customer_quantity", "base_quantity", "min_order_quantity"):
+            self.fields[name].widget.attrs["data-formset-default"] = "1"
+        self.fields["sort_order"].widget.attrs["data-formset-default"] = "0"
+
+    def clean_profile_key(self):
+        value = (self.cleaned_data.get("profile_key") or "").strip()
+        if not value and getattr(self.instance, "public_id", None):
+            value = f"bulk:{self.instance.public_id}"
+        if value and not value.startswith("bulk:"):
+            raise forms.ValidationError("Bulk profile key is invalid.")
+        return value
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("DELETE"):
+            return cleaned
+        populated = any(cleaned.get(name) not in (None, "") for name in ("name", "customer_unit", "price"))
+        if not populated:
+            return cleaned
+        if not (cleaned.get("name") or "").strip():
+            self.add_error("name", "Enter a customer-facing bulk pack name.")
+        if not (cleaned.get("customer_unit") or "").strip():
+            self.add_error("customer_unit", "Enter the customer-facing measurement, e.g. litre, kg, piece or serving.")
+        for name, label in (("customer_quantity", "Displayed size"), ("base_quantity", "Base units"), ("min_order_quantity", "Minimum bulk units")):
+            if (cleaned.get(name) or Decimal("0")) <= 0:
+                self.add_error(name, f"{label} must be greater than zero.")
+        if cleaned.get("price") is not None and cleaned["price"] < 0:
+            self.add_error("price", "Price cannot be negative.")
+        return cleaned
+
+
+class ProductCompositionItemForm(StyledModelForm):
+    TYPE_FINISHED = "finished_good"
+    TYPE_RAW = "raw_material"
+    component_type = forms.ChoiceField(
+        choices=[(TYPE_FINISHED, "Finished / procured product"), (TYPE_RAW, "Raw / packaging material")],
+        initial=TYPE_FINISHED,
+    )
+
+    class Meta:
+        model = ProductCompositionItem
+        fields = [
+            "profile_key", "component_finished_good", "component_raw_material",
+            "quantity", "fulfilment_scope", "include_in_public_contents",
+            "public_label", "public_quantity_label",
+        ]
+        widgets = {"profile_key": forms.Select()}
+
+    def __init__(self, *args, business=None, parent_good=None, profile_choices=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.business = business
+        self.parent_good = parent_good
+        self.fields["profile_key"].label = "Applies to"
+        choices = profile_choices or [("standard", "Standard portion")]
+        self.fields["profile_key"].widget.choices = choices
+        if business:
+            goods = FinishedGood.raw_objects.filter(business=business).order_by("name")
+            if parent_good and parent_good.pk:
+                goods = goods.exclude(pk=parent_good.pk)
+            self.fields["component_finished_good"].queryset = goods
+            self.fields["component_raw_material"].queryset = RawMaterial.raw_objects.filter(business=business).order_by("category", "name")
+        else:
+            self.fields["component_finished_good"].queryset = FinishedGood.objects.none()
+            self.fields["component_raw_material"].queryset = RawMaterial.objects.none()
+        self.fields["component_finished_good"].required = False
+        self.fields["component_raw_material"].required = False
+        self.fields["include_in_public_contents"].widget.attrs["class"] = "sr-only peer"
+        self.fields["quantity"].widget.attrs["data-formset-default"] = "1"
+        if self.instance.pk and self.instance.component_raw_material_id:
+            self.fields["component_type"].initial = self.TYPE_RAW
+        elif self.data:
+            prefix = self.prefix or ""
+            self.fields["component_type"].initial = self.data.get(f"{prefix}-component_type", self.TYPE_FINISHED)
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("DELETE"):
+            return cleaned
+        fg = cleaned.get("component_finished_good")
+        raw = cleaned.get("component_raw_material")
+        component_type = cleaned.get("component_type")
+        if component_type == self.TYPE_FINISHED:
+            cleaned["component_raw_material"] = None
+            raw = None
+            if not fg:
+                self.add_error("component_finished_good", "Choose the finished/procured product included in this portion.")
+        else:
+            cleaned["component_finished_good"] = None
+            fg = None
+            if not raw:
+                self.add_error("component_raw_material", "Choose the raw or packaging material included in this portion.")
+        if fg and self.parent_good and self.parent_good.pk and fg.pk == self.parent_good.pk:
+            self.add_error("component_finished_good", "The base product is already included automatically; choose only additional contents here.")
+        if (cleaned.get("quantity") or Decimal("0")) <= 0:
+            self.add_error("quantity", "Quantity must be greater than zero.")
+        profile_key = (cleaned.get("profile_key") or "").strip()
+        if not profile_key:
+            self.add_error("profile_key", "Choose which portion or bulk pack this content belongs to.")
+        return cleaned
+
+
+BulkPackProfileFormSet = inlineformset_factory(
+    FinishedGood, BulkPackProfile, form=BulkPackProfileForm, formset=ExistingAwareInlineFormSet, extra=1, can_delete=True
+)
+IndividualSaleOptionFormSet = inlineformset_factory(
+    FinishedGood, IndividualSaleOption, form=IndividualSaleOptionForm, formset=ExistingAwareInlineFormSet, extra=1, can_delete=True
+)
+ProductCompositionItemFormSet = inlineformset_factory(
+    FinishedGood,
+    ProductCompositionItem,
+    form=ProductCompositionItemForm,
+    formset=ExistingAwareInlineFormSet,
+    fk_name="finished_good",
+    extra=1,
+    can_delete=True,
+)
 
 
 class ProductCategoryForm(StyledModelForm):
@@ -370,10 +622,10 @@ class ProductionMaterialForm(StyledModelForm):
 
 
 RecipeItemFormSet = inlineformset_factory(
-    FinishedGood, RecipeItem, form=RecipeItemForm, extra=1, can_delete=True
+    FinishedGood, RecipeItem, form=RecipeItemForm, formset=ExistingAwareInlineFormSet, extra=1, can_delete=True
 )
 ProductionMaterialFormSet = inlineformset_factory(
-    FinishedGood, ProductionMaterial, form=ProductionMaterialForm, extra=1, can_delete=True
+    FinishedGood, ProductionMaterial, form=ProductionMaterialForm, formset=ExistingAwareInlineFormSet, extra=1, can_delete=True
 )
 
 
@@ -461,3 +713,41 @@ class DistributionReturnForm(StyledModelForm):
             f"Sale #{item.sale_id} · {item.sale.customer} · {item.finished_good.name} · "
             f"{item.total_units:.2f} {item.finished_good.unit}"
         )
+
+
+class InventoryAlertSettingsForm(StyledModelForm):
+    class Meta:
+        model = InventoryAlertSettings
+        fields = [
+            "enabled",
+            "raw_warning_enabled", "raw_warning_repeat_minutes",
+            "raw_low_enabled", "raw_low_repeat_minutes",
+            "finished_warning_enabled", "finished_warning_repeat_minutes",
+            "finished_low_enabled", "finished_low_repeat_minutes",
+            "sound_enabled", "sound_repeat_minutes", "sound_tune", "poll_seconds",
+        ]
+        widgets = {
+            "raw_warning_repeat_minutes": forms.NumberInput(attrs={"min": 0, "max": 10080}),
+            "raw_low_repeat_minutes": forms.NumberInput(attrs={"min": 0, "max": 10080}),
+            "finished_warning_repeat_minutes": forms.NumberInput(attrs={"min": 0, "max": 10080}),
+            "finished_low_repeat_minutes": forms.NumberInput(attrs={"min": 0, "max": 10080}),
+            "sound_repeat_minutes": forms.NumberInput(attrs={"min": 0, "max": 1440}),
+            "poll_seconds": forms.NumberInput(attrs={"min": 15, "max": 300}),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        for name in (
+            "raw_warning_repeat_minutes", "raw_low_repeat_minutes",
+            "finished_warning_repeat_minutes", "finished_low_repeat_minutes",
+        ):
+            value = cleaned.get(name)
+            if value is not None and value > 10080:
+                self.add_error(name, "Use 10,080 minutes (7 days) or less.")
+        sound_repeat = cleaned.get("sound_repeat_minutes")
+        if sound_repeat is not None and sound_repeat > 1440:
+            self.add_error("sound_repeat_minutes", "Use 1,440 minutes (24 hours) or less.")
+        poll = cleaned.get("poll_seconds")
+        if poll is not None and not 15 <= poll <= 300:
+            self.add_error("poll_seconds", "Choose a refresh interval from 15 to 300 seconds.")
+        return cleaned

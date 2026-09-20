@@ -22,3 +22,10 @@ def num(value):
         return f"{v:,.2f}"
     except (TypeError, ValueError, InvalidOperation):
         return value
+
+
+@register.filter
+def integration_safe_text(value):
+    """Hide branding for founder-disabled optional integrations at render time."""
+    from accounts.platform_integrations import redact_disabled_integrations
+    return redact_disabled_integrations(value)

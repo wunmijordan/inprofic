@@ -8,16 +8,18 @@
   <title>{% block title %}{{ store_business.name }}{% endblock %}</title>
   <link rel="icon" type="image/png" href="{% static 'core/brand/inprofic-mark.png' %}">
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
+  <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}">
   <style>
     @font-face { font-family:'Inter'; src:url('{% static "core/fonts/Inter-Regular.ttf" %}') format('truetype'); font-weight:400; font-style:normal; font-display:swap; }
     @font-face { font-family:'Inter'; src:url('{% static "core/fonts/Inter-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
     @font-face { font-family:'Fraunces'; src:url('{% static "core/fonts/Fraunces-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
-    :root { --brand: {{ store_business.accent_color }}; --brand-dark: {{ store_business.background_color }}; }
+    :root { --brand: {{ store_business.accent_color }}; --brand-dark: {{ store_business.background_color }}; --tenant-button: {{ store_business.accent_color }}; --tenant-button-contrast: {{ store_business.button_text_color|default:'#FFFFFF' }}; }
     body { font-family: 'Inter', sans-serif; background: #f7f4ee; color: #211d1a; }
     .font-display { font-family: 'Fraunces', serif; }
     .storefront-noise { background-image: radial-gradient(rgba(255,255,255,.16) 1px, transparent 1px); background-size: 18px 18px; }
   </style>
   {% block extra_head %}{% endblock %}
+  <script src="{% static 'core/js/form-experience.js' %}" defer></script>
 </head>
 <body class="min-h-screen">
   {% if not hide_storefront_header %}<header class="relative isolate overflow-hidden text-white" style="background:var(--brand-dark)">

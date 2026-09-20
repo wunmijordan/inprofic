@@ -1,7 +1,9 @@
 from datetime import timedelta
 from decimal import Decimal
+import uuid
 from django.db import models
 from django.utils import timezone
+from core.alert_tunes import ALERT_TUNE_CHOICES
 from core.models import BusinessOwnedModel, TimestampedModel
 
 
@@ -371,6 +373,283 @@ class FinishedGood(BusinessOwnedModel):
                     return latest_purchase.unit_value
         upb = self.units_per_batch or Decimal("1")
         return batch_cost / upb
+
+
+class ProductPortionProfile(BusinessOwnedModel):
+    """Customer-facing standard portion mapped onto a product's base unit.
+
+    FinishedGood.unit remains the operational production/stock unit.  This
+    profile only changes how one ordinary customer portion is represented at
+    the selling edge, so the existing production recipe/yield engine can keep
+    working in the base unit.
+    """
+
+    finished_good = models.OneToOneField(
+        FinishedGood, on_delete=models.CASCADE, related_name="portion_profile"
+    )
+    active = models.BooleanField(
+        default=False,
+        help_text="Use a customer-facing standard portion instead of exposing the base production/stock unit.",
+    )
+    customer_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=1)
+    customer_unit = models.CharField(
+        max_length=40, blank=True, default="",
+        help_text="What the customer buys, e.g. plate, serving, bottle, set.",
+    )
+    base_quantity = models.DecimalField(
+        max_digits=14, decimal_places=3, default=1,
+        help_text="How many Finished Good base units make one standard customer portion.",
+    )
+    public_note = models.CharField(
+        max_length=160, blank=True, default="",
+        help_text="Optional short note shown with the portion, e.g. 'serves one'.",
+    )
+
+    class Meta:
+        ordering = ["finished_good__name"]
+
+    def clean(self):
+        super().clean()
+        if self.finished_good_id and self.business_id and self.finished_good.business_id != self.business_id:
+            raise ValidationError("Portion profile and finished good must belong to the same business.")
+        if self.base_quantity is not None and self.base_quantity <= 0:
+            raise ValidationError({"base_quantity": "Base quantity must be greater than zero."})
+        if self.active and not (self.customer_unit or "").strip():
+            raise ValidationError({"customer_unit": "Enter the customer-facing unit when Standard Portion is enabled."})
+
+    def __str__(self):
+        unit = self.customer_unit or self.finished_good.unit
+        return f"{self.finished_good.name} — {self.customer_quantity:g} {unit}"
+
+
+class IndividualSaleOption(BusinessOwnedModel):
+    """Plain/add-on customer option backed by an existing FinishedGood.
+
+    It creates no duplicate recipe or stock balance. One purchased customer
+    unit converts to ``base_quantity`` of the same FinishedGood, with channel-
+    specific availability/pricing.
+    """
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    finished_good = models.ForeignKey(
+        FinishedGood, on_delete=models.CASCADE, related_name="individual_sale_options"
+    )
+    name = models.CharField(max_length=120, help_text="Customer-facing name, e.g. Extra Jollof Rice or Single Chicken.")
+    customer_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=1)
+    customer_unit = models.CharField(max_length=40, blank=True, default="", help_text="e.g. scoop, piece, serving, bottle.")
+    base_quantity = models.DecimalField(max_digits=14, decimal_places=3, default=1)
+    public_note = models.CharField(max_length=160, blank=True, default="")
+    physical_store_enabled = models.BooleanField(default=True)
+    online_enabled = models.BooleanField(default=True)
+    distribution_enabled = models.BooleanField(default=False)
+    physical_store_price = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    online_price = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    distribution_price = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    physical_store_min_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=1)
+    online_min_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=1)
+    distribution_min_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=1)
+    active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "name", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["business", "finished_good", "name"],
+                name="unique_individual_sale_option_name",
+            )
+        ]
+
+    @property
+    def profile_key(self):
+        return f"individual:{self.public_id}"
+
+    def channel_enabled(self, channel):
+        return {
+            "physical_store": self.physical_store_enabled,
+            "online": self.online_enabled,
+            "distribution": self.distribution_enabled,
+        }.get(channel, False)
+
+    def price_for(self, channel):
+        return {
+            "physical_store": self.physical_store_price,
+            "online": self.online_price,
+            "distribution": self.distribution_price,
+        }.get(channel)
+
+    def minimum_for(self, channel):
+        return {
+            "physical_store": self.physical_store_min_quantity,
+            "online": self.online_min_quantity,
+            "distribution": self.distribution_min_quantity,
+        }.get(channel, Decimal("1"))
+
+    def clean(self):
+        super().clean()
+        if self.finished_good_id and self.business_id and self.finished_good.business_id != self.business_id:
+            raise ValidationError("Individual option and finished good must belong to the same business.")
+        if self.base_quantity is not None and self.base_quantity <= 0:
+            raise ValidationError({"base_quantity": "Base quantity must be greater than zero."})
+        for field_name, label, enabled, price, minimum in (
+            ("physical_store_price", "Physical Store", self.physical_store_enabled, self.physical_store_price, self.physical_store_min_quantity),
+            ("online_price", "Online", self.online_enabled, self.online_price, self.online_min_quantity),
+            ("distribution_price", "Bulk / Distribution", self.distribution_enabled, self.distribution_price, self.distribution_min_quantity),
+        ):
+            if enabled and price is None:
+                raise ValidationError({field_name: f"Enter a price for the enabled {label} channel."})
+            if minimum is not None and minimum <= 0:
+                raise ValidationError(f"{label} minimum quantity must be greater than zero.")
+
+    def __str__(self):
+        return f"{self.finished_good.name} — {self.name}"
+
+
+class BulkPackProfile(BusinessOwnedModel):
+    """Distribution/bulk selling option that converts back to base units."""
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    finished_good = models.ForeignKey(
+        FinishedGood, on_delete=models.CASCADE, related_name="bulk_pack_profiles"
+    )
+    name = models.CharField(max_length=100, help_text="Customer-facing option name, e.g. 2 L Bowl or Carton of 24.")
+    package_type = models.CharField(
+        max_length=32, blank=True, default="",
+        help_text="Customer-facing container/pack type selected from the business vertical's vocabulary.",
+    )
+    customer_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=1)
+    customer_unit = models.CharField(max_length=40, blank=True, default="")
+    base_quantity = models.DecimalField(
+        max_digits=14, decimal_places=3, default=1,
+        help_text="How many Finished Good base units one bulk pack represents.",
+    )
+    price = models.DecimalField(max_digits=14, decimal_places=2)
+    min_order_quantity = models.DecimalField(
+        max_digits=12, decimal_places=2, default=1,
+        help_text="Minimum number of this bulk pack per order.",
+    )
+    active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "name", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["business", "finished_good", "name"],
+                name="unique_bulk_pack_name_per_product_business",
+            )
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.finished_good_id and self.business_id and self.finished_good.business_id != self.business_id:
+            raise ValidationError("Bulk pack and finished good must belong to the same business.")
+        if self.base_quantity is not None and self.base_quantity <= 0:
+            raise ValidationError({"base_quantity": "Base quantity must be greater than zero."})
+        if self.min_order_quantity is not None and self.min_order_quantity <= 0:
+            raise ValidationError({"min_order_quantity": "Minimum packs must be greater than zero."})
+        if self.price is not None and self.price < 0:
+            raise ValidationError({"price": "Price cannot be negative."})
+
+    @property
+    def profile_key(self):
+        return f"bulk:{self.public_id}"
+
+    @property
+    def public_contents(self):
+        from .portioning import public_contents
+        return public_contents(self.finished_good, profile_key=self.profile_key)
+
+    def __str__(self):
+        return f"{self.finished_good.name} — {self.name}"
+
+
+class ProductCompositionItem(TimestampedModel):
+    """Additional contents of a standard portion or a bulk pack.
+
+    The base FinishedGood itself is implicit and is converted through the
+    portion/bulk profile's base_quantity.  These rows describe additional
+    finished goods (protein, accessory, bottle, etc.) or raw/packaging
+    materials without rewriting the existing production recipe.
+    """
+
+    SCOPE_ALL = "all"
+    SCOPE_DINE_IN = "dine_in"
+    SCOPE_TAKEAWAY = "takeaway"
+    SCOPE_DELIVERY = "delivery"
+    SCOPE_BULK = "bulk"
+    SCOPE_CHOICES = [
+        (SCOPE_ALL, "All fulfilment modes"),
+        (SCOPE_DINE_IN, "Dine-in only"),
+        (SCOPE_TAKEAWAY, "Takeaway / pickup only"),
+        (SCOPE_DELIVERY, "Delivery only"),
+        (SCOPE_BULK, "Bulk / distribution only"),
+    ]
+
+    finished_good = models.ForeignKey(
+        FinishedGood, on_delete=models.CASCADE, related_name="composition_items"
+    )
+    profile_key = models.CharField(
+        max_length=80, default="standard",
+        help_text="'standard' for the regular portion or bulk:<uuid> for a bulk pack.",
+    )
+    component_finished_good = models.ForeignKey(
+        FinishedGood, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="used_in_product_compositions",
+    )
+    component_raw_material = models.ForeignKey(
+        RawMaterial, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="used_in_product_compositions",
+    )
+    quantity = models.DecimalField(max_digits=14, decimal_places=3, default=1)
+    fulfilment_scope = models.CharField(max_length=16, choices=SCOPE_CHOICES, default=SCOPE_ALL)
+    include_in_public_contents = models.BooleanField(default=True)
+    public_label = models.CharField(
+        max_length=120, blank=True, default="",
+        help_text="Optional customer-facing name. Leave blank to use the component name.",
+    )
+    public_quantity_label = models.CharField(
+        max_length=80, blank=True, default="",
+        help_text="Optional customer-facing amount such as '1 piece'. Internal quantities remain private when blank.",
+    )
+
+    class Meta:
+        ordering = ["profile_key", "id"]
+
+    def clean(self):
+        super().clean()
+        selected = int(bool(self.component_finished_good_id)) + int(bool(self.component_raw_material_id))
+        if selected != 1:
+            raise ValidationError("Choose exactly one finished/procured good or raw/packaging material.")
+        if self.quantity is not None and self.quantity <= 0:
+            raise ValidationError({"quantity": "Component quantity must be greater than zero."})
+        if self.component_finished_good_id:
+            if self.component_finished_good_id == self.finished_good_id:
+                raise ValidationError({"component_finished_good": "A product cannot contain itself as an additional component."})
+            if self.component_finished_good.business_id != self.finished_good.business_id:
+                raise ValidationError({"component_finished_good": "Component must belong to the same business."})
+        if self.component_raw_material_id and self.component_raw_material.business_id != self.finished_good.business_id:
+            raise ValidationError({"component_raw_material": "Component must belong to the same business."})
+
+    @property
+    def component(self):
+        return self.component_finished_good or self.component_raw_material
+
+    @property
+    def internal_unit(self):
+        if self.component_finished_good_id:
+            return self.component_finished_good.unit
+        if self.component_raw_material_id:
+            return self.component_raw_material.usage_unit
+        return ""
+
+    @property
+    def display_label(self):
+        component = self.component
+        return (self.public_label or (getattr(component, "name", "") if component else "")).strip()
+
+    def __str__(self):
+        return f"{self.finished_good.name} · {self.profile_key} · {self.display_label}"
 
 
 class FinishedGoodChannelPrice(TimestampedModel):
@@ -750,3 +1029,69 @@ class StockMovement(BusinessOwnedModel):
 
     class Meta:
         ordering = ["-occurred_at"]
+
+
+class InventoryAlertSettings(BusinessOwnedModel):
+    """Tenant-owned persistent stock-alert preferences.
+
+    Repeat minutes are intentionally separate per condition. A value of zero
+    means a user's acknowledgement remains quiet until that condition clears;
+    if the condition later returns, it becomes visible again.
+    """
+
+    enabled = models.BooleanField(default=True)
+    raw_warning_enabled = models.BooleanField(default=True)
+    raw_warning_repeat_minutes = models.PositiveIntegerField(default=240)
+    raw_low_enabled = models.BooleanField(default=True)
+    raw_low_repeat_minutes = models.PositiveIntegerField(default=60)
+    finished_warning_enabled = models.BooleanField(default=True)
+    finished_warning_repeat_minutes = models.PositiveIntegerField(default=240)
+    finished_low_enabled = models.BooleanField(default=True)
+    finished_low_repeat_minutes = models.PositiveIntegerField(default=60)
+    sound_enabled = models.BooleanField(
+        default=True,
+        help_text="Play a persistent in-app sound while visible stock alerts need attention.",
+    )
+    sound_repeat_minutes = models.PositiveSmallIntegerField(
+        default=5,
+        help_text="Repeat the stock alert sound while an unsnoozed condition remains visible. Use 0 to sound only when it becomes visible.",
+    )
+    sound_tune = models.CharField(
+        max_length=24, choices=ALERT_TUNE_CHOICES, default="urgent_pulse",
+        help_text="Foreground alert tune used while unsnoozed stock conditions need attention.",
+    )
+    poll_seconds = models.PositiveIntegerField(default=45)
+
+    class Meta:
+        verbose_name_plural = "inventory alert settings"
+        constraints = [
+            models.UniqueConstraint(fields=["business"], name="one_inventory_alert_settings_per_business"),
+        ]
+
+
+class InventoryAlertState(BusinessOwnedModel):
+    RAW_WARNING = "raw_warning"
+    RAW_LOW = "raw_low"
+    FINISHED_WARNING = "finished_warning"
+    FINISHED_LOW = "finished_low"
+    TYPE_CHOICES = [
+        (RAW_WARNING, "Raw material warning"),
+        (RAW_LOW, "Raw material low stock"),
+        (FINISHED_WARNING, "Finished good warning"),
+        (FINISHED_LOW, "Finished good low stock"),
+    ]
+
+    user = models.ForeignKey("accounts.CustomUser", on_delete=models.CASCADE, related_name="inventory_alert_states")
+    alert_type = models.CharField(max_length=32, choices=TYPE_CHOICES)
+    object_id = models.PositiveBigIntegerField()
+    is_active = models.BooleanField(default=True)
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["alert_type", "object_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["business", "user", "alert_type", "object_id"],
+                name="unique_inventory_alert_state_per_user_item",
+            ),
+        ]

@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django import forms
 
+from accounts.platform_integrations import glovo_platform_enabled
 from .models import DeliveryArea, DeliveryDriver, DeliveryOrigin, DeliveryProviderAccount, DeliveryRateBand, DeliverySettings
 
 INPUT = "w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 focus:border-[#8f172d]"
@@ -18,8 +19,12 @@ class StyledModelForm(forms.ModelForm):
 class DeliverySettingsForm(StyledModelForm):
     def __init__(self, *args, business=None, **kwargs):
         super().__init__(*args, **kwargs)
+        glovo_enabled = glovo_platform_enabled()
         if business:
-            self.fields["default_provider_account"].queryset = DeliveryProviderAccount.objects.filter(business=business, active=True)
+            accounts = DeliveryProviderAccount.objects.filter(business=business, active=True)
+            if not glovo_enabled:
+                accounts = accounts.exclude(provider_code=DeliveryProviderAccount.PROVIDER_GLOVO)
+            self.fields["default_provider_account"].queryset = accounts
         else:
             self.fields["default_provider_account"].queryset = DeliveryProviderAccount.objects.none()
         hints = {
@@ -32,6 +37,9 @@ class DeliverySettingsForm(StyledModelForm):
             "quote_valid_minutes": "A basket or destination change always requires a fresh quote, even within this time.",
             "customer_tracking_enabled": "Lets customers open the secure delivery timeline from their order or account page.",
             "require_proof_of_delivery": "Use this when a rider or dispatcher must record delivery evidence before completion.",
+            "rider_alert_sound_enabled": "Admin-controlled persistent foreground sound for rider-only notification sessions.",
+            "rider_alert_sound_repeat_minutes": "Repeat while the rider still has unread assigned-delivery activity. Use 0 for new-alert sound only.",
+            "rider_alert_sound_tune": "Choose the foreground rider tune. Background Web Push uses the device/OS notification sound.",
         }
         for name, hint in hints.items():
             self.fields[name].help_text = hint
@@ -42,13 +50,16 @@ class DeliverySettingsForm(StyledModelForm):
         account = cleaned.get("default_provider_account")
         if provider == DeliverySettings.PROVIDER_INHOUSE and account:
             self.add_error("default_provider_account", "Provider plug-in accounts are only used for external or hybrid dispatch.")
-        if provider in {DeliverySettings.PROVIDER_THIRD_PARTY, DeliverySettings.PROVIDER_HYBRID} and account and account.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO and not account.active:
-            self.add_error("default_provider_account", "Choose an active Glovo provider account.")
+        if provider in {DeliverySettings.PROVIDER_THIRD_PARTY, DeliverySettings.PROVIDER_HYBRID} and account and not account.is_configured_for_dispatch:
+            self.add_error("default_provider_account", "Choose an active, configured delivery provider account.")
         if provider == DeliverySettings.PROVIDER_THIRD_PARTY and not account:
             self.add_error("default_provider_account", "Choose the external provider account used for delivery.")
+        rider_repeat = cleaned.get("rider_alert_sound_repeat_minutes")
+        if rider_repeat is not None and rider_repeat > 1440:
+            self.add_error("rider_alert_sound_repeat_minutes", "Use 1,440 minutes (24 hours) or less.")
         if provider == DeliverySettings.PROVIDER_HYBRID:
             routing = cleaned.get("hybrid_routing_policy")
-            if routing in {DeliverySettings.HYBRID_ROUTE_GLOVO_FIRST, DeliverySettings.HYBRID_ROUTE_CUSTOMER, DeliverySettings.HYBRID_ROUTE_LOWEST, DeliverySettings.HYBRID_ROUTE_FASTEST} and not account:
+            if routing in {DeliverySettings.HYBRID_ROUTE_PROVIDER_FIRST, DeliverySettings.HYBRID_ROUTE_CUSTOMER, DeliverySettings.HYBRID_ROUTE_LOWEST, DeliverySettings.HYBRID_ROUTE_FASTEST} and not account:
                 self.add_error("default_provider_account", "Hybrid routing needs an external provider account so both delivery methods can be offered.")
             if routing == DeliverySettings.HYBRID_ROUTE_DISPATCHER and cleaned.get("hybrid_switch_policy") == DeliverySettings.SWITCH_LOCKED:
                 self.add_error("hybrid_switch_policy", "Dispatcher-choice Hybrid needs a switching policy that permits the dispatcher to choose the actual delivery method after payment.")
@@ -60,29 +71,81 @@ class DeliverySettingsForm(StyledModelForm):
             "enabled", "default_provider", "default_provider_account",
             "hybrid_routing_policy", "hybrid_switch_policy", "customer_switch_policy_note",
             "quote_valid_minutes", "customer_tracking_enabled", "require_proof_of_delivery",
+            "rider_alert_sound_enabled", "rider_alert_sound_repeat_minutes", "rider_alert_sound_tune",
         ]
+        widgets = {
+            "rider_alert_sound_repeat_minutes": forms.NumberInput(attrs={"min": 0, "max": 1440}),
+        }
 
 
 class DeliveryProviderAccountForm(StyledModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        glovo_enabled = glovo_platform_enabled()
+        if not glovo_enabled:
+            self.fields["provider_code"].choices = [
+                choice for choice in self.fields["provider_code"].choices
+                if choice[0] != DeliveryProviderAccount.PROVIDER_GLOVO
+            ]
+            if not self.instance.pk:
+                self.fields["provider_code"].initial = DeliveryProviderAccount.PROVIDER_GENERIC
+                self.fields["name"].initial = ""
+                self.initial["provider_code"] = DeliveryProviderAccount.PROVIDER_GENERIC
+                self.initial["name"] = ""
+        if not self.instance.pk:
+            # New provider connections remain dormant until their configuration is complete.
+            self.fields["active"].initial = False
+            self.initial["active"] = False
+            self.fields["use_live_quotes"].initial = False
+            self.initial["use_live_quotes"] = False
+        self.fields["provider_code"].label = "Provider type"
+        self.fields["name"].label = "Partner name"
+        self.fields["base_url"].label = "API base URL"
+        self.fields["order_endpoint"].label = "Dispatch endpoint"
+        self.fields["cancel_endpoint"].label = "Cancellation endpoint"
+        self.fields["tracking_base_url"].label = "Tracking base URL"
+        self.fields["api_key"].label = "API key / client ID"
+        self.fields["api_secret"].label = "API secret"
         hints = {
-            "name": "Use a recognizable internal name, such as Glovo Lagos Production or Manual Courier Desk.",
-            "provider_code": "Choose Generic for a manually coordinated courier or Glovo for the built-in LaaS v2 connection.",
+            "name": "Use a recognizable internal name for this courier connection.",
+            "provider_code": "Custom delivery partner keeps INPROFIC in control of quoting, routing and tracking. Built-in adapters may add provider-specific automation.",
             "sandbox": "Keep this on while testing provider credentials. Turn it off only when the provider has issued production access.",
-            "auto_dispatch": "When enabled, a fully paid delivery is sent to this provider automatically. Failed sends remain visible for manual dispatch.",
-            "use_live_quotes": "Use the provider's fee and ETA at checkout. Generic/manual providers use INPROFIC price bands as the customer-facing fallback.",
-            "address_book_id": "For Glovo, this is the pickup location ID created in the LaaS Address Book—not the written office address.",
-            "webhook_secret": "Used to verify provider status callbacks. Keep it private and register the displayed tenant webhook after saving.",
-            "status_mapping": "Optional JSON mapping from provider status names to INPROFIC delivery statuses.",
-            "metadata": "Optional provider-specific JSON. Leave blank unless the provider integration requires extra fields.",
+            "auto_dispatch": "Optional for custom partners: send a paid delivery to the configured adapter endpoint automatically. Failed sends remain visible for manual dispatch.",
+            "use_live_quotes": "Dedicated built-in adapters may use provider live pricing. Custom partners use INPROFIC price bands so checkout remains provider-neutral.",
+            "base_url": "Optional for manual partners. For API automation, enter the base URL of the provider or merchant-owned adapter service.",
+            "health_endpoint": "Optional non-mutating GET endpoint used by the Test connection action for custom partners.",
+            "auth_endpoint": "Authentication endpoint supplied by the delivery provider, when required.",
+            "quote_endpoint": "Live-quote endpoint supplied by the delivery provider, when required.",
+            "order_endpoint": "For automatic custom-provider dispatch, point this to an endpoint accepting the INPROFIC Delivery Adapter v1 JSON payload.",
+            "cancel_endpoint": "Optional cancellation endpoint. You may use {external_reference} in the path.",
+            "address_book_id": "Optional provider pickup-location identifier when required by the connector.",
+            "store_id": "Optional partner merchant/store/location identifier required by the courier's API.",
+            "webhook_secret": "Optional for custom partners, but required for status callbacks. Keep it private; the account-specific callback URL appears after saving.",
+            "tracking_base_url": "Optional public tracking URL or template. Use {external_reference} where the courier reference belongs; INPROFIC uses it when the dispatch response does not return a tracking URL.",
+            "status_mapping": "Optional JSON mapping from partner statuses to INPROFIC statuses, for example {\"completed\": \"delivered\"}.",
+            "metadata": "Optional advanced adapter JSON. Custom adapters may use auth_type (api_key, bearer, basic, none), api_key_header, api_secret_header and headers.",
         }
+        if glovo_enabled:
+            hints.update({
+                "name": "Use a recognizable internal name, such as Glovo Lagos Production or Manual Courier Desk.",
+                "provider_code": "Choose Generic for a manually coordinated courier or Glovo for the built-in LaaS v2 connection.",
+                "auth_endpoint": "OAuth token endpoint. Glovo LaaS v2 uses /oauth/token.",
+                "quote_endpoint": "Glovo LaaS v2 uses /v2/laas/quotes for live delivery quotes.",
+                "address_book_id": "For Glovo, this is the pickup location ID created in the LaaS Address Book—not the written office address.",
+            })
         for name, hint in hints.items():
             self.fields[name].help_text = hint
+        glovo_only_fields = ("auth_endpoint", "quote_endpoint", "use_live_quotes", "address_book_id")
+        for name in glovo_only_fields:
+            if name in self.fields:
+                self.fields[name].widget.attrs["data-provider-scope"] = "glovo"
+        if not glovo_enabled:
+            for name in glovo_only_fields:
+                self.fields.pop(name, None)
 
     class Meta:
         model = DeliveryProviderAccount
-        fields = ["name", "provider_code", "active", "sandbox", "auto_dispatch", "use_live_quotes", "base_url", "auth_endpoint", "quote_endpoint", "order_endpoint", "cancel_endpoint", "api_key", "api_secret", "address_book_id", "store_id", "webhook_secret", "tracking_base_url", "status_mapping", "metadata"]
+        fields = ["name", "provider_code", "active", "sandbox", "auto_dispatch", "use_live_quotes", "base_url", "health_endpoint", "auth_endpoint", "quote_endpoint", "order_endpoint", "cancel_endpoint", "api_key", "api_secret", "address_book_id", "store_id", "webhook_secret", "tracking_base_url", "status_mapping", "metadata"]
         widgets = {
             "api_key": forms.PasswordInput(render_value=False, attrs={"placeholder": "Leave blank to keep existing key"}),
             "api_secret": forms.PasswordInput(render_value=False, attrs={"placeholder": "Leave blank to keep existing secret"}),
@@ -108,6 +171,25 @@ class DeliveryProviderAccountForm(StyledModelForm):
         if cleaned.get("auto_dispatch") and not cleaned.get("order_endpoint"):
             self.add_error("order_endpoint", "Auto-dispatch needs the provider order endpoint.")
         if cleaned.get("provider_code") == DeliveryProviderAccount.PROVIDER_GLOVO:
+            if not glovo_platform_enabled():
+                self.add_error("provider_code", "This delivery provider is not currently available.")
+                return cleaned
+            if cleaned.get("active"):
+                required = {
+                    "base_url": "Add the API base URL issued during onboarding before activating this provider.",
+                    "auth_endpoint": "Add the authentication endpoint before activating this provider.",
+                    "quote_endpoint": "Add the live-quote endpoint before activating this provider.",
+                    "order_endpoint": "Add the dispatch endpoint before activating this provider.",
+                    "api_key": "Add the client ID issued during onboarding before activating this provider.",
+                    "api_secret": "Add the client secret issued during onboarding before activating this provider.",
+                    "address_book_id": "Add the pickup Address Book ID before activating this provider.",
+                    "webhook_secret": "Add a strong webhook secret before activating this provider.",
+                }
+                for field_name, message in required.items():
+                    if not cleaned.get(field_name):
+                        self.add_error(field_name, message)
+                if not cleaned.get("use_live_quotes"):
+                    self.add_error("use_live_quotes", "Keep live quotes enabled for this provider before activating it.")
             if cleaned.get("auto_dispatch") and not cleaned.get("use_live_quotes"):
                 self.add_error("use_live_quotes", "Glovo LaaS auto-dispatch requires the live provider quote ID.")
             if cleaned.get("auto_dispatch") or cleaned.get("use_live_quotes"):
@@ -121,8 +203,21 @@ class DeliveryProviderAccountForm(StyledModelForm):
                 self.add_error("address_book_id", "Live Glovo quotes require the LaaS Address Book pickup ID.")
             if cleaned.get("use_live_quotes") and not cleaned.get("quote_endpoint"):
                 self.add_error("quote_endpoint", "Live Glovo quotes require the quote endpoint.")
-        elif cleaned.get("auto_dispatch") and not (cleaned.get("api_key") or cleaned.get("api_secret")):
-            self.add_error("api_key", "Auto-dispatch needs at least an API key or secret from the provider portal.")
+        else:
+            if cleaned.get("use_live_quotes"):
+                self.add_error("use_live_quotes", "Custom delivery partners use INPROFIC price bands unless a dedicated live-quote adapter is installed.")
+            if cleaned.get("auto_dispatch"):
+                metadata = cleaned.get("metadata") if isinstance(cleaned.get("metadata"), dict) else {}
+                auth_type = str(metadata.get("auth_type") or "api_key").strip().lower()
+                has_auth = bool(
+                    cleaned.get("api_key") or cleaned.get("api_secret") or metadata.get("headers")
+                    or auth_type == "none"
+                )
+                if not has_auth:
+                    self.add_error(
+                        "api_key",
+                        "Automatic dispatch needs provider credentials, configured static headers, or metadata auth_type set to none.",
+                    )
         return cleaned
 
 

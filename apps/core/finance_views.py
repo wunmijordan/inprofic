@@ -10,6 +10,7 @@ from django.utils import timezone
 from django.db.models import Prefetch, Q, Sum
 from openpyxl import Workbook
 from .models import CashAccount, FinancialTransaction, AuditLog
+from accounts.platform_integrations import redact_disabled_integrations
 from .finance_forms import CashAccountForm, SupplierPaymentForm, CustomerPaymentForm, StockAdjustmentForm
 from .services import record_cash, audit
 from procurement.models import SupplierPayment, PurchaseOrder
@@ -64,7 +65,7 @@ def _money_movement_rows(request):
         rows.append([
             item.date.isoformat(),
             "Money in" if item.transaction_type == FinancialTransaction.INCOME else "Money out",
-            item.description,
+            redact_disabled_integrations(item.description),
             item.payment_method or "",
             item.amount,
             item.account.name if item.account else "",
@@ -80,7 +81,7 @@ def _audit_trail_rows(request):
             created_at.strftime("%Y-%m-%d %H:%M"),
             item.action,
             f"{item.model_name} #{item.object_id}",
-            item.description,
+            redact_disabled_integrations(item.description),
             item.created_by.username if item.created_by else "",
         ])
     return rows

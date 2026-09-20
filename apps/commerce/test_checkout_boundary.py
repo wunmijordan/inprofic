@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from accounts.models import BusinessModuleAccess
 from core.models import AuditLog, Business, CashAccount
-from inventory.models import FinishedGood
+from inventory.models import BulkPackProfile, FinishedGood, IndividualSaleOption, ProductPortionProfile
 
 from .checkout_services import (
     create_checkout,
@@ -97,7 +97,7 @@ class CheckoutBoundaryTests(TestCase):
             # Deliberately no Paystack settlement account yet.
         )
 
-    def make_checkout(self, *, key="checkout-1", qty="2", order_mode="physical_store"):
+    def make_checkout(self, *, key="checkout-1", qty="2", order_mode="online"):
         return create_checkout(
             business=self.business,
             source=CommerceIntake.SOURCE_API,
@@ -106,6 +106,90 @@ class CheckoutBoundaryTests(TestCase):
             items=[{"storefront_product": self.product, "quantity": qty}],
             idempotency_key=key,
         )[0]
+
+    def test_external_checkout_rejects_physical_store_channel(self):
+        with self.assertRaises(ValidationError) as raised:
+            self.make_checkout(key="external-physical-rejected", order_mode="physical_store")
+        self.assertIn("Physical-store pricing is reserved for the in-premise POS", str(raised.exception))
+
+    def test_portion_and_bulk_pack_checkout_keep_customer_price_but_reserve_base_units(self):
+        ProductPortionProfile.raw_objects.create(
+            business=self.business, finished_good=self.good, active=True,
+            customer_quantity=1, customer_unit="plate", base_quantity=3,
+        )
+        checkout = self.make_checkout(key="portion-standard", qty="2", order_mode="online")
+        line = checkout.items.get()
+        self.assertEqual(line.requested_quantity, Decimal("2.00"))
+        self.assertEqual(line.production_quantity, Decimal("6.00"))
+        self.assertEqual(line.customer_unit, "plate")
+        pack = BulkPackProfile.raw_objects.create(
+            business=self.business, finished_good=self.good, name="2 L Bowl",
+            customer_quantity=2, customer_unit="litre", base_quantity=12,
+            price=Decimal("3500"), min_order_quantity=1,
+        )
+        bulk_checkout = create_checkout(
+            business=self.business, source=CommerceIntake.SOURCE_API, order_mode="distribution",
+            customer={"name": "Ada"},
+            items=[{"storefront_product": self.product, "quantity": "2", "bulk_pack_id": str(pack.public_id)}],
+            idempotency_key="portion-bulk",
+        )[0]
+        bulk_line = bulk_checkout.items.get()
+        self.assertEqual(bulk_line.unit_price, Decimal("3500.00"))
+        self.assertEqual(bulk_line.production_quantity, Decimal("24.00"))
+        self.assertEqual(bulk_checkout.amount, Decimal("7000.00"))
+        with self.assertRaises(ValidationError):
+            create_checkout(
+                business=self.business, source=CommerceIntake.SOURCE_API, order_mode="online",
+                customer={"name": "Ada"},
+                items=[{"storefront_product": self.product, "quantity": "1", "bulk_pack_id": str(pack.public_id)}],
+                idempotency_key="portion-bulk-online-rejected",
+            )
+
+    def test_individual_option_uses_parent_stock_and_external_channel_rules(self):
+        option = IndividualSaleOption.raw_objects.create(
+            business=self.business, finished_good=self.good, name="Extra Bread",
+            customer_unit="slice", base_quantity=Decimal("0.50"),
+            physical_store_enabled=True, physical_store_price=Decimal("500"),
+            online_enabled=True, online_price=Decimal("650"), online_min_quantity=2,
+            distribution_enabled=True, distribution_price=Decimal("550"), distribution_min_quantity=10,
+        )
+        checkout = create_checkout(
+            business=self.business, source=CommerceIntake.SOURCE_API, order_mode="online",
+            customer={"name": "Ada"},
+            items=[{
+                "storefront_product": self.product, "quantity": "2",
+                "individual_option_id": str(option.public_id),
+            }],
+            idempotency_key="individual-online",
+        )[0]
+        line = checkout.items.get()
+        self.assertEqual(line.individual_option_id, option.pk)
+        self.assertEqual(line.unit_price, Decimal("650.00"))
+        self.assertEqual(line.production_quantity, Decimal("1.00"))
+        self.assertEqual(line.customer_unit, "slice")
+        self.assertEqual(checkout.amount, Decimal("1300.00"))
+
+        with self.assertRaises(ValidationError):
+            create_checkout(
+                business=self.business, source=CommerceIntake.SOURCE_API, order_mode="physical_store",
+                customer={"name": "Ada"},
+                items=[{
+                    "storefront_product": self.product, "quantity": "2",
+                    "individual_option_id": str(option.public_id),
+                }],
+                idempotency_key="individual-physical-external-rejected",
+            )
+
+        with self.assertRaises(ChannelMinimumError):
+            create_checkout(
+                business=self.business, source=CommerceIntake.SOURCE_API, order_mode="distribution",
+                customer={"name": "Ada"},
+                items=[{
+                    "storefront_product": self.product, "quantity": "2",
+                    "individual_option_id": str(option.public_id),
+                }],
+                idempotency_key="individual-bulk-min",
+            )
 
     def test_payment_discovery_filters_enabled_but_incomplete_methods(self):
         methods = {row["code"] for row in eligible_payment_methods(self.business)}
@@ -148,8 +232,8 @@ class CheckoutBoundaryTests(TestCase):
         with self.assertRaises(ChannelMinimumError) as raised:
             self.make_checkout(key="distribution-min", qty="5", order_mode="distribution")
         codes = {row["code"] for row in raised.exception.alternatives}
-        self.assertIn("physical_store", codes)
         self.assertIn("online", codes)
+        self.assertNotIn("physical_store", codes)
 
     def test_full_verified_payment_materializes_exactly_one_intake(self):
         checkout = self.make_checkout(key="paid-checkout")

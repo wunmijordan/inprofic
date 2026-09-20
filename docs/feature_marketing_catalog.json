@@ -1,0 +1,371 @@
+[
+  {
+    "id": "inventory-units",
+    "name": "Inventory with purchase-to-usage units",
+    "group": "operations",
+    "audience": "owners, storekeepers, production teams",
+    "proof": "Buy in packs or bags while stock and recipes stay accurate in the unit actually consumed.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "dashboard-insights",
+    "name": "Dashboard search and operating insights",
+    "group": "experience",
+    "audience": "owners and managers",
+    "proof": "Search key business records quickly and review stock, commercial and period signals from one operating dashboard.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "stock-alerts",
+    "name": "Persistent stock alerts inside the shared operations tray",
+    "group": "operations",
+    "audience": "owners, storekeepers, managers",
+    "proof": "Raw-material and finished-good warning/low conditions open in separate Inventory tabs inside the movable tray, keep per-user snooze/re-alert timing, repeat a chosen INPROFIC tune in the foreground, and continue due reminders through Web Push when the app is backgrounded or closed.",
+    "highlight": "NEW",
+    "added_on": "2026-09-20"
+  },
+  {
+    "id": "product-categories",
+    "name": "Business-defined product categories",
+    "group": "operations",
+    "audience": "retail, restaurant, bakery and wholesale teams",
+    "proof": "Organize sellable products independently of whether they are made in-house or purchased for resale.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "measurement-change",
+    "name": "Controlled measurement changes",
+    "group": "operations",
+    "audience": "inventory and production managers",
+    "proof": "Convert live stock and recipe definitions without rewriting completed historical evidence.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "procurement",
+    "name": "Procurement and receiving",
+    "group": "operations",
+    "audience": "procurement and store teams",
+    "proof": "Receive purchase orders into stock with unit conversion and cost updates handled together.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "wholesale-retail",
+    "name": "Wholesale and retail stock-first workflows",
+    "group": "operations",
+    "audience": "wholesalers and retailers",
+    "proof": "Procure and sell resale products without forcing them through Production.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "production",
+    "name": "Production requests and orders",
+    "group": "production",
+    "audience": "production-led businesses",
+    "proof": "Plan output, release recipe materials transactionally and add completed output to finished stock.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "shared-runs",
+    "name": "Shared Production Runs",
+    "group": "production",
+    "audience": "production planners and managers",
+    "proof": "Coordinate multiple normal customer/restock orders into one combined material release without losing order-level attribution.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "batch-yield",
+    "name": "Batch yield, wastage and output tracking",
+    "group": "production",
+    "audience": "production teams",
+    "proof": "Keep requested quantity, planned output, actual output and wastage distinct.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "offcuts-shortages",
+    "name": "Offcut, surplus and shortage reconciliation",
+    "group": "production",
+    "audience": "production and sales managers",
+    "proof": "Route usable surplus deliberately and reconcile customer shortages without duplicate sales or production events.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "sales",
+    "name": "Customer orders and sales",
+    "group": "sales",
+    "audience": "sales teams and owners",
+    "proof": "Handle walk-in and customer orders while preserving fulfilment and payment state separately.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "customer-pricing",
+    "name": "Customer and channel pricing",
+    "group": "sales",
+    "audience": "wholesale and distribution businesses",
+    "proof": "Resolve customer-specific pricing before channel pricing, then fall back to the product default.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "credit",
+    "name": "Receivables, payables and partial settlement",
+    "group": "finance",
+    "audience": "owners and finance teams",
+    "proof": "Track what is owed separately from real cash movement and support partial settlement without false paid states.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "finance-ledger",
+    "name": "Auditable cash and finance ledger",
+    "group": "finance",
+    "audience": "finance teams and owners",
+    "proof": "Verified money movement posts to tenant-owned accounts with compensating reversals instead of destructive edits.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "expenses",
+    "name": "Expenses and expense settlement",
+    "group": "finance",
+    "audience": "owners and finance teams",
+    "proof": "Record business expenses, distinguish unpaid obligations from actual settlement, and feed paid amounts into the cash ledger.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "commerce-storefront",
+    "name": "Hosted storefront and Order Now",
+    "group": "commerce",
+    "audience": "businesses selling online without a custom commerce stack",
+    "proof": "Publish tenant products, take baskets and start payment-first checkout without creating premature operational records.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "headless-api",
+    "name": "Headless Commerce API",
+    "group": "commerce",
+    "audience": "businesses with custom websites or apps",
+    "proof": "External websites consume authoritative catalogue, checkout, payment, delivery and tracking endpoints while keys stay server-side; external pricing exposes Online and Distribution/Bulk only, never the in-premise Physical Store price.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "gateway-payments",
+    "name": "Paystack and Monnify payments",
+    "group": "commerce",
+    "audience": "online-selling businesses",
+    "proof": "Provider-backed checkout and instant transfer settle only after authoritative provider verification.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "direct-transfer",
+    "name": "Transfer without a payment gateway",
+    "group": "commerce",
+    "audience": "businesses that prefer direct bank transfer",
+    "proof": "Show the business bank account, require customer payment proof externally, and keep payment pending until staff verifies the actual credit.",
+    "highlight": "NEW",
+    "added_on": "2026-09-20"
+  },
+  {
+    "id": "pos",
+    "name": "In-premise POS",
+    "group": "commerce",
+    "audience": "cashiers, stores, restaurants and walk-in operations",
+    "proof": "Staff can complete counter sales with Cash, direct Transfer or supported terminal payment without opening the wider workspace.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "delivery",
+    "name": "Delivery quoting and hybrid routing",
+    "group": "delivery",
+    "audience": "businesses delivering customer orders",
+    "proof": "Quote from validated destinations before payment and switch between in-house and configured provider routing under tenant policy.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "delivery-coverage",
+    "name": "Mapped delivery areas and precise address validation",
+    "group": "delivery",
+    "audience": "dispatch teams and online-selling businesses",
+    "proof": "Define delivery coverage, locate typed addresses after a calm 2-second idle window, keep corrections from being overwritten by stale lookups, and fall back to a customer map pin before quoting delivery.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "glovo-provider",
+    "name": "Provider-neutral delivery partner adapters",
+    "group": "delivery",
+    "audience": "businesses using in-house riders, couriers or external delivery partners",
+    "proof": "Keep INPROFIC in control of delivery pricing, routing and tracking while any courier stays manual or connects through a normalized dispatch/status adapter; optional built-in providers remain separately governed.",
+    "highlight": "NEW",
+    "added_on": "2026-09-20"
+  },
+  {
+    "id": "delivery-notifications",
+    "name": "Shared realtime Commerce, payment and delivery alert tray",
+    "group": "delivery",
+    "audience": "dispatchers, managers and riders",
+    "proof": "Commerce, payment and Delivery alerts share one movable tray with Inventory without sharing read state; five selectable foreground tunes and configurable repeats keep unread work—including direct Transfer verification—hard to miss, while durable Web Push continues due reminders in the background.",
+    "highlight": "NEW",
+    "added_on": "2026-09-20"
+  },
+  {
+    "id": "rider",
+    "name": "Delivery Rider workspace",
+    "group": "delivery",
+    "audience": "in-house riders and dispatch teams",
+    "proof": "Riders see only assigned deliveries, allowed status actions and proof-of-delivery; admins control the rider alert tune/repeat policy and riders can enroll their own device for background Web Push.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "customer-profiles",
+    "name": "Storefront customer profiles and tracking",
+    "group": "commerce",
+    "audience": "repeat online customers",
+    "proof": "Optional tenant-scoped customer accounts save contact details and purchase history while guest checkout remains available.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "audit",
+    "name": "Audit Workspace",
+    "group": "governance",
+    "audience": "owners, finance teams and external auditors",
+    "proof": "Provide plan-gated read-only cross-module evidence review with auditor queries, flags and response tracking.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "roles",
+    "name": "Role and per-user permissions",
+    "group": "governance",
+    "audience": "growing teams",
+    "proof": "Give staff only the workspaces and actions they need while business-level entitlements remain the ceiling.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "workspace-theming",
+    "name": "Tenant branding and workspace appearance",
+    "group": "experience",
+    "audience": "business owners and teams",
+    "proof": "Business accent/background branding and light/dark workspace preferences keep each tenant recognizable without changing operational data.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "subscriptions",
+    "name": "Founder-controlled subscription plans",
+    "group": "governance",
+    "audience": "INPROFIC operators and plan-managed tenants",
+    "proof": "Control plan pricing, module entitlements and commercial access without deleting tenant history.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "founder-integration-gates",
+    "name": "Founder-controlled third-party integration availability",
+    "group": "governance",
+    "audience": "INPROFIC platform operators and businesses using optional delivery providers",
+    "proof": "Optional provider connectors can be hidden and execution-blocked platform-wide without deleting tenant credentials or history; businesses still activate their own approved provider accounts only after configuration.",
+    "highlight": "NEW",
+    "added_on": "2026-09-20"
+  },
+  {
+    "id": "multi-service-profiles",
+    "name": "Multiple service/business profiles under one subscription",
+    "group": "governance",
+    "audience": "owners running more than one service line",
+    "proof": "Provision additional tenant-isolated service profiles, carry appropriate memberships across, and switch between them without mixing records.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "entitlement-continuity",
+    "name": "Plan-upgrade data continuity",
+    "group": "governance",
+    "audience": "owners evaluating plan upgrades",
+    "proof": "Hidden interconnected modules do not stop required back-office synchronization, so upgrades reveal already-complete records.",
+    "highlight": "NEW",
+    "added_on": "2026-09-20"
+  },
+  {
+    "id": "reports-backup",
+    "name": "Reports, exports and business backup",
+    "group": "governance",
+    "audience": "owners, managers and auditors",
+    "proof": "Export operational reports and maintain a tenant backup path without flattening audit history.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "onboarding",
+    "name": "Guided system onboarding",
+    "group": "experience",
+    "audience": "new teams",
+    "proof": "A replayable module-aware tour helps staff learn the workspace without developer terminology.",
+    "highlight": "",
+    "added_on": ""
+  },
+  {
+    "id": "commerce-channel-boundary",
+    "name": "Surface-safe Online, POS and Distribution pricing",
+    "group": "commerce",
+    "audience": "businesses selling both in-premise and online",
+    "proof": "Physical Store/direct pricing stays inside the staff POS, while hosted/headless commerce exposes Online plus Distribution/Bulk and INPROFIC enforces the chosen channel and minimum quantity server-side.",
+    "highlight": "NEW",
+    "added_on": "2026-09-20"
+  },
+  {
+    "id": "portion-bulk-pack-composition",
+    "name": "Standard portions, composed products and Bulk Packs",
+    "group": "commerce",
+    "audience": "restaurants and production businesses selling in customer-friendly portions or bulk packs",
+    "proof": "Keep production in base units such as scoops/pieces/ml while customers buy plates, servings, bowls, cartons or other packs; show customer-safe package contents and preserve private yield conversions.",
+    "highlight": "NEW",
+    "added_on": "2026-09-20"
+  },
+  {
+    "id": "founder-product-analytics",
+    "name": "Founder product and lead analytics",
+    "group": "governance",
+    "audience": "INPROFIC founders and platform operators",
+    "proof": "Track first-party signup leads, completed registrations, logins, subscription milestones and throttled module usage in Founder Console without recording passwords, payment secrets or arbitrary clickstreams.",
+    "highlight": "NEW",
+    "added_on": "2026-09-20"
+  },
+  {
+    "id": "form-experience-v2",
+    "name": "Animated, consistent form validation across INPROFIC",
+    "group": "experience",
+    "audience": "staff and hosted-storefront customers",
+    "proof": "HTML5 and Django validation share animated field states, contextual SVG affordances, accessible feedback and consistent toggle switches; dynamic rows inherit the same behavior.",
+    "highlight": "NEW",
+    "added_on": "2026-09-20"
+  },
+  {
+    "id": "individual-sale-options",
+    "name": "Channel-aware plain and add-on product options",
+    "group": "commerce",
+    "audience": "restaurants and production businesses selling composed products plus extras",
+    "proof": "Offer Extra Jollof, Single Chicken, bottles, pieces or other plain portions from the same Finished Good stock and recipe with independent Physical Store, Online and Bulk/Distribution availability and pricing.",
+    "highlight": "NEW",
+    "added_on": "2026-09-20"
+  }
+]

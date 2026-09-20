@@ -6,7 +6,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.db.models import Q
-from django.http import JsonResponse
+from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -53,6 +53,16 @@ def _error(exc):
     return "; ".join(exc.messages) if isinstance(exc, ValidationError) else str(exc)
 
 
+def _request_payload(request):
+    """Keep JSON compatibility while allowing multipart proof uploads."""
+    if (request.content_type or "").split(";", 1)[0].strip().lower() == "multipart/form-data":
+        return request.POST
+    data = json.loads(request.body or b"{}")
+    if not isinstance(data, dict):
+        raise ValidationError("The payment request format is invalid.")
+    return data
+
+
 def _headless_context(request, business_slug):
     business = get_object_or_404(Business, slug=business_slug)
     if not _commerce_enabled(business) or not _settings_for(business).api_enabled:
@@ -91,9 +101,7 @@ def api_checkout_payment_initiate(request, business_slug, checkout_id):
         business=business, public_id=checkout_id,
     )
     try:
-        data = json.loads(request.body or b"{}")
-        if not isinstance(data, dict):
-            raise ValidationError("The payment request format is invalid.")
+        data = _request_payload(request)
         method = (data.get("method") or "").strip().lower()
         capture_checkout_gateway_email(
             checkout, method, data.get("customer_email") or data.get("email")
@@ -141,11 +149,12 @@ def api_checkout_payment_claim(request, business_slug, checkout_id):
     if payment is None:
         return JsonResponse({"detail": "No current payment exists for this checkout."}, status=404)
     try:
-        data = json.loads(request.body or b"{}")
+        data = _request_payload(request)
         claim, created = submit_bank_claim(
             payment=payment,
             payer_name=data.get("payer_name"),
             transfer_reference=data.get("transfer_reference"),
+            payment_proof=request.FILES.get("payment_proof"),
         )
         payment.refresh_from_db()
         payload = serialize_payment(payment)
@@ -166,7 +175,7 @@ def api_payment_initiate(request, business_slug, public_id):
         CommerceIntake.raw_objects.prefetch_related("items"), business=business, public_id=public_id
     )
     try:
-        data = json.loads(request.body or b"{}")
+        data = _request_payload(request)
         payment = initiate_payment(
             intake=intake,
             method=data.get("method"),
@@ -201,11 +210,12 @@ def api_payment_claim(request, business_slug, public_id):
     if payment is None:
         return JsonResponse({"detail": "No current payment exists for this order."}, status=404)
     try:
-        data = json.loads(request.body or b"{}")
+        data = _request_payload(request)
         claim, created = submit_bank_claim(
             payment=payment,
             payer_name=data.get("payer_name"),
             transfer_reference=data.get("transfer_reference"),
+            payment_proof=request.FILES.get("payment_proof"),
         )
         payment.refresh_from_db()
         payload = serialize_payment(payment)
@@ -408,7 +418,7 @@ def payment_queue(request):
     for payment in payments:
         payment.confirmation_token = f"{payment.public_id}:{payment.updated_at.isoformat()}"
         payment.manual_transfer_claim_allowed = bool(
-            payment.method == CommercePayment.METHOD_BANK_TRANSFER and not payment.gateway_provider
+            payment.method in {CommercePayment.METHOD_TRANSFER, CommercePayment.METHOD_BANK_TRANSFER} and not payment.gateway_provider
         )
         payment.provider_reconcile_allowed = bool(
             payment.gateway_provider in {CommercePayment.GATEWAY_PAYSTACK, CommercePayment.GATEWAY_MONNIFY}
@@ -419,6 +429,20 @@ def payment_queue(request):
         "can_verify": _can_verify(request.user, request.business),
         "can_manage_payment_settings": is_business_admin(request.user, request.business),
     })
+
+
+@login_required
+def payment_claim_proof(request, claim_id):
+    if not user_has_permission(request.user, request.business, "finance", "view") and not is_business_admin(request.user, request.business):
+        return render(request, "403.html", status=403)
+    claim = get_object_or_404(CommercePaymentClaim, business=request.business, pk=claim_id)
+    if not claim.payment_proof:
+        raise Http404("No payment proof is attached to this claim.")
+    response = FileResponse(claim.payment_proof.open("rb"), as_attachment=False, filename=claim.payment_proof.name.rsplit("/", 1)[-1])
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Cache-Control"] = "private, no-store"
+    response["Content-Security-Policy"] = "sandbox"
+    return response
 
 
 @login_required

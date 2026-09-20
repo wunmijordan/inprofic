@@ -17,6 +17,7 @@
 <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
   <p class="text-sm text-stone-500 mt-0.5 flex-1 min-w-[240px]">{% if vertical_ui.uses_production %}{{ vertical_ui.recipe_item_label }}s, {{ vertical_ui.production_inputs_label|lower }} and operational supplies — all procured through the same material form and procurement chain.{% else %}Packaging, handling, storage and operational supplies used around product procurement and sales.{% endif %}</p>
   <div class="flex items-center gap-2 shrink-0">
+    {% if module_permissions.inventory.edit %}<a href="{% url 'inventory_alert_settings' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-white text-stone-700 border border-stone-300 hover:bg-stone-50">Alert settings</a>{% endif %}
     <a href="{% url 'raw_material_inventory_pdf' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-white text-[#8f172d] border border-[#8f172d]/30 hover:bg-[#FFF4F6]" title="Export current raw-material stock and reorder status as PDF">Export PDF</a>
     {% if module_permissions.inventory.edit %}<a href="{% url 'raw_material_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ Add {% if vertical_ui.uses_production %}Material{% else %}Supply{% endif %}</a>{% endif %}
   </div>

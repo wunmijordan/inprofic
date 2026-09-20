@@ -1,7 +1,7 @@
 import hashlib
 import hmac
 import json
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from uuid import uuid4
 
 from django.contrib import messages
@@ -10,6 +10,7 @@ from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
+from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -21,12 +22,13 @@ from accounts.services import can_use_commerce_storefront, is_business_admin
 from core.models import Business
 from core.verticals import vertical_config
 from inventory.models import FinishedGood, ProductCategory
+from inventory.portioning import public_contents, standard_multiplier
 from .forms import CommerceIntegrationForm, CommerceSettingsForm, StorefrontProductForm
 from .models import (
     CommerceCheckoutSession, CommerceIntegration, CommerceIntake, CommercePayment,
     CommercePaymentReceipt, CommerceSettings, StorefrontCustomer, StorefrontProduct, DeliveryArea, DeliveryAssignment, DeliverySettings,
 )
-from .services import ChannelMinimumError, accept_intake, create_intake, switch_intake_to_preorder
+from .services import ChannelMinimumError, _channel_allowed, _channel_minimum, accept_intake, create_intake, switch_intake_to_preorder
 from .checkout_services import (
     CheckoutAvailabilityError,
     available_physical_stock,
@@ -213,15 +215,33 @@ def _storefront_customer_enabled(business):
 def _public_products(business):
     return StorefrontProduct.raw_objects.filter(
         business=business, published=True
-    ).select_related(
-        "finished_good__business", "finished_good__product_category"
-    ).prefetch_related("finished_good__channel_prices")
+    ).filter(
+        Q(allow_online_order=True) | Q(allow_distribution_order=True)
+        | Q(finished_good__individual_sale_options__active=True, finished_good__individual_sale_options__online_enabled=True)
+        | Q(finished_good__individual_sale_options__active=True, finished_good__individual_sale_options__distribution_enabled=True)
+    ).distinct().select_related(
+        "finished_good__business", "finished_good__product_category", "finished_good__portion_profile"
+    ).prefetch_related(
+        "finished_good__channel_prices",
+        "finished_good__bulk_pack_profiles",
+        "finished_good__individual_sale_options",
+        "finished_good__composition_items__component_finished_good",
+        "finished_good__composition_items__component_raw_material",
+    )
 
 
 def _public_catalog_data(business):
     from .delivery_services import delivery_available
 
     products = list(_public_products(business))
+    for product in products:
+        product.public_individual_options = [
+            option for option in product.individual_sale_options
+            if option.active and (
+                (option.online_enabled and option.online_price is not None)
+                or (option.distribution_enabled and option.distribution_price is not None)
+            )
+        ]
     category_ids = {p.finished_good.product_category_id for p in products if p.finished_good.product_category_id}
     categories = list(
         ProductCategory.raw_objects.filter(business=business, active=True, pk__in=category_ids)
@@ -272,7 +292,7 @@ def _public_checkout(business, checkout_id):
         CommerceCheckoutSession.raw_objects.select_related(
             "delivery_quote__area", "delivery_quote__provider_account", "materialized_intake"
         ).prefetch_related(
-            "items__storefront_product", "items__finished_good"
+            "items__storefront_product", "items__finished_good", "items__bulk_pack"
         ),
         business=business,
         public_id=checkout_id,
@@ -335,6 +355,16 @@ def storefront_order(request,business_slug):
             validate_email(customer_email)
         product_ids = request.POST.getlist("product_id")
         quantities = request.POST.getlist("quantity")
+        bulk_pack_ids = request.POST.getlist("bulk_pack_id")
+        individual_option_ids = request.POST.getlist("individual_option_id")
+        if bulk_pack_ids and len(bulk_pack_ids) != len(product_ids):
+            raise ValidationError("Bulk option selections do not match the submitted basket.")
+        if individual_option_ids and len(individual_option_ids) != len(product_ids):
+            raise ValidationError("Individual option selections do not match the submitted basket.")
+        if not bulk_pack_ids:
+            bulk_pack_ids = [""] * len(product_ids)
+        if not individual_option_ids:
+            individual_option_ids = [""] * len(product_ids)
         if not product_ids or len(product_ids) != len(quantities):
             raise ValidationError("Choose at least one product and enter a quantity for each one.")
         products = {
@@ -343,14 +373,23 @@ def storefront_order(request,business_slug):
                 business=business,
                 public_id__in=product_ids,
                 published=True,
-            ).select_related("finished_good__business").prefetch_related("finished_good__channel_prices")
+            ).select_related("finished_good__business", "finished_good__portion_profile").prefetch_related(
+                "finished_good__channel_prices", "finished_good__bulk_pack_profiles", "finished_good__individual_sale_options",
+                "finished_good__composition_items__component_finished_good",
+                "finished_good__composition_items__component_raw_material",
+            )
         }
         items = []
-        for product_id, quantity in zip(product_ids, quantities):
+        for product_id, quantity, bulk_pack_id, individual_option_id in zip(product_ids, quantities, bulk_pack_ids, individual_option_ids):
             product = products.get(product_id)
             if product is None:
                 raise ValidationError("One of the selected products is no longer available.")
-            items.append({"storefront_product": product, "quantity": quantity})
+            items.append({
+                "storefront_product": product,
+                "quantity": quantity,
+                "bulk_pack_id": bulk_pack_id or None,
+                "individual_option_id": individual_option_id or None,
+            })
         delivery_quote_id = request.POST.get("delivery_quote_id") or None
         if request.POST.get("request_delivery") == "on" and not delivery_quote_id:
             raise ValidationError("Get a current delivery quote before continuing to payment.")
@@ -500,11 +539,12 @@ def storefront_checkout_claim(request, business_slug, checkout_id):
     payment = current_checkout_payment(checkout)
     try:
         if payment is None:
-            raise ValidationError("Start a bank-transfer payment before submitting its reference.")
+            raise ValidationError("Start a transfer payment before submitting its proof.")
         submit_bank_claim(
             payment=payment,
             payer_name=request.POST.get("payer_name") or checkout.customer_name,
             transfer_reference=request.POST.get("transfer_reference"),
+            payment_proof=request.FILES.get("payment_proof"),
         )
         return redirect("storefront_checkout", business_slug=business.slug, checkout_id=checkout.public_id)
     except (ValidationError, TypeError, ValueError) as exc:
@@ -654,10 +694,20 @@ def api_products(request,business_slug):
     if not ok:return JsonResponse({"detail":"Commerce API unavailable."},status=404)
     rows=[]
     channel_labels = vertical_config(business)["commerce_channels"]
-    for p in StorefrontProduct.raw_objects.filter(business=business,published=True).select_related("finished_good__business", "finished_good__product_category").prefetch_related("finished_good__channel_prices"):
+    products_qs = StorefrontProduct.raw_objects.filter(business=business, published=True).filter(
+        Q(allow_online_order=True) | Q(allow_distribution_order=True)
+        | Q(finished_good__individual_sale_options__active=True, finished_good__individual_sale_options__online_enabled=True)
+        | Q(finished_good__individual_sale_options__active=True, finished_good__individual_sale_options__distribution_enabled=True)
+    ).distinct().select_related(
+        "finished_good__business", "finished_good__product_category", "finished_good__portion_profile"
+    ).prefetch_related(
+        "finished_good__channel_prices", "finished_good__bulk_pack_profiles", "finished_good__individual_sale_options",
+        "finished_good__composition_items__component_finished_good",
+        "finished_good__composition_items__component_raw_material",
+    )
+    for p in products_qs:
         order_modes=[]
         mode_config = [
-            ("physical_store", p.allow_stock_order, p.min_quantity),
             ("online", p.allow_online_order, p.preorder_min_quantity),
             ("distribution", p.allow_distribution_order, p.distribution_min_quantity),
         ]
@@ -669,7 +719,6 @@ def api_products(request,business_slug):
                 if (
                     not business.uses_production
                     or p.finished_good.is_purchased_for_resale
-                    or code == "physical_store"
                 )
                 else "preorder"
             )
@@ -680,27 +729,137 @@ def api_products(request,business_slug):
                 "min_quantity": str(minimum),
                 "max_quantity": str(p.max_quantity) if p.max_quantity is not None else None,
                 "fulfilment_mode": fulfilment,
-                "available_now": str(available_physical_stock(p.finished_good)) if fulfilment == "stock" else None,
+                "available_now": str((Decimal(available_physical_stock(p.finished_good)) / standard_multiplier(p.finished_good)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)) if fulfilment == "stock" else None,
                 "lead_time": p.preorder_lead_time if fulfilment == "preorder" else "",
             })
+        # Legacy ordering_modes remains stable for older website clients while
+        # order_modes is the authoritative channel-aware contract.
         submitted_modes=[]
-        if p.allow_stock_order:submitted_modes.append("order")
-        if business.uses_production and not p.finished_good.is_purchased_for_resale and (p.allow_online_order or p.allow_distribution_order):submitted_modes.append("preorder")
+        for mode in order_modes:
+            legacy_mode = "order" if mode["fulfilment_mode"] == "stock" else "preorder"
+            if legacy_mode not in submitted_modes:
+                submitted_modes.append(legacy_mode)
         image_url = p.public_image_url
         if image_url and "://" not in image_url:
             image_url = request.build_absolute_uri(f"/{image_url.lstrip('/')}")
-        rows.append({"id":str(p.public_id),"name":p.display_name,"category":({"id": p.finished_good.product_category_id, "name": p.finished_good.product_category.name, "slug": p.finished_good.product_category.slug} if p.finished_good.product_category_id and p.finished_good.product_category.active else None),"description":p.description,"image":image_url,"image_url":image_url,"unit":p.finished_good.unit,"available_now":str(available_physical_stock(p.finished_good)),"order_modes":order_modes,"ordering_modes":submitted_modes,"min_quantity":str(p.min_quantity),"preorder_min_quantity":str(p.preorder_min_quantity),"distribution_min_quantity":str(p.distribution_min_quantity),"max_quantity":str(p.max_quantity) if p.max_quantity is not None else None,"preorder_lead_time":p.preorder_lead_time,"stock_price":str(p.finished_good.selling_price_for("physical_store")),"preorder_price":str(p.finished_good.selling_price_for("online")),"distribution_price":str(p.finished_good.selling_price_for("distribution"))})
+        multiplier = standard_multiplier(p.finished_good)
+        customer_available = (
+            Decimal(available_physical_stock(p.finished_good)) / multiplier
+        ).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+        bulk_packs = [
+            {
+                "id": str(pack.public_id),
+                "name": pack.name,
+                "package_type": pack.package_type,
+                "customer_quantity": str(pack.customer_quantity),
+                "customer_unit": pack.customer_unit or pack.name,
+                "price": str(pack.price),
+                "min_order_quantity": str(pack.min_order_quantity),
+                "contents": public_contents(p.finished_good, profile_key=pack.profile_key),
+            }
+            for pack in p.bulk_pack_options
+        ]
+        individual_options = []
+        for option in p.individual_sale_options:
+            option_modes = []
+            for code, enabled in (("online", option.online_enabled), ("distribution", option.distribution_enabled)):
+                price = option.price_for(code)
+                if not enabled or price is None:
+                    continue
+                fulfilment = "stock" if (not business.uses_production or p.finished_good.is_purchased_for_resale) else "preorder"
+                option_modes.append({
+                    "code": code,
+                    "label": channel_labels[code],
+                    "price": str(price),
+                    "min_quantity": str(option.minimum_for(code)),
+                    "max_quantity": str(p.max_quantity) if p.max_quantity is not None else None,
+                    "fulfilment_mode": fulfilment,
+                    "available_now": str((Decimal(available_physical_stock(p.finished_good)) / Decimal(option.base_quantity or 1)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)) if fulfilment == "stock" else None,
+                    "lead_time": p.preorder_lead_time if fulfilment == "preorder" else "",
+                })
+            if option_modes:
+                individual_options.append({
+                    "id": str(option.public_id),
+                    "product_id": str(p.public_id),
+                    "name": option.name,
+                    "unit": option.customer_unit or p.finished_good.unit,
+                    "customer_quantity": str(option.customer_quantity),
+                    "note": option.public_note,
+                    "contents": [{"name": p.finished_good.name, "quantity_label": option.public_note or "", "kind": "base_product", "scope": "all"}],
+                    "order_modes": option_modes,
+                    "online_price": str(option.online_price) if option.online_enabled and option.online_price is not None else None,
+                    "distribution_price": str(option.distribution_price) if option.distribution_enabled and option.distribution_price is not None else None,
+                    "online_min_quantity": str(option.online_min_quantity),
+                    "distribution_min_quantity": str(option.distribution_min_quantity),
+                })
+        rows.append({
+            "id": str(p.public_id),
+            "name": p.display_name,
+            "category": ({
+                "id": p.finished_good.product_category_id,
+                "name": p.finished_good.product_category.name,
+                "slug": p.finished_good.product_category.slug,
+            } if p.finished_good.product_category_id and p.finished_good.product_category.active else None),
+            "description": p.description,
+            "image": image_url,
+            "image_url": image_url,
+            "unit": p.customer_unit,
+            "available_now": str(customer_available),
+            "contents": p.standard_public_contents,
+            "bulk_packs": bulk_packs,
+            "individual_options": individual_options,
+            "order_modes": order_modes,
+            "ordering_modes": submitted_modes,
+            "online_min_quantity": str(p.preorder_min_quantity),
+            "preorder_min_quantity": str(p.preorder_min_quantity),
+            "distribution_min_quantity": str(p.distribution_min_quantity),
+            "max_quantity": str(p.max_quantity) if p.max_quantity is not None else None,
+            "preorder_lead_time": p.preorder_lead_time,
+            "online_price": str(p.finished_good.selling_price_for("online")) if p.allow_online_order else None,
+            "preorder_price": str(p.finished_good.selling_price_for("online")) if p.allow_online_order else None,
+            "distribution_price": str(p.finished_good.selling_price_for("distribution")) if p.allow_distribution_order else None,
+        })
     categories = [
         {"id": category.pk, "name": category.name, "slug": category.slug}
         for category in ProductCategory.raw_objects.filter(
-            business=business, active=True, products__storefront_product__published=True
+            business=business,
+            active=True,
+            products__storefront_product__published=True,
+        ).filter(
+            Q(products__storefront_product__allow_online_order=True)
+            | Q(products__storefront_product__allow_distribution_order=True)
+            | Q(products__individual_sale_options__active=True, products__individual_sale_options__online_enabled=True)
+            | Q(products__individual_sale_options__active=True, products__individual_sale_options__distribution_enabled=True)
         ).distinct().order_by("sort_order", "name", "id")
     ]
     from .delivery_services import public_delivery_config
     delivery = public_delivery_config(business)
     delivery["location_url"] = f"/api/v1/storefronts/{business.slug}/delivery/location"
     delivery["quote_url"] = f"/api/v1/storefronts/{business.slug}/delivery/quote"
-    return JsonResponse({"business":business.name,"business_slug":business.slug,"service":business.get_vertical_display(),"categories":categories,"delivery":delivery,"products":rows})
+    catalogue_items = []
+    for product in rows:
+        if product.get("order_modes"):
+            catalogue_items.append({**product, "kind": "standard_product", "product_id": product["id"], "individual_option_id": None})
+        for option in product.get("individual_options") or []:
+            catalogue_items.append({
+                "id": f"individual:{option['id']}",
+                "kind": "individual_option",
+                "product_id": product["id"],
+                "individual_option_id": option["id"],
+                "name": option["name"],
+                "category": product.get("category"),
+                "description": option.get("note") or product.get("description") or "",
+                "image": product.get("image"),
+                "image_url": product.get("image_url"),
+                "unit": option.get("unit"),
+                "contents": option.get("contents") or [],
+                "order_modes": option.get("order_modes") or [],
+                "online_price": option.get("online_price"),
+                "distribution_price": option.get("distribution_price"),
+                "online_min_quantity": option.get("online_min_quantity"),
+                "distribution_min_quantity": option.get("distribution_min_quantity"),
+            })
+    return JsonResponse({"business":business.name,"business_slug":business.slug,"service":business.get_vertical_display(),"categories":categories,"delivery":delivery,"products":rows,"catalogue_items":catalogue_items})
 
 
 @csrf_exempt
@@ -725,7 +884,11 @@ def api_checkouts(request, business_slug):
             str(p.public_id): p
             for p in StorefrontProduct.raw_objects.filter(
                 business=business, published=True
-            ).select_related("finished_good__business").prefetch_related("finished_good__channel_prices")
+            ).select_related("finished_good__business", "finished_good__portion_profile").prefetch_related(
+                "finished_good__channel_prices", "finished_good__bulk_pack_profiles", "finished_good__individual_sale_options",
+                "finished_good__composition_items__component_finished_good",
+                "finished_good__composition_items__component_raw_material",
+            )
         }
         items = []
         for row in data.get("items") or []:
@@ -734,7 +897,12 @@ def api_checkouts(request, business_slug):
             product = products.get(str(row.get("product_id")))
             if not product:
                 raise ValidationError("Unknown or unpublished product.")
-            items.append({"storefront_product": product, "quantity": row.get("quantity")})
+            items.append({
+                "storefront_product": product,
+                "quantity": row.get("quantity"),
+                "bulk_pack_id": row.get("bulk_pack_id") or None,
+                "individual_option_id": row.get("individual_option_id") or None,
+            })
         checkout, created = create_checkout(
             business=business,
             source=CommerceIntake.SOURCE_API,
@@ -819,7 +987,17 @@ def api_order_detail(request,business_slug,public_id):
             key: normalized[key]
             for key in ("payment_id", "method", "status", "amount", "currency", "reference", "amount_paid", "balance", "verified_at")
         }
-    return JsonResponse({"id":str(intake.public_id),"number":intake.public_number,"status":intake.status,"order_mode":intake.sales_channel,"fulfilment_mode":intake.ordering_mode,"ordering_mode":intake.ordering_mode,"payment_state":intake.payment_state,"payment":compact_payment,"fulfilment_state":intake.fulfilment_state,"subtotal":str(intake.total - intake.delivery_fee),"delivery_fee":str(intake.delivery_fee),"delivery":_delivery_payload(intake),"total":str(intake.total),"items":[{"product":row.finished_good.name,"requested":str(row.requested_quantity),"stock_fulfilled":str(row.accepted_stock_quantity),"production":str(row.production_quantity),"price":str(row.unit_price)} for row in intake.items.all()]})
+    return JsonResponse({"id":str(intake.public_id),"number":intake.public_number,"status":intake.status,"order_mode":intake.sales_channel,"fulfilment_mode":intake.ordering_mode,"ordering_mode":intake.ordering_mode,"payment_state":intake.payment_state,"payment":compact_payment,"fulfilment_state":intake.fulfilment_state,"subtotal":str(intake.total - intake.delivery_fee),"delivery_fee":str(intake.delivery_fee),"delivery":_delivery_payload(intake),"total":str(intake.total),"items":[{
+        "product": row.finished_good.name,
+        "requested": str(row.requested_quantity),
+        "unit": row.customer_unit or row.finished_good.unit,
+        "bulk_pack_id": str(row.bulk_pack.public_id) if row.bulk_pack_id else None,
+        "individual_option_id": str(row.individual_option.public_id) if row.individual_option_id else None,
+        "individual_option_name": row.individual_option.name if row.individual_option_id else None,
+        "stock_fulfilled": str((row.accepted_stock_quantity / (row.fulfilment_quantity_per_unit or Decimal("1"))).quantize(Decimal("0.01"))),
+        "production": str((row.production_quantity / (row.fulfilment_quantity_per_unit or Decimal("1"))).quantize(Decimal("0.01"))),
+        "price": str(row.unit_price),
+    } for row in intake.items.select_related("bulk_pack", "individual_option").all()]})
 
 
 @require_http_methods(["POST"])
@@ -906,14 +1084,23 @@ def connector_orders(request, business_slug, integration_id):
             str(p.public_id): p
             for p in StorefrontProduct.raw_objects.filter(
                 business=business, published=True
-            ).select_related("finished_good").prefetch_related("finished_good__channel_prices")
+            ).select_related("finished_good", "finished_good__portion_profile").prefetch_related(
+                "finished_good__channel_prices", "finished_good__bulk_pack_profiles", "finished_good__individual_sale_options",
+                "finished_good__composition_items__component_finished_good",
+                "finished_good__composition_items__component_raw_material",
+            )
         }
         items = []
         for row in data.get("items") or []:
             product = products.get(str(row.get("product_id")))
             if not product:
                 raise ValidationError("Unknown or unpublished product.")
-            items.append({"storefront_product": product, "quantity": row.get("quantity")})
+            items.append({
+                "storefront_product": product,
+                "quantity": row.get("quantity"),
+                "bulk_pack_id": row.get("bulk_pack_id") or None,
+                "individual_option_id": row.get("individual_option_id") or None,
+            })
         idem = str(data.get("idempotency_key") or data.get("external_order_id") or "").strip()
         if not idem:
             raise ValidationError("idempotency_key or external_order_id is required.")
@@ -953,8 +1140,11 @@ def _receipt_details(receipt):
     if checkout is not None:
         items = [
             {
-                "name": row.storefront_product.display_name,
+                "name": row.individual_option.name if row.individual_option_id else row.storefront_product.display_name,
                 "quantity": f"{row.payable_quantity}",
+                "unit": row.customer_unit or row.storefront_product.customer_unit,
+                "bulk_pack": row.bulk_pack.name if row.bulk_pack_id else "",
+                "individual_option": row.individual_option.name if row.individual_option_id else "",
                 "unit_price": f"{row.unit_price:.2f}",
                 "line_total": f"{row.line_total:.2f}",
             }
@@ -967,8 +1157,11 @@ def _receipt_details(receipt):
     elif intake is not None:
         items = [
             {
-                "name": row.finished_good.name,
+                "name": row.individual_option.name if row.individual_option_id else row.finished_good.name,
                 "quantity": f"{row.requested_quantity}",
+                "unit": row.customer_unit or row.finished_good.unit,
+                "bulk_pack": row.bulk_pack.name if row.bulk_pack_id else "",
+                "individual_option": row.individual_option.name if row.individual_option_id else "",
                 "unit_price": f"{row.unit_price:.2f}",
                 "line_total": f"{row.line_total:.2f}",
             }
@@ -1014,7 +1207,11 @@ def _receipt_queryset():
         "business", "account", "payment__checkout", "payment__intake"
     ).prefetch_related(
         "payment__checkout__items__storefront_product__finished_good",
+        "payment__checkout__items__bulk_pack",
+        "payment__checkout__items__individual_option",
         "payment__intake__items__finished_good",
+        "payment__intake__items__bulk_pack",
+        "payment__intake__items__individual_option",
     )
 
 
@@ -1049,25 +1246,56 @@ def storefront_receipt(request, business_slug, receipt_id):
 
 def _staff_pos_products(business):
     vocabulary = vertical_config(business)
-    channel = vocabulary.get("direct_sale_channel") or CommerceIntake.CHANNEL_PHYSICAL_STORE
-    filters = {"business": business, "published": True}
-    if channel == CommerceIntake.CHANNEL_DISTRIBUTION:
-        filters["allow_distribution_order"] = True
-    elif channel == CommerceIntake.CHANNEL_ONLINE:
-        filters["allow_online_order"] = True
-    else:
-        filters["allow_stock_order"] = True
+    direct_channel = vocabulary.get("direct_sale_channel") or CommerceIntake.CHANNEL_PHYSICAL_STORE
+    direct_filter = {
+        CommerceIntake.CHANNEL_PHYSICAL_STORE: Q(allow_stock_order=True),
+        CommerceIntake.CHANNEL_ONLINE: Q(allow_online_order=True),
+        CommerceIntake.CHANNEL_DISTRIBUTION: Q(allow_distribution_order=True),
+    }.get(direct_channel, Q(allow_stock_order=True))
+    individual_direct_filter = {
+        CommerceIntake.CHANNEL_PHYSICAL_STORE: Q(finished_good__individual_sale_options__active=True, finished_good__individual_sale_options__physical_store_enabled=True),
+        CommerceIntake.CHANNEL_ONLINE: Q(finished_good__individual_sale_options__active=True, finished_good__individual_sale_options__online_enabled=True),
+        CommerceIntake.CHANNEL_DISTRIBUTION: Q(finished_good__individual_sale_options__active=True, finished_good__individual_sale_options__distribution_enabled=True),
+    }.get(direct_channel, Q(finished_good__individual_sale_options__active=True, finished_good__individual_sale_options__physical_store_enabled=True))
     products = list(
-        StorefrontProduct.raw_objects.filter(**filters)
-        .select_related("finished_good__business", "finished_good__product_category")
-        .prefetch_related("finished_good__channel_prices")
+        StorefrontProduct.raw_objects.filter(business=business, published=True)
+        .filter(
+            direct_filter | Q(allow_distribution_order=True)
+            | individual_direct_filter
+            | Q(finished_good__individual_sale_options__active=True, finished_good__individual_sale_options__distribution_enabled=True)
+        ).distinct()
+        .select_related(
+            "finished_good__business", "finished_good__product_category", "finished_good__portion_profile"
+        )
+        .prefetch_related(
+            "finished_good__channel_prices", "finished_good__bulk_pack_profiles", "finished_good__individual_sale_options",
+            "finished_good__composition_items__component_finished_good",
+            "finished_good__composition_items__component_raw_material",
+        )
         .order_by("public_name", "finished_good__name")
     )
     for product in products:
-        product.pos_price = product.finished_good.selling_price_for(channel)
-        product.pos_available = available_physical_stock(product.finished_good)
-        product.pos_channel = channel
-        product.pos_min_quantity = product.distribution_min_quantity if channel == CommerceIntake.CHANNEL_DISTRIBUTION else product.min_quantity
+        multiplier = standard_multiplier(product.finished_good)
+        product.pos_available = (
+            Decimal(available_physical_stock(product.finished_good)) / multiplier
+        ).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+        product.pos_unit = product.customer_unit
+        product.pos_contents = product.standard_public_contents
+        product.pos_bulk_packs = product.bulk_pack_options
+        product.pos_individual_options = [
+            option for option in product.individual_sale_options
+            if option.active and (
+                (option.channel_enabled(direct_channel) and option.price_for(direct_channel) is not None)
+                or (option.distribution_enabled and option.distribution_price is not None)
+            )
+        ]
+        product.pos_direct_channel = direct_channel
+        product.pos_direct_allowed = _channel_allowed(product, direct_channel)
+        product.pos_direct_price = product.finished_good.selling_price_for(direct_channel)
+        product.pos_direct_min_quantity = _channel_minimum(product, direct_channel) if product.pos_direct_allowed else Decimal("0")
+        product.pos_distribution_allowed = product.allow_distribution_order
+        product.pos_distribution_price = product.finished_good.selling_price_for(CommerceIntake.CHANNEL_DISTRIBUTION)
+        product.pos_distribution_min_quantity = product.distribution_min_quantity
     return products
 
 
@@ -1082,6 +1310,12 @@ def storefront_pos(request):
         return redirect("commerce_dashboard")
     pos_ui = vertical_config(request.business)["pos"]
     pos_channel = vertical_config(request.business).get("direct_sale_channel") or CommerceIntake.CHANNEL_PHYSICAL_STORE
+    allowed_pos_channels = [pos_channel]
+    if CommerceIntake.CHANNEL_DISTRIBUTION not in allowed_pos_channels:
+        allowed_pos_channels.append(CommerceIntake.CHANNEL_DISTRIBUTION)
+    selected_pos_channel = (request.POST.get("order_mode") or pos_channel).strip().lower()
+    if selected_pos_channel not in allowed_pos_channels:
+        selected_pos_channel = pos_channel
     products = list(_staff_pos_products(request.business))
     methods = eligible_payment_methods(request.business, surface="pos")
     from .delivery_services import delivery_available
@@ -1106,8 +1340,14 @@ def storefront_pos(request):
             method = (request.POST.get("method") or "").strip().lower()
             if method not in {row["code"] for row in methods}:
                 raise ValidationError("Choose an enabled in-premise payment method.")
-            if method == CommercePayment.METHOD_CASH and request.POST.get("cash_received") != "on":
-                raise ValidationError("Confirm that the cash has physically been received before completing this sale.")
+            manual_received = request.POST.get("manual_payment_received") == "on"
+            # Keep the previous cash-only POST contract working for any saved
+            # kiosk integration while the UI moves to the generic confirmation.
+            if method == CommercePayment.METHOD_CASH and request.POST.get("cash_received") == "on":
+                manual_received = True
+            if method in {CommercePayment.METHOD_CASH, CommercePayment.METHOD_TRANSFER} and not manual_received:
+                label = "cash has physically been received" if method == CommercePayment.METHOD_CASH else "transfer has been received and verified"
+                raise ValidationError(f"Confirm that the {label} before completing this sale.")
             by_id = {str(product.public_id): product for product in products}
             items = []
             for product_id, product in by_id.items():
@@ -1119,7 +1359,30 @@ def storefront_pos(request):
                 except (InvalidOperation, TypeError, ValueError):
                     raise ValidationError(f"Enter a valid quantity for {product.display_name}.")
                 if quantity > 0:
-                    items.append({"storefront_product": product, "quantity": quantity})
+                    items.append({
+                        "storefront_product": product,
+                        "quantity": quantity,
+                        "bulk_pack_id": (
+                            (request.POST.get(f"bulk_pack_{product_id}") or "").strip() or None
+                            if selected_pos_channel == CommerceIntake.CHANNEL_DISTRIBUTION
+                            else None
+                        ),
+                    })
+            for product in products:
+                for option in getattr(product, "pos_individual_options", []):
+                    raw_qty = (request.POST.get(f"qty_option_{option.public_id}") or "").strip()
+                    if not raw_qty:
+                        continue
+                    try:
+                        quantity = Decimal(raw_qty)
+                    except (InvalidOperation, TypeError, ValueError):
+                        raise ValidationError(f"Enter a valid quantity for {option.name}.")
+                    if quantity > 0:
+                        items.append({
+                            "storefront_product": product,
+                            "quantity": quantity,
+                            "individual_option_id": str(option.public_id),
+                        })
             if not items:
                 raise ValidationError("Add at least one product to the sale.")
             customer_default = pos_ui.get("customer_default") or "Walk-in Customer"
@@ -1134,7 +1397,7 @@ def storefront_pos(request):
             checkout, _ = create_checkout(
                 business=request.business,
                 source=CommerceIntake.SOURCE_STAFF_POS,
-                order_mode=pos_channel,
+                order_mode=selected_pos_channel,
                 service_mode="delivery" if delivery_quote_id else ((request.POST.get("service_mode") or "") if pos_ui.get("show_service_mode") else ""),
                 table_reference=(request.POST.get("table_reference") or "") if pos_ui.get("show_reference") else "",
                 customer={
@@ -1153,14 +1416,16 @@ def storefront_pos(request):
                 idempotency_key=f"staff-pos-payment:{checkout.public_id}:{method}",
                 surface="pos",
             )
-            if method == CommercePayment.METHOD_CASH:
+            if method in {CommercePayment.METHOD_CASH, CommercePayment.METHOD_TRANSFER}:
+                is_transfer = method == CommercePayment.METHOD_TRANSFER
                 receipt, _ = record_verified_payment(
                     payment=payment,
                     amount=payment.balance,
                     actor=request.user,
-                    idempotency_key=f"staff-pos-cash:{checkout.public_id}",
+                    idempotency_key=f"staff-pos-{method}:{checkout.public_id}",
                     location="In-premise storefront",
-                    note="Cash received by authorized storefront staff.",
+                    note=("Transfer received and verified by authorized storefront staff." if is_transfer else "Cash received by authorized storefront staff."),
+                    staff_pos_confirmed=is_transfer,
                 )
                 return redirect(f"{reverse('commerce_storefront_pos')}?receipt={receipt.public_id}")
             messages.info(request, "Payment request sent to the configured POS terminal. Complete the card payment on the terminal; INPROFIC will mark it paid after automatic confirmation.")
@@ -1169,9 +1434,13 @@ def storefront_pos(request):
             if checkout is not None:
                 cancel_unpaid_checkout(checkout, reason=f"Staff POS payment initiation failed: {_validation_message(exc)}")
             error = _validation_message(exc)
-    pos_categories = sorted(
-        {p.finished_good.product_category for p in products if p.finished_good.product_category_id},
-        key=lambda category: (category.sort_order, category.name.lower(), category.pk),
+    # Keep the POS category filter stable even when a category currently has no
+    # sellable card in the selected channel.  The UI filters the visible card
+    # set client-side, but the category controls themselves come from the
+    # business catalogue rather than disappearing with the result set.
+    pos_categories = list(
+        ProductCategory.raw_objects.filter(business=request.business, active=True)
+        .order_by("sort_order", "name", "pk")
     )
     completed_receipt = None
     receipt_id = (request.GET.get("receipt") or "").strip()
@@ -1194,7 +1463,13 @@ def storefront_pos(request):
         "active_payment_data": serialize_payment(active_payment) if active_payment else None,
         "pos_ui": pos_ui,
         "pos_channel": pos_channel,
-        "pos_channel_label": vertical_config(request.business)["commerce_channels"].get(pos_channel, pos_channel.replace("_", " ").title()),
+        "pos_channel_label": vertical_config(request.business)["commerce_channels"].get(selected_pos_channel, selected_pos_channel.replace("_", " ").title()),
+        "pos_selected_channel": selected_pos_channel,
+        "pos_channels": [
+            {"code": code, "label": vertical_config(request.business)["commerce_channels"].get(code, code.replace("_", " ").title())}
+            for code in allowed_pos_channels
+        ],
+        "pos_direct_channel": pos_channel,
         "delivery_enabled": delivery_enabled,
         "delivery_areas": delivery_areas,
         "completed_receipt": completed_receipt,

@@ -30,4 +30,4 @@ python scripts/build_pitch_deck.py
 The builder overwrites only `docs/INPROFIC_Pitch_Deck.pptx`.
 
 
-The deck now mentions plan-gated Delivery, true in-house/Glovo Hybrid routing, the rider-only delivery workspace and alerts, optional tenant-scoped storefront customer profiles, Glovo LaaS v2 live quotes/dispatch/tracking, the isolated Audit Workspace, auditor query handling, product categories, and the dedicated POS-only role plus supplemental POS permission.
+The deck now mentions plan-gated Delivery, true in-house/external-provider Hybrid routing, the rider-only delivery workspace and alerts, optional tenant-scoped storefront customer profiles, provider-neutral courier adapters plus optional Founder-gated Glovo LaaS v2 live quotes/dispatch/tracking, the isolated Audit Workspace, auditor query handling, product categories, and the dedicated POS-only role plus supplemental POS permission.

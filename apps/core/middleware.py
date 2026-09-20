@@ -261,9 +261,49 @@ def _action_for_request(request):
         return "view"
     if request.path.startswith("/commerce/notifications/"):
         return "view"
+    if request.path.startswith("/inventory/alerts/"):
+        return "view"
     if request.method != "POST":
         path = request.path.rstrip("/")
         if any(token in path.split("/") for token in ("add", "edit", "delete", "approve", "reject", "complete", "receive", "dispense", "permissions")):
             return "edit"
         return "view"
     return "edit"
+
+
+class PlatformAnalyticsMiddleware:
+    """Capture meaningful first-party usage without a per-request write storm."""
+
+    THROTTLE_SECONDS = 300
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if request.method != "GET" or getattr(response, "status_code", 500) >= 400:
+            return response
+        path = request.path or ""
+        if path.startswith(("/static/", "/media/", "/health/", "/ops/", "/api/", "/service-worker.js", "/manifest.webmanifest")):
+            return response
+        try:
+            from accounts.analytics import module_from_path, record_platform_event
+            from accounts.models import PlatformEvent
+            if path.startswith("/accounts/signup"):
+                event_type = PlatformEvent.EVENT_SIGNUP_VIEW
+                module = "signup"
+            elif getattr(request.user, "is_authenticated", False):
+                event_type = PlatformEvent.EVENT_MODULE_VIEW
+                module = module_from_path(path)
+            else:
+                return response
+            now = int(time.time())
+            route = request.resolver_match.url_name if request.resolver_match else path
+            throttle_key = f"analytics:{event_type}:{getattr(getattr(request, 'business', None), 'pk', 'global')}:{route}"
+            last = int(request.session.get(throttle_key, 0) or 0)
+            if now - last >= self.THROTTLE_SECONDS:
+                request.session[throttle_key] = now
+                record_platform_event(event_type, request=request, module=module, route_name=route)
+        except Exception:
+            pass
+        return response

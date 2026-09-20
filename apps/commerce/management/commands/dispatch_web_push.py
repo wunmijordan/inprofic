@@ -9,5 +9,5 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         result = dispatch_pending_pushes(notice_limit=100, delivery_limit=200)
         self.stdout.write(self.style.SUCCESS(
-            "Web Push: configured={configured} queued={queued} sent={sent} failed={failed} expired={expired}".format(**result)
+            "Web Push: configured={configured} queued={queued} requeued={requeued} sent={sent} failed={failed} expired={expired}".format(**result)
         ))

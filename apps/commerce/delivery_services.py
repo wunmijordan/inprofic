@@ -17,6 +17,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from accounts.services import business_has_module
+from accounts.platform_integrations import glovo_platform_enabled, redact_disabled_integrations
 from core.services import audit
 
 from .models import (
@@ -512,6 +513,9 @@ def create_delivery_quote_options(*, business, subtotal, destination_address, ar
             errors.append("The external delivery provider is not configured.")
             return
         if account.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO:
+            if not glovo_platform_enabled():
+                errors.append("The external delivery provider is not currently available.")
+                return
             data = _glovo_quote_data(
                 account=account, destination_address=address, latitude=lat, longitude=lon, subtotal=subtotal, area=area
             )
@@ -571,7 +575,7 @@ def select_delivery_quote(settings, options):
         return min(options, key=lambda q: (q.fee, q.eta_max_minutes, q.pk))
     if policy == DeliverySettings.HYBRID_ROUTE_FASTEST:
         return min(options, key=lambda q: (q.eta_max_minutes, q.fee, q.pk))
-    if policy == DeliverySettings.HYBRID_ROUTE_GLOVO_FIRST:
+    if policy == DeliverySettings.HYBRID_ROUTE_PROVIDER_FIRST:
         return external or inhouse
     # Dispatcher-choice and in-house-first both charge the stable in-house rate
     # when available. Dispatch may later switch methods subject to the visible
@@ -586,9 +590,15 @@ def create_delivery_quote(**kwargs):
 
 
 def serialize_delivery_quote(quote):
-    provider_label = "In-house delivery" if quote.provider == DeliverySettings.PROVIDER_INHOUSE else (
-        quote.provider_account.get_provider_code_display() if quote.provider_account_id else "Delivery partner"
-    )
+    if quote.provider == DeliverySettings.PROVIDER_INHOUSE:
+        provider_label = "In-house delivery"
+    elif quote.provider_account_id:
+        if quote.provider_account.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO and not glovo_platform_enabled():
+            provider_label = "Delivery partner"
+        else:
+            provider_label = redact_disabled_integrations(quote.provider_account.name or quote.provider_account.get_provider_code_display())
+    else:
+        provider_label = "Delivery partner"
     snapshot = quote.provider_payload or {}
     return {
         "quote_id": str(quote.public_id),
@@ -640,7 +650,7 @@ def serialize_delivery_tracking(assignment):
             "key": f"delivery-event:{event.pk}",
             "status": event.status,
             "status_label": event.get_status_display(),
-            "note": event.note or "",
+            "note": redact_disabled_integrations(event.note or ""),
             "created_at": event.created_at.isoformat(),
         })
 
@@ -658,16 +668,32 @@ def serialize_delivery_tracking(assignment):
             "id": str(assignment.public_id),
             "status": assignment.status,
             "status_label": assignment.get_status_display(),
-            "status_note": assignment.status_note or "",
+            "status_note": redact_disabled_integrations(assignment.status_note or ""),
             "provider": assignment.provider,
-            "provider_label": assignment.get_provider_display(),
+            "provider_label": (
+                "In-house delivery"
+                if assignment.provider == DeliverySettings.PROVIDER_INHOUSE
+                else "Delivery partner"
+                if assignment.provider_account_id
+                and assignment.provider_account.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO
+                and not glovo_platform_enabled()
+                else redact_disabled_integrations(assignment.provider_account.name)
+                if assignment.provider_account_id
+                else assignment.get_provider_display()
+            ),
             "driver": assignment.driver.name if assignment.driver_id else None,
             "driver_vehicle": assignment.driver.vehicle_type if assignment.driver_id else "",
             "picked_up_at": pickup_at.isoformat() if pickup_at else None,
             "eta_min_at": eta_min_at.isoformat() if eta_min_at else None,
             "eta_max_at": eta_max_at.isoformat() if eta_max_at else None,
             "delivered_at": assignment.delivered_at.isoformat() if assignment.delivered_at else None,
-            "external_tracking_url": assignment.external_tracking_url or None,
+            "external_tracking_url": (
+                None
+                if assignment.provider_account_id
+                and assignment.provider_account.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO
+                and not glovo_platform_enabled()
+                else (assignment.external_tracking_url or None)
+            ),
             "updated_at": assignment.updated_at.isoformat(),
         },
         "timeline": timeline,
@@ -684,6 +710,12 @@ def validate_delivery_quote(*, business, public_id, subtotal):
     ).first()
     if not quote:
         raise ValidationError("Delivery quote was not found.")
+    if (
+        quote.provider_account_id
+        and quote.provider_account.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO
+        and not glovo_platform_enabled()
+    ):
+        raise ValidationError("The selected external delivery provider is no longer available. Request a fresh delivery quote.")
     if quote.provider == DeliverySettings.PROVIDER_HYBRID:
         raise ValidationError("This legacy Hybrid quote must be refreshed before payment.")
     if quote.status != DeliveryQuote.STATUS_ACTIVE or quote.expires_at <= timezone.now():
@@ -1002,8 +1034,14 @@ def switch_delivery_method(*, assignment, target_provider, actor=None, manager_a
         raise ValidationError("A manager must approve this higher-cost switch. The customer will not be charged extra.")
 
     if current.provider == DeliverySettings.PROVIDER_THIRD_PARTY and current.provider_order_id:
-        from .delivery_providers import cancel_assignment_with_provider
-        cancel_assignment_with_provider(current, actor=actor)
+        provider_is_disabled_glovo = bool(
+            current.provider_account_id
+            and current.provider_account.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO
+            and not glovo_platform_enabled()
+        )
+        if not provider_is_disabled_glovo:
+            from .delivery_providers import cancel_assignment_with_provider
+            cancel_assignment_with_provider(current, actor=actor)
 
     previous_provider = current.provider
     previous_account_id = current.provider_account_id

@@ -8,7 +8,10 @@ from django.test import TestCase
 from django.utils import timezone
 from accounts.models import BusinessModuleAccess
 from core.models import Business
-from inventory.models import FinishedGood, FinishedGoodChannelPrice, ProductCategory
+from inventory.models import (
+    BulkPackProfile, FinishedGood, FinishedGoodChannelPrice, ProductCategory,
+    ProductCompositionItem, ProductPortionProfile, RawMaterial,
+)
 from .forms import StorefrontProductForm
 from .models import (
     CommerceIntegration, CommerceIntake, CommerceSettings, DeliveryArea, DeliveryAssignment,
@@ -39,13 +42,13 @@ class CommerceIntakeTests(TestCase):
         self.assertIsNone(intake.accepted_order_id)
 
     def test_idempotency_key_returns_same_intake(self):
-        kwargs=dict(business=self.business, source=CommerceIntake.SOURCE_API, ordering_mode=CommerceIntake.MODE_STOCK, customer={"name":"Ada"}, items=[{"storefront_product":self.product,"quantity":"2"}], idempotency_key="same")
+        kwargs=dict(business=self.business, source=CommerceIntake.SOURCE_API, sales_channel=CommerceIntake.CHANNEL_ONLINE, customer={"name":"Ada"}, items=[{"storefront_product":self.product,"quantity":"2"}], idempotency_key="same")
         first, created = create_intake(**kwargs)
         second, created_again = create_intake(**kwargs)
         self.assertTrue(created)
         self.assertFalse(created_again)
         self.assertEqual(first.pk, second.pk)
-        self.assertEqual(first.sales_channel, CommerceIntake.CHANNEL_PHYSICAL_STORE)
+        self.assertEqual(first.sales_channel, CommerceIntake.CHANNEL_ONLINE)
 
     def test_public_order_numbers_increment_independently_per_business(self):
         other_business = Business.objects.create(name="Other Retailer", slug="other-retailer", vertical=Business.VERTICAL_RETAIL)
@@ -155,9 +158,10 @@ class CommerceApiProductTests(TestCase):
         self.assertEqual(row["preorder_min_quantity"], "5.00")
         self.assertEqual(
             [mode["code"] for mode in row["order_modes"]],
-            ["physical_store", "online", "distribution"],
+            ["online", "distribution"],
         )
-        self.assertEqual(row["order_modes"][2]["label"], "Catering / Bulk Order")
+        self.assertNotIn("stock_price", row)
+        self.assertEqual(row["order_modes"][1]["label"], "Catering / Bulk Order")
         delivery = response.json()["delivery"]
         self.assertTrue(delivery["enabled"])
         self.assertEqual(delivery["location_url"], f"/api/v1/storefronts/{self.business.slug}/delivery/location")
@@ -170,6 +174,38 @@ class CommerceApiProductTests(TestCase):
         self.assertEqual(area["coverage_shape"], "circle")
         self.assertEqual(len(area["coverage_polygon"]), 36)
         self.assertEqual(area["pricing"]["distance_basis"], "delivery_base_to_precise_destination")
+
+    def test_product_api_exposes_customer_portion_and_bulk_packs_without_internal_conversion(self):
+        self.good.unit = "scoop"
+        self.good.units_per_batch = Decimal("120")
+        self.good.save(update_fields=["unit", "units_per_batch", "updated_at"])
+        ProductPortionProfile.raw_objects.create(
+            business=self.business, finished_good=self.good, active=True,
+            customer_quantity=1, customer_unit="plate", base_quantity=3,
+        )
+        packaging = RawMaterial.raw_objects.create(
+            business=self.business, name="Takeaway pack", stock=50, reorder_level=5,
+            purchase_unit="piece", package_qty=1, package_unit="piece", usage_unit="piece",
+        )
+        ProductCompositionItem.objects.create(
+            finished_good=self.good, profile_key="standard", component_raw_material=packaging,
+            quantity=1, public_label="Takeaway pack", public_quantity_label="1 pack",
+        )
+        pack = BulkPackProfile.raw_objects.create(
+            business=self.business, finished_good=self.good, name="2 L Bowl",
+            customer_quantity=2, customer_unit="litre", base_quantity=12, price=Decimal("9000"),
+        )
+        response = self.client.get(f"/api/v1/storefronts/{self.business.slug}/products")
+        self.assertEqual(response.status_code, 200)
+        row = response.json()["products"][0]
+        self.assertEqual(row["unit"], "plate")
+        self.assertNotIn("base_quantity", row)
+        self.assertEqual(row["contents"][1]["name"], "Takeaway pack")
+        bulk = row["bulk_packs"][0]
+        self.assertEqual(bulk["id"], str(pack.public_id))
+        self.assertEqual(bulk["name"], "2 L Bowl")
+        self.assertNotIn("base_quantity", bulk)
+        self.assertNotIn("physical_store", {mode["code"] for mode in row["order_modes"]})
 
     def test_product_api_exposes_uploaded_image_as_absolute_url(self):
         # Minimal valid 1x1 transparent GIF.

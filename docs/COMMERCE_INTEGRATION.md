@@ -34,9 +34,7 @@ rules.
 
 Delivery follows the same rule. A website may request a delivery quote and pay
 the full checkout amount, but delivery assignments are created only after trusted
-payment verification. The delivery engine then owns in-house, hybrid, manual
-third-party and optional Glovo LaaS v2 live-quote/dispatch without allowing the storefront
-to create operational delivery records directly.
+payment verification. The delivery engine then owns in-house, hybrid and external-partner delivery without allowing the storefront to create operational delivery records directly. External partners are provider-neutral by default: INPROFIC remains authoritative for the customer quote, routing choice, assignment and timeline, while a configured partner account can stay manual or optionally receive dispatches through the INPROFIC Delivery Adapter v1 contract. Glovo LaaS v2 remains an optional built-in adapter only when the Founder has exposed it platform-wide and the business has configured its own approved account.
 
 Named delivery areas are geometry-backed rather than tariff-only labels. Each
 area has a mapped centre, radius and optional diagonal extensions. That geometry
@@ -287,13 +285,13 @@ An explicit `BusinessModuleAccess.enabled=False` remains the hard ceiling. The s
 
 ### Public product publication
 
-`commerce.StorefrontProduct` is a publication/configuration layer around the existing `inventory.FinishedGood`. It does not duplicate stock. Products are unpublished by default and can independently offer Physical Store/direct, Online and Distribution/bulk order modes. Each mode exposes its INPROFIC-resolved channel price and minimum quantity. Distribution/bulk has a dedicated per-product minimum. Product images are uploaded to tenant-partitioned media storage; the catalog API exposes the uploaded file as an absolute `image_url`. The former URL field remains a fallback for pre-existing live records, but is no longer editable in the publishing form.
+`commerce.StorefrontProduct` is a publication/configuration layer around the existing `inventory.FinishedGood`. It does not duplicate stock. Products are unpublished by default and can independently configure Physical Store/direct, Online and Distribution/bulk channels. Physical Store/direct is consumed only by the staff-operated in-premise POS. Hosted storefronts, connectors and the headless API publish only Online and Distribution/bulk. Distribution/bulk has a dedicated per-product minimum and is available on both POS and external surfaces when enabled. Product images are uploaded to tenant-partitioned media storage; the catalog API exposes the uploaded file as an absolute `image_url`. The former URL field remains a fallback for pre-existing live records, but is no longer editable in the publishing form.
 
 For production-centric services, `FinishedGood.physical_saleable_stock` is the immediate storefront availability. Distribution Market Stock remains a separate pool. The existing explicit Market Stock → Physical Store transfer updates the same FinishedGood shelf balance/transfer allowance, so the storefront/API sees the new availability automatically without a commerce-specific stock sync.
 
 ### Sales channel versus fulfilment route
 
-The website's commercial choice is preserved on `CommerceIntake.sales_channel` as `physical_store`, `online`, or `distribution`. `CommerceIntake.ordering_mode` remains the internal fulfilment route and is derived by INPROFIC:
+The persisted commercial choice remains `physical_store`, `online`, or `distribution`, but surface boundaries are enforced before checkout creation: `physical_store` is POS-only; hosted/API/connector sources accept only `online` or `distribution`. `CommerceIntake.ordering_mode` remains the internal fulfilment route and is derived by INPROFIC:
 
 - production businesses: Physical Store/direct uses available stock, while Online and Distribution/bulk create made-to-order Production demand after staff acceptance;
 - wholesale and retail businesses: all three channel prices use procured finished stock and never invoke Production.
@@ -302,7 +300,7 @@ Because those channel choices already determine fulfilment, the publishing form 
 
 Uploaded images require persistent media storage in deployment. `MEDIA_ROOT` defaults to the repository's `media/` directory and can be overridden with the `MEDIA_ROOT` environment variable; `MEDIA_URL` defaults to `/media/`. The production host must map that public URL to the persistent media directory. Django serves it automatically only while `DEBUG=True`.
 
-Older integrations may still send `ordering_mode: stock|preorder`; those map to Physical Store/direct and Online. New callers use `order_mode`.
+Older request aliases remain accepted only where they resolve to a channel valid for that surface. External callers should use `order_mode: online|distribution`; any external request that resolves to `physical_store` is rejected rather than silently receiving an in-premise price.
 
 The customer choice is not inferred from low stock. For an ordinary Order with insufficient stock, the tenant's `CommerceSettings.insufficient_stock_policy` is one of:
 
@@ -350,7 +348,7 @@ A business with a simple existing site can use the same URL as its **Order Now**
 
 ### Payment state
 
-Commerce payment state is separate from order and fulfilment state. Public/headless checkout exposes only gateway-confirmed Paystack, Monnify and instant bank transfer. Instant transfer is issued and verified automatically by the tenant-selected Paystack/Monnify provider; manual transfer claims are historical-only. Cash and card-on-terminal are confined to authenticated in-premise staff with supplemental Storefront POS access; cash requires an explicit physical-receipt guard, while Paystack Terminal card settlement still requires provider verification. A verified payment posts one cash-ledger entry and generates an immutable customer receipt; reversals retain the original receipt and use compensating finance records.
+Commerce payment state is separate from order and fulfilment state. Public/headless checkout can expose provider-confirmed Paystack and Monnify, provider-issued `bank_transfer`, and the native no-gateway `transfer` method when each is fully configured. `bank_transfer` remains the automatic Paystack/Monnify instant-transfer flow. Native `transfer` displays the tenant's configured static bank details, requires a customer payment-proof upload, and remains `awaiting_verification` until authorized staff confirms the credit. Cash and card-on-terminal are confined to authenticated in-premise staff with supplemental Storefront POS access. In-premise `transfer` is also available to staff, but—as with cash—requires an explicit staff receipt/verification guard and does not ask the customer to upload proof. A verified payment posts one cash-ledger entry and generates an immutable customer receipt; reversals retain the original receipt and use compensating finance records.
 
 ## Headless API versus platform webhook / connector
 
@@ -404,9 +402,7 @@ Each product includes an `order_modes` array. Render its objects directly:
 }
 ```
 
-The three possible codes are `physical_store`, `online`, and `distribution`.
-Use the supplied vertical-specific `label`. Display the supplied `price`,
-minimum, maximum, availability and lead time. Do not infer whether Production
+External product APIs return only `online` and `distribution` in `order_modes`. The in-premise POS additionally uses `physical_store`/the vertical's direct-sale channel. Use the supplied vertical-specific `label`. Display the supplied `price`, minimum, maximum, availability and lead time. Do not infer whether Production
 is used; the returned `fulfilment_mode` is authoritative.
 
 ### 2. Create a pre-intake checkout from the website server
@@ -431,11 +427,15 @@ X-INPROFIC-Key: <server-side credential>
 Idempotency-Key: <one stable UUID per payment attempt>
 ```
 
-Public/headless methods are only `paystack`, `monnify`, and `bank_transfer`, and only when fully configured. Never send an amount. Cash and `pos_card` are authenticated in-premise staff methods and are never exposed here.
+Public/headless methods can be `paystack`, `monnify`, `bank_transfer`, and `transfer`, but only when each method is fully configured. Never send an amount. `transfer` is INPROFIC's native no-gateway bank-transfer option; `bank_transfer` remains the gateway-backed temporary-account option. Cash and `pos_card` are authenticated in-premise staff methods and are never exposed here.
 
 For hosted Paystack/Monnify checkout, supply an absolute HTTPS `return_url` and customer email when required, then redirect only to the provider URL returned by INPROFIC. A browser return never marks payment paid.
 
 For `bank_transfer`, INPROFIC asks the tenant-selected provider (Paystack or Monnify) for a temporary account for the exact checkout. Display the returned account/expiry and poll. Do not collect a manual transfer reference; signed provider events plus an independent provider verification settle the payment.
+
+For native `transfer`, initiate with `{"method":"transfer"}`. INPROFIC returns the tenant-configured static `bank_account` and `proof_required: true`. After the customer transfers the exact authoritative checkout amount, submit `payer_name`, `transfer_reference`, and a required `payment_proof` file as `multipart/form-data` to `POST /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}/payments/current/claim`. Accepted proof types are JPG/JPEG, PNG, WEBP and PDF up to 10 MB. The API exposes only `claim.proof_received`, never a public proof URL. Continue polling while the payment is `awaiting_verification`; only authorized staff verification may settle it and materialize the order.
+
+Inside INPROFIC, an unresolved native Transfer claim is treated as payment activity that needs staff attention. Authorized Commerce staff see it in the shared movable alert tray; if the business enables repeating Commerce sounds, the alert sound continues at the configured interval while the item remains unread. This is an operator-side safeguard only and does not change the headless API contract: external websites should continue polling authoritative payment status and must never assume that an alert or sound means a payment is verified.
 
 ### 4. Poll until verified payment materializes the order
 
@@ -453,6 +453,24 @@ Gateway webhook URLs point directly to INPROFIC, not the website:
 /api/v1/storefronts/{business_slug}/payments/paystack/webhook
 /api/v1/storefronts/{business_slug}/payments/monnify/webhook
 ```
+
+### Delivery-provider adapter contract
+
+A business can add any external courier under **Delivery → Provider** without making that courier the delivery control engine. The account can remain staff-managed, or it can opt into API automation. Custom providers use INPROFIC rate bands for the customer-facing delivery fee and ETA snapshot; they do not overwrite the accepted checkout fee.
+
+For automatic dispatch, configure the partner account's API base URL, dispatch endpoint and authentication. An optional merchant/store/location identifier is sent as `partner.store_id`. INPROFIC sends JSON with `schema: "inprofic.delivery.v1"` and `event: "dispatch"`, containing the delivery UUID, order number, customer contact, pickup, destination, accepted delivery fee/order total and quote snapshot. The adapter should return an external reference/tracking number and may return `status` plus `tracking_url`. If no tracking URL is returned, INPROFIC can derive it from the account's configured public tracking URL/template using `{external_reference}` or by appending the escaped reference to a configured base URL.
+
+For inbound status synchronization, assign a webhook secret and have the partner call:
+
+```text
+POST /api/v1/delivery/providers/custom/{business_slug}/{provider_id}/webhook
+Authorization: Bearer <provider webhook secret>
+Content-Type: application/json
+```
+
+A minimal callback is `{"external_reference":"...","status":"..."}`; `tracking_url` is optional. Tenant-configured `status_mapping` translates partner statuses to INPROFIC delivery states. These callbacks are data-continuity writes: if a subscription later hides the Delivery workspace, INPROFIC can still keep already-created assignments synchronized underneath so an upgrade reveals complete history.
+
+The optional Glovo adapter is different only in adapter implementation, not in delivery ownership. It is **Founder-gated, off by default, and tenant-disabled until fully configured**. Turning the Founder switch off hides Glovo references outside the Founder Console and blocks Glovo execution without deleting saved tenant credentials or history. When enabled, each business must use its own Glovo business account/API access; INPROFIC does not provide or resell Glovo accounts and does not imply official partnership status.
 
 
 ### Delivery rider and storefront-customer boundaries
@@ -472,7 +490,7 @@ POST /api/v1/storefronts/{business_slug}/checkouts
 GET  /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}
 POST /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}/payments
 GET  /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}/payments/current
-POST /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}/payments/current/claim
+POST /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}/payments/current/claim  # native `transfer` proof submission
 GET  /api/v1/storefronts/{business_slug}/orders/{public_id}
 GET  /api/v1/storefronts/{business_slug}/deliveries/{delivery_id}/tracking
 POST /api/v1/storefronts/{business_slug}/orders/{public_id}/preorder
@@ -496,7 +514,8 @@ New websites should use checkout-scoped payment endpoints. Provider webhooks are
 
 ```text
 POST /api/v1/storefronts/{business_slug}/payments/{provider}/webhook
-POST /api/v1/delivery/providers/glovo/{business_slug}/webhook
+POST /api/v1/delivery/providers/custom/{business_slug}/{provider_id}/webhook
+POST /api/v1/delivery/providers/glovo/{business_slug}/webhook   # only while the Founder-level Glovo integration switch is enabled
 ```
 
 The normalized platform-connector ingestion boundary is separate from headless storefront checkout:
@@ -514,7 +533,7 @@ A website may use `coverage_polygon` directly with Leaflet, MapLibre, Google Map
 ### Required two-way address and map synchronization
 
 Headless websites should keep the precise-address field and map pin synchronized exactly as INPROFIC's hosted storefront and POS do.
-The examples below show the INPROFIC call itself; in a browser-based website, make that call from your own backend proxy so the tenant API key never reaches the browser. The browser may debounce address input and send it to your backend; your backend forwards it to INPROFIC and returns the normalized location result.
+The examples below show the INPROFIC call itself; in a browser-based website, make that call from your own backend proxy so the tenant API key never reaches the browser. Match INPROFIC's hosted/POS interaction: wait for **2,000 ms of continuous input idleness** before sending a typed-address lookup. Every keystroke, deletion, paste or correction resets that timer. If an older lookup is already in flight when the customer edits again, cancel it where possible or discard its response so stale autocomplete results cannot overwrite the corrected address. Your backend then forwards the settled text to INPROFIC and returns the normalized location result.
 
 **Typed address -> map pin**
 
@@ -654,3 +673,17 @@ For a headless website, keep `X-INPROFIC-Key` on the website server. The normal 
 Do not expose the API key in browser JavaScript. Also do not treat the realtime wake-up as authoritative state: always re-fetch the tracking snapshot. Direct cross-origin browser WebSockets depend on the deployment's allowed-origin policy, so server-side proxy/SSE/WebSocket relay or polling is the portable headless pattern.
 
 Customer registration is not required for headless integration. A tenant website may keep its own customer profile/session and store INPROFIC checkout/order/delivery UUIDs against that profile. Guest checkout and unguessable hosted tracking remain valid.
+
+## Portion and Bulk-Pack contract
+
+Commerce supports an additive selling/yield layer over Finished Goods. `FinishedGood.unit` remains the private production/stock basis (scoop, piece, ml, bottle, etc.). An optional Standard Portion maps one customer unit such as a plate/serving/set back to that basis; optional Bulk Packs define larger customer-visible choices with their own price and minimum. The checkout snapshots the customer unit/price and the private fulfilment multiplier so later profile edits cannot rewrite historical orders.
+
+Composed products can list additional Finished Goods (including procured-for-resale goods) and raw/packaging materials. This composition metadata does not rewrite recipes or reclassify the component inventory records. Public catalogue payloads expose only customer-safe content names/explicit public quantity labels. The internal base conversion remains private.
+
+Finished/procured goods remain independently publishable through `StorefrontProduct.published`. In addition, one published Finished Good can expose **Individual / plain selling options** backed by that same stock/production balance—for example `Extra Jollof Rice`, `Single Chicken`, `500 ml Juice`, or `Single Chair`. These options create no duplicate recipe or inventory record. Each option has its own customer-facing name/unit, base-unit multiplier, channel availability, channel price and minimum quantity.
+
+The public product response keeps `products[]` for backward compatibility and additionally exposes `catalogue_items[]` as the easiest render-ready list. An individual entry has `kind: "individual_option"`, the parent `product_id`, its own `individual_option_id`, customer-safe `contents`, and only the external channel modes that the business enabled. `physical_store` flags/prices are never serialized to an external client.
+
+For a normal product line submit `product_id` + `quantity`. For an individual/plain line submit the same parent `product_id`, the selected `individual_option_id`, and `quantity`. For a Distribution/Bulk pack submit `bulk_pack_id`; a line cannot combine `individual_option_id` and `bulk_pack_id`. A `bulk_pack_id` is valid only with the Distribution/Bulk channel, while an individual option is valid only on the specific Online or Distribution/Bulk channels enabled for that option. Physical Store/direct pricing remains unavailable to external checkout and product APIs. Clients must render `order_modes[].label` from INPROFIC so vertical wording such as `Catering / Bulk Order` is preserved.
+
+At fulfilment, additional snapshotted composition rows are released from their original inventory class exactly once: Finished/procured components use finished-good stock movements and raw/packaging components use raw-material consumption movements. Fulfilment scopes (`all`, `dine_in`, `takeaway`, `delivery`, `bulk`) decide whether a component applies. Made-to-order base production still uses the existing recipe engine; its additional package/assembly components are released only when that production order completes. The snapshot boundary means later edits to a portion or pack cannot rewrite a paid historical order.

@@ -955,9 +955,19 @@ def order_complete(request, pk):
                             sale=sale, finished_good=item.finished_good,
                             batch_qty=item.batch_qty, piece_qty=item.piece_qty,
                             discount=item.discount, price=item.price,
+                            commercial_quantity=item.commercial_quantity,
+                            commercial_unit=item.commercial_unit,
+                            commercial_unit_price=item.commercial_unit_price,
                             unit_cost=snapshot.unit_cost if snapshot else None,
                             production_batch=batch,
                         )
+                    # Release snapshotted additional portion/package contents
+                    # only after this customer production completes. The base
+                    # product recipe remains unchanged; components keep their
+                    # own finished/raw inventory identities.
+                    from commerce.services import consume_commerce_assembly_for_order
+                    consume_commerce_assembly_for_order(order, user=request.user)
+
                     # Commerce receipts can predate made-to-order production.
                     # Link them to the newly-created receivable without posting
                     # another ledger transaction.

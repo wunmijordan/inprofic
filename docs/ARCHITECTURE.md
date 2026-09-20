@@ -564,7 +564,7 @@ specialized surface.
 
 Delivery remains provider-neutral. INPROFIC owns delivery quotes, delivery fee
 snapshots, assignments, events, proof of delivery and customer tracking.
-Provider accounts, including the seeded Glovo LaaS v2 account, add optional live provider quotes, OAuth parcel dispatch, tracking links and authorized webhook synchronization without making the rest of the system Glovo-specific.
+Provider accounts add optional external dispatch and authorized status synchronization without making the delivery engine courier-specific. Custom accounts use the stable Delivery Adapter v1 contract; the built-in Glovo LaaS v2 adapter is Founder-gated, dormant until tenant configuration is complete, and preserves saved configuration when platform availability is switched off.
 
 ### Delivery coverage geometry and address validation
 

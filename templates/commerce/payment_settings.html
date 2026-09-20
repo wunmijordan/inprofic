@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block content %}
 <div class="max-w-4xl">
   <div class="flex flex-wrap items-end justify-between gap-3 mb-5">
-    <div><h1 class="text-2xl font-semibold font-display text-[#8f172d]">Commerce payment settings</h1><p class="text-sm text-stone-500">Configure payment providers for this business and choose the Finance account that receives each confirmed payment.</p></div>
+    <div><h1 class="text-2xl font-semibold font-display text-[#8f172d]">Commerce payment settings</h1><p class="text-sm text-stone-500">Configure payment methods and providers for this business, and choose the Finance account that receives each confirmed payment.</p></div>
     <a href="{% url 'commerce_dashboard' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">Back to Commerce</a>
   </div>
   <div class="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><strong>Your payment credentials stay protected.</strong> Saved secret values are never shown back on this page or shared with customers. Leave an existing secret field blank to keep its current value.</div>
@@ -19,7 +19,12 @@
       <div class="grid md:grid-cols-2 gap-3">{% include '_field.html' with field=form.monnify_api_key %}{% include '_field.html' with field=form.monnify_secret_key %}{% include '_field.html' with field=form.monnify_contract_code %}{% include '_field.html' with field=form.monnify_base_url %}{% include '_field.html' with field=form.monnify_account %}</div>
     </section>
     <section class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-5">
-      {% include "commerce/_settings_toggle.html" with field=form.bank_transfer_enabled description="Offer confirmed bank transfer on the storefront and connected sales channels. Customers receive a temporary account and do not need to submit a transfer claim." %}
+      {% include "commerce/_settings_toggle.html" with field=form.transfer_enabled description="Offer Transfer without any payment gateway. Storefront/API customers see these account details and must upload payment proof; staff using the in-premise POS confirm receipt directly." emphasis=True %}
+      <div class="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs leading-5 text-sky-900">This is separate from gateway-backed instant bank transfer. Customer proofs stay pending until an authorised staff member verifies the actual bank credit.</div>
+      <div class="mt-3 grid md:grid-cols-2 gap-3">{% include '_field.html' with field=form.bank_name %}{% include '_field.html' with field=form.bank_account_name %}{% include '_field.html' with field=form.bank_account_number %}{% include '_field.html' with field=form.transfer_account %}<div class="md:col-span-2">{% include '_field.html' with field=form.bank_instructions %}</div></div>
+    </section>
+    <section class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-5">
+      {% include "commerce/_settings_toggle.html" with field=form.bank_transfer_enabled description="Offer gateway-backed instant bank transfer. The selected provider issues a temporary account and confirms payment automatically; customers do not upload proof." %}
       <div class="grid md:grid-cols-2 gap-3">{% include '_field.html' with field=form.bank_transfer_provider %}<div id="monnify-transfer-bank">{% include '_field.html' with field=form.monnify_transfer_bank_code %}</div>{% include '_field.html' with field=form.bank_cash_account %}</div>
     </section>
     <section class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-5">

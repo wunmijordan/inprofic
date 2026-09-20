@@ -1,0 +1,2 @@
+# Development/marketing tooling only. Not required by the INPROFIC web runtime.
+artifact_tool_v2>=2.8,<3

@@ -209,7 +209,11 @@ New/dynamic formset rows must resolve price exactly like the initial row.
 Server-side resolution remains authoritative and the resolved price is
 snapshotted on the order item.
 
-## 12. Finance rules
+## 12. Entitlement/data-continuity rule
+
+Subscription/module entitlements are a **user-surface and authorization ceiling**, not a domain-write switch. If an enabled workflow has an interconnected consequence in another module (stock, sales, finance, payment, audit, delivery, reporting), keep writing the authoritative record even when that destination module is hidden by the current plan. An upgrade must reveal already-synchronized history rather than begin synchronization from the upgrade date. Never call `business_has_module()` inside domain services/signals to suppress required cross-module persistence.
+
+## 13. Finance rules
 
 `FinancialTransaction` is the money movement ledger; `CashAccount` is the
 balance/account layer.

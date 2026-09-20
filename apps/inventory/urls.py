@@ -1,7 +1,10 @@
 from django.urls import path
-from . import views
+from . import alert_views, views
 
 urlpatterns = [
+    path("alerts/feed/", alert_views.alert_feed, name="inventory_alert_feed"),
+    path("alerts/acknowledge/", alert_views.alert_acknowledge, name="inventory_alert_acknowledge"),
+    path("alert-settings/", alert_views.alert_settings_view, name="inventory_alert_settings"),
     path("", views.inventory, name="inventory"),
     path("raw-material/add/", views.raw_material_form, name="raw_material_add"),
     path("raw-material/export/pdf/", views.raw_material_inventory_pdf, name="raw_material_inventory_pdf"),

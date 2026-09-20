@@ -1,6 +1,7 @@
 from accounts.models import RoleModulePermission, UserBusiness
 from accounts.services import business_subscription_for, can_use_commerce_storefront, is_business_admin, is_live_tester, user_has_permission
 from accounts.subscription_services import business_has_feature
+from accounts.platform_integrations import glovo_platform_enabled
 from django.utils.functional import SimpleLazyObject
 from .context import get_request_cache
 from .models import Business
@@ -69,6 +70,7 @@ def business(request):
         "show_onboarding_tour": show_onboarding_tour,
         "force_onboarding_tour": explicit_tour,
         "onboarding_tour_version": CURRENT_TOUR_VERSION,
+        "glovo_platform_enabled": SimpleLazyObject(glovo_platform_enabled),
         # Only the reports page consumes this flag. Keep it lazy so ordinary
         # navigation doesn't query feature entitlements that won't be rendered.
         "reports_full": (

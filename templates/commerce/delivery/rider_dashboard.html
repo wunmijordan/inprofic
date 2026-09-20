@@ -10,6 +10,8 @@
     <div class="flex items-center gap-2">{% if driver %}<div class="rounded-xl border border-[#E7DFCC] bg-white px-4 py-3 text-sm"><strong>{{ driver.name }}</strong><span class="ml-2 text-stone-400">{{ driver.vehicle_type|default:"Rider" }}{% if driver.vehicle_registration %} · {{ driver.vehicle_registration }}{% endif %}</span></div>{% endif %}<form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="rounded-xl border border-[#E7DFCC] bg-white px-3 py-3 text-xs font-semibold text-stone-600">Log out</button></form></div>
   </div>
 
+  <div class="mb-5">{% include "commerce/_device_push_panel.html" with push_panel_title="Rider background alerts on this device" push_panel_copy="Enable Web Push so assignment, delivery-status and issue alerts can keep reaching this rider device while INPROFIC is backgrounded or closed. Alert repeat policy is managed by a Delivery admin." %}</div>
+
   {% if not driver %}
     <div class="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm leading-6 text-amber-900">
       Your login has Delivery Rider access, but it has not been linked to an active in-house driver profile yet. Ask a Business Admin to open <strong>Delivery → Drivers</strong> and link this staff login to your rider record.

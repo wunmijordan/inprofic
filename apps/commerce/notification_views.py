@@ -7,28 +7,35 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
 from accounts.services import user_has_permission
+from accounts.platform_integrations import redact_disabled_integrations
 
-from .models import CommerceNotification, CommerceNotificationRead, CommerceSettings
+from .models import CommerceNotification, CommerceNotificationRead, CommerceSettings, DeliverySettings
 from .realtime import publish_user_notifications_changed
 
 
 def _access_profile(request):
     if not (request.user.is_authenticated and getattr(request, "business", None)):
-        return {"commerce": False, "delivery": False, "rider": False}
+        return {"commerce": False, "delivery": False, "rider": False, "inventory": False}
     return {
         "commerce": user_has_permission(request.user, request.business, "commerce", "view"),
         "delivery": user_has_permission(request.user, request.business, "delivery", "view"),
         "rider": user_has_permission(request.user, request.business, "delivery_rider", "view"),
+        "inventory": user_has_permission(request.user, request.business, "inventory", "view"),
     }
 
 
-def _authorized(request):
+def _notification_authorized(request):
+    access = _access_profile(request)
+    return access["commerce"] or access["delivery"] or access["rider"]
+
+
+def _push_authorized(request):
     return any(_access_profile(request).values())
 
 
 def _unread(request):
     access = _access_profile(request)
-    if not any(access.values()):
+    if not (access["commerce"] or access["delivery"] or access["rider"]):
         return CommerceNotification.raw_objects.none()
     visible = Q(recipient_user=request.user)
     if access["commerce"]:
@@ -40,21 +47,29 @@ def _unread(request):
     # Rider-only users intentionally see only direct alerts addressed to them.
     return CommerceNotification.raw_objects.filter(
         business=request.business
-    ).filter(visible).exclude(reads__user=request.user)
+    ).filter(visible).exclude(
+        event_type__in=CommerceNotification.INVENTORY_EVENTS
+    ).exclude(reads__user=request.user)
 
 
 @never_cache
 @require_GET
 def notification_feed(request):
-    if not _authorized(request):
+    if not _notification_authorized(request):
         return JsonResponse({"detail": "Commerce notification access is unavailable."}, status=403)
     settings = CommerceSettings.raw_objects.filter(business=request.business).first()
+    access = _access_profile(request)
+    rider_only = access["rider"] and not access["commerce"] and not access["delivery"]
+    delivery_settings = DeliverySettings.raw_objects.filter(business=request.business).first() if rider_only else None
     enabled = settings.notifications_enabled if settings else True
     if not enabled:
         return JsonResponse({
             "enabled": False,
             "sound_enabled": False,
+            "sound_repeat_minutes": 0,
+            "sound_tune": "double_ping",
             "desktop_enabled": False,
+            "rider_profile": rider_only,
             "poll_seconds": 8,
             "unread_count": 0,
             "notifications": [],
@@ -63,16 +78,31 @@ def notification_feed(request):
     rows = list(unread[:25])
     return JsonResponse({
         "enabled": True,
-        "sound_enabled": settings.notification_sound_enabled if settings else True,
+        "sound_enabled": (
+            delivery_settings.rider_alert_sound_enabled
+            if rider_only and delivery_settings else
+            (settings.notification_sound_enabled if settings else True)
+        ),
+        "sound_repeat_minutes": min(1440, max(0,
+            delivery_settings.rider_alert_sound_repeat_minutes
+            if rider_only and delivery_settings else
+            (settings.notification_sound_repeat_minutes if settings else 2)
+        )),
+        "sound_tune": (
+            delivery_settings.rider_alert_sound_tune
+            if rider_only and delivery_settings else
+            (settings.notification_sound_tune if settings else "double_ping")
+        ),
         "desktop_enabled": settings.notification_desktop_enabled if settings else True,
+        "rider_profile": rider_only,
         "poll_seconds": 8,
         "unread_count": unread.count(),
         "notifications": [
             {
                 "id": str(row.public_id),
                 "event_type": row.event_type,
-                "title": row.title,
-                "message": row.message,
+                "title": redact_disabled_integrations(row.title),
+                "message": redact_disabled_integrations(row.message),
                 "target_url": row.target_url,
                 "created_at": row.created_at.isoformat(),
             }
@@ -84,7 +114,7 @@ def notification_feed(request):
 @never_cache
 @require_POST
 def notification_read(request):
-    if not _authorized(request):
+    if not _notification_authorized(request):
         return JsonResponse({"detail": "Commerce notification access is unavailable."}, status=403)
     try:
         payload = json.loads(request.body or b"{}")
@@ -110,8 +140,8 @@ def notification_read(request):
 @never_cache
 @require_GET
 def push_config(request):
-    if not _authorized(request):
-        return JsonResponse({"detail": "Commerce notification access is unavailable."}, status=403)
+    if not _push_authorized(request):
+        return JsonResponse({"detail": "Operational notification access is unavailable."}, status=403)
     from django.conf import settings as django_settings
     from .models import CommercePushSubscription
     from .webpush import configured
@@ -128,8 +158,8 @@ def push_config(request):
 @never_cache
 @require_POST
 def push_subscribe(request):
-    if not _authorized(request):
-        return JsonResponse({"detail": "Commerce notification access is unavailable."}, status=403)
+    if not _push_authorized(request):
+        return JsonResponse({"detail": "Operational notification access is unavailable."}, status=403)
     from .models import CommercePushSubscription
     from .webpush import configured, endpoint_hash, kick_push_dispatcher
 
@@ -177,8 +207,8 @@ def push_subscribe(request):
 @never_cache
 @require_POST
 def push_unsubscribe(request):
-    if not _authorized(request):
-        return JsonResponse({"detail": "Commerce notification access is unavailable."}, status=403)
+    if not _push_authorized(request):
+        return JsonResponse({"detail": "Operational notification access is unavailable."}, status=403)
     from .models import CommercePushSubscription
     from .webpush import endpoint_hash
 
