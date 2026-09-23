@@ -198,6 +198,8 @@ class PwaEndpointTests(TestCase):
         self.assertIn("url.pathname.startsWith('/static/')", script)
         self.assertIn("self.addEventListener('push'", script)
         self.assertIn("showNotification", script)
+        self.assertIn("requireInteraction: true", script)
+        self.assertIn("vibrate: [320, 140, 320, 140, 520]", script)
         self.assertIn("self.addEventListener('notificationclick'", script)
 
     def test_tenant_launch_selects_only_an_authorized_business(self):

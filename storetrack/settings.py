@@ -318,6 +318,24 @@ DELIVERY_GEOCODER_USER_AGENT = os.environ.get(
 DELIVERY_GEOCODER_TIMEOUT_SECONDS = float(os.environ.get("DELIVERY_GEOCODER_TIMEOUT_SECONDS", "4"))
 DELIVERY_GEOCODER_CACHE_SECONDS = int(os.environ.get("DELIVERY_GEOCODER_CACHE_SECONDS", "86400"))
 
+# Transactional email. SMTP activates automatically when EMAIL_HOST is set;
+# otherwise development and unconfigured deployments write mail to the console.
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "").strip()
+EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "").strip() or (
+    "django.core.mail.backends.smtp.EmailBackend"
+    if EMAIL_HOST else "django.core.mail.backends.console.EmailBackend"
+)
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587") or "587")
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "").strip()
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
+EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
+if EMAIL_USE_TLS and EMAIL_USE_SSL:
+    raise ImproperlyConfigured("EMAIL_USE_TLS and EMAIL_USE_SSL cannot both be enabled.")
+EMAIL_TIMEOUT = float(os.environ.get("EMAIL_TIMEOUT", "8") or "8")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "INPROFIC <noreply@localhost>").strip()
+INPROFIC_SUPPORT_EMAIL = os.environ.get("INPROFIC_SUPPORT_EMAIL", "").strip()
+
 # Auth
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'dashboard'

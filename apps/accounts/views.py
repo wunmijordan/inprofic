@@ -58,14 +58,26 @@ def signup(request):
                 )
                 ensure_permissions(membership)
                 from .subscription_services import start_trial_for_business
-                start_trial_for_business(business)
+                subscription = start_trial_for_business(business)
             auth_login(request, user)
             request.session["active_business_id"] = business.pk
             from .analytics import record_platform_event
             from .models import PlatformEvent
             record_platform_event(
                 PlatformEvent.EVENT_REGISTRATION, request=request, user=user, business=business,
-                metadata={"vertical": business.vertical},
+                metadata={
+                    "vertical": business.vertical,
+                    "signup_email": user.email,
+                    "signup_name": user.fullname,
+                    "business_name": business.name,
+                },
+            )
+            from .emails import send_signup_welcome_email
+            workspace_url = request.build_absolute_uri(reverse("dashboard"))
+            transaction.on_commit(
+                lambda: send_signup_welcome_email(
+                    user=user, business=business, subscription=subscription, workspace_url=workspace_url,
+                )
             )
             messages.success(request, f"Welcome to {business.name}. Your Business Admin account is ready.")
             return redirect("dashboard")
@@ -245,7 +257,7 @@ def subscription_plans(request):
     if not is_business_admin(request.user, request.business):
         return render(request, "403.html", status=403)
     from .models import BusinessSubscription, SubscriptionPlan
-    from .subscription_services import attach_active_promotions, ensure_default_plans, paid_trial_available, payment_is_locked
+    from .subscription_services import attach_active_promotions, build_plan_feature_matrix, ensure_default_plans, paid_trial_available, payment_is_locked
     ensure_default_plans()
     service = getattr(request.business, "subscription_service", None)
     subscription = service.subscription if service else BusinessSubscription.objects.filter(primary_business=request.business).select_related("plan").first()
@@ -275,7 +287,9 @@ def subscription_plans(request):
     )
     return render(request, "accounts/subscription_plans.html", {
         "subscription": subscription,
+        "plans": plans,
         "plan_cards": plan_cards,
+        "plan_feature_matrix": build_plan_feature_matrix(plans),
         "paid_trial_available": can_start_paid_trial,
         "can_add_service": bool(
             subscription and (
@@ -288,7 +302,7 @@ def subscription_plans(request):
 
 @login_required
 def subscription_payment(request, plan_code=None):
-    from .models import BusinessSubscription, SubscriptionPayment, SubscriptionPaymentSettings, SubscriptionPlan
+    from .models import BusinessSubscription, SubscriptionPayment, SubscriptionPaymentSettings, SubscriptionPlan, SubscriptionPolicySettings
     from .payment_gateways import GatewayError, initialize_gateway
     from .subscription_services import (
         active_promotion_for_plan,
@@ -322,6 +336,7 @@ def subscription_payment(request, plan_code=None):
         subscription.is_effectively_active and subscription.plan_id != selected.pk
     )
     payment_settings = SubscriptionPaymentSettings.load()
+    general_trial_days = max(1, int(SubscriptionPolicySettings.load().general_trial_days or 30))
     available_payment_providers = [
         (code, label)
         for code, label in (
@@ -345,7 +360,7 @@ def subscription_payment(request, plan_code=None):
         if action == "start_paid_trial":
             try:
                 start_paid_plan_trial(subscription, selected, request.user)
-                messages.success(request, f"Your 30-day {selected.name} trial has started. You can cancel anytime and return to Starter.")
+                messages.success(request, f"Your {general_trial_days}-day {selected.name} trial has started. You can cancel anytime and return to Starter.")
             except ValidationError as exc:
                 messages.error(request, "; ".join(exc.messages))
             return redirect("subscription_plans")
@@ -363,7 +378,7 @@ def subscription_payment(request, plan_code=None):
         if request.POST.get("action") == "switch_trial" and subscription.status == BusinessSubscription.STATUS_TRIAL and subscription.is_effectively_active:
             from .subscription_services import switch_subscription_plan
             switch_subscription_plan(subscription, selected, keep_expiry=True)
-            messages.success(request, f"Trial switched to {selected.name}; the original 30-day trial end date is unchanged.")
+            messages.success(request, f"Trial switched to {selected.name}; the current trial end date is unchanged.")
             return redirect("subscription_plans")
         billing_cycle = request.POST.get("billing_cycle") or SubscriptionPayment.CYCLE_MONTHLY
         if billing_cycle not in {SubscriptionPayment.CYCLE_MONTHLY, SubscriptionPayment.CYCLE_YEARLY}:
@@ -414,6 +429,7 @@ def subscription_payment(request, plan_code=None):
         "payment_locked": payment_locked,
         "requires_change_warning": requires_change_warning,
         "paid_trial_available": paid_trial_available(request.user),
+        "general_trial_days": general_trial_days,
     })
 
 
@@ -659,18 +675,63 @@ def founder_platform_user_delete(request, pk):
 
 
 @login_required
+def founder_mailing_list_csv(request):
+    """Export signup contacts for founder-owned email communications."""
+    import csv
+
+    if not request.user.is_superuser:
+        return render(request, "403.html", status=403)
+    from .analytics import founder_signup_contacts
+
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = 'attachment; filename="inprofic-signup-contacts.csv"'
+    writer = csv.writer(response)
+    writer.writerow(["Email", "Name", "Business", "Service", "Signed up at"])
+    for contact in founder_signup_contacts():
+        signed_up_at = contact["signed_up_at"]
+        if timezone.is_aware(signed_up_at):
+            signed_up_at = timezone.localtime(signed_up_at)
+        writer.writerow([
+            contact["email"],
+            contact["name"],
+            contact["business"],
+            contact["service"],
+            signed_up_at.isoformat(timespec="seconds"),
+        ])
+    return response
+
+
+@login_required
 def founder_subscriptions(request):
-    from .forms import FounderGrantForm, BusinessRestoreForm, SubscriptionPromotionForm, MarketingPromoCampaignForm
-    from .models import BusinessSubscription, SubscriptionPlan, SubscriptionPayment, SubscriptionPaymentSettings, PlatformIntegrationSettings, SubscriptionPromotion, MarketingPromoCampaign
-    from .subscription_services import ensure_default_plans, grant_founder_lifetime, mark_payment_paid, start_trial_for_business
+    from .forms import (
+        FounderGrantForm, FounderTrialGrantForm, SubscriptionTrialPolicyForm,
+        BusinessRestoreForm, SubscriptionPromotionForm, MarketingPromoCampaignForm,
+    )
+    from .models import (
+        BusinessSubscription, FounderTrialGrant, SubscriptionPlan, SubscriptionPayment,
+        SubscriptionPaymentSettings, SubscriptionPolicySettings, PlatformIntegrationSettings,
+        SubscriptionPromotion, MarketingPromoCampaign,
+    )
+    from .subscription_services import (
+        ensure_default_plans, grant_founder_lifetime, grant_founder_trial_extension,
+        mark_payment_paid, start_trial_for_business,
+    )
     from .backup_restore import BackupRestoreError, analyze_backup, restore_backup
     if not request.user.is_superuser:
         return render(request, "403.html", status=403)
     ensure_default_plans()
     payment_settings = SubscriptionPaymentSettings.load()
     integration_settings = PlatformIntegrationSettings.load()
+    trial_policy_settings = SubscriptionPolicySettings.load()
     action = request.POST.get("action") if request.method == "POST" else ""
     form = FounderGrantForm(request.POST if action == "grant" else None)
+    trial_policy_form = SubscriptionTrialPolicyForm(
+        request.POST if action == "save_trial_policy" else None, instance=trial_policy_settings
+    )
+    trial_grant_form = FounderTrialGrantForm(
+        request.POST if action == "grant_trial" else None,
+        default_days=trial_policy_settings.general_trial_days,
+    )
     restore_form = BusinessRestoreForm(
         request.POST if action in {"backup_preview", "backup_restore"} else None,
         request.FILES if action in {"backup_preview", "backup_restore"} else None,
@@ -737,6 +798,44 @@ def founder_subscriptions(request):
                         return redirect("founder_subscriptions")
             except BackupRestoreError as exc:
                 restore_form.add_error(None, str(exc))
+        if action == "save_trial_policy" and trial_policy_form.is_valid():
+            policy = trial_policy_form.save(commit=False)
+            policy.pk = trial_policy_settings.pk
+            policy.updated_by = request.user
+            policy.save()
+            # Keep the legacy per-plan trial_days field synchronized so admin,
+            # exports and older code paths report the same Founder policy.
+            plans_to_sync = list(SubscriptionPlan.objects.all())
+            for plan in plans_to_sync:
+                plan.trial_days = 0 if plan.is_free_forever else policy.general_trial_days
+            if plans_to_sync:
+                SubscriptionPlan.objects.bulk_update(plans_to_sync, ["trial_days"])
+            messages.success(request, f"General free trial set to {policy.general_trial_days} days for new eligible trials.")
+            return redirect(f"{reverse('founder_subscriptions')}#trial-policy")
+        if action == "grant_trial" and trial_grant_form.is_valid():
+            business = trial_grant_form.cleaned_data["business"]
+            plan = trial_grant_form.cleaned_data["plan"]
+            days = trial_grant_form.cleaned_data["days"]
+            note = trial_grant_form.cleaned_data["note"]
+            service = getattr(business, "subscription_service", None)
+            subscription = service.subscription if service else BusinessSubscription.objects.filter(primary_business=business).first()
+            try:
+                if subscription:
+                    subscription = grant_founder_trial_extension(subscription, plan, days, request.user, note)
+                else:
+                    subscription = start_trial_for_business(business, plan, trial_days_override=days)
+                    FounderTrialGrant.objects.create(
+                        subscription=subscription, plan=plan, days=days, previous_ends_at=None,
+                        granted_ends_at=subscription.trial_ends_at, granted_by=request.user, note=note or "",
+                    )
+            except ValidationError as exc:
+                trial_grant_form.add_error(None, exc.messages[0] if getattr(exc, "messages", None) else str(exc))
+            else:
+                messages.success(
+                    request,
+                    f"Founder trial granted to {business.name} on {plan.name} through {subscription.trial_ends_at:%d %b %Y}.",
+                )
+                return redirect(f"{reverse('founder_subscriptions')}#trial-policy")
         if action == "grant" and form.is_valid():
             business = form.cleaned_data["business"]
             service = getattr(business, "subscription_service", None)
@@ -877,24 +976,27 @@ def founder_subscriptions(request):
                     plan.additional_service_discount_percent = addon_discount
                     plan.user_limit = user_limit
                     plan.additional_service_limit = service_limit
-                    plan.trial_days = 0 if will_be_free else 30
+                    plan.trial_days = 0 if will_be_free else trial_policy_settings.general_trial_days
                     plan_rows.append(plan)
                     if plan.code != SubscriptionPlan.CODE_STARTER or was_free == will_be_free:
                         continue
                     subscriptions = BusinessSubscription.objects.filter(plan=plan, founder_lifetime=False)
                     if was_free and not will_be_free:
-                        # Existing free Starter tenants receive a 30-day grace/trial
-                        # instead of losing access the moment the Founder changes policy.
+                        # Existing free Starter tenants receive the Founder-configured
+                        # grace/trial instead of losing access the moment policy changes.
                         changed = subscriptions.filter(
                             status=BusinessSubscription.STATUS_ACTIVE,
                             trial_ends_at__isnull=True,
                             paid_until__isnull=True,
                         ).update(
                             status=BusinessSubscription.STATUS_TRIAL,
-                            trial_ends_at=now + timezone.timedelta(days=30),
+                            trial_ends_at=now + timezone.timedelta(days=trial_policy_settings.general_trial_days),
                             paid_until=None,
                         )
-                        transition_messages.append(f"Starter changed to paid; {changed} existing free subscriber(s) received 30 days of uninterrupted access.")
+                        transition_messages.append(
+                            f"Starter changed to paid; {changed} existing free subscriber(s) received "
+                            f"{trial_policy_settings.general_trial_days} days of uninterrupted access."
+                        )
                     elif not was_free and will_be_free:
                         changed = subscriptions.update(
                             status=BusinessSubscription.STATUS_ACTIVE,
@@ -958,6 +1060,12 @@ def founder_subscriptions(request):
         "plans": SubscriptionPlan.objects.prefetch_related("module_entitlements").all().order_by("monthly_price", "id"),
         "payment_settings": payment_settings,
         "integration_settings": integration_settings,
+        "trial_policy_settings": trial_policy_settings,
+        "trial_policy_form": trial_policy_form,
+        "trial_grant_form": trial_grant_form,
+        "recent_trial_grants": FounderTrialGrant.objects.select_related(
+            "subscription__primary_business", "plan", "granted_by"
+        )[:12],
         "restore_form": restore_form,
         "backup_restore_report": backup_restore_report,
         "promotion_form": promotion_form,

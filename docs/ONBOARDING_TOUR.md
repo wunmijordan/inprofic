@@ -1,6 +1,6 @@
 # INPROFIC onboarding tour media and calls to action
 
-The onboarding tour is intentionally lightweight. Its built-in animated flow artwork lives in `templates/core/_onboarding_tour.html` and requires no image files. Optional custom animated illustrations can be layered **under** that built-in artwork on a step-by-step basis.
+The onboarding tour is intentionally lightweight. Its original animated flow artwork lives at the top of `templates/core/_onboarding_tour.html` and requires no image files. A separate lower layer renders a compact module-specific operational preview using the active tenant vertical. Optional custom animated illustrations can replace **only that lower preview** on a step-by-step basis; the original top artwork remains untouched.
 
 ## Where to add future tour illustrations
 
@@ -46,9 +46,10 @@ Then deploy normally and run the project's normal `collectstatic` step. Do **not
 ## Display behaviour
 
 - The original INPROFIC animated flow artwork always remains first.
-- The optional custom file appears immediately underneath that artwork.
-- If the configured value is empty, no media block is rendered visibly and no space is reserved.
-- If a configured file fails to load, the media block collapses automatically; there is no broken-image placeholder.
+- A compact tenant-vertical-aware module preview appears immediately underneath that artwork when no custom file is configured.
+- Wholesale and retail previews stay stock-first; production-led tenants receive material/batch/output examples.
+- An optional custom file replaces that lower native preview only.
+- If a configured file fails to load, INPROFIC falls back to the native module preview rather than showing a broken image.
 - The tour card deliberately keeps its bright palette in dark workspace theme. Tour text colours do not switch to the workspace's dark-theme text palette.
 - Custom media also remains at full opacity in dark mode.
 

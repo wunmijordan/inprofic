@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth import password_validation
 from core.models import Business
-from .models import CustomUser, Role, RoleModulePermission, UserBusiness, UserModulePermission, SubscriptionPlan, SubscriptionPromotion, MarketingPromoCampaign
+from .models import CustomUser, Role, RoleModulePermission, UserBusiness, UserModulePermission, SubscriptionPlan, SubscriptionPromotion, MarketingPromoCampaign, SubscriptionPolicySettings
 from .services import ensure_permissions, is_business_admin, seed_business_roles
 
 CLS = "w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 focus:border-[#8f172d]"
@@ -367,6 +367,50 @@ class FounderGrantForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.fields["business"].queryset = Business.objects.order_by("name")
         self.fields["plan"].queryset = SubscriptionPlan.objects.filter(active=True).order_by("monthly_price", "id")
+
+
+class SubscriptionTrialPolicyForm(forms.ModelForm):
+    class Meta:
+        model = SubscriptionPolicySettings
+        fields = ["general_trial_days"]
+        labels = {"general_trial_days": "General free trial (days)"}
+        widgets = {"general_trial_days": forms.NumberInput(attrs={"class": CLS, "min": 1, "max": 3650})}
+
+    def clean_general_trial_days(self):
+        value = int(self.cleaned_data.get("general_trial_days") or 0)
+        if not 1 <= value <= 3650:
+            raise forms.ValidationError("Choose a trial length between 1 and 3,650 days.")
+        return value
+
+
+class FounderTrialGrantForm(forms.Form):
+    business = forms.ModelChoiceField(
+        queryset=Business.objects.none(), label="Business", widget=forms.Select(attrs={"class": CLS})
+    )
+    plan = forms.ModelChoiceField(
+        queryset=SubscriptionPlan.objects.none(), label="Trial plan", widget=forms.Select(attrs={"class": CLS})
+    )
+    days = forms.IntegerField(
+        min_value=1, max_value=3650, label="Additional trial days",
+        widget=forms.NumberInput(attrs={"class": CLS, "min": 1, "max": 3650}),
+    )
+    note = forms.CharField(
+        required=False, max_length=255, label="Note",
+        widget=forms.TextInput(attrs={"class": CLS, "placeholder": "Optional founder note"}),
+    )
+
+    def __init__(self, *args, default_days=30, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["business"].queryset = Business.objects.order_by("name")
+        self.fields["plan"].queryset = SubscriptionPlan.objects.filter(active=True).order_by("monthly_price", "id")
+        if not self.is_bound:
+            self.fields["days"].initial = max(1, int(default_days or 30))
+
+    def clean_plan(self):
+        plan = self.cleaned_data["plan"]
+        if plan.is_free_forever:
+            raise forms.ValidationError("A free-forever plan does not need a trial window.")
+        return plan
 
 
 class BusinessRestoreForm(forms.Form):

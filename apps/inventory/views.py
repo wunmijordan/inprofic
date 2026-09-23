@@ -526,8 +526,9 @@ def raw_material_form(request, pk=None):
                 if obj is None:
                     m.created_by = request.user
                 m.save()
-                audit(request.business, request.user, "create" if obj is None else "update", m, f"Raw material {m.name} saved")
-                messages.success(request, "Raw material saved.")
+                item_label = "Raw material" if request.business.uses_production else "Supporting supply"
+                audit(request.business, request.user, "create" if obj is None else "update", m, f"{item_label} {m.name} saved")
+                messages.success(request, f"{item_label} saved.")
             return redirect("raw_material_add" if "save_add_new" in request.POST else "inventory")
     else:
         form = RawMaterialForm(instance=obj, business=request.business)
@@ -663,14 +664,14 @@ def finished_good_form(request, pk=None):
                 "parent_good": obj,
                 "profile_choices": profile_choices,
             },
-        )
+        ) if uses_production else None
 
         production_forms_valid = not show_production_fields or (formset.is_valid() and production_formset.is_valid())
         form_valid = form.is_valid()
         portion_valid = portion_form.is_valid()
         bulk_valid = bulk_pack_formset.is_valid()
         individual_options_valid = individual_option_formset.is_valid()
-        composition_valid = composition_formset.is_valid()
+        composition_valid = composition_formset.is_valid() if composition_formset is not None else True
 
         if form_valid and production_forms_valid and show_production_fields:
             base_material = form.cleaned_data.get("base_material")
@@ -700,7 +701,7 @@ def finished_good_form(request, pk=None):
                 name = (cleaned.get("name") or "").strip()
                 if key and name:
                     submitted_profile_keys.add(key)
-        if composition_valid:
+        if composition_valid and composition_formset is not None:
             for component_form in composition_formset.forms:
                 cleaned = getattr(component_form, "cleaned_data", None) or {}
                 if cleaned.get("DELETE") or not cleaned:
@@ -782,11 +783,17 @@ def finished_good_form(request, pk=None):
                         pack.created_by = request.user
                     pack.save()
 
-                composition_formset.instance = good
-                composition_formset.save()
+                if composition_formset is not None:
+                    composition_formset.instance = good
+                    composition_formset.save()
 
                 audit(request.business, request.user, "create" if obj is None else "update", good, f"Finished good {good.name} saved")
-            messages.success(request, "Product, selling portions, individual options and bulk packs saved.")
+            messages.success(
+                request,
+                "Product, selling portions, individual options and bulk packs saved."
+                if uses_production
+                else "Stock product and selling options saved.",
+            )
             return redirect("finished_good_add" if "save_add_new" in request.POST else "inventory")
     else:
         form = FinishedGoodForm(instance=obj, business=request.business)
@@ -813,7 +820,7 @@ def finished_good_form(request, pk=None):
                 "parent_good": obj,
                 "profile_choices": profile_choices,
             },
-        )
+        ) if uses_production else None
 
     raw_material_units = {
         str(material.pk): material.usage_unit

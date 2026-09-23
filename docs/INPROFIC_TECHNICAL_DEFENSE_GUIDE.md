@@ -320,7 +320,7 @@ Its **commercial mode** is now safely Founder-controlled:
 - when Starter monthly price is zero, `SubscriptionPlan.is_free_forever` is true;
 - free Starter is active without an expiry/payment requirement;
 - when the Founder switches Starter to paid, it must have a positive monthly price;
-- existing active free Starter subscribers receive a 30-day transition/trial instead of being cut off immediately;
+- existing active free Starter subscribers receive the Founder-configured transition/trial instead of being cut off immediately;
 - new workspaces created while Starter is paid begin on the Starter trial;
 - switching Starter back to free turns non-founder Starter subscriptions back to active, non-expiring access;
 - founder-lifetime grants remain protected from these mass transitions.
@@ -937,7 +937,7 @@ The area shape is a serviceability boundary. Price is based on actual dispatch-b
 
 ### “How can the Starter plan safely change from free to paid?”
 
-Starter's commercial state is derived from its price. Founder Console performs the switch transactionally. Existing free subscribers receive a 30-day transition instead of immediate loss. Returning to free removes expiry requirements again.
+Starter's commercial state is derived from its price. Founder Console performs the switch transactionally. Existing free subscribers receive the Founder-configured transition instead of immediate loss. Returning to free removes expiry requirements again.
 
 ### “What happens when the server is scaled?”
 

@@ -4,7 +4,7 @@
 
 `BusinessModuleAccess` remains the runtime commercial entitlement boundary. Plan changes write explicit rows for every module. `enabled=False` is a hard ceiling before role or user permissions are evaluated.
 
-Existing businesses are **not** silently downgraded by subscription migrations. STARTER keeps a fixed one-user/no-add-on capacity, while its commercial mode is Founder-controlled. When STARTER is free, new workspaces receive non-expiring STARTER access. When the Founder makes STARTER paid, new workspaces begin the configured 30-day STARTER trial and existing free STARTER tenants receive the same protected transition window instead of losing access abruptly.
+Existing businesses are **not** silently downgraded by subscription migrations. STARTER keeps a fixed one-user/no-add-on capacity, while its commercial mode is Founder-controlled. When STARTER is free, new workspaces receive non-expiring STARTER access. When the Founder makes STARTER paid, new workspaces begin the Founder-configured STARTER trial and existing free STARTER tenants receive the same protected transition window instead of losing access abruptly.
 
 ## Seeded plans
 
@@ -23,7 +23,7 @@ Existing businesses are **not** silently downgraded by subscription migrations. 
 | Delivery | Founder toggle | Founder toggle | Founder toggle |
 | Audit Workspace | Founder toggle | Founder toggle | Founder toggle |
 
-Paid access uses a protected 30-day trial period. Free-forever STARTER has no expiry. When STARTER is switched from free to paid, existing active free STARTER subscriptions are converted to a 30-day transition/trial; switching STARTER back to free restores non-expiring active access. A tenant can switch the paid plan used during a trial without restarting the original trial clock.
+Paid access uses a Founder-configured trial period. Free-forever STARTER has no expiry. When STARTER is switched from free to paid, existing active free STARTER subscriptions are converted to the Founder-configured transition/trial; switching STARTER back to free restores non-expiring active access. A tenant can switch the paid plan used during a trial without restarting the original trial clock.
 
 Delivery and Audit Workspace are seeded as disabled on every plan. The Founder Console decides which plan can use either add-on, and that plan row becomes the hard commercial ceiling before role permissions are considered.
 
@@ -48,7 +48,7 @@ The subscription monthly total is the primary plan price plus the discounted add
 STARTER always retains one user and no additional service profiles. The Founder Console may safely change only its commercial mode:
 
 - **Free forever:** monthly price is stored as `0.00`; active STARTER access has no expiry or renewal requirement.
-- **Paid:** Founder turns off **Free forever** and enters a positive monthly price. Existing free STARTER subscribers receive 30 days of uninterrupted transition access and new STARTER workspaces begin on the paid trial.
+- **Paid:** Founder turns off **Free forever** and enters a positive monthly price. Existing free STARTER subscribers receive the Founder-configured uninterrupted transition window and new STARTER workspaces begin on the paid trial.
 - **Paid → free:** all ordinary STARTER subscriptions are restored to Active with trial/payment expiry cleared. Founder-lifetime grants are not rewritten by the bulk transition.
 
 The state is derived by `SubscriptionPlan.is_free_forever` from the STARTER code plus persisted monthly price instead of storing a separate boolean that could drift out of sync with billing.
@@ -142,3 +142,9 @@ Subscription/module entitlements control **which application surfaces a business
 For example, if a workflow that the current plan permits legitimately creates related stock, sale, payment, finance, delivery, audit or reporting records, INPROFIC keeps those records synchronized even when the destination module itself is hidden by the current plan. A later plan upgrade therefore reveals the already-complete tenant history; it does not begin bookkeeping only from the upgrade date.
 
 Implementation rule: `business_has_module()` belongs at request/navigation authorization boundaries. Domain services and signals must not use a disabled entitlement as a reason to skip required interconnected persistence. Records remain tenant-scoped and all ordinary transactional/audit invariants still apply.
+
+## Founder-controlled trial policy
+
+The Founder Console owns the platform-wide **General free trial (days)** setting. New eligible paid-plan trials use this duration; free-forever STARTER remains non-expiring. The legacy `SubscriptionPlan.trial_days` values are synchronized to the Founder policy so older reporting/admin paths do not drift.
+
+The Founder can also **Grant / extend business trial** for a specific business and plan. If the business is already on an active trial, the granted days are appended after its current trial end date. If the business is expired or on a non-expiring free workspace, the granted window starts from the current time. Founder-lifetime grants and live paid terms are protected from accidental overlap. Each grant is retained in `FounderTrialGrant` with the number of days, resulting end date, Founder actor, and optional note.

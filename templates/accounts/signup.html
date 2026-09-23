@@ -4,28 +4,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Create your INPROFIC workspace</title>
-  <link rel="icon" type="image/png" href="{% static 'core/brand/inprofic-mark.png' %}">
+  <title>Create your INPROFIC Workspace</title>
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
   <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}">
   <link rel="stylesheet" href="{% static 'core/css/workspace.css' %}">
   <script src="{% static 'core/js/workspace.js' %}"></script>
   {% include "pwa/head.html" %}
   <style>
-    @font-face { font-family:'Inter'; src:url('{% static "core/fonts/Inter-Regular.ttf" %}') format('truetype'); font-weight:400; font-style:normal; font-display:swap; }
-    @font-face { font-family:'Inter'; src:url('{% static "core/fonts/Inter-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
+    @font-face { font-family:'Sora'; src:url('{% static "core/fonts/Sora-Variable.ttf" %}') format('truetype'); font-weight:100 800; font-style:normal; font-display:swap; }
     @font-face { font-family:'Fraunces'; src:url('{% static "core/fonts/Fraunces-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
-    body{font-family:Inter,sans-serif;background:#FAF6EF;color:#211D1A}.font-display{font-family:Fraunces,serif}input:focus,select:focus,textarea:focus{border-color:#d14900!important;box-shadow:0 0 0 2px rgba(209,73,0,.3)!important}.auth-logo-dark{display:none}html[data-theme="dark"] .auth-logo-light{display:none}html[data-theme="dark"] .auth-logo-dark{display:block}
+    body{font-family:Sora,sans-serif;background:#FAF6EF;color:#211D1A}.font-display{font-family:Fraunces,serif}input:focus,select:focus,textarea:focus{border-color:#d14900!important;box-shadow:0 0 0 2px rgba(209,73,0,.3)!important}.auth-logo-dark{display:none}html[data-theme="dark"] .auth-logo-light{display:none}html[data-theme="dark"] .auth-logo-dark{display:block}
   </style>
   <script src="{% static 'core/js/form-experience.js' %}" defer></script>
 </head>
 <body>
   <main class="min-h-screen flex items-center justify-center p-4">
     <div class="w-full max-w-2xl bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-6" style="box-shadow:var(--ui-shadow-raised)">
-      <img src="{% static 'core/brand/inprofic-logo-on-light.png' %}" alt="INPROFIC" class="auth-logo-light h-9 w-auto max-w-full" width="2097" height="361">
-      <img src="{% static 'core/brand/inprofic-logo-on-dark.png' %}" alt="INPROFIC" class="auth-logo-dark h-9 w-auto max-w-full" width="1953" height="359">
-      <div class="text-[10px] tracking-[0.2em] uppercase text-[#C69A3E]">Create a business workspace</div>
-      <h1 class="text-2xl font-semibold font-display text-[#d14900] mt-4">Set up your business</h1>
+      <img src="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" alt="INPROFIC" class="auth-logo-light max-w-full" style="width:12rem;height:auto" width="1944" height="309">
+      <img src="{% static 'core/brand/inprofic-wordmark-on-dark.png' %}" alt="INPROFIC" class="auth-logo-dark max-w-full" style="width:12rem;height:auto" width="1827" height="290">
+      <div class="text-[10px] tracking-[0.2em] uppercase text-[#C69A3E]">Create a Business Workspace</div>
+      <h1 class="text-2xl font-semibold font-display text-[#d14900] mt-4">Set up your Business</h1>
       <p class="text-sm text-stone-500 mb-5">Choose the operating style that fits you. Your first account becomes the Business Admin.</p>
       {% if form.non_field_errors %}<div class="text-sm bg-rose-50 text-rose-700 border border-rose-200 rounded-md px-3 py-2 mb-3">{{ form.non_field_errors }}</div>{% endif %}
       <form method="post">
@@ -40,9 +38,9 @@
           {% include "_field.html" with field=form.password1 %}
           {% include "_field.html" with field=form.password2 %}
         </div>
-        <button class="w-full mt-2 bg-[#d14900] text-white rounded-md py-2.5 text-sm font-medium hover:bg-[#050733]">Create workspace</button>
+        <button class="w-full mt-2 bg-[#d14900] text-white rounded-md py-2.5 text-sm font-medium hover:bg-[#050733]">Create Workspace</button>
       </form>
-      <p class="text-xs text-center text-stone-500 mt-4">Already have an account? <a class="text-[#d14900] underline" href="{% url 'login' %}">Sign in</a></p>
+      <p class="text-xs text-center text-stone-500 mt-4">Already have an Account? <a class="text-[#d14900] underline" href="{% url 'login' %}">Sign In</a></p>
     </div>
   </main>
   {% include "pwa/install_prompt.html" %}

@@ -55,6 +55,24 @@ services:
         sync: false
       - key: WEB_PUSH_TIMEOUT_SECONDS
         value: "5"
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_PORT
+        value: "465"
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: EMAIL_USE_TLS
+        value: "True"
+      - key: EMAIL_USE_SSL
+        value: "False"
+      - key: EMAIL_TIMEOUT
+        value: "8"
+      - key: DEFAULT_FROM_EMAIL
+        sync: false
+      - key: INPROFIC_SUPPORT_EMAIL
+        sync: false
       - key: R2_ACCESS_KEY_ID
         sync: false
       - key: R2_SECRET_ACCESS_KEY

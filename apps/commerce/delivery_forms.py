@@ -39,7 +39,7 @@ class DeliverySettingsForm(StyledModelForm):
             "require_proof_of_delivery": "Use this when a rider or dispatcher must record delivery evidence before completion.",
             "rider_alert_sound_enabled": "Admin-controlled persistent foreground sound for rider-only notification sessions.",
             "rider_alert_sound_repeat_minutes": "Repeat while the rider still has unread assigned-delivery activity. Use 0 for new-alert sound only.",
-            "rider_alert_sound_tune": "Choose the foreground rider tune. Background Web Push uses the device/OS notification sound.",
+            "rider_alert_sound_tune": "Choose a synthesized rider alert or bundled audio chime. Background Web Push uses the device/OS notification sound.",
         }
         for name, hint in hints.items():
             self.fields[name].help_text = hint

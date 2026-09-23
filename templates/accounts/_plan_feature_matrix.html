@@ -1,0 +1,50 @@
+<details class="group {% if matrix_theme == 'dark' %}border border-white/15 bg-white/[.06] text-white{% else %}border border-[#E7DFCC] bg-[#FFFDF8] text-stone-800{% endif %} overflow-hidden rounded-2xl" data-plan-feature-matrix>
+  <summary class="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 sm:px-6">
+    <div>
+      <div class="font-display text-lg font-semibold sm:text-xl">Full feature comparison</div>
+      <p class="mt-1 text-xs leading-5 {% if matrix_theme == 'dark' %}text-white/55{% else %}text-stone-500{% endif %}">Expand to see capacity and every plan-controlled workspace feature side by side.</p>
+    </div>
+    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full {% if matrix_theme == 'dark' %}border border-white/15 bg-white/10 text-[#e7bd65]{% else %}border border-[#E7DFCC] bg-white text-[#8f172d]{% endif %} transition group-open:rotate-45" aria-hidden="true">+</span>
+  </summary>
+  <div class="border-t {% if matrix_theme == 'dark' %}border-white/10{% else %}border-[#E7DFCC]{% endif %}">
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[720px] border-collapse text-left text-sm">
+        <thead>
+          <tr class="{% if matrix_theme == 'dark' %}bg-white/[.04] text-white{% else %}bg-white text-stone-800{% endif %}">
+            <th scope="col" class="sticky left-0 z-10 w-[38%] min-w-[260px] px-5 py-3 font-semibold {% if matrix_theme == 'dark' %}bg-[#101244]{% else %}bg-white{% endif %}">Feature</th>
+            {% for plan in plans %}<th scope="col" class="min-w-[150px] px-4 py-3 text-center font-display font-semibold">{{ plan.name }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in plan_feature_matrix %}
+          <tr class="border-t {% if matrix_theme == 'dark' %}border-white/10{% else %}border-[#EFE8D9]{% endif %}">
+            <th scope="row" class="sticky left-0 z-10 px-5 py-3 align-top font-medium {% if matrix_theme == 'dark' %}bg-[#090b3a] text-white{% else %}bg-[#FFFDF8] text-stone-800{% endif %}">
+              <span class="block">{{ row.label }}</span>
+              {% if row.detail %}<span class="mt-1 block text-[11px] font-normal italic leading-4 normal-case {% if matrix_theme == 'dark' %}text-white/45{% else %}text-stone-500{% endif %}" style="text-transform:none;letter-spacing:normal;">{{ row.detail }}</span>{% endif %}
+            </th>
+            {% for value in row.values %}
+            <td class="px-4 py-3 text-center align-middle">
+              {% if value.state == 'off' %}
+                <span class="inline-flex items-center justify-center {% if matrix_theme == 'dark' %}text-white/35{% else %}text-stone-400{% endif %}" title="{{ value.text }}" aria-label="{{ value.text }}">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m9 9 6 6M15 9l-6 6"></path></svg>
+                  <span class="sr-only">{{ value.text }}</span>
+                </span>
+              {% elif value.state == 'partial' %}
+                <span class="inline-flex rounded-full {% if matrix_theme == 'dark' %}bg-[#e7bd65]/15 text-[#f3d99b]{% else %}bg-amber-50 text-amber-800{% endif %} px-2.5 py-1 text-[11px] font-semibold">{{ value.text }}</span>
+              {% elif value.state == 'text' %}
+                <span class="inline-flex items-center justify-center text-xs font-semibold normal-case {% if matrix_theme == 'dark' %}text-white/75{% else %}text-stone-700{% endif %}" style="text-transform:none;letter-spacing:normal;">{{ value.text }}</span>
+              {% else %}
+                <span class="inline-flex items-center justify-center {% if matrix_theme == 'dark' %}text-emerald-300{% else %}text-emerald-700{% endif %}" title="{{ value.text }}" aria-label="{{ value.text }}">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8.5 12 2.25 2.25L15.75 9"></path></svg>
+                  <span class="sr-only">{{ value.text }}</span>
+                </span>
+              {% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</details>

@@ -57,8 +57,8 @@
         {% include "commerce/_settings_toggle.html" with field=form.notify_delivery_activity %}
         {% include "commerce/_settings_toggle.html" with field=form.notification_sound_enabled %}
         {% include "commerce/_settings_toggle.html" with field=form.notification_desktop_enabled %}
-        <div class="rounded-xl border border-[#E7DFCC] bg-white p-4">{% include '_field.html' with field=form.notification_sound_tune %}<p class="mt-1 text-[11px] leading-4 text-stone-500">The selected tune is synthesized in the foreground so the same pattern works without audio-file codec differences. Background Web Push uses the device notification sound.</p></div>
-        <div class="rounded-xl border border-[#E7DFCC] bg-white p-4">{% include '_field.html' with field=form.notification_sound_repeat_minutes %}<p class="mt-1 text-[11px] leading-4 text-stone-500">Unread alerts—including direct Transfer claims waiting for verification—keep repeating at this interval until they are read. Set 0 for new-alert sound only.</p></div>
+        <div class="rounded-xl border border-[#E7DFCC] bg-white p-4">{% include '_field.html' with field=form.notification_sound_tune %}<p class="mt-1 text-[11px] leading-4 text-stone-500">Choose a synthesized alert or one of the bundled audio chimes. INPROFIC uses persistent foreground alarm bursts after audio permission is available; background Web Push uses the device notification sound.</p></div>
+        <div class="rounded-xl border border-[#E7DFCC] bg-white p-4">{% include '_field.html' with field=form.notification_sound_repeat_minutes %}<p class="mt-1 text-[11px] leading-4 text-stone-500">Unread alerts—including direct Transfer claims waiting for verification—trigger an alarm burst at this interval until they are read. Set 0 for new-alert sound only.</p></div>
       </div>
     </section>
 

@@ -13,10 +13,11 @@ Generated from `docs/feature_marketing_catalog.json` by `scripts/generate_market
 
 ## Newly added capabilities highlighted in this release
 
-- ✨ **Persistent stock alerts inside the shared operations tray** — added 2026-09-20: Raw-material and finished-good warning/low conditions open in separate Inventory tabs inside the movable tray, keep per-user snooze/re-alert timing, repeat a chosen INPROFIC tune in the foreground, and continue due reminders through Web Push when the app is backgrounded or closed.
+- ✨ **Persistent stock alerts inside the shared operations tray** — added 2026-09-20: Raw-material and finished-good warning/low conditions open in separate Inventory tabs inside the movable tray, keep per-user snooze/re-alert timing, can use synthesized alerts or eight bundled audio chimes, and continue due reminders through Web Push when the app is backgrounded or closed.
 - ✨ **Transfer without a payment gateway** — added 2026-09-20: Show the business bank account, require customer payment proof externally, and keep payment pending until staff verifies the actual credit.
 - ✨ **Provider-neutral delivery partner adapters** — added 2026-09-20: Keep INPROFIC in control of delivery pricing, routing and tracking while any courier stays manual or connects through a normalized dispatch/status adapter; optional built-in providers remain separately governed.
-- ✨ **Shared realtime Commerce, payment and delivery alert tray** — added 2026-09-20: Commerce, payment and Delivery alerts share one movable tray with Inventory without sharing read state; five selectable foreground tunes and configurable repeats keep unread work—including direct Transfer verification—hard to miss, while durable Web Push continues due reminders in the background.
+- ✨ **Shared realtime Commerce, payment and delivery alert tray** — added 2026-09-20: Commerce, payment and Delivery alerts share one movable tray with Inventory without sharing read state; synthesized tones plus eight bundled audio chimes and configurable repeats keep unread work—including direct Transfer verification—hard to miss, while durable Web Push continues due reminders in the background.
+- ✨ **Founder-controlled subscription plans & trial policy** — added 2026-09-21: Control plan pricing, module entitlements, the general free-trial duration and per-business founder trial extensions without deleting tenant history or overlapping active paid/lifetime access.
 - ✨ **Founder-controlled third-party integration availability** — added 2026-09-20: Optional provider connectors can be hidden and execution-blocked platform-wide without deleting tenant credentials or history; businesses still activate their own approved provider accounts only after configuration.
 - ✨ **Plan-upgrade data continuity** — added 2026-09-20: Hidden interconnected modules do not stop required back-office synchronization, so upgrades reveal already-complete records.
 - ✨ **Surface-safe Online, POS and Distribution pricing** — added 2026-09-20: Physical Store/direct pricing stays inside the staff POS, while hosted/headless commerce exposes Online plus Distribution/Bulk and INPROFIC enforces the chosen channel and minimum quantity server-side.
@@ -24,6 +25,7 @@ Generated from `docs/feature_marketing_catalog.json` by `scripts/generate_market
 - ✨ **Founder product and lead analytics** — added 2026-09-20: Track first-party signup leads, completed registrations, logins, subscription milestones and throttled module usage in Founder Console without recording passwords, payment secrets or arbitrary clickstreams.
 - ✨ **Animated, consistent form validation across INPROFIC** — added 2026-09-20: HTML5 and Django validation share animated field states, contextual SVG affordances, accessible feedback and consistent toggle switches; dynamic rows inherit the same behavior.
 - ✨ **Channel-aware plain and add-on product options** — added 2026-09-20: Offer Extra Jollof, Single Chicken, bottles, pieces or other plain portions from the same Finished Good stock and recipe with independent Physical Store, Online and Bulk/Distribution availability and pricing.
+- ✨ **Interactive product demos** — added 2026-09-21: The marketing site provides a vertical-aware click-through workflow plus module-card flip previews and a detailed storefront-to-fulfilment flow.
 
 ## Maintenance rule
 

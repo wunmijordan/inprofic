@@ -6,7 +6,13 @@ INPROFIC is a connected business operating system for businesses that buy materi
 
 It is designed so that procurement, inventory, production, sales, commerce, delivery, finance and audit do not operate as disconnected spreadsheets. A purchase can affect stock and supplier balances; production can consume materials and create saleable goods; a paid checkout can become a sale and delivery; and the resulting cash movement can be traced back to the commercial activity that created it.
 
-INPROFIC supports bakery, restaurant, general-production, wholesale and retail operating styles. The same platform adapts its language and available workflows to the kind of business using it.
+INPROFIC supports bakery, restaurant, general-production, wholesale and retail operating styles. The same platform adapts its language and available workflows to the kind of business using it. Wholesale and retail stay stock-first: product setup removes production-only recipe, batch-yield and base-material controls, while supporting supplies retain procurement, pack conversion, stock and reorder controls without pretending those businesses manufacture what they resell.
+
+### Interactive marketing demos and vertical-aware onboarding
+
+The public marketing page includes a native click-through product walkthrough that can switch between Bakery, Restaurant & food service, General production, Wholesale and Retail. The workflow changes its terminology and production steps to match the selected service. Module cards can flip into compact operational previews, while the storefront section carries a more detailed external-storefront / in-premise-POS / payment / fulfilment / tracking flow. These are lightweight INPROFIC-native interface simulations rather than third-party recordings.
+
+Inside the application, the onboarding tour keeps its original animated top artwork and uses a separate lower preview layer for a compact representation of the actual module being toured. That lower preview uses the active tenant vertical, so stock-first tenants do not see a production simulation and production-led tenants receive relevant material, batch and output examples.
 
 ## One business, one connected flow
 
@@ -254,7 +260,7 @@ Advanced planning areas such as full MRP, WIP scheduling, comprehensive labour/o
 ### Commerce channel boundaries and operational alerts
 
 - Physical-store/direct prices are POS-only. Hosted storefronts and headless/connector APIs expose Online plus Distribution/Bulk only; Distribution/Bulk minimum quantities remain server-enforced on every surface.
-- Commerce, Inventory and rider alerts share durable Web Push delivery while preserving separate permissions and read/snooze semantics. Five foreground INPROFIC tunes are available per alert system, including two aggressive buzzer patterns. Closed/background Web Push repeats when due, while the operating system/browser controls the notification sound.
+- Commerce, Inventory and rider alerts share durable Web Push delivery while preserving separate permissions and read/snooze semantics. Each alert system can choose from the synthesized INPROFIC tones (including two aggressive buzzers) plus eight bundled audio chimes. Closed/background Web Push repeats when due, while the operating system/browser controls the notification sound.
 
 ### Standard Portions, composed products and Bulk Packs
 

@@ -132,6 +132,17 @@ class RawMaterialForm(StyledModelForm):
                     for value, label in self.fields["category"].choices
                 ]
             elif not vocabulary["uses_production"]:
+                self.fields["package_qty"].label = "Units per purchase pack"
+                self.fields["package_qty"].help_text = "How many package units are inside one supplier purchase unit. Example: 1 carton = 24 bottles."
+                self.fields["usage_conversion_factor"].label = "Issue / stock conversion"
+                self.fields["usage_conversion_factor"].help_text = "How many fine issue units are in one package unit. Keep 1 when the package and issue unit are the same."
+                self.fields["reorder_level_purchase_units"].label = "Reorder level (supplier units)"
+                self.fields["reorder_level_purchase_units"].help_text = "How many supplier purchase units should trigger a restock warning."
+                self.fields["stock_purchase_units"].label = "Opening stock (supplier units)"
+                self.fields["stock_purchase_units"].help_text = "Opening/manual balance only. Later supply arrivals should be received through Procurement for traceable quantity and cost history."
+                self.fields["cost_per_purchase_unit"].label = "Cost per supplier unit"
+                if "measurement_change_confirm" in self.fields:
+                    self.fields["measurement_change_confirm"].help_text = "Required when editing how this supply is measured. Current stock is converted consistently; completed historical records stay frozen and the change is logged."
                 category_labels = {
                     RawMaterial.CATEGORY_INGREDIENT: "Consumable supply",
                     RawMaterial.CATEGORY_PACKAGING: "Packaging supply",
@@ -230,12 +241,12 @@ class FinishedGoodForm(StyledModelForm):
         if business and business.uses_production:
             self.fields["unit"].label = "Base production / stock unit"
             self.fields["unit"].help_text = (
-                "The internal output unit used by production and stock, e.g. scoop, piece, ml or loaf. "
-                "Use the Standard Portion section below when customers buy a plate, serving, bottle or set instead."
+                "The internal output unit used by production and stock, e.g. piece, loaf, bottle, metre, scoop or ml. "
+                "Use the customer selling-unit section below when the public unit differs from the operational unit."
             )
             self.fields["units_per_batch"].label = "Base units per production batch"
             self.fields["units_per_batch"].help_text = (
-                "How many base units one normal production batch yields. Example: 120 scoops, 48 bottles or 30 pieces."
+                "How many base units one normal production batch yields. Example: 120 portions, 48 bottles, 30 pieces or 12 assembled units."
             )
         if "base_material" in self.fields:
             self.fields["base_material"].required = False
@@ -263,8 +274,15 @@ class FinishedGoodForm(StyledModelForm):
         if business and not business.uses_production:
             self.fields.pop("units_per_batch")
             self.fields["unit"].label = "Stock / selling unit"
+            self.fields["unit"].help_text = (
+                "The unit counted in stock and normally sold to customers, e.g. piece, pair, bottle, carton or case. "
+                "Use customer/bulk selling options below only when customers buy a different pack size."
+            )
             self.fields["stock"].label = "Opening stock"
-            self.fields["stock"].help_text = "Use this only for the opening balance. Record later arrivals by receiving a purchase order."
+            self.fields["stock"].help_text = "Use this only for the opening balance. Record later supplier arrivals through Procurement so quantity and cost history remain traceable."
+            self.fields["reorder_level"].label = "Reorder level"
+            self.fields["reorder_level"].help_text = "Restock warning threshold in the stock / selling unit above."
+            self.fields["selling_price"].help_text = "Default selling price. Channel-specific prices below can override it where needed."
 
     def clean(self):
         cleaned = super().clean()
@@ -290,11 +308,18 @@ class ProductPortionProfileForm(StyledModelForm):
     def __init__(self, *args, business=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.business = business
-        self.fields["active"].label = "Use a standard customer portion"
-        self.fields["customer_quantity"].label = "Customer quantity"
-        self.fields["customer_unit"].label = "Customer unit"
-        self.fields["base_quantity"].label = "Base units per portion"
-        self.fields["public_note"].label = "Customer note"
+        if business and not vertical_config(business)["uses_production"]:
+            self.fields["active"].label = "Use a standard customer selling unit"
+            self.fields["customer_quantity"].label = "Displayed quantity"
+            self.fields["customer_unit"].label = "Customer selling unit"
+            self.fields["base_quantity"].label = "Stock units per selling unit"
+            self.fields["public_note"].label = "Customer note"
+        else:
+            self.fields["active"].label = "Use a standard customer portion"
+            self.fields["customer_quantity"].label = "Customer quantity"
+            self.fields["customer_unit"].label = "Customer unit"
+            self.fields["base_quantity"].label = "Base units per portion"
+            self.fields["public_note"].label = "Customer note"
         self.fields["active"].widget.attrs["class"] = "sr-only peer"
         self.fields["customer_quantity"].widget.attrs["data-formset-default"] = "1"
         self.fields["base_quantity"].widget.attrs["data-formset-default"] = "1"
@@ -302,12 +327,23 @@ class ProductPortionProfileForm(StyledModelForm):
     def clean(self):
         cleaned = super().clean()
         if cleaned.get("active"):
+            uses_production = bool(self.business and vertical_config(self.business)["uses_production"])
             if not (cleaned.get("customer_unit") or "").strip():
-                self.add_error("customer_unit", "Enter the customer-facing unit, e.g. plate, serving, bottle or set.")
+                self.add_error(
+                    "customer_unit",
+                    "Enter the customer-facing unit, e.g. serving, pack, bottle, set or piece."
+                    if uses_production
+                    else "Enter the customer selling unit, e.g. piece, pair, pack, carton or case.",
+                )
             if (cleaned.get("customer_quantity") or Decimal("0")) <= 0:
                 self.add_error("customer_quantity", "Customer quantity must be greater than zero.")
             if (cleaned.get("base_quantity") or Decimal("0")) <= 0:
-                self.add_error("base_quantity", "Base units per portion must be greater than zero.")
+                self.add_error(
+                    "base_quantity",
+                    "Base units per portion must be greater than zero."
+                    if uses_production
+                    else "Stock units per selling unit must be greater than zero.",
+                )
         return cleaned
 
 
@@ -325,21 +361,24 @@ class IndividualSaleOptionForm(StyledModelForm):
     def __init__(self, *args, business=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.business = business
-        self.fields["name"].label = "Individual option name"
-        self.fields["customer_quantity"].label = "Customer quantity"
-        self.fields["customer_unit"].label = "Customer unit"
-        self.fields["base_quantity"].label = "Base units consumed"
+        vocabulary = vertical_config(business) if business else None
+        uses_production = bool(vocabulary and vocabulary["uses_production"])
+        self.fields["name"].label = "Individual option name" if uses_production else "Alternative selling option"
+        self.fields["customer_quantity"].label = "Customer quantity" if uses_production else "Displayed quantity"
+        self.fields["customer_unit"].label = "Customer unit" if uses_production else "Customer selling unit"
+        self.fields["base_quantity"].label = "Base units consumed" if uses_production else "Stock units used"
         self.fields["public_note"].label = "Customer note"
+        channel_labels = (vocabulary or {}).get("commerce_channels", {})
         labels = {
-            "physical_store_enabled": "Physical Store / in-premise POS",
-            "online_enabled": "Online / website",
-            "distribution_enabled": "Bulk / distribution",
-            "physical_store_price": "Physical Store price",
-            "online_price": "Online price",
-            "distribution_price": "Bulk / distribution price",
-            "physical_store_min_quantity": "Physical Store minimum",
-            "online_min_quantity": "Online minimum",
-            "distribution_min_quantity": "Bulk / distribution minimum",
+            "physical_store_enabled": channel_labels.get("physical_store", "Physical Store / in-premise POS"),
+            "online_enabled": channel_labels.get("online", "Online / website"),
+            "distribution_enabled": channel_labels.get("distribution", "Bulk / distribution"),
+            "physical_store_price": f"{channel_labels.get('physical_store', 'Physical Store')} price",
+            "online_price": f"{channel_labels.get('online', 'Online')} price",
+            "distribution_price": f"{channel_labels.get('distribution', 'Bulk / distribution')} price",
+            "physical_store_min_quantity": f"{channel_labels.get('physical_store', 'Physical Store')} minimum",
+            "online_min_quantity": f"{channel_labels.get('online', 'Online')} minimum",
+            "distribution_min_quantity": f"{channel_labels.get('distribution', 'Bulk / distribution')} minimum",
         }
         for key, label in labels.items():
             self.fields[key].label = label
@@ -358,12 +397,23 @@ class IndividualSaleOptionForm(StyledModelForm):
         )
         if not populated:
             return cleaned
+        uses_production = bool(self.business and vertical_config(self.business)["uses_production"])
         if not (cleaned.get("name") or "").strip():
-            self.add_error("name", "Enter the customer-facing individual option name.")
+            self.add_error("name", "Enter the customer-facing option name.")
         if not (cleaned.get("customer_unit") or "").strip():
-            self.add_error("customer_unit", "Enter the customer unit, e.g. scoop, piece, serving or bottle.")
+            self.add_error(
+                "customer_unit",
+                "Enter the customer unit, e.g. piece, serving, bottle, pack or set."
+                if uses_production
+                else "Enter the customer selling unit, e.g. piece, pair, pack, carton or case.",
+            )
         if (cleaned.get("base_quantity") or Decimal("0")) <= 0:
-            self.add_error("base_quantity", "Base units consumed must be greater than zero.")
+            self.add_error(
+                "base_quantity",
+                "Base units consumed must be greater than zero."
+                if uses_production
+                else "Stock units used must be greater than zero.",
+            )
         for enabled_key, price_key, min_key, label in (
             ("physical_store_enabled", "physical_store_price", "physical_store_min_quantity", "Physical Store"),
             ("online_enabled", "online_price", "online_min_quantity", "Online"),
@@ -397,7 +447,8 @@ class BulkPackProfileForm(StyledModelForm):
         self.fields["package_type"].widget.attrs["class"] = INPUT_CLS
         self.fields["customer_quantity"].label = "Displayed size"
         self.fields["customer_unit"].label = "Size / measure unit"
-        self.fields["base_quantity"].label = "Base units in one bulk option"
+        uses_production = bool(business and vertical_config(business)["uses_production"])
+        self.fields["base_quantity"].label = "Base units in one bulk option" if uses_production else "Stock units in one bulk option"
         self.fields["min_order_quantity"].label = "Minimum bulk units"
         self.fields["active"].widget.attrs["class"] = "sr-only peer"
         for name in ("customer_quantity", "base_quantity", "min_order_quantity"):
@@ -421,9 +472,15 @@ class BulkPackProfileForm(StyledModelForm):
             return cleaned
         if not (cleaned.get("name") or "").strip():
             self.add_error("name", "Enter a customer-facing bulk pack name.")
+        uses_production = bool(self.business and vertical_config(self.business)["uses_production"])
         if not (cleaned.get("customer_unit") or "").strip():
-            self.add_error("customer_unit", "Enter the customer-facing measurement, e.g. litre, kg, piece or serving.")
-        for name, label in (("customer_quantity", "Displayed size"), ("base_quantity", "Base units"), ("min_order_quantity", "Minimum bulk units")):
+            self.add_error(
+                "customer_unit",
+                "Enter the customer-facing measurement, e.g. litre, kg, piece, pack, tray or set."
+                if uses_production
+                else "Enter the customer-facing pack unit, e.g. piece, pack, carton, case or pallet.",
+            )
+        for name, label in (("customer_quantity", "Displayed size"), ("base_quantity", "Base units" if uses_production else "Stock units"), ("min_order_quantity", "Minimum bulk units")):
             if (cleaned.get(name) or Decimal("0")) <= 0:
                 self.add_error(name, f"{label} must be greater than zero.")
         if cleaned.get("price") is not None and cleaned["price"] < 0:

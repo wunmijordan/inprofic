@@ -5,25 +5,29 @@ from django.test import TestCase
 from django.test import override_settings
 from django.db import connection
 from django.core.management import call_command
+from django.core import mail
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from core.models import Business
 from .models import (
     BusinessFeatureAccess, BusinessModuleAccess, BusinessSubscription, CustomUser,
-    RoleModulePermission, SubscriptionPayment, SubscriptionPaymentSettings,
-    SubscriptionPlanModule, SubscriptionPromotion, MarketingPromoCampaign, SubscriptionService, UserBusiness, UserModulePermission,
+    RoleModulePermission, SubscriptionPayment, SubscriptionPaymentSettings, SubscriptionPolicySettings, FounderTrialGrant,
+    SubscriptionPlanModule, SubscriptionPromotion, MarketingPromoCampaign, SubscriptionService, UserBusiness, UserModulePermission, PlatformEvent,
 )
 from .services import business_has_module, can_use_commerce_storefront, is_live_tester, seed_business_roles, user_has_permission
 from .subscription_services import (
     apply_subscription_entitlements,
     apply_subscriptions_entitlements,
+    build_plan_feature_matrix,
     create_payment_request,
     ensure_default_plans,
     grant_founder_lifetime,
+    grant_founder_trial_extension,
     mark_payment_paid,
     payment_amount,
     payment_is_locked,
+    start_trial_for_business,
 )
 
 
@@ -33,6 +37,17 @@ class TenantSignupTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "From stock to sale, in one place", html=False)
         self.assertContains(response, "Sign in")
+
+    def test_marketing_uses_founder_configured_trial_length(self):
+        policy = SubscriptionPolicySettings.load()
+        policy.general_trial_days = 17
+        policy.save(update_fields=["general_trial_days", "updated_at"])
+        ensure_default_plans()
+
+        response = self.client.get(reverse("marketing_home"))
+
+        self.assertContains(response, "17-day trial")
+        self.assertNotContains(response, "30-day trial")
 
     def test_marketing_plan_prices_include_thousands_separators(self):
         plans = ensure_default_plans()
@@ -136,6 +151,38 @@ class TenantSignupTests(TestCase):
         self.assertEqual(subscription.plan.additional_service_limit, 0)
         self.assertFalse(business.module_access.get(module="commerce").enabled)
         self.assertEqual(self.client.session["active_business_id"], business.pk)
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DEFAULT_FROM_EMAIL="INPROFIC <welcome@example.com>",
+        INPROFIC_SUPPORT_EMAIL="support@example.com",
+    )
+    def test_signup_sends_branded_welcome_email_and_records_contact(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse("signup"), {
+                "business_name": "Welcome Bakery",
+                "vertical": Business.VERTICAL_RESTAURANT,
+                "fullname": "Welcome Admin",
+                "username": "welcome.admin",
+                "email": "welcome@example.com",
+                "phone": "",
+                "password1": "Zx!92-long-safe-passphrase",
+                "password2": "Zx!92-long-safe-passphrase",
+            })
+
+        self.assertRedirects(response, reverse("dashboard"), fetch_redirect_response=False)
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertEqual(message.to, ["welcome@example.com"])
+        self.assertIn("Welcome to INPROFIC", message.subject)
+        self.assertIn("Welcome Bakery", message.body)
+        html = next(content for content, mimetype in message.alternatives if mimetype == "text/html")
+        self.assertIn("#050733", html)
+        self.assertIn("#d14900", html)
+        self.assertIn("Open Welcome Bakery", html)
+        event = PlatformEvent.objects.get(event_type=PlatformEvent.EVENT_REGISTRATION, user__username="welcome.admin")
+        self.assertEqual(event.metadata["signup_email"], "welcome@example.com")
+        self.assertEqual(event.metadata["business_name"], "Welcome Bakery")
 
     def test_signup_uses_a_unique_business_slug(self):
         Business.objects.create(name="Plate and Pantry", slug="plate-and-pantry")
@@ -407,6 +454,16 @@ class SubscriptionEntitlementTests(TestCase):
         self._subscribe("business_pro")
         self.assertTrue(business_has_module(self.business, "commerce"))
 
+    def test_feature_matrix_uses_icons_for_binary_states_but_keeps_capacity_and_partial_text(self):
+        plans = [self.plans["starter"], self.plans["production"], self.plans["business_pro"]]
+        matrix = build_plan_feature_matrix(plans)
+        rows = {row["label"]: row for row in matrix}
+        self.assertTrue(all(value["state"] == "text" for value in rows["Users"]["values"]))
+        self.assertEqual(rows["Procurement"]["values"][0]["state"], "off")
+        self.assertEqual(rows["Inventory"]["values"][0]["state"], "included")
+        self.assertEqual(rows["Reports"]["values"][0]["state"], "partial")
+        self.assertEqual(rows["Reports"]["values"][0]["text"], "Basic")
+
     def test_bulk_entitlement_refresh_has_bounded_queries(self):
         second_business = Business.objects.create(name="Plan Retail", slug="plan-retail")
         subscriptions = []
@@ -452,6 +509,29 @@ class SubscriptionEntitlementTests(TestCase):
         subscription = self._subscribe("starter")
         self.assertIn("Trial", subscription.trial_status_label)
         self.assertIn(str(subscription.trial_ends_at.year), subscription.trial_status_label)
+
+    def test_founder_general_trial_policy_controls_new_trial_length(self):
+        policy = SubscriptionPolicySettings.load()
+        policy.general_trial_days = 17
+        policy.save(update_fields=["general_trial_days", "updated_at"])
+        subscription = start_trial_for_business(self.business, self.plans["production"])
+        remaining = subscription.trial_ends_at - self.timezone.now()
+        self.assertGreater(remaining.total_seconds(), 16 * 86400)
+        self.assertLessEqual(remaining.total_seconds(), 17 * 86400 + 5)
+
+    def test_founder_trial_extension_adds_after_existing_trial_and_is_audited(self):
+        founder = CustomUser.objects.create_superuser(username="trial-founder", password="safe-password-123")
+        subscription = self._subscribe("production")
+        previous_end = subscription.trial_ends_at
+        subscription = grant_founder_trial_extension(
+            subscription, self.plans["business_pro"], 14, founder, "Launch support"
+        )
+        self.assertEqual(subscription.plan, self.plans["business_pro"])
+        self.assertEqual(subscription.trial_ends_at, previous_end + self.timezone.timedelta(days=14))
+        grant = FounderTrialGrant.objects.get(subscription=subscription)
+        self.assertEqual(grant.days, 14)
+        self.assertEqual(grant.granted_by, founder)
+        self.assertEqual(grant.note, "Launch support")
 
     def test_current_trial_plan_payment_stays_locked_until_final_seven_days(self):
         from django.core.exceptions import ValidationError

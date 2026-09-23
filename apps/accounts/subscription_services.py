@@ -14,10 +14,12 @@ from .models import (
     BusinessFeatureAccess,
     BusinessModuleAccess,
     BusinessSubscription,
+    FounderTrialGrant,
     PaidPlanTrialClaim,
     RoleModulePermission,
     SubscriptionPayment,
     SubscriptionPlan,
+    SubscriptionPolicySettings,
     SubscriptionPlanModule,
     SubscriptionPromotion,
     SubscriptionService,
@@ -63,6 +65,92 @@ PLAN_MATRIX = {
 }
 
 
+def build_plan_feature_matrix(plans):
+    """Return one comparison matrix shared by public and in-app plan views.
+
+    The table is intentionally derived from the persisted plan entitlements so
+    Founder Console changes are reflected everywhere without duplicating plan
+    claims in templates. POS and the rider workspace remain role permissions;
+    their commercial availability follows Commerce and Delivery respectively.
+    """
+    plans = list(plans)
+    entitlement_maps = {
+        plan.pk: {row.module: row for row in plan.module_entitlements.all()}
+        for plan in plans
+    }
+
+    def capacity_value(text):
+        # Capacity rows carry meaningful text rather than a binary entitlement.
+        return {"text": text, "state": "text"}
+
+    rows = [
+        {
+            "label": "Users",
+            "detail": "Maximum active users across the subscription.",
+            "values": [
+                capacity_value(
+                    f"{plan.user_limit} user{'s' if plan.user_limit != 1 else ''}"
+                    if plan.user_limit is not None else "Unlimited"
+                )
+                for plan in plans
+            ],
+        },
+        {
+            "label": "Additional service profiles",
+            "detail": "Extra business/service profiles beyond the primary workspace.",
+            "values": [
+                capacity_value(
+                    "Unlimited"
+                    if plan.additional_service_limit is None
+                    else (
+                        f"{plan.additional_service_limit} add-on{'s' if plan.additional_service_limit != 1 else ''}"
+                        if plan.additional_service_limit
+                        else "None"
+                    )
+                )
+                for plan in plans
+            ],
+        },
+    ]
+
+    feature_modules = list(PLAN_ENTITLEMENT_MODULES) + [
+        ("pos", "In-Premise POS"),
+        ("delivery_rider", "Delivery Rider Workspace"),
+    ]
+    details = {
+        "dashboard": "Workspace overview and operational starting point.",
+        "inventory": "Stock, materials, finished goods and movement history.",
+        "procurement": "Purchase orders, receiving and supplier activity.",
+        "production": "Production orders, batches, recipes/formulas and yield.",
+        "sales": "Sales records, customers, credit and order history.",
+        "expenses": "Operational expense capture and tracking.",
+        "finance": "Cash accounts, movements, receivables and payables.",
+        "reports": "Operational and financial reporting depth for the plan.",
+        "users": "Business users, roles and permissions.",
+        "commerce": "Hosted storefront, website API and commerce operations.",
+        "delivery": "Delivery quoting, dispatch, tracking and provider workflows.",
+        "audit": "Read-only external audit evidence workspace and audit packs.",
+        "pos": "Dedicated cashier workspace; availability follows Commerce access.",
+        "delivery_rider": "Purpose-specific rider workspace; availability follows Delivery access.",
+    }
+
+    for module, label in feature_modules:
+        entitlement_module = "commerce" if module == "pos" else "delivery" if module == "delivery_rider" else module
+        values = []
+        for plan in plans:
+            entitlement = entitlement_maps.get(plan.pk, {}).get(entitlement_module)
+            if not entitlement or not entitlement.enabled or entitlement.level == SubscriptionPlanModule.LEVEL_NONE:
+                values.append({"text": "Not included", "state": "off"})
+            elif entitlement_module == "reports" and entitlement.level == SubscriptionPlanModule.LEVEL_BASIC:
+                values.append({"text": "Basic", "state": "partial"})
+            elif entitlement_module == "reports" and entitlement.level == SubscriptionPlanModule.LEVEL_FULL:
+                values.append({"text": "Full", "state": "included"})
+            else:
+                values.append({"text": "Included", "state": "included"})
+        rows.append({"label": label, "detail": details.get(module, ""), "values": values})
+    return rows
+
+
 def ensure_default_plans():
     """Ensure built-in plans and entitlement rows exist with bounded queries.
 
@@ -75,6 +163,7 @@ def ensure_default_plans():
         SubscriptionPlan.CODE_BUSINESS_PRO: "BUSINESS PRO",
     }
     codes = tuple(names)
+    general_trial_days = max(1, int(SubscriptionPolicySettings.load().general_trial_days or 30))
 
     plan_rows = list(SubscriptionPlan.objects.filter(code__in=codes))
     plans = {plan.code: plan for plan in plan_rows}
@@ -87,7 +176,7 @@ def ensure_default_plans():
                 plan, _created = SubscriptionPlan.objects.get_or_create(
                     code=code,
                     defaults={
-                        "name": names[code], "trial_days": 0 if code == SubscriptionPlan.CODE_STARTER else 30,
+                        "name": names[code], "trial_days": 0 if code == SubscriptionPlan.CODE_STARTER else general_trial_days,
                         "monthly_price": Decimal("0.00"),
                         "user_limit": 1 if code == SubscriptionPlan.CODE_STARTER else (5 if code == SubscriptionPlan.CODE_PRODUCTION else None),
                         "additional_service_limit": 0 if code == SubscriptionPlan.CODE_STARTER else (1 if code == SubscriptionPlan.CODE_PRODUCTION else None),
@@ -97,12 +186,12 @@ def ensure_default_plans():
 
     # Starter keeps its intentionally small capacity, while the Founder may
     # switch its commercial mode between free-forever (price 0) and paid. A
-    # paid Starter receives the same 30-day transition/trial window used by
+    # paid Starter receives the Founder-configured general trial window used by
     # paid plans; a free Starter has no expiry.
     plan_updates = []
     for plan in plans.values():
         changed = False
-        expected_trial_days = 0 if plan.is_free_forever else 30
+        expected_trial_days = 0 if plan.is_free_forever else general_trial_days
         if plan.trial_days != expected_trial_days:
             plan.trial_days = expected_trial_days
             changed = True
@@ -274,12 +363,13 @@ def apply_subscription_entitlements(subscription):
 
 
 @transaction.atomic
-def start_trial_for_business(business, plan=None):
+def start_trial_for_business(business, plan=None, *, trial_days_override=None):
     plans = ensure_default_plans()
     plan = plan or plans[SubscriptionPlan.CODE_STARTER]
     now = timezone.now()
     is_free_plan = plan.is_free_forever
-    trial_days = max(1, int(plan.trial_days or 30))
+    policy_days = max(1, int(SubscriptionPolicySettings.load().general_trial_days or 30))
+    trial_days = max(1, int(trial_days_override or policy_days))
     subscription, created = BusinessSubscription.objects.get_or_create(
         primary_business=business,
         defaults={
@@ -356,7 +446,8 @@ def start_paid_plan_trial(subscription, plan, user):
         raise ValidationError("A paid-plan free trial has already been used with these account credentials.") from exc
     subscription.plan = plan
     subscription.status = BusinessSubscription.STATUS_TRIAL
-    subscription.trial_ends_at = timezone.now() + timezone.timedelta(days=30)
+    trial_days = max(1, int(SubscriptionPolicySettings.load().general_trial_days or 30))
+    subscription.trial_ends_at = timezone.now() + timezone.timedelta(days=trial_days)
     subscription.paid_until = None
     subscription.save(update_fields=["plan", "status", "trial_ends_at", "paid_until"])
     subscription = apply_subscription_entitlements(subscription)
@@ -419,6 +510,51 @@ def switch_subscription_plan(subscription, plan, *, keep_expiry=True):
     subscription = apply_subscription_entitlements(subscription)
     from .models import PlatformEvent
     _track_subscription_event(PlatformEvent.EVENT_SUBSCRIPTION_CHANGED, subscription)
+    return subscription
+
+
+@transaction.atomic
+def grant_founder_trial_extension(subscription, plan, days, actor, note=""):
+    """Grant or extend a trial without disturbing a live paid or lifetime term."""
+    days = max(1, min(3650, int(days)))
+    subscription = (
+        BusinessSubscription.objects.select_for_update()
+        .select_related("plan", "primary_business")
+        .get(pk=subscription.pk)
+    )
+    now = timezone.now()
+    if subscription.founder_lifetime:
+        raise ValidationError("Revoke founder lifetime access before granting a trial window.")
+    if (
+        subscription.status == BusinessSubscription.STATUS_ACTIVE
+        and subscription.paid_until
+        and subscription.paid_until >= now
+    ):
+        raise ValidationError("This business already has an active paid term; a founder trial would overlap it.")
+
+    previous_end = subscription.trial_ends_at if subscription.status == BusinessSubscription.STATUS_TRIAL else None
+    base = previous_end if previous_end and previous_end > now else now
+    granted_end = base + timezone.timedelta(days=days)
+    subscription.plan = plan
+    subscription.status = BusinessSubscription.STATUS_TRIAL
+    subscription.trial_ends_at = granted_end
+    subscription.paid_until = None
+    subscription.save(update_fields=["plan", "status", "trial_ends_at", "paid_until"])
+    FounderTrialGrant.objects.create(
+        subscription=subscription,
+        plan=plan,
+        days=days,
+        previous_ends_at=previous_end,
+        granted_ends_at=granted_end,
+        granted_by=actor,
+        note=note or "",
+    )
+    subscription = apply_subscription_entitlements(subscription)
+    from .models import PlatformEvent
+    _track_subscription_event(
+        PlatformEvent.EVENT_SUBSCRIPTION_TRIAL, subscription, user=actor,
+        metadata={"founder_extension_days": days, "trial_ends_at": granted_end.isoformat()},
+    )
     return subscription
 
 

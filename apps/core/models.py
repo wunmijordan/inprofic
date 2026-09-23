@@ -29,10 +29,10 @@ class Business(models.Model):
     VERTICAL_RETAIL = "retail"
     VERTICAL_CHOICES = [
         (VERTICAL_BAKERY, "Bakery"),
-        (VERTICAL_RESTAURANT, "Restaurant / food service"),
-        (VERTICAL_GENERAL, "General production"),
-        (VERTICAL_WHOLESALE, "Wholesale / distribution"),
-        (VERTICAL_RETAIL, "Retail store"),
+        (VERTICAL_RESTAURANT, "Restaurant / Food Service"),
+        (VERTICAL_GENERAL, "General Production"),
+        (VERTICAL_WHOLESALE, "Wholesale / Distribution"),
+        (VERTICAL_RETAIL, "Retail Store"),
     ]
 
     name = models.CharField(max_length=120, default="My Business")

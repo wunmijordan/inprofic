@@ -8,11 +8,10 @@
     calendar:'<rect data-draw x="3" y="5" width="18" height="16" rx="2"/><path data-draw d="M7 3v4M17 3v4M3 9h18"/>',
     clock:'<circle data-draw cx="12" cy="12" r="9"/><path data-draw d="M12 7v5l3 2"/>',
     number:'<path data-draw d="M8 3 6 21M18 3l-2 18M3 9h18M2 15h18"/>',
-    // Naira rather than a generic dollar glyph.  Two cross-bars plus the
-    // diagonal N remain legible at the 16px input-icon size.
-    money:'<path data-draw d="M7 20V4l10 16V4M4 10h16M4 14h16"/>',
+    money:'<path data-draw stroke="none" d="M0 0h24v24H0z" fill="none"/><path data-draw d="M7 18v-10.948a1.05 1.05 0 0 1 1.968 -.51l6.064 10.916a1.05 1.05 0 0 0 1.968 -.51v-10.948"/><path data-draw d="M5 10h14"/><path data-draw d="M5 14h14"/>',
     user:'<circle data-draw cx="12" cy="8" r="4"/><path data-draw d="M4 21c1-5 4-7 8-7s7 2 8 7"/>',
     account:'<circle data-draw cx="12" cy="12" r="9"/><circle data-draw cx="12" cy="12" r="3"/><path data-draw d="M15 9v5c0 1.1.9 2 2 2 1.7 0 3-1.6 3-4"/>',
+    business:'<path data-draw d="M3 10.5 12 3l9 7.5"/><path data-draw d="M5 9.5V21h14V9.5"/><path data-draw d="M9 21v-7h6v7"/>',
     item:'<path data-draw d="m4 7 8-4 8 4-8 4-8-4Z"/><path data-draw d="M4 7v10l8 4 8-4V7M12 11v10"/>',
     location:'<path data-draw d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle data-draw cx="12" cy="10" r="2.5"/>',
   };
@@ -46,13 +45,15 @@
     if(humanNameField.test(name)||humanNameLabel.test(label))return 'user';
     if(name.includes('username')||label.includes('username'))return 'account';
 
-    const itemLike=/\b(product|raw material|material|finished good|item|category|service|plan|unit|role|package|pack|option|variant|title|business|company|supplier|warehouse|sku|code|name)\b/;
+    const businessLike=/\b(business|company|merchant|store|workspace|organisation|organization|supplier|vendor)\b/;
+    if(businessLike.test(name.replaceAll('_',' '))||businessLike.test(label))return 'business';
+    const itemLike=/\b(product|raw material|material|finished good|item|category|service|plan|unit|role|package|pack|option|variant|title|warehouse|sku|code|name)\b/;
     if(itemLike.test(name.replaceAll('_',' '))||itemLike.test(label))return 'item';
     return '';
   }
-  function svg(markup, cls, state){
+  function svg(markup, cls, state, options={}){
     const ns='http://www.w3.org/2000/svg'; const node=document.createElementNS(ns,'svg');
-    node.setAttribute('viewBox','0 0 24 24'); node.setAttribute('fill','none'); node.setAttribute('stroke','currentColor'); node.setAttribute('stroke-width','1.8'); node.setAttribute('aria-hidden','true'); node.setAttribute('class',cls);
+    node.setAttribute('viewBox','0 0 24 24'); node.setAttribute('fill','none'); node.setAttribute('stroke',options.stroke||'currentColor'); node.setAttribute('stroke-width',options.strokeWidth||'1.8'); node.setAttribute('stroke-linecap','round'); node.setAttribute('stroke-linejoin','round'); node.setAttribute('aria-hidden','true'); node.setAttribute('class',cls);
     if(state)node.dataset.state=state; node.innerHTML=markup; return node;
   }
   function eligible(el){
@@ -75,7 +76,11 @@
     el.dataset.inproficEnhanced='1';
     const parent=el.parentElement; const wrap=document.createElement('span'); wrap.className='inprofic-control-wrap';
     parent.insertBefore(wrap,el); wrap.appendChild(el);
-    const key=iconFor(el); if(key){wrap.dataset.icon=key;wrap.appendChild(svg(icons[key],'inprofic-input-icon'));}
+    const key=iconFor(el); if(key){
+      wrap.dataset.icon=key;
+      const iconOptions=key==='money'?{stroke:'rgb(0, 209, 45)',strokeWidth:'2'}:{};
+      wrap.appendChild(svg(icons[key],'inprofic-input-icon',null,iconOptions));
+    }
     wrap.classList.add('has-validation-mark');
     wrap.appendChild(svg('<path d="m5 12 4 4L19 6"/>','inprofic-validation-mark','valid'));
     wrap.appendChild(svg('<path d="M7 7l10 10M17 7 7 17"/>','inprofic-validation-mark','invalid'));

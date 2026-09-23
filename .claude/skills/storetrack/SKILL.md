@@ -262,7 +262,7 @@ After editing:
 - Commerce **Order** means immediate sellable stock; **Pre-order** means made-to-order Pending Production after acceptance.
 - Production-centric storefront availability is `FinishedGood.physical_saleable_stock`; Market Stock only becomes public availability after the explicit Market → Physical transfer.
 - Insufficient-stock policy is tenant-configurable: reduce, reject, invite to Pre-order, or split stock + production balance.
-- Existing businesses with no `BusinessSubscription` keep legacy entitlements; new signups get a 30-day STARTER trial.
+- Existing businesses with no `BusinessSubscription` keep legacy entitlements; new eligible signups use the Founder-configured general trial duration; free-forever Starter remains non-expiring.
 - Plan changes materialize into `BusinessModuleAccess`; STARTER has Basic Reports, PRODUCTION has Full Reports but no Finance, BUSINESS PRO has all modules including Commerce.
 - Multiple user-facing **services** under one subscription are separate Business profiles linked by `SubscriptionService`; keep the internal `Business.vertical` field for backward compatibility.
 - Founder lifetime grants are plan-specific, not universal permission bypasses.

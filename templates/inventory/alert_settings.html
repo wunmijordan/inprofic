@@ -13,7 +13,7 @@
       <div class="mt-4 grid gap-4 sm:grid-cols-2">
         <div>{% include '_field.html' with field=form.poll_seconds %}<p class="mt-1 text-[11px] text-stone-500">How often open INPROFIC pages refresh stock conditions (15–300 seconds).</p></div>
         <div>{% include '_field.html' with field=form.sound_repeat_minutes %}<p class="mt-1 text-[11px] text-stone-500">Repeat the stock-attention sound while an alert is visible. Acknowledging/snoozing that alert stops its sound until the existing condition-specific repeat window brings it back.</p></div>
-        <div>{% include '_field.html' with field=form.sound_tune %}<p class="mt-1 text-[11px] text-stone-500">Choose one of five foreground tunes. Background Web Push uses the notification sound provided by the device/browser.</p></div>
+        <div>{% include '_field.html' with field=form.sound_tune %}<p class="mt-1 text-[11px] text-stone-500">Choose a synthesized alert or one of the bundled audio chimes. INPROFIC uses persistent foreground alarm bursts after audio permission is available; background Web Push uses the notification sound provided by the device/browser.</p></div>
         <div>{% include '_field.html' with field=form.sound_enabled %}</div>
       </div>
     </section>

@@ -1,0 +1,44 @@
+<div class="ip-demo{% if demo_compact %} is-compact{% endif %}{% if demo_detailed %} is-detailed{% endif %}" data-inprofic-demo="{{ demo_kind }}"{% if demo_id %} id="{{ demo_id }}"{% endif %}>
+  <div class="ip-demo-head">
+    <div class="ip-demo-head-copy">
+      {% if demo_label %}<div class="text-[9px] font-extrabold uppercase tracking-[.16em] text-stone-400">{{ demo_label }}</div>{% endif %}
+      <div class="ip-demo-caption {% if demo_label %}mt-1 {% endif %}text-sm font-bold text-stone-800" data-demo-caption>Follow one connected workflow</div>
+    </div>
+    <div class="ip-demo-controls">
+      {% if demo_service_selector %}
+      <label class="ip-demo-service-label">Service
+        <select class="ip-demo-service-select" data-demo-service aria-label="Choose a business service for the demo">
+          <option value="bakery">Bakery</option>
+          <option value="restaurant">Restaurant &amp; Food Service</option>
+          <option value="general">General Production</option>
+          <option value="wholesale">Wholesale</option>
+          <option value="retail">Retail</option>
+        </select>
+      </label>
+      {% endif %}
+      <div class="ip-demo-tabs" data-demo-tabs role="tablist" aria-label="Demo steps"></div>
+    </div>
+  </div>
+  <div class="ip-demo-window">
+    <aside class="ip-demo-sidebar">
+      <div class="ip-demo-sidebar-title">Workspace</div>
+      <div class="ip-demo-nav" data-demo-nav></div>
+    </aside>
+    <div class="ip-demo-main" aria-live="polite">
+      <div class="ip-demo-topbar">
+        <div><div class="ip-demo-eyebrow" data-demo-eyebrow>Module</div><div class="ip-demo-title"><span data-demo-title>INPROFIC</span><span class="ip-demo-channel" data-demo-channel hidden></span></div></div>
+        <span class="ip-demo-state" data-demo-state>Connected</span>
+      </div>
+      <div class="ip-demo-subnav" data-demo-subnav></div>
+      <div class="ip-demo-kpis" data-demo-kpis></div>
+      <div class="ip-demo-progress" data-demo-progress aria-hidden="true"><span></span></div>
+      <div class="ip-demo-panel" data-demo-panel></div>
+      <div class="ip-demo-actions" data-demo-actions></div>
+    </div>
+  </div>
+  <div class="ip-demo-pointer" data-demo-pointer aria-hidden="true">
+    <span class="ip-demo-pointer-ring"></span>
+    <svg viewBox="0 0 28 28" aria-hidden="true"><path class="pointer-fill" d="M4.3 2.8l16.1 14.1l-7.35 1.18l-3.72 6.58z"/><circle class="pointer-accent" cx="20.1" cy="7.1" r="3.1"/></svg>
+  </div>
+  <div class="ip-demo-note" data-demo-note>{{ demo_note|default:"Use the step controls to see how the same operational record moves through INPROFIC." }}</div>
+</div>

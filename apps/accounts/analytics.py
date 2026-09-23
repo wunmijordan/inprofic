@@ -72,6 +72,45 @@ def module_from_path(path):
     return aliases.get(first, first)[:40]
 
 
+
+def founder_signup_contacts(*, limit=None):
+    """Return one founder-visible contact per signup email.
+
+    Registration-event metadata preserves the address used at signup, while
+    the related user is a fallback for registrations recorded before the
+    mailing-list fields were introduced.
+    """
+    from .models import PlatformEvent
+
+    events = (
+        PlatformEvent.objects
+        .filter(event_type=PlatformEvent.EVENT_REGISTRATION)
+        .select_related("business", "user")
+        .order_by("-occurred_at", "-id")
+    )
+    contacts = []
+    seen = set()
+    for event in events.iterator(chunk_size=500):
+        metadata = event.metadata or {}
+        email = (metadata.get("signup_email") or getattr(event.user, "email", "") or "").strip()
+        key = email.casefold()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        vertical = metadata.get("vertical") or getattr(event.business, "vertical", "") or ""
+        service = event.business.get_vertical_display() if event.business else vertical
+        contacts.append({
+            "email": email,
+            "name": (metadata.get("signup_name") or getattr(event.user, "fullname", "") or getattr(event.user, "username", "") or "").strip(),
+            "business": (metadata.get("business_name") or getattr(event.business, "name", "") or "").strip(),
+            "vertical": vertical,
+            "service": service,
+            "signed_up_at": event.occurred_at,
+        })
+        if limit is not None and len(contacts) >= limit:
+            break
+    return contacts
+
 def founder_analytics_summary(*, now=None):
     from .models import PlatformEvent
 
@@ -87,6 +126,7 @@ def founder_analytics_summary(*, now=None):
         .values("module").annotate(total=Count("id"))
         .order_by("-total", "module")[:8]
     )
+    all_signup_contacts = founder_signup_contacts()
     return {
         "lead_sessions_30d": lead_sessions,
         "registrations_7d": PlatformEvent.objects.filter(event_type=PlatformEvent.EVENT_REGISTRATION, occurred_at__gte=since_7).count(),
@@ -97,6 +137,8 @@ def founder_analytics_summary(*, now=None):
             event_type=PlatformEvent.EVENT_MODULE_VIEW, occurred_at__gte=since_7, business__isnull=False
         ).values("business_id").distinct().count(),
         "subscription_events_30d": recent_30.filter(event_type__in=PlatformEvent.SUBSCRIPTION_EVENTS).count(),
+        "signup_contacts_count": len(all_signup_contacts),
+        "signup_contacts": all_signup_contacts[:50],
         "top_modules": top_modules,
         "recent_events": PlatformEvent.objects.select_related("business", "user").order_by("-occurred_at", "-id")[:30],
     }

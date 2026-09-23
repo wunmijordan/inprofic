@@ -13,8 +13,8 @@ from pptx.util import Inches, Pt
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT = ROOT / "docs" / "INPROFIC_Pitch_Deck.pptx"
 BRAND_DIR = ROOT / "apps" / "core" / "static" / "core" / "brand"
-LOGO_ON_DARK = BRAND_DIR / "inprofic-logo-on-dark.png"
-LOGO_ON_LIGHT = BRAND_DIR / "inprofic-logo-on-light.png"
+LOGO_ON_DARK = BRAND_DIR / "inprofic-wordmark-on-dark.png"
+LOGO_ON_LIGHT = BRAND_DIR / "inprofic-wordmark-on-light.png"
 
 NAVY = "050733"
 ORANGE = "D14900"

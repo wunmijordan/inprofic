@@ -1,7 +1,7 @@
 from django.test import TestCase
 
 from core.models import Business
-from .analytics import founder_analytics_summary, record_platform_event
+from .analytics import founder_analytics_summary, founder_signup_contacts, record_platform_event
 from .models import CustomUser, PlatformEvent
 
 
@@ -29,3 +29,37 @@ class PlatformAnalyticsTests(TestCase):
         )
         event = PlatformEvent.objects.get(event_type=PlatformEvent.EVENT_SUBSCRIPTION_CHANGED)
         self.assertEqual(event.metadata, {"plan": "business_pro"})
+    def test_signup_contacts_use_registration_metadata_and_dedupe_email(self):
+        second = CustomUser.objects.create_user(
+            username="second.analytics", password="safe-password-123", email="LATEST@example.com", fullname="Latest Name"
+        )
+        record_platform_event(
+            PlatformEvent.EVENT_REGISTRATION, user=self.user, business=self.business,
+            metadata={"signup_email": "latest@example.com", "signup_name": "Older Name", "business_name": "Older Store"},
+        )
+        record_platform_event(
+            PlatformEvent.EVENT_REGISTRATION, user=second, business=self.business,
+            metadata={"signup_email": "LATEST@example.com", "signup_name": "Latest Name", "business_name": "Analytics Store"},
+        )
+        contacts = founder_signup_contacts()
+        self.assertEqual(len(contacts), 1)
+        self.assertEqual(contacts[0]["email"], "LATEST@example.com")
+        self.assertEqual(contacts[0]["name"], "Latest Name")
+
+    def test_founder_can_export_signup_contacts_csv(self):
+        founder = CustomUser.objects.create_superuser(
+            username="analytics.founder", password="safe-password-123", email="founder@example.com"
+        )
+        record_platform_event(
+            PlatformEvent.EVENT_REGISTRATION, user=self.user, business=self.business,
+            metadata={"signup_email": "owner@example.com", "signup_name": "Owner", "business_name": "Analytics Store"},
+        )
+        self.client.force_login(founder)
+        from django.urls import reverse
+        response = self.client.get(reverse("founder_mailing_list_csv"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
+        content = response.content.decode()
+        self.assertIn("owner@example.com", content)
+        self.assertIn("Analytics Store", content)
+

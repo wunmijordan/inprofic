@@ -10,6 +10,34 @@
   .ip-tour-media[hidden] { display:none !important; }
   .ip-tour-media { margin-top:10px; overflow:hidden; border:1px solid #eadfcd; border-radius:16px; background:#fff; }
   .ip-tour-media :where(img,video) { display:block; width:100%; max-height:220px; object-fit:contain; background:#fff; opacity:1 !important; }
+
+  .ip-tour-module { padding:12px; background:linear-gradient(180deg,#fff,#fbfaf7); color:#44403c; }
+  .ip-tour-module-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .ip-tour-module-title { font-size:11px; font-weight:800; color:#292524; }
+  .ip-tour-module-kicker { margin-top:2px; font:700 8px/1.2 "IBM Plex Mono",monospace; letter-spacing:.08em; text-transform:uppercase; color:#a8a29e; }
+  .ip-tour-module-status { display:inline-flex; align-items:center; gap:5px; border-radius:999px; padding:4px 7px; background:#f5efe0; color:#8f172d; font-size:8px; font-weight:800; }
+  .ip-tour-module-status::before { content:""; width:5px; height:5px; border-radius:50%; background:#22c55e; box-shadow:0 0 0 3px rgba(34,197,94,.12); }
+  .ip-tour-module-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin-top:9px; }
+  .ip-tour-module-metric { min-width:0; border:1px solid #eee7d7; border-radius:9px; background:#fffdf8; padding:7px; }
+  .ip-tour-module-metric small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#a8a29e; font-size:7px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+  .ip-tour-module-metric strong { display:block; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#44403c; font-size:10px; }
+  .ip-tour-module-body { margin-top:8px; overflow:hidden; border:1px solid #eee7d7; border-radius:10px; background:#fff; }
+  .ip-tour-module-row { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,.75fr) auto; align-items:center; gap:7px; padding:6px 8px; border-top:1px solid #f3eee5; font-size:8px; }
+  .ip-tour-module-row:first-child { border-top:0; }
+  .ip-tour-module-row strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:8px; color:#44403c; }
+  .ip-tour-module-row span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#78716c; }
+  .ip-tour-module-chip { border-radius:999px; padding:3px 6px; background:#f5efe0; color:#8f172d !important; font-size:7px; font-weight:800; }
+  .ip-tour-module-chip.good { background:#ecfdf5; color:#047857 !important; }
+  .ip-tour-module-chip.warn { background:#fff7ed; color:#c2410c !important; }
+  .ip-tour-module-chart { display:flex; align-items:end; gap:4px; height:40px; padding:8px 9px 5px; }
+  .ip-tour-module-chart i { flex:1; min-width:4px; border-radius:5px 5px 2px 2px; background:linear-gradient(180deg,color-mix(in srgb,var(--tenant-button) 68%,#fff),color-mix(in srgb,var(--tenant-button) 18%,#fff)); animation:ipTourChart 2.8s ease-in-out infinite alternate; transform-origin:bottom; }
+  .ip-tour-module-chart i:nth-child(2n){animation-delay:-.7s}.ip-tour-module-chart i:nth-child(3n){animation-delay:-1.2s}
+  .ip-tour-module-progress { height:6px; border-radius:999px; overflow:hidden; background:#f0ebe2; margin:9px 8px; }
+  .ip-tour-module-progress span { display:block; height:100%; width:68%; border-radius:inherit; background:linear-gradient(90deg,#d14900,var(--tenant-button)); animation:ipTourFill 3s ease-in-out infinite alternate; }
+  .ip-tour-module-search { margin-top:8px; display:flex; align-items:center; gap:7px; border:1px solid #e7dfcc; border-radius:9px; background:#fff; padding:6px 8px; color:#a8a29e; font-size:8px; }
+  .ip-tour-module-search::before { content:"⌕"; color:#8f172d; font-size:12px; line-height:1; }
+  @keyframes ipTourChart { from{transform:scaleY(.72);opacity:.72} to{transform:scaleY(1);opacity:1} }
+  @keyframes ipTourFill { from{width:54%} to{width:82%} }
   .ip-tour-copy { margin-top:14px; }
   .ip-tour-cta[hidden] { display:none !important; }
   .ip-tour-cta { margin-top:12px; border:1px solid #eadfcd; border-radius:14px; background:#f8f1e7; padding:10px 12px; color:#57534e; }
@@ -75,6 +103,8 @@
      data-version="{{ onboarding_tour_version }}"
      data-force="{% if force_onboarding_tour %}1{% else %}0{% endif %}"
      data-complete-url="{% url 'onboarding_tour_complete' %}"
+     data-vertical="{{ biz.vertical|default:'general' }}"
+     data-uses-production="{% if vertical_ui.uses_production %}1{% else %}0{% endif %}"
      data-media-root="{% static 'core/tour/' %}">
   <div class="ip-tour-backdrop" aria-hidden="true"></div>
   <div class="ip-tour-focus" aria-hidden="true"></div>
@@ -85,17 +115,14 @@
     <div id="ip-tour-media" class="ip-tour-media" hidden aria-hidden="true"></div>
     <div class="ip-tour-copy flex items-start justify-between gap-3">
       <div>
-        <p id="ip-tour-eyebrow" class="text-[10px] font-extrabold uppercase tracking-[.18em] text-stone-400">Getting started</p>
+        <p id="ip-tour-eyebrow" class="text-[10px] font-extrabold uppercase tracking-[.18em] text-stone-400">Getting Started</p>
         <h2 id="ip-tour-title" class="mt-1 font-display text-xl font-semibold text-[#8f172d]">Welcome to INPROFIC</h2>
       </div>
       <button type="button" id="ip-tour-skip-top" class="shrink-0 rounded-full px-2 py-1 text-xs text-stone-500 hover:bg-stone-100" aria-label="Skip tour">Skip</button>
     </div>
     <p id="ip-tour-body" class="mt-2 text-sm leading-6 text-stone-600"></p>
-    <div id="ip-tour-cta" class="ip-tour-cta" hidden>
-      <span class="ip-tour-cta-kicker">Try this next</span>
-      <p id="ip-tour-cta-copy" class="ip-tour-cta-copy"></p>
-      <button type="button" id="ip-tour-cta-action" class="ip-tour-cta-action">Open this section <span aria-hidden="true">→</span></button>
-    </div>
+    <button type="button" id="ip-tour-cta-action" class="ip-tour-cta-action">Open this Section <span aria-hidden="true">→</span></button>
+    
     <div class="mt-4 ip-tour-progress"><span id="ip-tour-progress"></span></div>
     <div class="mt-2 flex items-center justify-between gap-2 text-[11px] text-stone-400">
       <span id="ip-tour-counter"></span>
@@ -128,9 +155,10 @@
    * 2. Put only its filename beside the matching step below.
    * 3. Redeploy / collectstatic.
    *
-   * The built-in animated art ALWAYS stays above the custom file. Empty values
-   * render no media container at all. A missing/broken file also collapses
-   * automatically, so there is never an empty placeholder in the tour card.
+   * The original built-in animated art ALWAYS stays at the top of the card.
+   * This media layer sits beneath it. When no custom file is supplied, INPROFIC
+   * renders a small module-specific operational preview here instead. A custom
+   * GIF/WebP/PNG/MP4/WebM replaces only this lower preview, never the top art.
    * Full https:// URLs are supported as well when media is hosted on a CDN/R2.
    */
   const tourMedia = {
@@ -150,19 +178,19 @@
   };
 
   const definitions = [
-    { target:'dashboard', kind:'dashboard', title:'Your business at a glance', body:'Start here. The dashboard surfaces the operating picture without changing the underlying records. Quick actions let you jump straight into common work.', cta:'Review today’s alerts, totals and quick actions before opening individual records.', actionLabel:'Use the dashboard' },
+    { target:'dashboard', kind:'dashboard', title:'Your Business at a glance', body:'Start here. The dashboard surfaces the operating picture without changing the underlying records. Quick actions let you jump straight into common work.', cta:'Review today’s alerts, totals and quick actions before opening individual records.', actionLabel:'Use the dashboard' },
     { target:'search', kind:'search', title:'Find records without hunting', body:'Use global dashboard search to find materials, products, suppliers, customers and other business records, then open a focused detail view.', cta:'Try one search using a product, material, supplier or customer name you already know.', actionLabel:'Try dashboard search' },
-    { target:'inventory', kind:'inventory', title:'Set up what you buy and sell', body:'Inventory is the foundation. Create raw materials and finished products, choose units carefully, and set reorder information before recording live activity.', cta:'Create or verify your first raw material and finished product before entering live transactions.', actionLabel:'Open Inventory' },
-    { target:'procurement', kind:'procurement', title:'Record purchases and suppliers', body:'Procurement captures purchase orders, receiving and supplier costs. Receiving stock here keeps inventory and supplier obligations connected.', cta:'Record the next real purchase as a purchase order, then receive it when the stock actually arrives.', actionLabel:'Open Procurement' },
-    { target:'production', kind:'production', title:'Plan and record production', body:'Production-capable businesses define recipes or input requirements, release materials and record actual output, waste, quality evidence and cost snapshots.', cta:'Confirm the recipe or input requirements before releasing your first live production run.', actionLabel:'Open Production' },
-    { target:'sales', kind:'sales', title:'Serve customers and record sales', body:'Sales keeps customer activity, amounts owed and payments distinct. Use the customer and sales areas for staff-managed commercial activity.', cta:'Create a customer when useful, then record sales and settlement as separate business events.', actionLabel:'Open Sales' },
-    { target:'commerce', kind:'commerce', title:'Connect storefronts and checkout', body:'Commerce powers hosted checkout, external headless websites and supported integrations. It keeps catalogue, checkout, payment and fulfilment state explicit.', cta:'Publish only the products you want online, then verify checkout, payment and fulfilment settings before sharing the storefront.', actionLabel:'Open Commerce' },
+    { target:'inventory', kind:'inventory', title:'Set up what you Buy and Sell', body:'Inventory is the foundation. Create raw materials and finished products, choose units carefully, and set reorder information before recording live activity.', cta:'Create or verify your first raw material and finished product before entering live transactions.', actionLabel:'Open Inventory' },
+    { target:'procurement', kind:'procurement', title:'Record Purchases and Suppliers', body:'Procurement captures purchase orders, receiving and supplier costs. Receiving stock here keeps inventory and supplier obligations connected.', cta:'Record the next real purchase as a purchase order, then receive it when the stock actually arrives.', actionLabel:'Open Procurement' },
+    { target:'production', kind:'production', title:'Plan and record Production', body:'Production-capable businesses define recipes or input requirements, release materials and record actual output, waste, quality evidence and cost snapshots.', cta:'Confirm the recipe or input requirements before releasing your first live production run.', actionLabel:'Open Production' },
+    { target:'sales', kind:'sales', title:'Serve Customers and record Sales', body:'Sales keeps customer activity, amounts owed and payments distinct. Use the customer and sales areas for staff-managed commercial activity.', cta:'Create a customer when useful, then record sales and settlement as separate business events.', actionLabel:'Open Sales' },
+    { target:'commerce', kind:'commerce', title:'Connect Storefronts and Checkout', body:'Commerce powers hosted checkout, external headless websites and supported integrations. It keeps catalogue, checkout, payment and fulfilment state explicit.', cta:'Publish only the products you want online, then verify checkout, payment and fulfilment settings before sharing the storefront.', actionLabel:'Open Commerce' },
     { target:'pos', kind:'pos', title:'Use the counter POS', body:'The in-premise POS is a focused checkout for counter staff. It shares the same product, pricing, payment and delivery truth as Commerce.', cta:'Run one supervised counter order from basket to review and receipt before handing the terminal to cashiers.', actionLabel:'Open POS' },
-    { target:'delivery', kind:'delivery', title:'Coordinate last-mile delivery', body:'Delivery can use in-house riders, external providers{% if glovo_platform_enabled %} such as Glovo{% endif %}, or both in Hybrid mode. Quotes, assignments, tracking and delivery events remain connected to the order.', cta:'Map your delivery base and zones, confirm pricing, then test one address and quote end to end.', actionLabel:'Open Delivery' },
-    { target:'finance', kind:'finance', title:'Follow the money', body:'Finance distinguishes revenue, receivables, payables and real cash movement so operational activity does not get mistaken for settlement.', cta:'Set up the cash accounts you actually use, then reconcile operational activity against real money movement.', actionLabel:'Open Finance' },
-    { target:'reports', kind:'reports', title:'Review and back up', body:'Reports turn operational records into reviewable business information. Use exports and backups as part of regular operating discipline.', cta:'Pick a regular review rhythm for reports and keep an export or backup routine for important records.', actionLabel:'Open Reports & Backup' },
+    { target:'delivery', kind:'delivery', title:'Coordinate last-mile Delivery', body:'Delivery can use in-house riders, external providers{% if glovo_platform_enabled %} such as Glovo{% endif %}, or both in Hybrid mode. Quotes, assignments, tracking and delivery events remain connected to the order.', cta:'Map your delivery base and zones, confirm pricing, then test one address and quote end to end.', actionLabel:'Open Delivery' },
+    { target:'finance', kind:'finance', title:'Follow the Money', body:'Finance distinguishes revenue, receivables, payables and real cash movement so operational activity does not get mistaken for settlement.', cta:'Set up the cash accounts you actually use, then reconcile operational activity against real money movement.', actionLabel:'Open Finance' },
+    { target:'reports', kind:'reports', title:'Review and Backup', body:'Reports turn operational records into reviewable business information. Use exports and backups as part of regular operating discipline.', cta:'Pick a regular review rhythm for reports and keep an export or backup routine for important records.', actionLabel:'Open Reports & Backup' },
     { target:'users', kind:'users', title:'Give people only the access they need', body:'Users & Access controls roles and module permissions. Keep cashier, rider, auditor and management access purpose-specific.', cta:'Add staff with the narrowest role that matches their job, then expand permissions only when needed.', actionLabel:'Open Users & Access' },
-    { target:'settings', kind:'settings', title:'Finish your business setup', body:'Business Settings holds tenant-level configuration. Revisit it when branding, operational defaults or integration settings change.', cta:'Review business identity, defaults and integrations once before relying on the workspace for live operations.', actionLabel:'Open Business Settings' },
+    { target:'settings', kind:'settings', title:'Finish your Business setup', body:'Business Settings holds tenant-level configuration. Revisit it when branding, operational defaults or integration settings change.', cta:'Review business identity, defaults and integrations once before relying on the workspace for live operations.', actionLabel:'Open Business Settings' },
   ].map(step => ({...step, media:tourMedia[step.kind] || ''}));
 
   const visibleTarget = (name) => Array.from(document.querySelectorAll(`[data-tour-target="${name}"]`)).find(el => {
@@ -216,18 +244,54 @@
     if (/^(https?:)?\/\//i.test(file) || file.startsWith('/')) return file;
     return `${mediaRoot}${file.replace(/^\/+/, '')}`;
   }
+  const tourProfiles = {
+    bakery:{usesProduction:true,stockLabel:'Flour',stockMeta:'68 kg',secondary:'Butter',secondaryMeta:'14 kg',product:'Mini loaves',productMeta:'48 ready',supplier:'BakeSupply',production:'Bake batch #021',productionTarget:'120 loaves',counter:'Bakery POS',salesLabel:'Bakery orders'},
+    restaurant:{usesProduction:true,stockLabel:'Long grain rice',stockMeta:'68 kg',secondary:'Cooking oil',secondaryMeta:'6 L',product:'Jollof + Chicken',productMeta:'42 portions',supplier:'KitchenMart',production:'Jollof prep #021',productionTarget:'120 portions',counter:'Restaurant POS',salesLabel:'Guest orders'},
+    general:{usesProduction:true,stockLabel:'Steel sheet',stockMeta:'84 sheets',secondary:'Fasteners',secondaryMeta:'1,240 pcs',product:'Filter Unit',productMeta:'36 units',supplier:'Industrial Supply Co.',production:'Assembly run #021',productionTarget:'50 units',counter:'Direct sales',salesLabel:'Customer orders'},
+    wholesale:{usesProduction:false,stockLabel:'Detergent cartons',stockMeta:'84 cartons',secondary:'Bottled water',secondaryMeta:'128 cases',product:'Trade stock',productMeta:'212 units',supplier:'Prime Distribution',production:'',productionTarget:'',counter:'Trade counter',salesLabel:'Trade orders'},
+    retail:{usesProduction:false,stockLabel:'Sneakers',stockMeta:'38 pairs',secondary:'T-shirts',secondaryMeta:'74 pcs',product:'Shop stock',productMeta:'186 units',supplier:'City Merchants',production:'',productionTarget:'',counter:'Retail POS',salesLabel:'Retail sales'}
+  };
+  const tourVertical = root.dataset.vertical || 'general';
+  const tourProfile = tourProfiles[tourVertical] || tourProfiles.general;
+  const nativeTourScenes = {
+    dashboard:{title:'Dashboard',kicker:'Today at a glance',metrics:[['Stock','Healthy'],['Orders','12 open'],['Cash','₦ visible']],rows:[['Low-stock watch','2 items','Review'],['Paid orders','5 ready','Open'],[tourProfile.usesProduction?'Production':'Purchasing',tourProfile.usesProduction?'3 active':'4 open','Track']]},
+    search:{title:'Global search',kicker:'Find business records',search:'Search product, stock, supplier or customer',rows:[[tourProfile.product,'Product','Open'],[tourProfile.stockLabel,tourProfile.usesProduction?'Material':'Stock item','Open'],[tourProfile.supplier,'Supplier','Open']]},
+    inventory:{title:'Inventory',kicker:tourProfile.usesProduction?'Inputs + finished stock':'Stock-first control',metrics:[[tourProfile.stockLabel,tourProfile.stockMeta],['Products',tourProfile.productMeta],['Alerts','3']],rows:[[tourProfile.stockLabel,tourProfile.stockMeta,'Healthy'],[tourProfile.secondary,tourProfile.secondaryMeta,'Low'],[tourProfile.product,tourProfile.productMeta,'Ready']]},
+    procurement:{title:'Procurement',kicker:'Purchases and receiving',metrics:[['Open POs','4'],['Due','2'],['Supplier',tourProfile.supplier]],rows:[[tourProfile.supplier,'PO awaiting','Awaiting'],[tourProfile.stockLabel,tourProfile.stockMeta,'Received'],['Inventory movement','Automatic','Posted']]},
+    production:tourProfile.usesProduction?{title:'Production',kicker:'Batch execution',metrics:[['Active','3'],['Target',tourProfile.productionTarget],['Yield','96%']],progress:true,rows:[[tourProfile.production,'72%','Running'],['Materials','Released','Done'],['Output / quality','Measured','Logged']]}:{title:'Stock-first workflow',kicker:'No production required',metrics:[['Source','Supplier'],['Products',tourProfile.productMeta],['Production','Off']],rows:[['Purchase order','Supplier stock','Received'],['Put away','Available stock','Ready'],['Customer order','Pick from stock','Done']]},
+    sales:{title:'Sales & customers',kicker:tourProfile.salesLabel,metrics:[['Today','₦284k'],['Open credit','₦42k'],['Orders','31']],rows:[['Order #2041',tourProfile.product,'Paid'],['Walk-in / account','Customer','Complete'],['Customer credit','₦12,000','Due']]},
+    commerce:{title:'Commerce',kicker:'Catalogue to fulfilment',metrics:[['Online','Live'],['Payments','Verified'],['Orders','8 new']],rows:[[tourProfile.product,'Public choice','Published'],['Transfer claim','Review','Verify'],['Order #WEB-188','Fulfilment','Ready']]},
+    pos:{title:tourProfile.counter,kicker:'In-premise sale',search:'Search catalogue',metrics:[['Channel','Counter'],['Basket','3 items'],['Total','₦14,700']],rows:[[tourProfile.product,'× 1','Added'],['Channel price','Applied','Matched'],['Receipt','Ready','Done']]},
+    delivery:{title:'Delivery',kicker:'Dispatch and tracking',metrics:[['Ready','5'],['On route','4'],['Issues','1']],rows:[['DEL-882','Assigned','On route'],['DEL-879','Pickup','Picked up'],['DEL-871','Customer','Delivered']]},
+    finance:{title:'Finance',kicker:'Operational money trail',metrics:[['Cash','₦420k'],['Receivable','₦61k'],['Payable','₦93k']],chart:true,rows:[['Payment received','₦18,500','Posted'],['Supplier liability','₦72,500','Open']]},
+    reports:{title:'Reports & backup',kicker:'Review and export',metrics:[['Revenue','Visible'],['Stock','Traceable'],['Exports','Ready']],chart:true,rows:[['Sales performance','This month','View'],['Stock movement','30 days','Export']]},
+    users:{title:'Users & access',kicker:'Purpose-specific roles',metrics:[['Users','8'],['Roles','5'],['Online','6']],rows:[['Cashier',tourProfile.counter,'Active'],['Rider','Delivery only','Active'],['Auditor','Audit + Reports','Active']]},
+    settings:{title:'Business settings',kicker:'Tenant defaults',metrics:[['Branding','Set'],['Payments','Connected'],['Alerts','Enabled']],rows:[['Business identity','Complete','Edit'],['Operational defaults','Configured','Review'],['Integrations','2 connected','Manage']]},
+  };
+  function nativePreview(step) {
+    const scene = nativeTourScenes[step.kind] || nativeTourScenes.dashboard;
+    const metrics = (scene.metrics || []).map(([label,value]) => `<div class="ip-tour-module-metric"><small>${label}</small><strong>${value}</strong></div>`).join('');
+    const rows = (scene.rows || []).map(([name,meta,status],idx) => `<div class="ip-tour-module-row"><strong>${name}</strong><span>${meta}</span><span class="ip-tour-module-chip ${/healthy|ready|paid|complete|delivered|posted|active|live|verified/i.test(status)?'good':/low|verify|issue|due|awaiting/i.test(status)?'warn':''}">${status}</span></div>`).join('');
+    const bars = scene.chart ? '<div class="ip-tour-module-chart"><i style="height:42%"></i><i style="height:66%"></i><i style="height:54%"></i><i style="height:82%"></i><i style="height:70%"></i><i style="height:94%"></i><i style="height:78%"></i></div>' : '';
+    const progress = scene.progress ? '<div class="ip-tour-module-progress"><span></span></div>' : '';
+    const search = scene.search ? `<div class="ip-tour-module-search">${scene.search}</div>` : '';
+    mediaShell.innerHTML = `<div class="ip-tour-module" data-module-preview="${step.kind || 'dashboard'}"><div class="ip-tour-module-head"><div><div class="ip-tour-module-title">${scene.title}</div><div class="ip-tour-module-kicker">${scene.kicker}</div></div><span class="ip-tour-module-status">Live workspace</span></div>${search}<div class="ip-tour-module-metrics">${metrics}</div>${progress}${bars}<div class="ip-tour-module-body">${rows}</div></div>`;
+    mediaShell.hidden = false;
+    requestAnimationFrame(() => place(visibleTarget(steps[index].target)));
+  }
   function renderMedia(step) {
     art.dataset.kind = step.kind || 'dashboard';
     mediaShell.replaceChildren();
     mediaShell.hidden = true;
     const src = mediaUrl(step.media);
-    if (!src) return;
+    if (!src) { nativePreview(step); return; }
 
     const isVideo = /\.(mp4|webm)(\?.*)?$/i.test(src);
     const media = document.createElement(isVideo ? 'video' : 'img');
     media.dataset.media = '1';
     media.src = src;
     media.setAttribute('aria-hidden', 'true');
+    const fallback = () => { if (!mediaShell.contains(media)) return; mediaShell.replaceChildren(); nativePreview(step); };
     if (isVideo) {
       media.autoplay = true;
       media.loop = true;
@@ -235,12 +299,12 @@
       media.playsInline = true;
       media.preload = 'metadata';
       media.addEventListener('loadeddata', () => { if (!mediaShell.contains(media)) return; mediaShell.hidden = false; requestAnimationFrame(() => place(visibleTarget(steps[index].target))); }, {once:true});
-      media.addEventListener('error', () => { if (!mediaShell.contains(media)) return; mediaShell.replaceChildren(); mediaShell.hidden = true; }, {once:true});
+      media.addEventListener('error', fallback, {once:true});
     } else {
       media.alt = '';
       media.decoding = 'async';
       media.addEventListener('load', () => { if (!mediaShell.contains(media)) return; mediaShell.hidden = false; requestAnimationFrame(() => place(visibleTarget(steps[index].target))); }, {once:true});
-      media.addEventListener('error', () => { if (!mediaShell.contains(media)) return; mediaShell.replaceChildren(); mediaShell.hidden = true; }, {once:true});
+      media.addEventListener('error', fallback, {once:true});
     }
     mediaShell.appendChild(media);
   }

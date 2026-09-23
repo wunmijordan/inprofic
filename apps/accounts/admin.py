@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import (BusinessFeatureAccess, BusinessModuleAccess, BusinessSubscription, CustomUser, MarketingPromoCampaign, PaidPlanTrialClaim, Role, RoleModulePermission, SubscriptionPayment, SubscriptionPaymentSettings, PlatformIntegrationSettings, SubscriptionPlan, SubscriptionPlanModule, SubscriptionPromotion, SubscriptionService, UserBusiness, UserModulePermission)
+from .models import (BusinessFeatureAccess, BusinessModuleAccess, BusinessSubscription, CustomUser, MarketingPromoCampaign, PaidPlanTrialClaim, Role, RoleModulePermission, SubscriptionPayment, SubscriptionPaymentSettings, SubscriptionPolicySettings, FounderTrialGrant, PlatformIntegrationSettings, SubscriptionPlan, SubscriptionPlanModule, SubscriptionPromotion, SubscriptionService, UserBusiness, UserModulePermission)
 
 admin.site.site_header = "INPROFIC Founder Administration"
 admin.site.site_title = "INPROFIC Admin"
@@ -81,6 +81,8 @@ class SubscriptionPaymentAdmin(admin.ModelAdmin):
     readonly_fields = ("reference", "created_at", "paid_at")
 
 admin.site.register(SubscriptionPaymentSettings)
+admin.site.register(SubscriptionPolicySettings)
+admin.site.register(FounderTrialGrant)
 admin.site.register(PlatformIntegrationSettings)
 
 @admin.register(PaidPlanTrialClaim)

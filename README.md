@@ -16,8 +16,10 @@ what was borrowed and what was deliberately left out).
   unit chain and updates stock + cost per unit automatically.
 - **Wholesale & retail** — stock-first workspaces procure sellable products
   directly, track every supplier arrival per product, and sell from warehouse
-  or shop stock without forcing those products through Production. Wholesale
-  reuses customer pricing, credit, receivables and finance settlement.
+  or shop stock without forcing those products through Production. Their product
+  forms omit recipe, batch-yield and base-material controls, while Supporting
+  Supplies retain procurement, packaging/conversion, stock and reorder controls.
+  Wholesale reuses customer pricing, credit, receivables and finance settlement.
 - **Customer Orders & Sales** — one form, one model, split by type:
   - **Walk-in** — immediate, deducts from existing shelf stock, exactly
     like a normal point-of-sale transaction.
@@ -218,7 +220,7 @@ references include `docs/DELIVERY_GLOVO_PROVIDER.md` and
 
 ### Guided onboarding and technical study guide
 
-New tenant memberships receive a one-time, replayable dashboard tour with module-aware highlights, Previous/Next/Skip/Do-not-show-again controls and extensible animated illustrations. Existing memberships are not interrupted on rollout; use **Tour INPROFIC** to replay it. Optional per-step GIF/WebP/PNG/MP4/WebM media lives under `apps/core/static/core/tour/` and is configured without replacing the built-in artwork; see [`docs/ONBOARDING_TOUR.md`](docs/ONBOARDING_TOUR.md).
+New tenant memberships receive a one-time, replayable dashboard tour with module-aware highlights, Previous/Next/Skip/Do-not-show-again controls and extensible animated illustrations. The original animated top artwork remains intact, while a separate lower preview shows a compact representation of the actual module using the active tenant vertical (production-led or stock-first). Existing memberships are not interrupted on rollout; use **Tour INPROFIC** to replay it. Optional per-step GIF/WebP/PNG/MP4/WebM media can replace only that lower preview and lives under `apps/core/static/core/tour/`; see [`docs/ONBOARDING_TOUR.md`](docs/ONBOARDING_TOUR.md).
 
 For a detailed explanation of the stack, tenancy, access control, transaction flows, Commerce, Delivery, performance, deployment, security and common architecture-defense questions, read [`docs/INPROFIC_TECHNICAL_DEFENSE_GUIDE.md`](docs/INPROFIC_TECHNICAL_DEFENSE_GUIDE.md).
 
@@ -235,3 +237,5 @@ External storefronts/connectors/headless API expose Online and Distribution/Bulk
 - **Founder product analytics:** first-party registration, login/logout, subscription milestone and throttled module-usage events surfaced in Founder Console without capturing form bodies or secrets.
 - **Unified form experience:** shared HTML5/Django validation states, animated contextual SVG field affordances and toggle switches across internal and hosted-storefront forms.
 - **Individual/plain selling options:** expose channel-aware add-ons/standalone portions from the same Finished Good stock/recipe, alongside composed Standard Portions and Bulk Packs. External surfaces remain Online + Distribution/Bulk only.
+
+- **Native interactive product demos:** the marketing page includes a service-aware click-through overview, flip-to-preview module cards, and a detailed storefront/POS-to-fulfilment flow without relying on third-party demo hosting.

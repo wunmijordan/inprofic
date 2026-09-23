@@ -1,0 +1,20 @@
+Welcome to INPROFIC, {{ user.fullname|default:user.username }}.
+
+{{ business.name }} is READY!
+
+Your Workspace connects the operational pieces of your Business in one place, with the tools available to your current plan and service profile.
+
+Workspace: {{ business.name }}
+Service: {{ business.get_vertical_display }}
+Plan: {{ subscription.plan.name }}
+
+Open your Workspace:
+{{ workspace_url }}
+
+A good place to start is to review your Workspace settings, add your real stock/products, and invite the people who need access when your plan allows it.
+
+INPROFIC
+Buying, Making, Selling and Delivering — connected.
+{% if support_email %}
+Need Help? {{ support_email }}
+{% endif %}

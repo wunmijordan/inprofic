@@ -10,7 +10,7 @@ from core.models import Business, CashAccount
 from core.pdf_fonts import PDF_MONO_MEDIUM_FONT
 from sales.forms import SaleItemForm
 from sales.models import Customer, Sale
-from .forms import FinishedGoodChannelPriceForm, FinishedGoodChannelPriceFormSet, RawMaterialForm
+from .forms import FinishedGoodChannelPriceForm, FinishedGoodChannelPriceFormSet, FinishedGoodForm, ProductPortionProfileForm, RawMaterialForm
 from .models import (
     DistributionReturn,
     FinishedGood,
@@ -75,6 +75,36 @@ class FinishedGoodChannelPriceFormTests(TestCase):
 
         self.assertFalse(form.is_valid())
         self.assertEqual(form.errors["price"], ["Enter a price for this channel."])
+
+
+class StockFirstVerticalFormTests(TestCase):
+    def setUp(self):
+        self.retail = Business.objects.create(
+            name="Stock First Retail", slug="stock-first-retail", vertical=Business.VERTICAL_RETAIL
+        )
+        self.wholesale = Business.objects.create(
+            name="Stock First Wholesale", slug="stock-first-wholesale", vertical=Business.VERTICAL_WHOLESALE
+        )
+
+    def test_retail_finished_good_omits_production_only_fields(self):
+        form = FinishedGoodForm(business=self.retail)
+        self.assertNotIn("source_type", form.fields)
+        self.assertNotIn("units_per_batch", form.fields)
+        self.assertNotIn("base_material", form.fields)
+        self.assertEqual(form.fields["unit"].label, "Stock / selling unit")
+        self.assertEqual(form.instance.source_type, FinishedGood.SOURCE_PURCHASED_FOR_RESALE)
+
+    def test_wholesale_portion_uses_stock_first_language(self):
+        form = ProductPortionProfileForm(business=self.wholesale)
+        self.assertEqual(form.fields["active"].label, "Use a standard customer selling unit")
+        self.assertEqual(form.fields["base_quantity"].label, "Stock units per selling unit")
+
+    def test_nonproduction_supply_form_uses_procurement_language(self):
+        form = RawMaterialForm(business=self.retail)
+        self.assertEqual(form.fields["stock_purchase_units"].label, "Opening stock (supplier units)")
+        self.assertEqual(form.fields["usage_conversion_factor"].label, "Issue / stock conversion")
+        self.assertIn("Stock Products", form.fields["category"].help_text)
+
 
 
 class RawMaterialPdfStockBreakdownTests(SimpleTestCase):

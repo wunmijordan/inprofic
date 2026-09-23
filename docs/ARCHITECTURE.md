@@ -540,7 +540,7 @@ Shared Production Run creation uses a multi-select dropdown of eligible Pending 
 
 INPROFIC now has an additive `commerce` app and an account-level subscription entitlement layer. Commerce uses `CommerceIntake` as the only public/external write boundary; API/storefront callers never write Production, Sales, stock or Finance directly. See `docs/COMMERCE_INTEGRATION.md`.
 
-Commercial subscriptions are translated into explicit `BusinessModuleAccess` rows. Existing businesses without a `BusinessSubscription` remain fully enabled until they opt in; new signups begin a 30-day STARTER trial. Additional service lines are separate `Business` profiles linked by `SubscriptionService` under the same commercial subscription. See `docs/SUBSCRIPTIONS.md`.
+Commercial subscriptions are translated into explicit `BusinessModuleAccess` rows. Existing businesses without a `BusinessSubscription` remain fully enabled until they opt in; new eligible signups use the Founder-configured general trial window. Additional service lines are separate `Business` profiles linked by `SubscriptionService` under the same commercial subscription. See `docs/SUBSCRIPTIONS.md`.
 
 ## Subscription checkout and commerce integration surfaces (September 2026 refinement)
 
@@ -640,7 +640,7 @@ The tour reuses the permission snapshot already loaded by the context processor 
 
 ## Starter commercial-mode transition
 
-Starter's capacity remains one user and zero additional services, while its commercial mode is Founder-controlled. `SubscriptionPlan.is_free_forever` derives the free state from Starter's persisted monthly price. Founder Console switches free → paid transactionally and gives existing active free Starter subscribers a 30-day transition instead of revoking access immediately. Switching paid → free restores non-expiring active Starter access. Founder-lifetime grants are excluded from the mass transition.
+Starter's capacity remains one user and zero additional services, while its commercial mode is Founder-controlled. `SubscriptionPlan.is_free_forever` derives the free state from Starter's persisted monthly price. Founder Console switches free → paid transactionally and gives existing active free Starter subscribers the Founder-configured trial transition instead of revoking access immediately. Switching paid → free restores non-expiring active Starter access. Founder-lifetime grants are excluded from the mass transition.
 
 ### Onboarding tour illustration assets
 

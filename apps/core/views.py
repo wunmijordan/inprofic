@@ -43,8 +43,8 @@ def marketing_home(request):
     """Public product overview; remembered authenticated sessions continue to the app."""
     if request.user.is_authenticated and request.GET.get("view") != "marketing":
         return redirect("dashboard")
-    from accounts.models import MarketingPromoCampaign, SubscriptionPlan
-    from accounts.subscription_services import attach_active_promotions
+    from accounts.models import MarketingPromoCampaign, SubscriptionPlan, SubscriptionPolicySettings
+    from accounts.subscription_services import attach_active_promotions, build_plan_feature_matrix
     plans = attach_active_promotions(
         SubscriptionPlan.objects.filter(active=True)
         .prefetch_related("module_entitlements")
@@ -62,8 +62,11 @@ def marketing_home(request):
         .order_by("-priority", "id")
     )
     starter_plan = next((plan for plan in plans if plan.code == SubscriptionPlan.CODE_STARTER), None)
+    trial_policy = SubscriptionPolicySettings.load()
     return render(request, "marketing/home.html", {
         "plans": plans, "starter_plan": starter_plan, "marketing_campaigns": marketing_campaigns,
+        "general_trial_days": max(1, int(trial_policy.general_trial_days or 30)),
+        "plan_feature_matrix": build_plan_feature_matrix(plans),
     })
 
 

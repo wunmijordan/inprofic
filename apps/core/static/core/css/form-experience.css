@@ -28,3 +28,12 @@
 .cf-switch>input[type="checkbox"]:checked+.cf-switch-track{background:var(--tenant-button,var(--brand,#D14900))}
 .cf-switch>input[type="checkbox"]:checked+.cf-switch-track .cf-switch-thumb{transform:translateX(1.35rem)}
 .cf-switch>input[type="checkbox"]:focus-visible+.cf-switch-track{outline:3px solid color-mix(in srgb,var(--tenant-button,var(--brand,#D14900)) 22%,transparent);outline-offset:2px}
+
+/* Horizontal form tables should reveal real values instead of compressing controls.
+   The table can scroll; controls should remain comfortably readable. */
+.overflow-x-auto table :is(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), select, textarea) {
+  min-width: 10.5rem;
+}
+.overflow-x-auto table input[type="number"] { min-width: 8.75rem; }
+.overflow-x-auto table textarea { min-width: 14rem; }
+.overflow-x-auto table .cf-switch input[type="checkbox"] { min-width: 0; }

@@ -11,6 +11,7 @@ import re
 
 
 SYSTEM_MARKETING_FONTS = (
+    ("Sora", "Sora, sans-serif"),
     ("Inter", "Inter, sans-serif"),
     ("Fraunces", "Fraunces, serif"),
     ("IBM Plex Mono", "IBM Plex Mono, monospace"),

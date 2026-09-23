@@ -7,20 +7,20 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 
 PDF_DISPLAY_FONT = "INPROFICFrauncesSemiBold"
-PDF_BODY_FONT = "INPROFICInter"
-PDF_BODY_BOLD_FONT = "INPROFICInterSemiBold"
-PDF_BODY_ITALIC_FONT = "INPROFICInterItalic"
-PDF_BODY_BOLD_ITALIC_FONT = "INPROFICInterSemiBoldItalic"
+PDF_BODY_FONT = "INPROFICSora"
+PDF_BODY_BOLD_FONT = "INPROFICSoraSemiBold"
+PDF_BODY_ITALIC_FONT = "INPROFICSoraItalic"
+PDF_BODY_BOLD_ITALIC_FONT = "INPROFICSoraSemiBoldItalic"
 PDF_MONO_FONT = "INPROFICPlexMono"
 PDF_MONO_MEDIUM_FONT = "INPROFICPlexMonoMedium"
 
 _FONT_DIR = Path(__file__).resolve().parent / "static" / "core" / "fonts"
 _FONT_FILES = {
     PDF_DISPLAY_FONT: "Fraunces-SemiBold.ttf",
-    PDF_BODY_FONT: "Inter-Regular.ttf",
-    PDF_BODY_BOLD_FONT: "Inter-SemiBold.ttf",
-    PDF_BODY_ITALIC_FONT: "Inter-Italic.ttf",
-    PDF_BODY_BOLD_ITALIC_FONT: "Inter-SemiBoldItalic.ttf",
+    PDF_BODY_FONT: "Sora-Regular.ttf",
+    PDF_BODY_BOLD_FONT: "Sora-SemiBold.ttf",
+    PDF_BODY_ITALIC_FONT: "Sora-Regular.ttf",
+    PDF_BODY_BOLD_ITALIC_FONT: "Sora-SemiBold.ttf",
     PDF_MONO_FONT: "IBMPlexMono-Regular.ttf",
     PDF_MONO_MEDIUM_FONT: "IBMPlexMono-Medium.ttf",
 }

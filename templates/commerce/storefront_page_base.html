@@ -5,16 +5,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="{{ store_business.background_color }}">
+  {% include "_brand_icons.html" %}
   <title>{% block title %}{{ store_business.name }}{% endblock %}</title>
-  <link rel="icon" type="image/png" href="{% static 'core/brand/inprofic-mark.png' %}">
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
   <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}">
   <style>
-    @font-face { font-family:'Inter'; src:url('{% static "core/fonts/Inter-Regular.ttf" %}') format('truetype'); font-weight:400; font-style:normal; font-display:swap; }
-    @font-face { font-family:'Inter'; src:url('{% static "core/fonts/Inter-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
+    @font-face { font-family:'Sora'; src:url('{% static "core/fonts/Sora-Variable.ttf" %}') format('truetype'); font-weight:100 800; font-style:normal; font-display:swap; }
     @font-face { font-family:'Fraunces'; src:url('{% static "core/fonts/Fraunces-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
     :root { --brand: {{ store_business.accent_color }}; --brand-dark: {{ store_business.background_color }}; --tenant-button: {{ store_business.accent_color }}; --tenant-button-contrast: {{ store_business.button_text_color|default:'#FFFFFF' }}; }
-    body { font-family: 'Inter', sans-serif; background: #f7f4ee; color: #211d1a; }
+    body { font-family: 'Sora', sans-serif; background: #f7f4ee; color: #211d1a; }
     .font-display { font-family: 'Fraunces', serif; }
     .storefront-noise { background-image: radial-gradient(rgba(255,255,255,.16) 1px, transparent 1px); background-size: 18px 18px; }
   </style>
@@ -39,6 +38,6 @@
     </nav>
   </header>{% endif %}
   {% block content %}{% endblock %}
-  {% if not hide_storefront_header %}<footer class="mt-16 border-t border-stone-200 bg-white px-5 py-8 text-center"><p class="flex flex-col items-center gap-1.5 text-xs text-stone-400"><img src="{% static 'core/brand/inprofic-logo-on-light.png' %}" alt="INPROFIC" class="h-7 w-auto" width="2097" height="361"><span>Ordering made simple</span></p></footer>{% endif %}
+  {% if not hide_storefront_header %}<footer class="mt-16 border-t border-stone-200 bg-white px-5 py-8 text-center"><p class="flex flex-col items-center gap-1.5 text-xs text-stone-400"><img src="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" alt="INPROFIC" class="max-w-full" style="width:8.5rem;height:auto" width="1944" height="309"><span>Ordering made simple</span></p></footer>{% endif %}
 </body>
 </html>

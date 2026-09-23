@@ -552,6 +552,30 @@ class BusinessSubscription(models.Model):
         return (total + Decimal(extras) * self.plan.additional_service_monthly_price).quantize(Decimal("0.01"))
 
 
+class FounderTrialGrant(models.Model):
+    """Auditable Founder-granted trial window for a business subscription."""
+
+    subscription = models.ForeignKey(
+        BusinessSubscription, on_delete=models.CASCADE, related_name="founder_trial_grants"
+    )
+    plan = models.ForeignKey(SubscriptionPlan, on_delete=models.PROTECT, related_name="founder_trial_grants")
+    days = models.PositiveSmallIntegerField()
+    previous_ends_at = models.DateTimeField(null=True, blank=True)
+    granted_ends_at = models.DateTimeField()
+    granted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="founder_trial_grants_made",
+    )
+    note = models.CharField(max_length=255, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.subscription.primary_business} · +{self.days} trial days"
+
+
 class SubscriptionService(models.Model):
     """One service line/business profile billed under a primary subscription."""
     subscription = models.ForeignKey(BusinessSubscription, on_delete=models.CASCADE, related_name="services")
@@ -695,6 +719,29 @@ class SubscriptionPaymentSettings(models.Model):
             SubscriptionPayment.PROVIDER_PAYSTACK: self.paystack_enabled,
             SubscriptionPayment.PROVIDER_MONNIFY: self.monnify_enabled,
         }.get(provider, False)
+
+
+class SubscriptionPolicySettings(models.Model):
+    """Founder-controlled platform defaults for free-trial windows."""
+
+    general_trial_days = models.PositiveSmallIntegerField(
+        default=30,
+        help_text="Default number of days for new eligible INPROFIC free trials.",
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="subscription_policy_settings_updates",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "subscription policy setting"
+        verbose_name_plural = "subscription policy settings"
+
+    @classmethod
+    def load(cls):
+        row, _ = cls.objects.get_or_create(pk=1)
+        return row
 
 
 class PlatformIntegrationSettings(models.Model):
