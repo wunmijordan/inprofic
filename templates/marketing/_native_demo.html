@@ -1,7 +1,7 @@
 <div class="ip-demo{% if demo_compact %} is-compact{% endif %}{% if demo_detailed %} is-detailed{% endif %}" data-inprofic-demo="{{ demo_kind }}"{% if demo_id %} id="{{ demo_id }}"{% endif %}>
   <div class="ip-demo-head">
     <div class="ip-demo-head-copy">
-      {% if demo_label %}<div class="text-[9px] font-extrabold uppercase tracking-[.16em] text-stone-400">{{ demo_label }}</div>{% endif %}
+      {% if demo_label %}<div class="ip-demo-label text-[9px] font-extrabold uppercase tracking-[.16em] text-stone-400">{{ demo_label }}</div>{% endif %}
       <div class="ip-demo-caption {% if demo_label %}mt-1 {% endif %}text-sm font-bold text-stone-800" data-demo-caption>Follow one connected workflow</div>
     </div>
     <div class="ip-demo-controls">
