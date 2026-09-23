@@ -350,8 +350,8 @@ def _payload(delivery):
             "body": redact_disabled_integrations(notice.message),
             "url": notice.target_url or "/commerce/",
             "business": notice.business.name,
-            "icon": "/static/core/pwa/icon-192.png",
-            "badge": "/static/core/pwa/icon-192.png",
+            "icon": "/static/core/pwa/icon-mark-192.png",
+            "badge": "/static/core/pwa/icon-mark-192.png",
         },
         separators=(",", ":"),
     )

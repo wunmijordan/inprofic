@@ -1,9 +1,8 @@
-"""Build web-ready INPROFIC assets from the approved 2560px source artwork.
+"""Build web-ready INPROFIC assets from the approved source artwork.
 
-The visible logo pixels are only cropped (never enlarged) for the shared brand
-files. PWA derivatives are rendered from those full-resolution crops at their
-required platform sizes, with the full wordmark intentionally used so the
-mobile launch artwork carries the complete INPROFIC name.
+Shared brand files preserve the exact cropped artwork. PWA app icons use the
+approved N mark on a transparent canvas; the mobile launch loader uses the
+full transparent wordmark directly and is intentionally kept separate.
 """
 
 from pathlib import Path
@@ -16,11 +15,18 @@ SOURCE = ROOT / "inprofic logos"
 BRAND = ROOT / "apps" / "core" / "static" / "core" / "brand"
 PWA = ROOT / "apps" / "core" / "static" / "core" / "pwa"
 
+
+def approved_source(source_name: str, canonical_name: str) -> Path:
+    """Use the original artwork when present, otherwise its committed crop."""
+    source = SOURCE / source_name
+    return source if source.exists() else BRAND / canonical_name
+
+
 SOURCE_ASSETS = {
-    "inprofic-mark.png": SOURCE / "Inprofic 2-1.png",
-    "inprofic-mark-on-dark.png": SOURCE / "Inprofic 4-1.png",
-    "inprofic-wordmark-on-dark.png": SOURCE / "Inprofic 4.png",
-    "inprofic-wordmark-on-light.png": SOURCE / "inprofic 3.png",
+    "inprofic-mark.png": approved_source("Inprofic 2-1.png", "inprofic-mark.png"),
+    "inprofic-mark-on-dark.png": approved_source("Inprofic 4-1.png", "inprofic-mark-on-dark.png"),
+    "inprofic-wordmark-on-dark.png": approved_source("Inprofic 4.png", "inprofic-wordmark-on-dark.png"),
+    "inprofic-wordmark-on-light.png": approved_source("inprofic 3.png", "inprofic-wordmark-on-light.png"),
 }
 
 
@@ -41,6 +47,7 @@ def padded_mark(mark: Image.Image, size: int = 128, fill_ratio: float = 0.82) ->
     canvas.alpha_composite(rendered, ((size - target_width) // 2, (size - target_height) // 2))
     return canvas
 
+
 def save_brand_assets() -> dict[str, Image.Image]:
     BRAND.mkdir(parents=True, exist_ok=True)
     images = {name: cropped(source) for name, source in SOURCE_ASSETS.items()}
@@ -55,25 +62,25 @@ def save_brand_assets() -> dict[str, Image.Image]:
     return images
 
 
-def pwa_icon(wordmark: Image.Image, size: int, background: str, width_ratio: float) -> Image.Image:
-    canvas = Image.new("RGBA", (size, size), background)
-    target_width = round(size * width_ratio)
-    target_height = round(wordmark.height * target_width / wordmark.width)
-    rendered = wordmark.resize((target_width, target_height), Image.Resampling.LANCZOS)
-    canvas.alpha_composite(rendered, ((size - target_width) // 2, (size - target_height) // 2))
-    return canvas.convert("RGB")
+def pwa_icon(mark: Image.Image, size: int) -> Image.Image:
+    """Render the approved N mark with transparent platform-safe padding."""
+    return padded_mark(mark, size=size, fill_ratio=0.70)
 
 
 def save_pwa_assets(images: dict[str, Image.Image]) -> None:
     PWA.mkdir(parents=True, exist_ok=True)
-    light_wordmark = images["inprofic-wordmark-on-light.png"]
-    dark_wordmark = images["inprofic-wordmark-on-dark.png"]
+    mark = images["inprofic-mark.png"]
     outputs = {
-        "icon-180.png": pwa_icon(light_wordmark, 180, "#FFF1E8", 0.82),
-        "icon-192.png": pwa_icon(light_wordmark, 192, "#FFF1E8", 0.82),
-        "icon-512.png": pwa_icon(light_wordmark, 512, "#FFF1E8", 0.82),
-        "icon-maskable-192.png": pwa_icon(dark_wordmark, 192, "#050733", 0.62),
-        "icon-maskable-512.png": pwa_icon(dark_wordmark, 512, "#050733", 0.62),
+        "icon-mark-180.png": pwa_icon(mark, 180),
+        "icon-mark-192.png": pwa_icon(mark, 192),
+        "icon-mark-512.png": pwa_icon(mark, 512),
+        # Keep legacy filenames correct for already-installed manifests while
+        # new manifests use the explicit icon-mark URLs below.
+        "icon-180.png": pwa_icon(mark, 180),
+        "icon-192.png": pwa_icon(mark, 192),
+        "icon-512.png": pwa_icon(mark, 512),
+        "icon-maskable-192.png": pwa_icon(mark, 192),
+        "icon-maskable-512.png": pwa_icon(mark, 512),
     }
     for name, image in outputs.items():
         image.save(PWA / name, format="PNG", optimize=True)

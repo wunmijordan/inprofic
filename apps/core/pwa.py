@@ -24,32 +24,18 @@ def _pwa_build_version():
 def _icons():
     return [
         {
-            "src": static("core/pwa/icon-192.png"),
+            "src": static("core/pwa/icon-mark-192.png"),
             "sizes": "192x192",
             "type": "image/png",
             "purpose": "any",
         },
         {
-            "src": static("core/pwa/icon-512.png"),
+            "src": static("core/pwa/icon-mark-512.png"),
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "any",
-        },
-        {
-            "src": static("core/pwa/icon-maskable-192.png"),
-            "sizes": "192x192",
-            "type": "image/png",
-            "purpose": "maskable",
-        },
-        {
-            "src": static("core/pwa/icon-maskable-512.png"),
-            "sizes": "512x512",
-            "type": "image/png",
-            "purpose": "maskable",
         },
     ]
-
-
 
 
 def _can_access_business(user, business):
@@ -60,6 +46,7 @@ def _can_access_business(user, business):
         business=business,
         active=True,
     ).exists()
+
 
 def _manifest_response(payload, *, tenant=False):
     response = JsonResponse(payload)
@@ -109,8 +96,8 @@ def tenant_manifest(request, business_slug):
             "start_url": reverse("pwa_launch", kwargs={"business_slug": business.slug}),
             "scope": "/",
             "display": "standalone",
-            # Keep the operating-system launch canvas aligned with the light
-            # orange icon tile; tenant colours still brand the browser chrome.
+            # The OS canvas stays neutral while the icon itself remains a
+            # transparent N mark; tenant colours still brand browser chrome.
             "background_color": "#FFF1E8",
             "theme_color": business.background_color,
             "categories": ["business", "productivity", "finance"],
@@ -126,11 +113,10 @@ def tenant_manifest(request, business_slug):
 @require_GET
 def service_worker(request):
     static_assets = [
-        static("core/pwa/icon-180.png"),
-        static("core/pwa/icon-192.png"),
-        static("core/pwa/icon-512.png"),
-        static("core/pwa/icon-maskable-192.png"),
-        static("core/pwa/icon-maskable-512.png"),
+        static("core/pwa/icon-mark-180.png"),
+        static("core/pwa/icon-mark-192.png"),
+        static("core/pwa/icon-mark-512.png"),
+        static("core/brand/inprofic-wordmark-on-light.png"),
     ]
     offline_url = reverse("pwa_offline")
     build_version = _pwa_build_version()
@@ -173,8 +159,8 @@ self.addEventListener('push', (event) => {{
     const target = new URL(data.url || '/commerce/', self.location.origin).href;
     await self.registration.showNotification(data.title || 'INPROFIC', {{
       body: data.body || '',
-      icon: data.icon || '/static/core/pwa/icon-192.png',
-      badge: data.badge || '/static/core/pwa/icon-192.png',
+      icon: data.icon || '/static/core/pwa/icon-mark-192.png',
+      badge: data.badge || '/static/core/pwa/icon-mark-192.png',
       tag: data.id ? `${{data.channel || 'commerce'}}-${{data.id}}` : `${{data.channel || 'commerce'}}-notification`,
       renotify: true,
       requireInteraction: true,

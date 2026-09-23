@@ -159,6 +159,8 @@ class PwaEndpointTests(TestCase):
         self.assertEqual(payload["theme_color"], "#050733")
         self.assertEqual(payload["background_color"], "#FFF1E8")
         self.assertTrue(any(icon["sizes"] == "512x512" for icon in payload["icons"]))
+        self.assertTrue(all("core/pwa/icon-mark-" in icon["src"] for icon in payload["icons"]))
+        self.assertTrue(all(icon["purpose"] == "any" for icon in payload["icons"]))
 
     def test_tenant_manifest_uses_tenant_name_and_theme_but_inprofic_icons(self):
         business = Business.objects.create(
@@ -186,7 +188,7 @@ class PwaEndpointTests(TestCase):
         self.assertEqual(payload["theme_color"], "#173B45")
         self.assertEqual(payload["background_color"], "#FFF1E8")
         self.assertEqual(payload["id"], "/pwa/tenant/northwind-foods")
-        self.assertTrue(all("core/pwa/icon-" in icon["src"] for icon in payload["icons"]))
+        self.assertTrue(all("core/pwa/icon-mark-" in icon["src"] for icon in payload["icons"]))
 
     def test_service_worker_has_root_scope_and_does_not_cache_dynamic_html(self):
         response = self.client.get(reverse("pwa_service_worker"))
@@ -198,6 +200,8 @@ class PwaEndpointTests(TestCase):
         self.assertIn("url.pathname.startsWith('/static/')", script)
         self.assertIn("self.addEventListener('push'", script)
         self.assertIn("showNotification", script)
+        self.assertIn("icon-mark-192.png", script)
+        self.assertIn("inprofic-wordmark-on-light.png", script)
         self.assertIn("requireInteraction: true", script)
         self.assertIn("vibrate: [320, 140, 320, 140, 520]", script)
         self.assertIn("self.addEventListener('notificationclick'", script)

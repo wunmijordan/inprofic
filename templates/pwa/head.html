@@ -6,5 +6,25 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="{% if user.is_authenticated and biz %}{{ biz.name|truncatechars:30 }}{% else %}INPROFIC{% endif %}">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="apple-touch-icon" sizes="180x180" href="{% static 'core/pwa/icon-180.png' %}">
+<link rel="apple-touch-icon" sizes="180x180" href="{% static 'core/pwa/icon-mark-180.png' %}">
+<style>
+  html.pwa-launching,html.pwa-launching body{min-height:100%;overflow:hidden;background:#fff1e8}
+  html.pwa-launching body>*{visibility:hidden!important}
+  html.pwa-launching body::before{content:"";position:fixed;inset:0;z-index:2147483647;visibility:visible;background:#fff1e8 url("{% static 'core/brand/inprofic-wordmark-on-light.png' %}") center/ min(76vw,22rem) auto no-repeat}
+</style>
+<script>
+  (function () {
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    if (!standalone) return;
+    const key = 'inprofic:pwa-launch-shown';
+    try { if (window.sessionStorage.getItem(key)) return; } catch (_error) {}
+    document.documentElement.classList.add('pwa-launching');
+    document.addEventListener('DOMContentLoaded', function () {
+      window.setTimeout(function () {
+        document.documentElement.classList.remove('pwa-launching');
+        try { window.sessionStorage.setItem(key, '1'); } catch (_error) {}
+      }, 650);
+    }, { once: true });
+  }());
+</script>
 <link rel="stylesheet" href="{% static 'core/pwa/install.css' %}">
