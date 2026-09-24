@@ -69,16 +69,13 @@
   .ip-tour-art[data-kind="production"] .b,.ip-tour-art[data-kind="production"] .c { animation-name:ipTourConveyor; }
   .ip-tour-art[data-kind="finance"] .d,.ip-tour-art[data-kind="sales"] .d { animation-name:ipTourCoin; }
   .ip-tour-art[data-kind="delivery"] .a { animation-name:ipTourDrive; }
-  .ip-tour-progress { height:6px; border-radius:999px; background:#eee6d8; overflow:hidden; }
-  .ip-tour-progress > span { position:relative; display:block; width:0; height:100%; overflow:hidden; border-radius:inherit; background:linear-gradient(110deg,#050733 0%,#8f172d 18%,#D14900 34%,var(--tenant-background,#050733) 52%,var(--tenant-button,#D14900) 68%,#8f172d 84%,#050733 100%); background-size:260% 100%; animation:ipTourProgressFlow 2.6s linear infinite; transition:width .34s cubic-bezier(.2,.75,.2,1); will-change:width,background-position; }
-  .ip-tour-progress > span::after { content:""; position:absolute; inset:-1px auto -1px -42%; width:38%; border-radius:inherit; background:linear-gradient(90deg,transparent,rgba(255,255,255,.78),transparent); opacity:0; transform:skewX(-18deg); pointer-events:none; }
-  .ip-tour-progress > span.is-flowing::after { animation:ipTourProgressSheen .82s cubic-bezier(.2,.72,.2,1) 1; }
+  .ip-tour-progress { height:4px; border-radius:999px; background:#eee6d8; overflow:hidden; }
+  .ip-tour-progress > span { display:block; width:0; height:100%; background:linear-gradient(110deg,#050733 0%,#8f172d 18%,#D14900 34%,var(--tenant-background,#050733) 52%,var(--tenant-button,#D14900) 68%,#8f172d 84%,#050733 100%); background-size:260% 100%; animation:ipTourProgressMotion 3.8s linear infinite; transition:width .2s ease; will-change:background-position; }
   #ip-tour-prev { background:var(--tenant-background,#050733); border-color:var(--tenant-background,#050733); color:var(--tenant-background-contrast,#fff); }
   #ip-tour-prev:hover { color:var(--tenant-background-contrast,#fff); box-shadow:0 5px 14px color-mix(in srgb,var(--tenant-background,#050733) 28%,transparent); transform:translateY(-1px); }
   #ip-tour-next { background:var(--tenant-button,#D14900); border-color:var(--tenant-button,#D14900); color:var(--tenant-button-contrast,#fff); }
   #ip-tour-next:hover { color:var(--tenant-button-contrast,#fff); box-shadow:0 5px 14px color-mix(in srgb,var(--tenant-button,#D14900) 28%,transparent); transform:translateY(-1px); }
-  @keyframes ipTourProgressFlow { from{background-position:120% 50%} to{background-position:-120% 50%} }
-  @keyframes ipTourProgressSheen { 0%{left:-42%;opacity:0} 16%{opacity:1} 100%{left:112%;opacity:0} }
+  @keyframes ipTourProgressMotion { 0%{background-position:0% 50%} 100%{background-position:-260% 50%} }
   @keyframes ipTourFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
   @keyframes ipTourPulse { 0%,100%{transform:scaleX(.88);opacity:.25} 50%{transform:scaleX(1);opacity:.58} }
   @keyframes ipTourOrbit { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-12px,-8px)} }
@@ -99,7 +96,7 @@
     .ip-tour-card { left:14px !important; right:14px; bottom:14px; top:auto !important; width:auto; max-height:min(72dvh,620px); overflow:auto; }
     .ip-tour-focus { border-radius:14px; }
   }
-  @media (prefers-reduced-motion:reduce) { .ip-tour-shape,.ip-tour-focus,.ip-tour-card,.ip-tour-progress > span,.ip-tour-progress > span::after { animation:none !important; transition:none !important; } }
+  @media (prefers-reduced-motion:reduce) { .ip-tour-shape,.ip-tour-focus,.ip-tour-card,.ip-tour-progress > span { animation:none !important; transition:none !important; } }
 </style>
 
 <div id="ip-onboarding-tour" class="ip-tour" hidden
@@ -363,14 +360,7 @@
     }
     card.style.left=`${left}px`; card.style.top=`${top}px`;
   }
-  function flowProgress() {
-    progress.classList.remove('is-flowing');
-    void progress.offsetWidth;
-    progress.classList.add('is-flowing');
-  }
-  progress.addEventListener('animationend', () => progress.classList.remove('is-flowing'));
-
-  function render({flow=true} = {}) {
+  function render() {
     const step=steps[index];
     let target=visibleTarget(step.target);
     if (target && (target.getBoundingClientRect().top < 0 || target.getBoundingClientRect().bottom > innerHeight)) {
@@ -379,15 +369,14 @@
     }
     eyebrow.textContent=index===0?'Getting started':'INPROFIC tour';
     title.textContent=step.title; body.textContent=step.body; renderMedia(step);
-    ctaCopy.textContent=step.cta || '';
-    ctaAction.childNodes[0].textContent=`${step.actionLabel || 'Open this section'} `;
-    cta.hidden=!step.cta;
+    if (ctaCopy) ctaCopy.textContent=step.cta || '';
+    if (ctaAction?.childNodes?.length) ctaAction.childNodes[0].textContent=`${step.actionLabel || 'Open this section'} `;
+    if (cta) cta.hidden=!step.cta;
     counter.textContent=`${index+1} of ${steps.length}`;
     progress.style.width=`${((index+1)/steps.length)*100}%`;
     progress.parentElement.setAttribute('aria-valuemax', String(steps.length));
     progress.parentElement.setAttribute('aria-valuenow', String(index+1));
     progress.parentElement.setAttribute('aria-valuetext', `${index+1} of ${steps.length}`);
-    if (flow) flowProgress();
     prev.disabled=index===0; next.textContent=index===steps.length-1?'Finish':'Next';
     requestAnimationFrame(() => place(target));
   }
@@ -406,19 +395,9 @@
   });
   function openTour() {
     if (!root.hidden) return;
-    progress.style.width='0%';
     root.hidden=false;
     document.documentElement.classList.add('ip-tour-open');
-    const targetProgress=((index+1)/steps.length)*100;
-    render({flow:false});
-    // Force a painted 0% frame so the first step grows in rather than flashing full.
-    progress.style.width='0%';
-    requestAnimationFrame(()=>requestAnimationFrame(()=>{
-      if (!root.hidden) {
-        progress.style.width=`${targetProgress}%`;
-        flowProgress();
-      }
-    }));
+    render();
   }
 
   const openingDelay = 2400;

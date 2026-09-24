@@ -359,13 +359,19 @@ def is_live_tester(user, business):
 
 
 def can_use_commerce_storefront(user, business, action="view"):
-    """Return the independent in-premise POS permission.
+    """Return whether the in-premise POS is entitled, enabled, and permitted.
 
-    POS intentionally does not inherit the user's Commerce role permission. The
-    business still needs an active subscription, while View/Edit are governed by
-    the dedicated ``pos`` role/user permission row.
+    POS keeps its dedicated role/user permission, but it is a Commerce surface:
+    the active plan must include Commerce and the tenant must explicitly enable
+    Commerce before the POS appears or can be opened.
     """
-    return user_has_permission(user, business, "pos", action)
+    if not business_has_module(business, "commerce"):
+        return False
+    from commerce.models import CommerceSettings
+    commerce_enabled = CommerceSettings.raw_objects.filter(
+        business=business, enabled=True
+    ).exists()
+    return bool(commerce_enabled and user_has_permission(user, business, "pos", action))
 
 def is_business_admin(user, business):
     if getattr(user, "is_superuser", False):

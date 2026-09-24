@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% load core_extras %}{% block content %}
-<div class="max-w-6xl" data-founder-console data-founder-default="{% if request.GET.workspace == 'management' %}management{% elif backup_restore_report or restore_form.errors %}recovery{% elif campaign_instance or promotion_form.errors or campaign_form.errors %}promotions{% else %}plans{% endif %}">
+<div class="max-w-6xl" data-founder-console data-founder-default="{% if request.GET.workspace == 'management' %}management{% elif backup_restore_report or restore_form.errors %}recovery{% elif campaign_instance or promotion_form.errors or campaign_form.errors %}promotions{% else %}plans{% endif %}" data-founder-live-url="{% url 'founder_signup_live_snapshot' %}" data-founder-socket-path="/ws/founder/signups/" data-latest-signup-id="{{ founder_analytics.latest_registration_id|default:0 }}" data-platform-query="{{ platform_query|escape }}">
   <h1 class="text-2xl font-semibold font-display text-[#8f172d]">Founder Console</h1>
   <p class="text-sm text-stone-500 mb-4">Superuser-only subscription operations. Manage plans, promotions, subscribers and business recovery from focused workspaces.</p>
+  <div id="founder-signup-live-toast" class="pointer-events-none fixed right-4 top-4 z-[190] hidden max-w-sm rounded-xl border border-emerald-200 bg-white px-4 py-3 shadow-xl" role="status" aria-live="polite"><div class="text-[10px] font-black uppercase tracking-[.16em] text-emerald-700">New business signup</div><div id="founder-signup-live-toast-copy" class="mt-1 text-sm font-semibold text-stone-800"></div></div>
 
   <div class="mb-5 flex flex-wrap gap-2 rounded-lg border border-[#E7DFCC] bg-[#FFFDF8] p-2" role="tablist" aria-label="Founder Console workspace">
     <button type="button" data-founder-tab="plans" class="rounded-md px-4 py-2 text-sm font-medium">Plans & access</button>
@@ -13,34 +14,34 @@
 
   <section id="platform-management" data-founder-section="management" class="mb-7 space-y-5">
     <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4"><div class="text-xs text-stone-500">Businesses</div><div class="mt-1 font-mono text-2xl font-semibold">{{ platform_stats.businesses }}</div></div>
-      <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4"><div class="text-xs text-stone-500">Users</div><div class="mt-1 font-mono text-2xl font-semibold">{{ platform_stats.users }}</div></div>
-      <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4"><div class="text-xs text-stone-500">Active subscriptions</div><div class="mt-1 font-mono text-2xl font-semibold">{{ platform_stats.active_subscriptions }}</div></div>
+      <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4"><div class="text-xs text-stone-500">Businesses</div><div id="founder-stat-businesses" class="mt-1 font-mono text-2xl font-semibold">{{ platform_stats.businesses }}</div></div>
+      <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4"><div class="text-xs text-stone-500">Users</div><div id="founder-stat-users" class="mt-1 font-mono text-2xl font-semibold">{{ platform_stats.users }}</div></div>
+      <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4"><div class="text-xs text-stone-500">Active subscriptions</div><div id="founder-stat-active-subscriptions" class="mt-1 font-mono text-2xl font-semibold">{{ platform_stats.active_subscriptions }}</div></div>
       <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4"><div class="text-xs text-stone-500">Pending payments</div><div class="mt-1 font-mono text-2xl font-semibold">{{ platform_stats.pending_payments }}</div></div>
     </div>
     <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
       <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="font-semibold">Product & lead analytics</h2><p class="mt-1 text-xs text-stone-500">First-party product analytics: signup journey, registration contact details, logins, subscription milestones and throttled module usage. Passwords, payment secrets and arbitrary form contents are never captured.</p></div><span class="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">Live</span></div>
       <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <div class="rounded-lg border border-[#E7DFCC] bg-white p-3"><div class="text-[10px] uppercase tracking-wider text-stone-400">Signup leads · 30d</div><div class="mt-1 font-mono text-xl font-semibold">{{ founder_analytics.lead_sessions_30d }}</div></div>
-        <div class="rounded-lg border border-[#E7DFCC] bg-white p-3"><div class="text-[10px] uppercase tracking-wider text-stone-400">Registrations · 7d</div><div class="mt-1 font-mono text-xl font-semibold">{{ founder_analytics.registrations_7d }}</div></div>
-        <div class="rounded-lg border border-[#E7DFCC] bg-white p-3"><div class="text-[10px] uppercase tracking-wider text-stone-400">Registrations · 30d</div><div class="mt-1 font-mono text-xl font-semibold">{{ founder_analytics.registrations_30d }}</div></div>
-        <div class="rounded-lg border border-[#E7DFCC] bg-white p-3"><div class="text-[10px] uppercase tracking-wider text-stone-400">Lead → signup</div><div class="mt-1 font-mono text-xl font-semibold">{{ founder_analytics.signup_conversion_30d }}%</div></div>
+        <div class="rounded-lg border border-[#E7DFCC] bg-white p-3"><div class="text-[10px] uppercase tracking-wider text-stone-400">Registrations · 7d</div><div id="founder-stat-registrations-7d" class="mt-1 font-mono text-xl font-semibold">{{ founder_analytics.registrations_7d }}</div></div>
+        <div class="rounded-lg border border-[#E7DFCC] bg-white p-3"><div class="text-[10px] uppercase tracking-wider text-stone-400">Registrations · 30d</div><div id="founder-stat-registrations-30d" class="mt-1 font-mono text-xl font-semibold">{{ founder_analytics.registrations_30d }}</div></div>
+        <div class="rounded-lg border border-[#E7DFCC] bg-white p-3"><div class="text-[10px] uppercase tracking-wider text-stone-400">Lead → signup</div><div id="founder-stat-signup-conversion" class="mt-1 font-mono text-xl font-semibold">{{ founder_analytics.signup_conversion_30d }}%</div></div>
         <div class="rounded-lg border border-[#E7DFCC] bg-white p-3"><div class="text-[10px] uppercase tracking-wider text-stone-400">Logins · 7d</div><div class="mt-1 font-mono text-xl font-semibold">{{ founder_analytics.logins_7d }}</div></div>
         <div class="rounded-lg border border-[#E7DFCC] bg-white p-3"><div class="text-[10px] uppercase tracking-wider text-stone-400">Active businesses · 7d</div><div class="mt-1 font-mono text-xl font-semibold">{{ founder_analytics.active_businesses_7d }}</div></div>
       </div>
       <div class="mt-4 grid gap-4 xl:grid-cols-[.75fr_1.25fr]">
         <div class="rounded-lg border border-[#E7DFCC] bg-white p-4"><div class="text-xs font-semibold">Most-used modules · 30d</div><div class="mt-3 space-y-2">{% for row in founder_analytics.top_modules %}<div class="flex items-center justify-between gap-3 text-xs"><span class="capitalize text-stone-600">{{ row.module|cut:'_' }}</span><span class="font-mono font-semibold">{{ row.total }}</span></div>{% empty %}<p class="text-xs text-stone-400">Usage will appear as people use the app.</p>{% endfor %}</div><div class="mt-3 border-t border-[#E7DFCC] pt-3 text-xs text-stone-500">Subscription events · 30d <strong class="float-right font-mono text-stone-800">{{ founder_analytics.subscription_events_30d }}</strong></div></div>
-        <div class="overflow-hidden rounded-lg border border-[#E7DFCC] bg-white"><div class="border-b border-[#E7DFCC] px-4 py-3 text-xs font-semibold">Recent operational events</div><div class="max-h-64 overflow-y-auto"><table class="w-full text-xs"><thead><tr><th class="px-3 text-left">Event</th><th class="px-3 text-left">Business / user</th><th class="px-3 text-right">When</th></tr></thead><tbody>{% for event in founder_analytics.recent_events %}<tr><td class="border-t px-3 py-2"><div class="font-medium">{{ event.get_event_type_display }}</div>{% if event.module %}<div class="text-[10px] text-stone-400">{{ event.module }}{% if event.route_name %} · {{ event.route_name }}{% endif %}</div>{% endif %}</td><td class="border-t px-3 py-2"><div>{{ event.business.name|default:'Platform' }}</div>{% if event.user %}<div class="text-[10px] text-stone-400">{{ event.user.fullname|default:event.user.username }}</div>{% endif %}</td><td class="border-t px-3 py-2 text-right font-mono text-[10px] text-stone-500">{{ event.occurred_at|date:'M j, H:i' }}</td></tr>{% empty %}<tr><td colspan="3" class="p-4 text-center text-stone-400">Events will appear after this migration is applied.</td></tr>{% endfor %}</tbody></table></div></div>
+        <div class="overflow-hidden rounded-lg border border-[#E7DFCC] bg-white"><div class="border-b border-[#E7DFCC] px-4 py-3 text-xs font-semibold">Recent operational events</div><div class="max-h-64 overflow-y-auto"><table class="w-full text-xs"><thead><tr><th class="px-3 text-left">Event</th><th class="px-3 text-left">Business / user</th><th class="px-3 text-right">When</th></tr></thead><tbody id="founder-recent-events-body">{% include "accounts/_founder_recent_event_rows.html" with recent_events=founder_analytics.recent_events %}</tbody></table></div></div>
       </div>
-      <div class="mt-4 overflow-hidden rounded-lg border border-[#E7DFCC] bg-white">
+      <div id="signup-mailing-list" class="mt-4 overflow-hidden rounded-lg border border-[#E7DFCC] bg-white">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7DFCC] px-4 py-3">
-          <div><div class="text-xs font-semibold">Signup contacts · mailing list</div><div class="mt-0.5 text-[11px] text-stone-500">{{ founder_analytics.signup_contacts_count }} unique signup email{{ founder_analytics.signup_contacts_count|pluralize }}. Addresses are captured from completed business registrations.</div></div>
+          <div><div class="text-xs font-semibold">Signup contacts · mailing list</div><div class="mt-0.5 text-[11px] text-stone-500"><span id="founder-signup-contact-count">{{ founder_analytics.signup_contacts_count }}</span> unique signup email{{ founder_analytics.signup_contacts_count|pluralize }}. Addresses are captured from completed business registrations.</div></div>
           <a href="{% url 'founder_mailing_list_csv' %}" class="rounded-md border border-[#D9CFB4] bg-[#FFFDF8] px-3 py-2 text-xs font-semibold text-[#8f172d]">Export CSV</a>
         </div>
         <div class="max-h-72 overflow-auto">
           <table class="w-full min-w-[760px] text-xs">
-            <thead><tr><th class="px-3 text-left">Email</th><th class="px-3 text-left">Name / business</th><th class="px-3 text-left">Service</th><th class="px-3 text-right">Signed up</th></tr></thead>
-            <tbody>{% for contact in founder_analytics.signup_contacts %}<tr><td class="border-t px-3 py-2"><a class="font-medium text-[#8f172d] normal-case" href="mailto:{{ contact.email }}">{{ contact.email }}</a></td><td class="border-t px-3 py-2"><div class="font-medium normal-case">{{ contact.name|default:'—' }}</div><div class="mt-0.5 text-[10px] text-stone-400 normal-case">{{ contact.business|default:'—' }}</div></td><td class="border-t px-3 py-2 normal-case">{{ contact.service|default:'—' }}</td><td class="border-t px-3 py-2 text-right font-mono text-[10px] normal-case text-stone-500">{{ contact.signed_up_at|date:'M j, Y · H:i' }}</td></tr>{% empty %}<tr><td colspan="4" class="p-4 text-center normal-case text-stone-400">Signup emails will appear here after businesses register.</td></tr>{% endfor %}</tbody>
+            <thead><tr><th class="px-3 text-left">Email</th><th class="px-3 text-left">Name / business</th><th class="px-3 text-left">Service</th><th class="px-3 text-left">Status</th><th class="px-3 text-right">Signed up</th><th class="px-3 text-right">Actions</th></tr></thead>
+            <tbody id="founder-signup-list">{% include "accounts/_founder_signup_rows.html" with signup_contacts=founder_analytics.signup_contacts %}</tbody>
           </table>
         </div>
         {% if founder_analytics.signup_contacts_count > 50 %}<div class="border-t border-[#E7DFCC] px-4 py-2 text-[11px] text-stone-500">Showing the 50 most recent unique contacts here. CSV export includes the full list.</div>{% endif %}
@@ -61,8 +62,8 @@
       </label>
     </form>
     <div class="grid gap-5 xl:grid-cols-2">
-      <div class="overflow-hidden rounded-xl border border-[#E7DFCC] bg-white"><div class="border-b bg-[#F5EFE0] px-4 py-3"><div class="font-semibold">Businesses</div><div class="text-[11px] text-stone-500">Up to 50 matching workspaces</div></div><div class="max-h-96 overflow-auto"><table class="w-full text-sm"><thead><tr><th class="px-3 text-left">Business</th><th>People</th><th></th></tr></thead><tbody>{% for business in platform_businesses %}<tr><td class="border-t px-3 py-2"><div class="font-medium">{{ business.name }}</div><div class="text-xs text-stone-500">{{ business.get_vertical_display }} · {{ business.slug }}</div></td><td class="border-t px-3 py-2 text-center font-mono">{{ business.member_count }}</td><td class="border-t px-3 py-2"><div class="flex justify-end gap-2"><a href="{% url 'founder_platform_business' business.pk %}" class="rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-semibold">Edit</a><form method="post">{% csrf_token %}<input type="hidden" name="business_id" value="{{ business.pk }}"><button name="action" value="open_business_users" class="rounded-md bg-[#8f172d] px-2.5 py-1.5 text-xs font-semibold text-white">Users</button></form><a href="{% url 'founder_platform_business_delete' business.pk %}" class="rounded-md border border-rose-300 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700">Delete</a></div></td></tr>{% empty %}<tr><td colspan="3" class="p-5 text-center text-stone-500">No matching businesses.</td></tr>{% endfor %}</tbody></table></div></div>
-      <div class="overflow-hidden rounded-xl border border-[#E7DFCC] bg-white"><div class="border-b bg-[#F5EFE0] px-4 py-3"><div class="font-semibold">Global user accounts</div><div class="text-[11px] text-stone-500">Up to 50 matching accounts</div></div><div class="max-h-96 overflow-auto"><table class="w-full text-sm"><thead><tr><th class="px-3 text-left">User</th><th>Businesses</th><th></th></tr></thead><tbody>{% for account in platform_users %}<tr><td class="border-t px-3 py-2"><div class="font-medium">{{ account.fullname|default:account.username }}</div><div class="text-xs text-stone-500">{{ account.username }}{% if account.is_superuser %} · Superuser{% elif not account.is_active %} · Paused{% endif %}</div></td><td class="border-t px-3 py-2 text-center font-mono">{{ account.business_count }}</td><td class="border-t px-3 py-2"><div class="flex justify-end gap-2"><a href="{% url 'founder_platform_user' account.pk %}" class="rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-semibold">Edit</a><a href="{% url 'founder_platform_user_delete' account.pk %}" class="rounded-md border border-rose-300 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700">Delete</a></div></td></tr>{% empty %}<tr><td colspan="3" class="p-5 text-center text-stone-500">No matching users.</td></tr>{% endfor %}</tbody></table></div></div>
+      <div class="overflow-hidden rounded-xl border border-[#E7DFCC] bg-white"><div class="border-b bg-[#F5EFE0] px-4 py-3"><div class="font-semibold">Businesses</div><div class="text-[11px] text-stone-500">Up to 50 matching workspaces</div></div><div class="max-h-96 overflow-auto"><table class="w-full text-sm"><thead><tr><th class="px-3 text-left">Business</th><th class="px-3 text-left">Active plan</th><th>People</th><th></th></tr></thead><tbody id="founder-business-list">{% include "accounts/_founder_business_rows.html" with platform_businesses=platform_businesses %}</tbody></table></div></div>
+      <div class="overflow-hidden rounded-xl border border-[#E7DFCC] bg-white"><div class="border-b bg-[#F5EFE0] px-4 py-3"><div class="font-semibold">Global user accounts</div><div class="text-[11px] text-stone-500">Up to 50 matching accounts</div></div><div class="max-h-96 overflow-auto"><table class="w-full text-sm"><thead><tr><th class="px-3 text-left">User</th><th>Businesses</th><th></th></tr></thead><tbody id="founder-user-list">{% include "accounts/_founder_user_rows.html" with platform_users=platform_users %}</tbody></table></div></div>
     </div>
   </section>
 
@@ -331,7 +332,7 @@
 
   <section data-founder-section="plans">
     <div class="mb-2"><h2 class="font-semibold">Subscriptions</h2><p class="text-xs text-stone-500">Review current plan state and founder lifetime grants without leaving the plans workspace.</p></div>
-    <div class="overflow-x-auto bg-white border border-[#E7DFCC] rounded-lg"><table class="w-full text-sm"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Primary business</th><th>Plan</th><th>Status</th><th>Services</th><th>Expiry</th></tr></thead><tbody>{% for s in subscriptions %}<tr class="border-t"><td class="p-2">{{ s.primary_business.name }}</td><td class="text-center">{{ s.plan.name }}</td><td class="text-center">{{ s.effective_status_label }}</td><td class="text-center">{{ s.services.count }}</td><td class="text-center">{% if s.founder_lifetime %}Lifetime <form method="post" class="inline">{% csrf_token %}<input type="hidden" name="subscription_id" value="{{ s.pk }}"><button name="action" value="revoke_founder" class="ml-1 text-[10px] text-rose-700 underline">revoke</button></form>{% elif s.expires_at %}{{ s.expires_at|date:"j M Y" }}{% else %}—{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+    <div class="overflow-x-auto bg-white border border-[#E7DFCC] rounded-lg"><table class="w-full text-sm"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Primary business</th><th>Plan</th><th>Status</th><th>Services</th><th>Expiry</th></tr></thead><tbody id="founder-subscription-list">{% include "accounts/_founder_subscription_rows.html" with subscriptions=subscriptions %}</tbody></table></div>
   </section>
 </div>
 <script>
@@ -361,6 +362,112 @@
   }
   if (!tabs.some(tab => tab.dataset.founderTab === initial)) initial = 'plans';
   activate(initial, false);
+})();
+</script>
+<script>
+(() => {
+  const root = document.querySelector('[data-founder-console]');
+  if (!root?.dataset.founderLiveUrl) return;
+  const toast = document.getElementById('founder-signup-live-toast');
+  const toastCopy = document.getElementById('founder-signup-live-toast-copy');
+  let cursor = Number(root.dataset.latestSignupId || 0);
+  let refreshing = false;
+  let toastTimer = 0;
+  let socket = null;
+  let reconnectTimer = 0;
+  let closing = false;
+
+  const replaceHtml = (id, html) => { const node = document.getElementById(id); if (node && typeof html === 'string') node.innerHTML = html; };
+  const setText = (id, value, suffix = '') => { const node = document.getElementById(id); if (node && value !== undefined && value !== null) node.textContent = `${value}${suffix}`; };
+  const notifySignup = (signups) => {
+    if (!Array.isArray(signups) || !signups.length) return;
+    const latest = signups[signups.length - 1];
+    const copy = signups.length === 1
+      ? `${latest.business}${latest.service ? ` · ${latest.service}` : ''}${latest.name ? ` · ${latest.name}` : ''}`
+      : `${signups.length} new businesses registered. Latest: ${latest.business}.`;
+    if (toast && toastCopy) {
+      toastCopy.textContent = copy;
+      toast.classList.remove('hidden');
+      window.clearTimeout(toastTimer);
+      toastTimer = window.setTimeout(() => toast.classList.add('hidden'), 6500);
+    }
+    if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        const nativeNotice = new Notification(signups.length === 1 ? 'New INPROFIC business signup' : `${signups.length} new INPROFIC business signups`, {
+          body: copy,
+          tag: `inprofic-founder-signup-${latest.id || Date.now()}`,
+          icon: '/static/core/pwa/icon-mark-192.png',
+          badge: '/static/core/pwa/icon-mark-monochrome-192.png',
+        });
+        nativeNotice.onclick = () => { window.focus(); document.querySelector('[data-founder-tab="management"]')?.click(); document.getElementById('platform-management')?.scrollIntoView({block:'start'}); nativeNotice.close(); };
+      } catch (_) {}
+    }
+  };
+
+  async function refreshFounder({ notify = true } = {}) {
+    if (refreshing) return;
+    refreshing = true;
+    try {
+      const url = new URL(root.dataset.founderLiveUrl, window.location.origin);
+      url.searchParams.set('after', String(cursor));
+      const platformQuery = root.dataset.platformQuery || '';
+      if (platformQuery) url.searchParams.set('platform_q', platformQuery);
+      const response = await fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error('Founder live refresh failed');
+      const data = await response.json();
+      replaceHtml('founder-business-list', data.businesses_html);
+      replaceHtml('founder-user-list', data.users_html);
+      replaceHtml('founder-signup-list', data.contacts_html);
+      replaceHtml('founder-subscription-list', data.subscriptions_html);
+      replaceHtml('founder-recent-events-body', data.recent_events_html);
+      const stats = data.stats || {};
+      setText('founder-stat-businesses', stats.businesses);
+      setText('founder-stat-users', stats.users);
+      setText('founder-stat-active-subscriptions', stats.active_subscriptions);
+      setText('founder-stat-registrations-7d', stats.registrations_7d);
+      setText('founder-stat-registrations-30d', stats.registrations_30d);
+      setText('founder-stat-signup-conversion', stats.signup_conversion_30d, '%');
+      setText('founder-signup-contact-count', stats.signup_contacts);
+      const incoming = Array.isArray(data.new_signups) ? data.new_signups : [];
+      if (notify) notifySignup(incoming);
+      cursor = Math.max(cursor, Number(data.latest_registration_id || 0));
+      root.dataset.latestSignupId = String(cursor);
+    } catch (_) {
+      // The periodic fallback will retry; the Founder page remains fully usable.
+    } finally {
+      refreshing = false;
+    }
+  }
+
+  function connectFounderSocket() {
+    if (!root.dataset.founderSocketPath || closing) return;
+    try {
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      socket = new WebSocket(`${protocol}//${location.host}${root.dataset.founderSocketPath}`);
+      socket.addEventListener('message', event => {
+        try {
+          const payload = JSON.parse(event.data || '{}');
+          if (payload.type === 'founder.signup.changed') refreshFounder({ notify: true });
+        } catch (_) {}
+      });
+      socket.addEventListener('close', () => {
+        socket = null;
+        if (!closing) reconnectTimer = window.setTimeout(connectFounderSocket, 4000);
+      });
+      socket.addEventListener('error', () => { try { socket?.close(); } catch (_) {} });
+    } catch (_) {
+      reconnectTimer = window.setTimeout(connectFounderSocket, 4000);
+    }
+  }
+
+  connectFounderSocket();
+  const fallbackTimer = window.setInterval(() => refreshFounder({ notify: true }), 15000);
+  window.addEventListener('beforeunload', () => {
+    closing = true;
+    window.clearInterval(fallbackTimer);
+    window.clearTimeout(reconnectTimer);
+    try { socket?.close(); } catch (_) {}
+  }, { once: true });
 })();
 </script>
 {{ campaign_editor_html|json_script:"campaign-editor-initial" }}

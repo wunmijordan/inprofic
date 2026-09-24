@@ -543,7 +543,7 @@
       <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
         <div>
           <div class="text-[10px] uppercase tracking-wider font-bold text-stone-400">Outlook Chart</div>
-          <div id="financial-chart-caption" class="text-xs text-stone-500 mt-0.5">Daily Sales, Cash Outflow and Net Cash Flow</div>
+          <div id="financial-chart-caption" class="text-xs text-stone-500 mt-0.5">Daily Sales, Spend and Revenue</div>
         </div>
         <div class="flex items-center gap-1 rounded-lg bg-[#F5EFE0] border border-[#E7DFCC] p-1" role="group" aria-label="Financial chart period">
           <button type="button" class="financial-period-btn px-2.5 py-1 text-[10px] rounded-md bg-[#8f172d] hover:bg-[#4D1C25] hover:text-white text-white" data-period="week" aria-pressed="true">Week</button>
@@ -1109,8 +1109,8 @@ document.addEventListener('DOMContentLoaded', function () {
   let chart = null;
 
   const captions = {
-    week: 'Daily Sales, Cash Outflow and Net Cash Flow — Last 7 Days',
-    month: 'Daily Sales, Cash Outflow and Net Cash Flow — Current Month',
+    week: 'Daily Sales, Spend and Revenue — Last 7 Days',
+    month: 'Daily Sales, Spend and Revenue — Current Month',
     quarter: 'Weekly Sales, Spend and Revenue — Current Quarter',
     year: 'Monthly Sales, Spend and Revenue — Current Year'
   };

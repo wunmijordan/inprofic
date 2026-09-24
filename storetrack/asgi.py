@@ -18,7 +18,10 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'storetrack.settings')
 
 django_asgi_application = get_asgi_application()
 
-from commerce.routing import websocket_urlpatterns  # noqa: E402
+from accounts.routing import websocket_urlpatterns as account_websocket_urlpatterns  # noqa: E402
+from commerce.routing import websocket_urlpatterns as commerce_websocket_urlpatterns  # noqa: E402
+
+websocket_urlpatterns = [*account_websocket_urlpatterns, *commerce_websocket_urlpatterns]
 
 application = ProtocolTypeRouter({
     "http": django_asgi_application,

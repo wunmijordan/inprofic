@@ -4,13 +4,16 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models.deletion import ProtectedError
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.http import require_GET
 from django.db.models import Prefetch, Q, Sum
 from openpyxl import Workbook
 from .models import CashAccount, FinancialTransaction, AuditLog
 from accounts.platform_integrations import redact_disabled_integrations
+from accounts.services import user_has_permission
 from .finance_forms import CashAccountForm, SupplierPaymentForm, CustomerPaymentForm, StockAdjustmentForm
 from .services import record_cash, audit
 from procurement.models import SupplierPayment, PurchaseOrder
@@ -20,6 +23,106 @@ from expenses.models import Expense, ExpensePayment
 from inventory.services import record_raw_material_movement, record_finished_good_movement
 
 def today(): return timezone.localdate()
+
+
+def _finance_open_items(business):
+    open_sales = list(
+        Sale.raw_objects.filter(
+            business=business,
+            source__in=("distribution_order", "online_order"),
+            transaction_type__in=("unpaid", "partial"),
+        ).select_related("business").prefetch_related(
+            Prefetch("items", queryset=SaleItem.objects.select_related("finished_good")),
+            "payments",
+        )
+    )
+    outstanding_sales = []
+    receivables = Decimal("0")
+    settlement_sale_ids = []
+    for sale in open_sales:
+        paid = sum((payment.amount for payment in sale.payments.all()), Decimal("0"))
+        balance = max(Decimal("0"), sale.total - paid)
+        if balance:
+            receivables += balance
+            outstanding_sales.append({"sale": sale, "balance": balance})
+        else:
+            settlement_sale_ids.append(sale.pk)
+
+    unpaid_invoice_sales = []
+    for sale in (
+        Sale.raw_objects.filter(
+            business=business, source="walkin", transaction_type__in=("unpaid", "partial")
+        ).prefetch_related(
+            Prefetch("items", queryset=SaleItem.objects.select_related("finished_good")),
+            "payments",
+        )
+    ):
+        paid = sum((payment.amount for payment in sale.payments.all()), Decimal("0"))
+        balance = max(Decimal("0"), sale.total - paid)
+        if balance:
+            unpaid_invoice_sales.append({"sale": sale, "balance": balance})
+        else:
+            settlement_sale_ids.append(sale.pk)
+
+    open_pos = list(
+        PurchaseOrder.raw_objects.filter(
+            business=business, payment_status__in=("unpaid", "partial"), status="received"
+        ).prefetch_related("items", "payments")
+    )
+    outstanding_pos = []
+    purchase_payables = Decimal("0")
+    settlement_po_ids = []
+    for po in open_pos:
+        paid = sum((payment.amount for payment in po.payments.all()), Decimal("0"))
+        balance = max(Decimal("0"), po.total - paid)
+        if balance:
+            purchase_payables += balance
+            outstanding_pos.append({"po": po, "balance": balance})
+        else:
+            settlement_po_ids.append(po.pk)
+
+    unpaid_expenses = Expense.raw_objects.filter(business=business, payment_status="unpaid")
+    expense_payables = unpaid_expenses.aggregate(v=Sum("amount"))["v"] or Decimal("0")
+    expense_payable_count = unpaid_expenses.count()
+    outstanding_expenses = [
+        {"expense": expense, "balance": expense.amount}
+        for expense in unpaid_expenses.order_by("-date", "-id")[:30]
+    ]
+    return {
+        "outstanding_sales": outstanding_sales,
+        "receivables": receivables,
+        "unpaid_invoice_sales": unpaid_invoice_sales,
+        "outstanding_pos": outstanding_pos,
+        "purchase_payables": purchase_payables,
+        "outstanding_expenses": outstanding_expenses,
+        "expense_payables": expense_payables,
+        "expense_payable_count": expense_payable_count,
+        "payables": purchase_payables + expense_payables,
+        "settlement_sale_ids": settlement_sale_ids,
+        "settlement_po_ids": settlement_po_ids,
+    }
+
+
+def _cash_account_balances(business, *, active_only=False):
+    account_qs = CashAccount.raw_objects.filter(business=business)
+    if active_only:
+        account_qs = account_qs.filter(active=True)
+    accounts = list(account_qs)
+    totals = {
+        row["account_id"]: row
+        for row in (
+            FinancialTransaction.raw_objects.filter(business=business, account_id__isnull=False)
+            .values("account_id")
+            .annotate(
+                money_in=Sum("amount", filter=Q(transaction_type=FinancialTransaction.INCOME)),
+                money_out=Sum("amount", filter=Q(transaction_type=FinancialTransaction.OUTFLOW)),
+            )
+        )
+    }
+    for account in accounts:
+        row = totals.get(account.pk, {})
+        account._calculated_balance = account.opening_balance + (row.get("money_in") or Decimal("0")) - (row.get("money_out") or Decimal("0"))
+    return accounts
 
 
 def _finance_transactions(request):
@@ -88,83 +191,132 @@ def _audit_trail_rows(request):
 
 @login_required
 def finance_dashboard(request):
-    # Resolve all cash-account balances with one grouped ledger query instead
-    # of one reverse-relation query per account (or loading the full ledger).
-    accounts = list(CashAccount.objects.all())
-    ledger_totals = {
-        row["account_id"]: row
-        for row in (
-            FinancialTransaction.objects.filter(account_id__isnull=False)
-            .values("account_id")
-            .annotate(
-                money_in=Sum("amount", filter=Q(transaction_type=FinancialTransaction.INCOME)),
-                money_out=Sum("amount", filter=Q(transaction_type=FinancialTransaction.OUTFLOW)),
-            )
-        )
-    }
-    for account in accounts:
-        totals = ledger_totals.get(account.pk, {})
-        account._calculated_balance = (
-            account.opening_balance
-            + (totals.get("money_in") or Decimal("0"))
-            - (totals.get("money_out") or Decimal("0"))
-        )
+    accounts = _cash_account_balances(request.business)
     tx = _finance_transactions(request)[:100]
-
-    # Receivable/payable rows were previously loaded twice: once for totals and
-    # again for the visible lists. Materialize each prefetched dataset once and
-    # derive both outputs from the same objects.
-    open_sales = list(
-        Sale.objects.filter(
-            source__in=("distribution_order", "online_order"),
-            transaction_type__in=("unpaid", "partial"),
-        ).select_related("business").prefetch_related(
-            Prefetch("items", queryset=SaleItem.objects.select_related("finished_good")),
-            "payments",
-        )
-    )
-    outstanding_sales = []
-    receivables = Decimal("0")
-    for sale in open_sales:
-        paid = sum((payment.amount for payment in sale.payments.all()), Decimal("0"))
-        balance = max(Decimal("0"), sale.total - paid)
-        receivables += balance
-        if balance:
-            outstanding_sales.append({"sale": sale, "balance": balance})
-
-    open_pos = list(
-        PurchaseOrder.objects.filter(
-            payment_status__in=("unpaid", "partial"), status="received"
-        ).prefetch_related("items", "payments")
-    )
-    outstanding_pos = []
-    purchase_payables = Decimal("0")
-    for po in open_pos:
-        paid = sum((payment.amount for payment in po.payments.all()), Decimal("0"))
-        balance = max(Decimal("0"), po.total - paid)
-        purchase_payables += balance
-        if balance:
-            outstanding_pos.append({"po": po, "balance": balance})
-
-    expense_payables = (
-        Expense.objects.filter(payment_status="unpaid").aggregate(v=Sum("amount"))["v"]
-        or Decimal("0")
-    )
-    payables = purchase_payables + expense_payables
-    outstanding_expenses = [
-        {"expense": e, "balance": e.amount}
-        for e in Expense.objects.filter(payment_status="unpaid").order_by("-date", "-id")[:30]
-    ]
+    open_items = _finance_open_items(request.business)
     return render(request, "core/finance.html", {
         "accounts": accounts,
         "transactions": tx,
         "audit_logs": _finance_audit_logs(request)[:80],
-        "receivables": receivables,
-        "payables": payables,
-        "outstanding_sales": outstanding_sales[:30],
-        "outstanding_pos": outstanding_pos[:30],
-        "outstanding_expenses": outstanding_expenses,
+        "receivables": open_items["receivables"],
+        "payables": open_items["payables"],
+        "outstanding_sales": open_items["outstanding_sales"][:30],
+        "outstanding_pos": open_items["outstanding_pos"][:30],
+        "outstanding_expenses": open_items["outstanding_expenses"],
     })
+
+
+@login_required
+@require_GET
+def finance_alert_feed(request):
+    if not user_has_permission(request.user, request.business, "finance", "view"):
+        return JsonResponse({"detail": "Finance alert access is unavailable."}, status=403)
+
+    items = _finance_open_items(request.business)
+    currency = request.business.currency_symbol
+    alerts = []
+    target_url = reverse("finance_dashboard")
+
+    def money(value):
+        return f"{currency}{value:,.2f}"
+
+    for row in items["unpaid_invoice_sales"][:10]:
+        sale = row["sale"]
+        alerts.append({
+            "id": f"invoice-{sale.pk}",
+            "type": "invoice",
+            "title": f"Unpaid invoice / sale #{sale.pk}",
+            "message": f"{sale.customer or 'Customer'} · {money(row['balance'])} still unpaid · {sale.date:%d %b %Y}",
+            "target_url": target_url,
+            "sort_date": sale.date.isoformat(),
+        })
+    for row in items["outstanding_sales"][:12]:
+        sale = row["sale"]
+        alerts.append({
+            "id": f"sale-{sale.pk}",
+            "type": "receivable",
+            "title": f"Invoice / sale #{sale.pk} has an outstanding balance",
+            "message": f"{sale.customer or 'Customer'} · {money(row['balance'])} receivable · {sale.date:%d %b %Y}",
+            "target_url": target_url,
+            "sort_date": sale.date.isoformat(),
+        })
+    for row in items["outstanding_pos"][:12]:
+        po = row["po"]
+        alerts.append({
+            "id": f"po-{po.pk}",
+            "type": "payable",
+            "title": f"Supplier payable on PO #{po.pk}",
+            "message": f"{po.supplier or 'Unnamed supplier'} · {money(row['balance'])} pending",
+            "target_url": target_url,
+            "sort_date": (po.received_date or po.date).isoformat(),
+        })
+    for row in items["outstanding_expenses"][:10]:
+        expense = row["expense"]
+        alerts.append({
+            "id": f"expense-{expense.pk}",
+            "type": "payable",
+            "title": "Unpaid expense",
+            "message": f"{expense.description} · {money(row['balance'])} · {expense.date:%d %b %Y}",
+            "target_url": target_url,
+            "sort_date": expense.date.isoformat(),
+        })
+    for sale_id in items["settlement_sale_ids"][:8]:
+        alerts.append({
+            "id": f"balance-sale-{sale_id}",
+            "type": "balancing",
+            "title": f"Sale #{sale_id} settlement status needs balancing",
+            "message": "Payments cover the recorded total, but the sale is still marked unpaid or partially paid.",
+            "target_url": target_url,
+            "sort_date": today().isoformat(),
+        })
+    for po_id in items["settlement_po_ids"][:8]:
+        alerts.append({
+            "id": f"balance-po-{po_id}",
+            "type": "balancing",
+            "title": f"PO #{po_id} settlement status needs balancing",
+            "message": "Recorded supplier payments cover the purchase total, but the PO is still marked unpaid or partially paid.",
+            "target_url": target_url,
+            "sort_date": today().isoformat(),
+        })
+    account_balances = _cash_account_balances(request.business, active_only=True)
+    for account in account_balances:
+        if account.balance < 0:
+            alerts.append({
+                "id": f"account-{account.pk}",
+                "type": "balancing",
+                "title": f"{account.name} is below zero",
+                "message": f"Current ledger balance is {money(account.balance)}. Review entries and opening balance.",
+                "target_url": target_url,
+                "sort_date": today().isoformat(),
+            })
+
+    alerts.sort(key=lambda item: item["sort_date"], reverse=True)
+    balancing_count = (
+        len(items["settlement_sale_ids"])
+        + len(items["settlement_po_ids"])
+        + sum(1 for account in account_balances if account.balance < 0)
+    )
+    finance_count = (
+        len(items["unpaid_invoice_sales"])
+        + len(items["outstanding_sales"])
+        + len(items["outstanding_pos"])
+        + items["expense_payable_count"]
+        + balancing_count
+    )
+    return JsonResponse({
+        "enabled": True,
+        "count": finance_count,
+        "invoice_count": len(items["unpaid_invoice_sales"]),
+        "receivable_count": len(items["outstanding_sales"]),
+        "payable_count": len(items["outstanding_pos"]) + items["expense_payable_count"],
+        "balancing_count": balancing_count,
+        "receivables_total": str(items["receivables"]),
+        "payables_total": str(items["payables"]),
+        "alerts": alerts[:30],
+        "poll_seconds": 45,
+    })
+
+
 @login_required
 def cash_account_form(request,pk=None):
     obj=get_object_or_404(CashAccount,pk=pk) if pk else None

@@ -1,8 +1,8 @@
 from django.test import TestCase
 
 from core.models import Business
-from .analytics import founder_analytics_summary, founder_signup_contacts, record_platform_event
-from .models import CustomUser, PlatformEvent
+from .analytics import founder_analytics_summary, founder_signup_contacts, record_founder_signup_contact, record_platform_event
+from .models import CustomUser, FounderSignupContactState, PlatformEvent
 
 
 class PlatformAnalyticsTests(TestCase):
@@ -62,4 +62,15 @@ class PlatformAnalyticsTests(TestCase):
         content = response.content.decode()
         self.assertIn("owner@example.com", content)
         self.assertIn("Analytics Store", content)
+    def test_signup_snapshot_keeps_business_details_independent_of_business_fk(self):
+        record_founder_signup_contact(
+            business=self.business, user=self.user, email="owner@example.com", name="Owner"
+        )
+        state = FounderSignupContactState.objects.get(email_key="owner@example.com")
+        self.assertEqual(state.business_name, "Analytics Store")
+        self.assertEqual(state.business_id_snapshot, self.business.pk)
+        contacts = founder_signup_contacts(include_deleted=True)
+        row = next(item for item in contacts if item["email"] == "owner@example.com")
+        self.assertEqual(row["business"], "Analytics Store")
+        self.assertEqual(row["service"], self.business.get_vertical_display())
 

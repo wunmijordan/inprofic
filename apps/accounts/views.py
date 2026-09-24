@@ -61,9 +61,9 @@ def signup(request):
                 subscription = start_trial_for_business(business)
             auth_login(request, user)
             request.session["active_business_id"] = business.pk
-            from .analytics import record_platform_event
+            from .analytics import record_founder_signup_contact, record_platform_event
             from .models import PlatformEvent
-            record_platform_event(
+            registration_event = record_platform_event(
                 PlatformEvent.EVENT_REGISTRATION, request=request, user=user, business=business,
                 metadata={
                     "vertical": business.vertical,
@@ -72,6 +72,13 @@ def signup(request):
                     "business_name": business.name,
                 },
             )
+            record_founder_signup_contact(
+                business=business, user=user, email=user.email, name=user.fullname,
+                signed_up_at=getattr(registration_event, "occurred_at", None),
+            )
+            if registration_event is not None:
+                from .realtime import publish_founder_signup_changed
+                publish_founder_signup_changed(registration_event.pk)
             from .emails import send_signup_welcome_email
             workspace_url = request.build_absolute_uri(reverse("dashboard"))
             transaction.on_commit(
@@ -636,6 +643,8 @@ def founder_platform_business_delete(request, pk):
             business_name = business.name
             try:
                 with transaction.atomic():
+                    from .analytics import mark_founder_signup_business_deleted
+                    mark_founder_signup_business_deleted(business=business, updated_by=request.user)
                     business.delete()
             except (ProtectedError, RestrictedError):
                 messages.error(request, "This business could not be deleted because a protected record was added or changed.")
@@ -675,6 +684,36 @@ def founder_platform_user_delete(request, pk):
 
 
 @login_required
+@require_POST
+def founder_mailing_list_contact_action(request):
+    """Permanently hide a signup row only after its business was hard-deleted."""
+    if not request.user.is_superuser:
+        return render(request, "403.html", status=403)
+    from .models import FounderSignupContactState
+
+    email = (request.POST.get("email") or "").strip()
+    email_key = email.casefold()
+    if not email_key:
+        messages.error(request, "Choose a valid signup contact.")
+        return redirect(f"{reverse('founder_subscriptions')}?workspace=management#signup-mailing-list")
+
+    state = FounderSignupContactState.objects.filter(email_key=email_key).first()
+    if not state or not state.deleted_at:
+        messages.error(request, "Permanent removal is available only after the related business has been deleted.")
+        return redirect(f"{reverse('founder_subscriptions')}?workspace=management#signup-mailing-list")
+
+    if (request.POST.get("contact_action") or "").strip() != "permanent_delete":
+        messages.error(request, "Choose a valid mailing-list action.")
+        return redirect(f"{reverse('founder_subscriptions')}?workspace=management#signup-mailing-list")
+
+    state.permanently_hidden = True
+    state.updated_by = request.user
+    state.save(update_fields=["permanently_hidden", "updated_by", "updated_at"])
+    messages.success(request, f"{email} permanently removed from the signup mailing-list table.")
+    return redirect(f"{reverse('founder_subscriptions')}?workspace=management#signup-mailing-list")
+
+
+@login_required
 def founder_mailing_list_csv(request):
     """Export signup contacts for founder-owned email communications."""
     import csv
@@ -699,6 +738,98 @@ def founder_mailing_list_csv(request):
             signed_up_at.isoformat(timespec="seconds"),
         ])
     return response
+
+
+@login_required
+def founder_signup_live_snapshot(request):
+    """Return Founder-only live fragments used after signup realtime signals."""
+    if not request.user.is_superuser:
+        return render(request, "403.html", status=403)
+
+    from datetime import timedelta
+    from django.http import JsonResponse
+    from django.template.loader import render_to_string
+    from .analytics import founder_signup_contacts
+    from .models import BusinessSubscription, PlatformEvent
+
+    try:
+        after_id = max(0, int(request.GET.get("after") or 0))
+    except (TypeError, ValueError):
+        after_id = 0
+    platform_query = (request.GET.get("platform_q") or "").strip()[:100]
+
+    businesses = Business.objects.select_related(
+        "subscription__plan", "subscription_service__subscription__plan"
+    ).annotate(member_count=Count("user_memberships", distinct=True)).order_by("-id")
+    users = CustomUser.objects.annotate(
+        business_count=Count("business_memberships", distinct=True)
+    ).order_by("-date_joined")
+    if platform_query:
+        businesses = businesses.filter(Q(name__icontains=platform_query) | Q(slug__icontains=platform_query))
+        users = users.filter(
+            Q(fullname__icontains=platform_query)
+            | Q(username__icontains=platform_query)
+            | Q(email__icontains=platform_query)
+            | Q(phone__icontains=platform_query)
+        )
+
+    contacts = founder_signup_contacts(include_deleted=True)
+    subscriptions = BusinessSubscription.objects.select_related("primary_business", "plan", "founder_granted_by").prefetch_related("services__business")
+    recent_events = PlatformEvent.objects.select_related("business", "user").order_by("-occurred_at", "-id")[:30]
+    latest_registration_id = (
+        PlatformEvent.objects.filter(event_type=PlatformEvent.EVENT_REGISTRATION)
+        .order_by("-id").values_list("id", flat=True).first() or 0
+    )
+    new_events = list(
+        PlatformEvent.objects.filter(
+            event_type=PlatformEvent.EVENT_REGISTRATION, id__gt=after_id
+        ).select_related("business", "user").order_by("id")[:20]
+    )
+    new_signups = []
+    for event in new_events:
+        metadata = event.metadata or {}
+        business_name = (metadata.get("business_name") or getattr(event.business, "name", "") or "").strip()
+        vertical = metadata.get("vertical") or getattr(event.business, "vertical", "") or ""
+        new_signups.append({
+            "id": event.pk,
+            "business": business_name or "New business",
+            "name": (metadata.get("signup_name") or getattr(event.user, "fullname", "") or getattr(event.user, "username", "") or "").strip(),
+            "email": (metadata.get("signup_email") or getattr(event.user, "email", "") or "").strip(),
+            "service": event.business.get_vertical_display() if event.business else vertical,
+        })
+
+    now = timezone.now()
+    since_30 = now - timedelta(days=30)
+    lead_sessions_30d = PlatformEvent.objects.filter(
+        event_type=PlatformEvent.EVENT_SIGNUP_VIEW, occurred_at__gte=since_30
+    ).exclude(session_key="").values("session_key").distinct().count()
+    registrations_30d = PlatformEvent.objects.filter(
+        event_type=PlatformEvent.EVENT_REGISTRATION, occurred_at__gte=since_30
+    ).count()
+    active_subscriptions = BusinessSubscription.objects.filter(
+        Q(founder_lifetime=True)
+        | Q(status__in=[BusinessSubscription.STATUS_ACTIVE, BusinessSubscription.STATUS_TRIAL])
+    ).count()
+    return JsonResponse({
+        "latest_registration_id": latest_registration_id,
+        "new_signups": new_signups,
+        "businesses_html": render_to_string("accounts/_founder_business_rows.html", {"platform_businesses": businesses[:50]}, request=request),
+        "users_html": render_to_string("accounts/_founder_user_rows.html", {"platform_users": users[:50]}, request=request),
+        "contacts_html": render_to_string("accounts/_founder_signup_rows.html", {"signup_contacts": contacts[:50]}, request=request),
+        "subscriptions_html": render_to_string("accounts/_founder_subscription_rows.html", {"subscriptions": subscriptions}, request=request),
+        "recent_events_html": render_to_string("accounts/_founder_recent_event_rows.html", {"recent_events": recent_events}, request=request),
+        "stats": {
+            "businesses": Business.objects.count(),
+            "users": CustomUser.objects.count(),
+            "active_subscriptions": active_subscriptions,
+            "signup_contacts": len([row for row in contacts if not row["deleted"]]),
+            "registrations_7d": PlatformEvent.objects.filter(
+                event_type=PlatformEvent.EVENT_REGISTRATION, occurred_at__gte=now - timedelta(days=7)
+            ).count(),
+            "registrations_30d": registrations_30d,
+            "signup_conversion_30d": round((registrations_30d / lead_sessions_30d * 100), 1) if lead_sessions_30d else 0,
+        },
+    })
 
 
 @login_required
@@ -1041,7 +1172,7 @@ def founder_subscriptions(request):
     subscriptions = BusinessSubscription.objects.select_related("primary_business", "plan", "founder_granted_by").prefetch_related("services__business")
     pending_payments = SubscriptionPayment.objects.filter(status=SubscriptionPayment.STATUS_PENDING).select_related("subscription__primary_business", "plan")[:50]
     platform_query = (request.GET.get("platform_q") or "").strip()[:100]
-    businesses = Business.objects.annotate(member_count=Count("user_memberships", distinct=True)).order_by("-id")
+    businesses = Business.objects.select_related("subscription__plan", "subscription_service__subscription__plan").annotate(member_count=Count("user_memberships", distinct=True)).order_by("-id")
     users = CustomUser.objects.annotate(business_count=Count("business_memberships", distinct=True)).order_by("-date_joined")
     if platform_query:
         businesses = businesses.filter(Q(name__icontains=platform_query) | Q(slug__icontains=platform_query))

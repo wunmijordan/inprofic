@@ -8,12 +8,13 @@ from django.core.management import call_command
 from django.core import mail
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from django.utils import timezone
 
 from core.models import Business
 from .models import (
     BusinessFeatureAccess, BusinessModuleAccess, BusinessSubscription, CustomUser,
     RoleModulePermission, SubscriptionPayment, SubscriptionPaymentSettings, SubscriptionPolicySettings, FounderTrialGrant,
-    SubscriptionPlanModule, SubscriptionPromotion, MarketingPromoCampaign, SubscriptionService, UserBusiness, UserModulePermission, PlatformEvent,
+    SubscriptionPlanModule, SubscriptionPromotion, MarketingPromoCampaign, SubscriptionService, UserBusiness, UserModulePermission, PlatformEvent, FounderSignupContactState,
 )
 from .services import business_has_module, can_use_commerce_storefront, is_live_tester, seed_business_roles, user_has_permission
 from .subscription_services import (
@@ -988,6 +989,10 @@ class FounderPaymentSettingsTests(TestCase):
         BusinessModuleAccess.objects.update_or_create(
             business=self.business, module="commerce", defaults={"enabled": True}
         )
+        from commerce.models import CommerceSettings
+        CommerceSettings.raw_objects.update_or_create(
+            business=self.business, defaults={"enabled": True}
+        )
 
         self.assertTrue(can_use_commerce_storefront(staff, self.business))
         self.assertFalse(user_has_permission(staff, self.business, "dashboard", "view"))
@@ -1010,11 +1015,33 @@ class FounderPaymentSettingsTests(TestCase):
         BusinessModuleAccess.objects.update_or_create(
             business=self.business, module="commerce", defaults={"enabled": True}
         )
+        from commerce.models import CommerceSettings
+        CommerceSettings.raw_objects.update_or_create(
+            business=self.business, defaults={"enabled": True}
+        )
 
         self.assertEqual(membership.role.key, CustomUser.ROLE_MANAGER)
         self.assertTrue(user_has_permission(staff, self.business, "dashboard", "view"))
         self.assertTrue(user_has_permission(staff, self.business, "pos", "view"))
         self.assertTrue(can_use_commerce_storefront(staff, self.business))
+
+    def test_pos_is_hidden_when_commerce_is_not_enabled(self):
+        roles = seed_business_roles(self.business)
+        staff = CustomUser.objects.create_user(
+            username="pos.disabled", password="safe-password-123", fullname="POS Disabled"
+        )
+        UserBusiness.objects.create(
+            user=staff, business=self.business, role=roles[CustomUser.ROLE_POS_OPERATOR], active=True,
+        )
+        BusinessModuleAccess.objects.update_or_create(
+            business=self.business, module="commerce", defaults={"enabled": True}
+        )
+        from commerce.models import CommerceSettings
+        CommerceSettings.raw_objects.update_or_create(
+            business=self.business, defaults={"enabled": False}
+        )
+
+        self.assertFalse(can_use_commerce_storefront(staff, self.business))
 
 
 class FounderPlatformDeletionTests(TestCase):
@@ -1037,6 +1064,67 @@ class FounderPlatformDeletionTests(TestCase):
         response = self.client.post(url, {"confirm_delete": "yes"})
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Business.objects.filter(pk=self.business.pk).exists())
+
+    def test_business_delete_marks_signup_history_deleted_without_changing_hard_delete(self):
+        record = FounderSignupContactState.objects.create(
+            email_key="owner@example.com", signup_email="owner@example.com", signup_name="Owner",
+            business_name=self.business.name, business_id_snapshot=self.business.pk,
+            vertical=self.business.vertical, service=self.business.get_vertical_display(),
+        )
+        PlatformEvent.objects.create(
+            event_type=PlatformEvent.EVENT_REGISTRATION, business=self.business,
+            metadata={"signup_email": "owner@example.com", "signup_name": "Owner", "business_name": self.business.name},
+        )
+
+        response = self.client.post(
+            reverse("founder_platform_business_delete", args=[self.business.pk]),
+            {"confirm_delete": "yes"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Business.objects.filter(pk=self.business.pk).exists())
+        record.refresh_from_db()
+        self.assertIsNotNone(record.deleted_at)
+        self.assertEqual(record.business_name, "Delete Me Ltd")
+        self.assertFalse(record.permanently_hidden)
+
+    def test_signup_list_only_allows_permanent_delete_after_business_delete(self):
+        active = FounderSignupContactState.objects.create(
+            email_key="active@example.com", signup_email="active@example.com",
+            business_name="Active Business", business_id_snapshot=self.business.pk,
+        )
+        action_url = reverse("founder_mailing_list_contact_action")
+        response = self.client.post(action_url, {"email": active.signup_email, "contact_action": "permanent_delete"})
+        self.assertEqual(response.status_code, 302)
+        active.refresh_from_db()
+        self.assertFalse(active.permanently_hidden)
+
+        active.deleted_at = timezone.now()
+        active.save(update_fields=["deleted_at", "updated_at"])
+        response = self.client.post(action_url, {"email": active.signup_email, "contact_action": "permanent_delete"})
+        self.assertEqual(response.status_code, 302)
+        active.refresh_from_db()
+        self.assertTrue(active.permanently_hidden)
+
+    def test_founder_live_signup_snapshot_returns_new_signup_and_refreshed_rows(self):
+        event = PlatformEvent.objects.create(
+            event_type=PlatformEvent.EVENT_REGISTRATION, business=self.business,
+            metadata={
+                "signup_email": "live@example.com",
+                "signup_name": "Live Owner",
+                "business_name": self.business.name,
+                "vertical": self.business.vertical,
+            },
+        )
+        response = self.client.get(
+            reverse("founder_signup_live_snapshot"), {"after": 0}
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["latest_registration_id"], event.pk)
+        self.assertEqual(data["new_signups"][-1]["business"], "Delete Me Ltd")
+        self.assertIn("Delete Me Ltd", data["businesses_html"])
+        self.assertIn("live@example.com", data["contacts_html"])
 
     def test_founder_can_delete_another_user_but_not_self(self):
         delete_url = reverse("founder_platform_user_delete", args=[self.account.pk])

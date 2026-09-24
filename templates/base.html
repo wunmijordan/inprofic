@@ -74,7 +74,8 @@
       .desktop-sidebar { position: fixed; inset: 0 auto 0 0; width: 14rem; height: 100dvh; overflow: hidden; z-index: 50; }
       .desktop-main { margin-left: 14rem; min-height: 100vh; }
     }
-    #commerce-notification-dock { width:min(22rem,calc(100vw - 1.5rem)); transition:width 180ms ease; }
+    #commerce-notification-dock { width:min(22rem,calc(100vw - 1.5rem)); transition:width 180ms ease; will-change:left,transform; }
+    .notification-tray-handle { touch-action:none; }
     @media (max-width: 767px) {
       #commerce-notification-dock[data-expanded="false"] { width:min(14rem,calc(100vw - 1.5rem)); }
       #commerce-notification-dock[data-expanded="false"] #commerce-notification-expand > span:last-child { font-size:.72rem; }
@@ -179,12 +180,14 @@
     </div>
   </main>
 
-  {% if user.is_authenticated and module_permissions.commerce.view or user.is_authenticated and module_permissions.delivery.view or user.is_authenticated and module_permissions.delivery_rider.view or user.is_authenticated and module_permissions.inventory.view %}
+  {% if user.is_authenticated and module_permissions.commerce.view or user.is_authenticated and module_permissions.delivery.view or user.is_authenticated and module_permissions.delivery_rider.view or user.is_authenticated and module_permissions.inventory.view or user.is_authenticated and module_permissions.finance.view %}
   <aside id="commerce-notification-dock"
          class="fixed bottom-3 z-[80] hidden overflow-hidden rounded-2xl border border-stone-200 bg-[#FFFDF8] shadow-[0_20px_55px_rgba(33,29,26,.32)]"
          style="right:.75rem;" data-expanded="false"
          data-has-commerce="{% if module_permissions.commerce.view or module_permissions.delivery.view or module_permissions.delivery_rider.view %}1{% else %}0{% endif %}"
          data-has-inventory="{% if module_permissions.inventory.view %}1{% else %}0{% endif %}"
+         data-has-finance="{% if module_permissions.finance.view %}1{% else %}0{% endif %}"
+         data-finance-feed-url="{% url 'finance_alert_feed' %}"
          data-feed-url="{% url 'commerce_notification_feed' %}"
          data-read-url="{% url 'commerce_notification_read' %}"
          data-socket-path="/ws/commerce/notifications/"
@@ -219,6 +222,12 @@
           <span id="inventory-alert-count" class="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-black text-rose-800">0</span>
         </button>
         {% endif %}
+        {% if module_permissions.finance.view %}
+        <button type="button" id="notification-channel-finance" data-alert-channel="finance" class="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-stone-600 transition hover:bg-white">
+          <span class="truncate">Finance</span>
+          <span id="finance-alert-count" class="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-black text-sky-900">0</span>
+        </button>
+        {% endif %}
       </div>
 
       {% if module_permissions.commerce.view or module_permissions.delivery.view or module_permissions.delivery_rider.view %}
@@ -226,12 +235,12 @@
         <div class="flex items-center justify-between border-b border-stone-200 px-4 py-2.5">
           <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-stone-500">Unread commerce & delivery activity</span>
           <div class="flex items-center gap-1.5">
-            {% if module_permissions.commerce.edit %}<a href="{% url 'commerce_settings' %}#activity-notifications" class="rounded-lg p-2 text-stone-400 transition hover:bg-stone-100 hover:text-stone-900" aria-label="Commerce alert settings" title="Commerce alert settings"><svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.8" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.12 2.12-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V20.3h-3v-.08a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-2.12-2.12.06-.06A1.7 1.7 0 0 0 7 15a1.7 1.7 0 0 0-1.56-1.03H5.3v-3h.14A1.7 1.7 0 0 0 7 9.94a1.7 1.7 0 0 0-.34-1.88L6.6 8l2.12-2.12.06.06a1.7 1.7 0 0 0 1.88.34A1.7 1.7 0 0 0 11.7 4.7v-.08h3v.08a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 8l-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03h.14v3h-.14A1.7 1.7 0 0 0 19.4 15Z"/></svg></a>{% endif %}
-            <button type="button" id="commerce-notification-read-all" class="rounded-lg p-2 text-stone-500 transition hover:bg-stone-100 hover:text-stone-900" aria-label="Mark all Commerce alerts read" title="Mark all read"><svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="2" aria-hidden="true"><path d="m4 12 4 4 8-8"/><path d="m12 16 2 2 6-6"/></svg></button>
+            {% if module_permissions.commerce.edit %}<a href="{% url 'commerce_settings' %}#activity-notifications" class="rounded-lg p-2 text-stone-400 transition hover:bg-stone-100 hover:text-stone-900" aria-label="Commerce alert settings" title="Commerce alert settings"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D14900" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-settings-2"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M19.875 6.27a2.225 2.225 0 0 1 1.125 1.948v7.284c0 .809 -.443 1.555 -1.158 1.948l-6.75 4.27a2.269 2.269 0 0 1 -2.184 0l-6.75 -4.27a2.225 2.225 0 0 1 -1.158 -1.948v-7.285c0 -.809 .443 -1.554 1.158 -1.947l6.75 -3.98a2.33 2.33 0 0 1 2.25 0l6.75 3.98h-.033" /><path d="M9 12a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" /></svg></a>{% endif %}
+            <button type="button" id="commerce-notification-read-all" class="rounded-lg p-2 text-stone-500 transition hover:bg-stone-100 hover:text-stone-900" aria-label="Mark all Commerce alerts read" title="Mark all read"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#05fa05" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-checks"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M7 12l5 5l10 -10" /><path d="M2 12l5 5m5 -5l5 -5" /></svg></button>
           </div>
         </div>
         <div id="commerce-notification-list" class="min-h-0 flex-1 divide-y divide-stone-100 overflow-y-auto overscroll-contain"></div>
-        <p class="border-t border-stone-200 px-4 py-2.5 text-[10px] leading-4 text-stone-400">Unread entries use persistent alarm bursts while the app is open. Background/closed-app reminders use Web Push and the device notification sound.</p>
+        <p class="border-t border-stone-200 px-4 py-2.5 text-[10px] leading-4 text-stone-400">Unread entries use persistent alarm bursts while the app is open.</p>
       </section>
       {% endif %}
 
@@ -246,11 +255,21 @@
               <span class="truncate">Finished goods</span><span id="inventory-finished-count" class="rounded-full bg-rose-100 px-1.5 py-0.5 text-[9px] font-black text-rose-800">0</span>
             </button>
           </div>
-          {% if module_permissions.inventory.edit %}<a href="{% url 'inventory_alert_settings' %}" class="ml-2 shrink-0 rounded-lg p-2 text-stone-400 transition hover:bg-stone-100 hover:text-stone-900" aria-label="Inventory alert settings" title="Inventory alert settings"><svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.8" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.12 2.12-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V20.3h-3v-.08a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-2.12-2.12.06-.06A1.7 1.7 0 0 0 7 15a1.7 1.7 0 0 0-1.56-1.03H5.3v-3h.14A1.7 1.7 0 0 0 7 9.94a1.7 1.7 0 0 0-.34-1.88L6.6 8l2.12-2.12.06.06a1.7 1.7 0 0 0 1.88.34A1.7 1.7 0 0 0 11.7 4.7v-.08h3v.08a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 8l-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03h.14v3h-.14A1.7 1.7 0 0 0 19.4 15Z"/></svg></a>{% endif %}
+          {% if module_permissions.inventory.edit %}<a href="{% url 'inventory_alert_settings' %}" class="ml-2 shrink-0 rounded-lg p-2 text-stone-400 transition hover:bg-stone-100 hover:text-stone-900" aria-label="Inventory alert settings" title="Inventory alert settings"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D14900" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-settings-2"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M19.875 6.27a2.225 2.225 0 0 1 1.125 1.948v7.284c0 .809 -.443 1.555 -1.158 1.948l-6.75 4.27a2.269 2.269 0 0 1 -2.184 0l-6.75 -4.27a2.225 2.225 0 0 1 -1.158 -1.948v-7.285c0 -.809 .443 -1.554 1.158 -1.947l6.75 -3.98a2.33 2.33 0 0 1 2.25 0l6.75 3.98h-.033" /><path d="M9 12a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" /></svg></a>{% endif %}
         </div>
         <div id="inventory-alert-raw-list" data-inventory-list="raw" class="min-h-0 flex-1 divide-y divide-stone-100 overflow-y-auto overscroll-contain"></div>
         <div id="inventory-alert-finished-list" data-inventory-list="finished" class="hidden min-h-0 flex-1 divide-y divide-stone-100 overflow-y-auto overscroll-contain"></div>
-        <p class="border-t border-stone-200 px-4 py-2.5 text-[10px] leading-4 text-stone-400">Acknowledge for now uses the existing per-condition snooze. Background/closed-app reminders follow the same due state through Web Push.</p>
+        <p class="border-t border-stone-200 px-4 py-2.5 text-[10px] leading-4 text-stone-400">Acknowledge to keep the configured snooze time.</p>
+      </section>
+      {% endif %}
+      {% if module_permissions.finance.view %}
+      <section id="notification-panel-finance" data-alert-panel="finance" class="hidden min-h-0 flex-1 flex-col">
+        <div class="flex items-center justify-between border-b border-stone-200 px-4 py-2.5">
+          <div><span class="text-[10px] font-bold uppercase tracking-[0.16em] text-stone-500">Finance attention</span><div id="finance-alert-summary" class="mt-0.5 text-[10px] text-stone-400"></div></div>
+          <a href="{% url 'finance_dashboard' %}" class="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[#8f172d] hover:bg-stone-100">Open Finance</a>
+        </div>
+        <div id="finance-alert-list" class="min-h-0 flex-1 divide-y divide-stone-100 overflow-y-auto overscroll-contain"></div>
+        <p class="border-t border-stone-200 px-4 py-2.5 text-[10px] leading-4 text-stone-400">Balances are live from Finance records; resolve the underlying payment, payable or ledger status in Finance.</p>
       </section>
       {% endif %}
     </div>
@@ -261,8 +280,10 @@
       if (!dock) return;
       const hasCommerce = dock.dataset.hasCommerce === '1';
       const hasInventory = dock.dataset.hasInventory === '1';
+      const hasFinance = dock.dataset.hasFinance === '1';
       let commerceAvailable = hasCommerce;
       let inventoryAvailable = hasInventory;
+      let financeAvailable = hasFinance;
       const trayBody = document.getElementById('notification-tray-body');
       const expand = document.getElementById('commerce-notification-expand');
       const minimize = document.getElementById('commerce-notification-minimize');
@@ -273,6 +294,9 @@
       const panels = Array.from(dock.querySelectorAll('[data-alert-panel]'));
       const commerceCount = document.getElementById('commerce-notification-count');
       const inventoryCount = document.getElementById('inventory-alert-count');
+      const financeCount = document.getElementById('finance-alert-count');
+      const financeList = document.getElementById('finance-alert-list');
+      const financeSummary = document.getElementById('finance-alert-summary');
       const commerceList = document.getElementById('commerce-notification-list');
       const commerceReadAll = document.getElementById('commerce-notification-read-all');
       const rawList = document.getElementById('inventory-alert-raw-list');
@@ -281,12 +305,14 @@
       const finishedCount = document.getElementById('inventory-finished-count');
       const inventoryTabs = Array.from(dock.querySelectorAll('[data-inventory-tab]'));
       let expanded = false;
-      let activeChannel = window.localStorage.getItem('inprofic-alert-tray-channel') || (hasCommerce ? 'commerce' : 'inventory');
+      let activeChannel = window.localStorage.getItem('inprofic-alert-tray-channel') || (hasCommerce ? 'commerce' : (hasInventory ? 'inventory' : 'finance'));
       let activeInventoryTab = window.localStorage.getItem('inprofic-inventory-alert-tab') || 'raw';
       let commerceData = { enabled: false, unread_count: 0, notifications: [], sound_enabled: false, sound_repeat_minutes: 0, sound_tune: 'double_ping' };
       let inventoryData = { enabled: false, count: 0, raw_count: 0, finished_count: 0, alerts: [], sound_enabled: false, sound_repeat_minutes: 0, sound_tune: 'urgent_pulse' };
+      let financeData = { enabled: false, count: 0, invoice_count: 0, receivable_count: 0, payable_count: 0, balancing_count: 0, alerts: [] };
       let commerceTimer = null;
       let inventoryTimer = null;
+      let financeTimer = null;
       let socket = null;
       let socketConnected = false;
       let reconnectTimer = null;
@@ -371,26 +397,42 @@
       if (dragHandle) {
         let dragStartX = 0;
         let dragStartLeft = 0;
+        let dragTargetLeft = 0;
+        let dragFrame = 0;
+        const paintDrag = () => {
+          dragFrame = 0;
+          dock.style.transform = `translate3d(${dragTargetLeft - dragStartLeft}px,0,0)`;
+        };
         dragHandle.addEventListener('pointerdown', function (event) {
           if (event.target.closest('button, a, input, select, textarea')) return;
           const rect = dock.getBoundingClientRect();
           dragStartX = event.clientX;
           dragStartLeft = rect.left;
+          dragTargetLeft = rect.left;
           dock.style.right = 'auto';
-          dock.style.transform = '';
           dock.style.left = `${rect.left}px`;
+          dock.style.transform = 'translate3d(0,0,0)';
+          dock.style.transition = 'none';
           dragHandle.setPointerCapture(event.pointerId);
         });
         dragHandle.addEventListener('pointermove', function (event) {
           if (!dragHandle.hasPointerCapture(event.pointerId)) return;
-          dock.style.left = `${clampDockLeft(dragStartLeft + event.clientX - dragStartX)}px`;
+          dragTargetLeft = clampDockLeft(dragStartLeft + event.clientX - dragStartX);
+          if (!dragFrame) dragFrame = requestAnimationFrame(paintDrag);
         });
-        dragHandle.addEventListener('pointerup', function (event) {
+        const finishDrag = function (event) {
           if (!dragHandle.hasPointerCapture(event.pointerId)) return;
           dragHandle.releasePointerCapture(event.pointerId);
+          if (dragFrame) { cancelAnimationFrame(dragFrame); dragFrame = 0; }
+          const finalLeft = clampDockLeft(dragTargetLeft);
+          dock.style.transform = '';
+          dock.style.left = `${finalLeft}px`;
+          dock.style.transition = '';
           if (window.innerWidth <= 767) mobileDockMoved = true;
-          window.localStorage.setItem(positionKey, String(Math.round(dock.getBoundingClientRect().left)));
-        });
+          window.localStorage.setItem(positionKey, String(Math.round(finalLeft)));
+        };
+        dragHandle.addEventListener('pointerup', finishDrag);
+        dragHandle.addEventListener('pointercancel', finishDrag);
       }
       window.addEventListener('resize', function () {
         reconcileDockPosition();
@@ -405,7 +447,7 @@
         return match ? decodeURIComponent(match[1]) : '';
       }
       function channelIsAvailable(channel) {
-        return channel === 'commerce' ? commerceAvailable : inventoryAvailable;
+        return channel === 'commerce' ? commerceAvailable : (channel === 'inventory' ? inventoryAvailable : financeAvailable);
       }
       function selectChannel(channel, userChoice) {
         if (!channelIsAvailable(channel)) return;
@@ -674,9 +716,11 @@
       function updateDock() {
         const cCount = commerceAvailable && commerceData.enabled ? Number(commerceData.unread_count || 0) : 0;
         const iCount = inventoryAvailable && inventoryData.enabled ? Number(inventoryData.count || 0) : 0;
-        const total = cCount + iCount;
+        const fCount = financeAvailable && financeData.enabled ? Number(financeData.count || 0) : 0;
+        const total = cCount + iCount + fCount;
         if (commerceCount) commerceCount.textContent = cCount;
         if (inventoryCount) inventoryCount.textContent = iCount;
+        if (financeCount) financeCount.textContent = fCount;
         totalCount.textContent = total;
         totalPlural.textContent = total === 1 ? '' : 's';
         if (!total) {
@@ -686,7 +730,7 @@
         }
         dock.classList.remove('hidden');
         requestAnimationFrame(reconcileDockPosition);
-        if (!channelIsAvailable(activeChannel)) activeChannel = commerceAvailable ? 'commerce' : 'inventory';
+        if (!channelIsAvailable(activeChannel)) activeChannel = commerceAvailable ? 'commerce' : (inventoryAvailable ? 'inventory' : 'finance');
         if (!expanded) selectChannel(activeChannel, false);
       }
 
@@ -777,6 +821,41 @@
         updateDock();
       }
 
+      function renderFinance(data) {
+        financeData = data;
+        const alerts = Array.isArray(data.alerts) ? data.alerts : [];
+        if (financeList) financeList.replaceChildren();
+        if (financeSummary) financeSummary.textContent = `${Number(data.invoice_count || 0)} unpaid · ${Number(data.receivable_count || 0)} receivable · ${Number(data.payable_count || 0)} payable · ${Number(data.balancing_count || 0)} balancing`;
+        if (financeList) alerts.forEach(item => {
+          const row = document.createElement('article'); row.className = 'px-4 py-3 transition hover:bg-stone-50';
+          const badge = document.createElement('span');
+          const badgeMap = { invoice:'bg-orange-100 text-orange-900', receivable:'bg-amber-100 text-amber-900', payable:'bg-rose-100 text-rose-800', balancing:'bg-sky-100 text-sky-900' };
+          badge.className = `inline-flex rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${badgeMap[item.type] || 'bg-stone-100 text-stone-700'}`;
+          badge.textContent = item.type === 'balancing' ? 'Balance check' : item.type;
+          const heading = document.createElement('h3'); heading.className = 'mt-1.5 text-sm font-semibold leading-5 text-stone-900'; heading.textContent = item.title;
+          const detail = document.createElement('p'); detail.className = 'mt-0.5 text-xs leading-5 text-stone-500'; detail.textContent = item.message;
+          const open = document.createElement('a'); open.href = item.target_url || '/finance/'; open.className = 'mt-2 inline-block text-[11px] font-semibold text-[#d14900] hover:underline'; open.textContent = 'Review in Finance';
+          row.append(badge, heading, detail, open); financeList.append(row);
+        });
+        updateDock();
+      }
+      async function pollFinance() {
+        if (!financeAvailable || pageClosing) return;
+        try {
+          const response = await fetch(dock.dataset.financeFeedUrl, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+          if (response.ok) {
+            const data = await response.json(); renderFinance(data);
+            clearTimeout(financeTimer); financeTimer = setTimeout(pollFinance, Math.max(30, Math.min(300, data.poll_seconds || 45)) * 1000); return;
+          }
+          if (response.status === 401 || response.status === 403) {
+            financeAvailable = false;
+            const button = document.getElementById('notification-channel-finance'); if (button) button.classList.add('hidden');
+            updateDock(); return;
+          }
+        } catch (_error) { /* Retry below. */ }
+        clearTimeout(financeTimer); financeTimer = setTimeout(pollFinance, 45000);
+      }
+
       async function pollCommerce() {
         if (!commerceAvailable || pageClosing) return;
         const sequence = ++refreshSequence;
@@ -861,9 +940,9 @@
       [rawList, finishedList].filter(Boolean).forEach(list => list.addEventListener('click', event => { const button = event.target.closest('.inventory-alert-ack'); if (button) acknowledgeInventory(button.dataset.alertId); }));
       document.addEventListener('click', event => { if (expanded && !dock.contains(event.target)) setExpanded(false); });
       document.addEventListener('keydown', event => { if (event.key === 'Escape') setExpanded(false); });
-      document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (commerceAvailable) { pollCommerce(); connectSocket(); } if (inventoryAvailable) pollInventory(); } });
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (commerceAvailable) { pollCommerce(); connectSocket(); } if (inventoryAvailable) pollInventory(); if (financeAvailable) pollFinance(); } });
       window.addEventListener('pagehide', () => {
-        pageClosing = true; clearTimeout(commerceTimer); clearTimeout(inventoryTimer); clearTimeout(reconnectTimer);
+        pageClosing = true; clearTimeout(commerceTimer); clearTimeout(inventoryTimer); clearTimeout(financeTimer); clearTimeout(reconnectTimer);
         clearTimeout(soundState.commerce.timer); clearTimeout(soundState.inventory.timer); if (socket) socket.close(); if (audioContext) audioContext.close();
       });
 
@@ -872,6 +951,7 @@
       const startAlerts = () => {
         if (commerceAvailable) { if ('WebSocket' in window) connectSocket(); else pollCommerce(); }
         if (inventoryAvailable) pollInventory();
+        if (financeAvailable) pollFinance();
       };
       if ('requestIdleCallback' in window) window.requestIdleCallback(startAlerts, { timeout: 1000 });
       else window.setTimeout(startAlerts, 250);

@@ -1,0 +1,12 @@
+{% for contact in signup_contacts %}
+<tr class="{% if contact.deleted %}bg-stone-50 text-stone-400{% endif %}">
+  <td class="border-t px-3 py-2"><a class="font-medium {% if contact.deleted %}text-stone-500 line-through{% else %}text-[#8f172d]{% endif %} normal-case" href="mailto:{{ contact.email }}">{{ contact.email }}</a></td>
+  <td class="border-t px-3 py-2"><div class="font-medium normal-case">{{ contact.name|default:'—' }}</div><div class="mt-0.5 text-[10px] text-stone-400 normal-case">{{ contact.business|default:'—' }}</div></td>
+  <td class="border-t px-3 py-2 normal-case">{{ contact.service|default:'—' }}</td>
+  <td class="border-t px-3 py-2 normal-case">{% if contact.deleted %}<span class="rounded-full bg-stone-200 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-stone-600">Deleted</span>{% if contact.deleted_at %}<div class="mt-1 text-[9px] text-stone-400">{{ contact.deleted_at|date:'M j, Y · H:i' }}</div>{% endif %}{% else %}<span class="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-emerald-700">Active</span>{% endif %}</td>
+  <td class="border-t px-3 py-2 text-right font-mono text-[10px] normal-case text-stone-500">{{ contact.signed_up_at|date:'M j, Y · H:i' }}</td>
+  <td class="border-t px-3 py-2 text-right">{% if contact.deleted %}<form method="post" action="{% url 'founder_mailing_list_contact_action' %}" class="inline-flex justify-end">{% csrf_token %}<input type="hidden" name="email" value="{{ contact.email }}"><button name="contact_action" value="permanent_delete" class="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-[10px] font-semibold text-rose-700" onclick="return confirm('Permanently remove this deleted-business signup record from the mailing-list table?')">Permanent delete</button></form>{% else %}<span class="text-stone-300">—</span>{% endif %}</td>
+</tr>
+{% empty %}
+<tr><td colspan="6" class="p-4 text-center normal-case text-stone-400">Signup emails will appear here after businesses register.</td></tr>
+{% endfor %}

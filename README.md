@@ -38,7 +38,7 @@ what was borrowed and what was deliberately left out).
   transaction, with a shortage warning you can override.
 - **Reports** — CSV export for stock, procurement, production, sales, plus
   a full JSON backup.
-- **Shared operational alert tray** — one movable, access-aware tray keeps Commerce/Delivery and Inventory attention together without merging their read/snooze state; Inventory has separate Raw Materials and Finished Goods tabs, and both channels can repeat audible reminders until staff acts.
+- **Shared operational alert tray** — one movable, access-aware tray keeps Commerce/Delivery, Inventory and Finance attention together without merging their underlying record state; Inventory has separate Raw Materials and Finished Goods tabs, while authorised Finance users see unpaid invoices, receivables, payables and balancing anomalies from the live finance records.
 - **Persistent inventory alerts** — separate warning/low conditions for raw materials and finished goods, with tenant-configurable repeat timing, repeating attention sounds, and per-user acknowledgement that never mutates stock.
 - **Commerce payments** — Paystack/Monnify, provider-backed instant bank transfer, and a native no-gateway **Transfer** mode that shows the tenant's bank details, requires proof on public/headless checkout, and uses explicit staff confirmation on in-premise POS.
 - **Delivery** — plan-gated delivery setup with mapped destination centres, radius/diagonal coverage guides,
@@ -50,7 +50,7 @@ what was borrowed and what was deliberately left out).
   admins or permitted audit reviewers.
 - **In-Premise POS** — a dedicated cashier storefront role can land directly
   in the counter screen and log out without entering the wider workspace; POS
-  can also be granted as a supplemental per-user permission without replacing a staff member's primary role.
+  can also be granted as a supplemental per-user permission without replacing a staff member's primary role. The surface is shown only when the active plan includes Commerce and the tenant has explicitly enabled Commerce.
 - Login required on every protected page (Django's built-in auth), with a
   `created_by` trail on every record.
 - **Delivery Rider workspace** — rider-only assignments, customer/contact details, allowed status actions, proof of delivery, issue reporting and targeted alerts without normal business-module access.

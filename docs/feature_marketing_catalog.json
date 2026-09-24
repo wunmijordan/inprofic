@@ -184,9 +184,9 @@
     "name": "In-premise POS",
     "group": "commerce",
     "audience": "cashiers, stores, restaurants and walk-in operations",
-    "proof": "Staff can complete counter sales with Cash, direct Transfer or supported terminal payment without opening the wider workspace.",
-    "highlight": "",
-    "added_on": ""
+    "proof": "Staff can complete counter sales with Cash, direct Transfer or supported terminal payment only when the tenant plan includes Commerce and Commerce is explicitly enabled; POS still keeps its dedicated user permission.",
+    "highlight": "NEW",
+    "added_on": "2026-09-24"
   },
   {
     "id": "delivery",
@@ -217,12 +217,12 @@
   },
   {
     "id": "delivery-notifications",
-    "name": "Shared realtime Commerce, payment and delivery alert tray",
+    "name": "Shared realtime Commerce, Inventory and Finance alert tray",
     "group": "delivery",
     "audience": "dispatchers, managers and riders",
-    "proof": "Commerce, payment and Delivery alerts share one movable tray with Inventory without sharing read state; synthesized tones plus eight bundled audio chimes and configurable repeats keep unread work—including direct Transfer verification—hard to miss, while durable Web Push continues due reminders in the background.",
+    "proof": "Commerce, payment, Delivery, Inventory and Finance attention share one movable access-aware tray without merging their underlying record state; Commerce/Delivery can use durable Web Push in the background, while Finance surfaces unpaid invoices, receivables, payables and balancing anomalies from the same finance records.",
     "highlight": "NEW",
-    "added_on": "2026-09-20"
+    "added_on": "2026-09-24"
   },
   {
     "id": "rider",
@@ -346,9 +346,9 @@
     "name": "Founder product and lead analytics",
     "group": "governance",
     "audience": "INPROFIC founders and platform operators",
-    "proof": "Track first-party signup leads, completed registrations, logins, subscription milestones and throttled module usage in Founder Console without recording passwords, payment secrets or arbitrary clickstreams.",
+    "proof": "Track first-party signup leads, completed registrations, logins, subscription milestones and throttled module usage in Founder Console, with retained deleted-state and permanent-removal controls for signup mailing-list entries, without recording passwords, payment secrets or arbitrary clickstreams.",
     "highlight": "NEW",
-    "added_on": "2026-09-20"
+    "added_on": "2026-09-24"
   },
   {
     "id": "form-experience-v2",

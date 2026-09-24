@@ -48,6 +48,7 @@ urlpatterns = [
     path("reports/export/financial.csv", views.export_financial_csv, name="export_financial_csv"),
     path("reports/export/financial.xlsx", views.export_financial_xlsx, name="export_financial_xlsx"),
     path("finance/", finance.finance_dashboard, name="finance_dashboard"),
+    path("finance/alerts/feed/", finance.finance_alert_feed, name="finance_alert_feed"),
     path("finance/export/money-movements.csv", finance.export_money_movements_csv, name="finance_money_movements_csv"),
     path("finance/export/money-movements.xlsx", finance.export_money_movements_xlsx, name="finance_money_movements_xlsx"),
     path("finance/export/audit-trail.csv", finance.export_audit_trail_csv, name="finance_audit_trail_csv"),

@@ -774,6 +774,37 @@ class PlatformIntegrationSettings(models.Model):
         return row
 
 
+class FounderSignupContactState(models.Model):
+    """Durable Founder signup-list record keyed by normalized signup email.
+
+    The snapshot survives a tenant hard-delete so the Founder mailing list can show
+    which business signed up and that the business was later deleted. The row is
+    never marked deleted from the mailing-list UI directly; that state is driven by
+    the Founder business hard-delete flow.
+    """
+    email_key = models.CharField(max_length=254, unique=True)
+    signup_email = models.EmailField(blank=True, default="")
+    signup_name = models.CharField(max_length=160, blank=True, default="")
+    business_name = models.CharField(max_length=180, blank=True, default="")
+    business_id_snapshot = models.PositiveBigIntegerField(null=True, blank=True, db_index=True)
+    vertical = models.CharField(max_length=40, blank=True, default="")
+    service = models.CharField(max_length=120, blank=True, default="")
+    signed_up_at = models.DateTimeField(null=True, blank=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    permanently_hidden = models.BooleanField(default=False)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="founder_signup_contact_state_changes",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["email_key"]
+
+    def __str__(self):
+        return self.email_key
+
+
 class PlatformEvent(models.Model):
     """First-party Founder analytics event.
 
