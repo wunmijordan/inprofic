@@ -17,6 +17,9 @@
     .pos-scroll{scrollbar-width:thin;scrollbar-color:#c9c1b7 transparent}.pos-scroll::-webkit-scrollbar{width:7px;height:7px}.pos-scroll::-webkit-scrollbar-thumb{background:#c9c1b7;border-radius:999px}
     .product-card[data-hidden="true"]{display:none}.cart-row[hidden]{display:none}
     .pos-channel-choice[data-active="true"]{background:var(--tenant-button);border-color:var(--tenant-button);color:var(--tenant-button-contrast);box-shadow:0 7px 18px color-mix(in srgb,var(--tenant-button) 20%,transparent)}
+    .pos-header{border-color:color-mix(in srgb,var(--tenant-background-contrast) 18%,transparent)!important}
+    .pos-theme-control{color:var(--tenant-background-contrast)!important;border-color:color-mix(in srgb,var(--tenant-background-contrast) 20%,transparent)!important;background:color-mix(in srgb,var(--tenant-background-contrast) 10%,transparent)!important}
+    .pos-theme-muted{color:color-mix(in srgb,var(--tenant-background-contrast) 80%,transparent)!important}
     dialog::backdrop{background:rgba(20,16,14,.58);backdrop-filter:blur(2px)}
     @media(min-width:1024px){html,body{height:100%;overflow:hidden}body{display:flex;flex-direction:column}.pos-header{flex:0 0 auto}.pos-main{display:flex;min-height:0;flex:1;flex-direction:column;height:auto;overflow:hidden;width:100%}#pos-form{min-height:0;flex:1;height:auto}.pos-fill{height:auto;min-height:0}}
     @media print{body.printing-pos-receipt>*:not(#pos-receipt-dialog){display:none!important}body.printing-pos-receipt{display:block!important;height:auto!important;overflow:visible!important;background:#fff!important}body.printing-pos-receipt #pos-receipt-dialog{display:block!important;position:static!important;width:100%!important;max-width:none!important;height:auto!important;max-height:none!important;margin:0!important;box-shadow:none!important;border:0!important}body.printing-pos-receipt #pos-receipt-print-area{max-height:none!important;overflow:visible!important}body.printing-pos-receipt #pos-receipt-dialog .pos-receipt-actions,body.printing-pos-receipt #pos-receipt-close{display:none!important}}
@@ -29,15 +32,15 @@
     <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
       <div class="flex min-w-0 items-center gap-3">
         {% if module_permissions.dashboard.view %}
-        <a href="{% url 'dashboard' %}" class="rounded-xl bg-white/10 p-2 transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-2" aria-label="Back to INPROFIC dashboard">
+        <a href="{% url 'dashboard' %}" class="pos-theme-control rounded-xl p-2 transition hover:brightness-95 focus:outline-none focus:ring-2" aria-label="Back to INPROFIC dashboard">
           <svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2"><path d="m15 18-6-6 6-6"/><path d="M9 12h11"/></svg>
         </a>
         {% endif %}
-        <div class="min-w-0"><p class="truncate text-[10px] font-bold uppercase tracking-[.2em] text-amber-300">{% if not module_permissions.dashboard.view and module_permissions.pos.view %}Storefront-only access · {% endif %}{{ pos_ui.eyebrow }} · {{ pos_channel_label }}</p><h1 class="truncate font-display text-xl font-semibold sm:text-2xl">{{ pos_ui.title }}</h1></div>
+        <div class="min-w-0"><p class="pos-theme-muted truncate text-[10px] font-bold uppercase tracking-[.2em]">{% if not module_permissions.dashboard.view and module_permissions.pos.view %}Storefront-only access · {% endif %}{{ pos_ui.eyebrow }} · {{ pos_channel_label }}</p><h1 class="truncate font-display text-xl font-semibold sm:text-2xl">{{ pos_ui.title }}</h1></div>
       </div>
       <div class="flex items-center gap-2">
         <div class="relative" data-appearance-root>
-          <button type="button" class="pos-appearance-trigger rounded-xl border border-white/20 bg-white/10 p-2 hover:bg-white/20" data-appearance-toggle aria-controls="pos-appearance-panel" aria-expanded="false" title="Appearance" aria-label="Appearance">
+          <button type="button" class="pos-appearance-trigger pos-theme-control rounded-xl border p-2 hover:brightness-95" data-appearance-toggle aria-controls="pos-appearance-panel" aria-expanded="false" title="Appearance" aria-label="Appearance">
             <svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.8"><path d="M12 3a9 9 0 1 0 9 9c0-1-.1-1.6-.3-2.4A5.5 5.5 0 0 1 14.4 3.3C13.6 3.1 13 3 12 3Z"/></svg>
           </button>
           <div id="pos-appearance-panel" data-appearance-panel hidden class="pos-appearance-panel appearance-popover z-50 rounded-lg p-4 text-left">
@@ -45,7 +48,7 @@
             {% include "_appearance_controls.html" %}
           </div>
         </div>
-        {% if module_permissions.commerce.view %}<a href="{% url 'commerce_dashboard' %}" class="hidden rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold transition hover:bg-white/20 sm:block">Commerce</a>{% endif %}
+        {% if module_permissions.commerce.view %}<a href="{% url 'commerce_dashboard' %}" class="pos-theme-control hidden rounded-xl border px-3 py-2 text-xs font-semibold transition hover:brightness-95 sm:block">Commerce</a>{% endif %}
         {% if module_permissions.dashboard.view %}<a href="{% url 'dashboard' %}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate-900 transition hover:bg-stone-100">Main App</a>{% else %}<a href="{% url 'logout' %}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate-900 transition hover:bg-stone-100">Log Out</a>{% endif %}
       </div>
     </div>

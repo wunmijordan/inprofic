@@ -351,7 +351,9 @@ def _payload(delivery):
             "url": notice.target_url or "/commerce/",
             "business": notice.business.name,
             "icon": "/static/core/pwa/icon-mark-192.png",
-            "badge": "/static/core/pwa/icon-mark-192.png",
+            "icon_light": "/static/core/pwa/icon-mark-192.png",
+            "icon_dark": "/static/core/pwa/icon-mark-on-dark-192.png",
+            "badge": "/static/core/pwa/icon-mark-monochrome-192.png",
         },
         separators=(",", ":"),
     )

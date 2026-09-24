@@ -324,7 +324,9 @@ POST /api/v1/storefronts/{business_slug}/checkouts
 GET  /api/v1/storefronts/{business_slug}/checkouts/{checkout_uuid}
 POST /api/v1/storefronts/{business_slug}/checkouts/{checkout_uuid}/payments
 GET  /api/v1/storefronts/{business_slug}/checkouts/{checkout_uuid}/payments/current
+POST /api/v1/storefronts/{business_slug}/checkouts/{checkout_uuid}/payments/current/claim
 GET  /api/v1/storefronts/{business_slug}/orders/{public_uuid}   # after verified payment materializes it
+GET  /api/v1/storefronts/{business_slug}/deliveries/{delivery_uuid}/tracking
 POST /api/v1/storefronts/{business_slug}/orders/{public_uuid}/preorder
 ```
 
@@ -343,6 +345,31 @@ A tenant with no website can enable:
 ```text
 /shop/{business_slug}/
 ```
+
+As of the 2026-09-24 route audit, the hosted customer surface exposed by the Commerce URL configuration is:
+
+```text
+GET      /shop/{business_slug}/
+GET      /shop/{business_slug}/order-now/
+POST     /shop/{business_slug}/order/
+GET      /shop/{business_slug}/checkouts/{checkout_id}/
+GET      /shop/{business_slug}/checkouts/{checkout_id}/status/
+POST     /shop/{business_slug}/checkouts/{checkout_id}/pay/
+POST     /shop/{business_slug}/checkouts/{checkout_id}/claim/
+GET      /shop/{business_slug}/orders/{order_id}/
+POST     /shop/{business_slug}/orders/{order_id}/preorder/
+GET      /shop/{business_slug}/receipts/{receipt_id}/
+POST     /shop/{business_slug}/delivery/location/
+POST     /shop/{business_slug}/delivery/quote/
+GET      /shop/{business_slug}/deliveries/{delivery_id}/
+GET      /shop/{business_slug}/deliveries/{delivery_id}/status/
+GET|POST /shop/{business_slug}/account/register/
+GET|POST /shop/{business_slug}/account/login/
+POST     /shop/{business_slug}/account/logout/
+GET|POST /shop/{business_slug}/account/
+```
+
+These are hosted HTML/session endpoints. They are not substitutes for the server-to-server headless API and they never require a storefront customer to become an INPROFIC staff user.
 
 A business with a simple existing site can use the same URL as its **Order Now** destination. Customers can place several products in one basket. The hosted route validates that basket into a short-lived `CommerceCheckoutSession`, shows only payment methods that are enabled and fully configured for the tenant, and creates no Commerce Intake, Sale, or Production record while payment is pending. Verified full payment materializes exactly one intake; browser returns never confirm payment. The captured customer name is retained on the checkout/intake snapshot and in the commerce audit entry.
 

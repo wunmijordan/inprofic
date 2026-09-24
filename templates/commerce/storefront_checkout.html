@@ -90,7 +90,7 @@
           <p class="mt-3 text-center text-xs leading-5 text-stone-500">Returning here does not confirm payment. INPROFIC waits for verified confirmation from the provider.</p>
         {% elif payment.method == 'transfer' %}
           {% if payment_data.bank_account %}
-          <div class="mt-5 rounded-2xl px-4 py-4 text-white" style="background:var(--brand-dark)"><p class="text-xs text-white/60">{{ payment_data.bank_account.bank_name }}</p><p class="mt-1 font-display text-2xl font-semibold tracking-wide">{{ payment_data.bank_account.account_number }}</p><p class="mt-1 text-sm text-white/75">{{ payment_data.bank_account.account_name }}</p></div>
+          <div class="storefront-brand-surface mt-5 rounded-2xl px-4 py-4"><p class="storefront-brand-muted text-xs">{{ payment_data.bank_account.bank_name }}</p><p class="mt-1 font-display text-2xl font-semibold tracking-wide">{{ payment_data.bank_account.account_number }}</p><p class="storefront-brand-muted mt-1 text-sm">{{ payment_data.bank_account.account_name }}</p></div>
           {% endif %}
           {% if payment.instructions %}<p class="mt-4 text-sm leading-6 text-stone-600">{{ payment.instructions }}</p>{% endif %}
           {% if payment.status == 'awaiting_verification' %}
@@ -105,7 +105,7 @@
             </form>
           {% endif %}
         {% elif payment.method == 'bank_transfer' %}
-          {% if payment_data.bank_account %}<div class="mt-5 rounded-2xl px-4 py-4 text-white" style="background:var(--brand-dark)"><p class="text-xs text-white/60">{{ payment_data.bank_account.bank_name }}</p><p class="mt-1 font-display text-2xl font-semibold tracking-wide">{{ payment_data.bank_account.account_number }}</p><p class="mt-1 text-sm text-white/75">{{ payment_data.bank_account.account_name }}</p></div>{% endif %}
+          {% if payment_data.bank_account %}<div class="storefront-brand-surface mt-5 rounded-2xl px-4 py-4"><p class="storefront-brand-muted text-xs">{{ payment_data.bank_account.bank_name }}</p><p class="mt-1 font-display text-2xl font-semibold tracking-wide">{{ payment_data.bank_account.account_number }}</p><p class="storefront-brand-muted mt-1 text-sm">{{ payment_data.bank_account.account_name }}</p></div>{% endif %}
           {% if payment.instructions %}<p class="mt-4 text-sm leading-6 text-stone-600">{{ payment.instructions }}</p>{% endif %}
           <div class="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-900">Transfer the exact amount to the temporary account above. <strong>{{ payment.gateway_provider|title }} confirms the payment automatically</strong>; no proof upload or staff approval is required. This page will refresh after verified confirmation.</div>
           {% if payment_data.bank_account.account_expires_at %}<p class="mt-3 text-xs text-stone-500">Temporary account expiry: {{ payment_data.bank_account.account_expires_at }}</p>{% endif %}

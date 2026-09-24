@@ -21,21 +21,44 @@ def _pwa_build_version():
     return re.sub(r"[^A-Za-z0-9._-]", "-", raw)[:40] or "current"
 
 
-def _icons():
+def _icons(theme="light"):
+    # Keep the transparent two-colour N as the canonical installed artwork.
+    # Do not advertise it as maskable: that purpose requires an opaque canvas,
+    # which would break the explicitly transparent installed-app treatment.
+    # Monochrome entries let supported operating systems tint the same N to
+    # the device's themed-icon palette automatically.
+    dark = theme == "dark"
+    mark_stem = "icon-mark-on-dark" if dark else "icon-mark"
     return [
         {
-            "src": static("core/pwa/icon-mark-192.png"),
+            "src": static(f"core/pwa/{mark_stem}-192.png"),
             "sizes": "192x192",
             "type": "image/png",
             "purpose": "any",
         },
         {
-            "src": static("core/pwa/icon-mark-512.png"),
+            "src": static(f"core/pwa/{mark_stem}-512.png"),
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "any",
         },
+        {
+            "src": static("core/pwa/icon-mark-monochrome-192.png"),
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "monochrome",
+        },
+        {
+            "src": static("core/pwa/icon-mark-monochrome-512.png"),
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "monochrome",
+        },
     ]
+
+
+def _launch_background(request):
+    return "#050733" if request.GET.get("theme") == "dark" else "#FFF1E8"
 
 
 def _can_access_business(user, business):
@@ -71,10 +94,10 @@ def manifest(request):
             "start_url": reverse("marketing_home"),
             "scope": "/",
             "display": "standalone",
-            "background_color": "#FFF1E8",
+            "background_color": _launch_background(request),
             "theme_color": "#050733",
             "categories": ["business", "productivity", "finance"],
-            "icons": _icons(),
+            "icons": _icons(request.GET.get("theme", "light")),
             "prefer_related_applications": False,
         }
     )
@@ -98,12 +121,12 @@ def tenant_manifest(request, business_slug):
             "display": "standalone",
             # The OS canvas stays neutral while the icon itself remains a
             # transparent N mark; tenant colours still brand browser chrome.
-            "background_color": "#FFF1E8",
+            "background_color": _launch_background(request),
             "theme_color": business.background_color,
             "categories": ["business", "productivity", "finance"],
             # Installed app artwork remains INPROFIC by design. The optional
             # tenant logo is storefront-only and is never used as a PWA icon.
-            "icons": _icons(),
+            "icons": _icons(request.GET.get("theme", "light")),
             "prefer_related_applications": False,
         },
         tenant=True,
@@ -114,9 +137,15 @@ def tenant_manifest(request, business_slug):
 def service_worker(request):
     static_assets = [
         static("core/pwa/icon-mark-180.png"),
+        static("core/pwa/icon-mark-on-dark-180.png"),
         static("core/pwa/icon-mark-192.png"),
         static("core/pwa/icon-mark-512.png"),
+        static("core/pwa/icon-mark-on-dark-192.png"),
+        static("core/pwa/icon-mark-on-dark-512.png"),
+        static("core/pwa/icon-mark-monochrome-192.png"),
+        static("core/pwa/icon-mark-monochrome-512.png"),
         static("core/brand/inprofic-wordmark-on-light.png"),
+        static("core/brand/inprofic-wordmark-on-dark.png"),
     ]
     offline_url = reverse("pwa_offline")
     build_version = _pwa_build_version()
@@ -126,6 +155,25 @@ const APP_VERSION = {json.dumps(build_version)};
 const CACHE_NAME = {json.dumps(cache_name)};
 const OFFLINE_URL = {json.dumps(offline_url)};
 const PRECACHE_URLS = {json.dumps([offline_url, *static_assets])};
+const PREFERENCE_CACHE = 'inprofic-pwa-preferences-v1';
+const THEME_KEY = new URL('/__inprofic-pwa-theme__', self.location.origin).href;
+
+async function savePreferredTheme(theme) {{
+  if (theme !== 'dark' && theme !== 'light') return;
+  const cache = await caches.open(PREFERENCE_CACHE);
+  await cache.put(THEME_KEY, new Response(theme, {{ headers: {{ 'Content-Type': 'text/plain' }} }}));
+}}
+
+async function preferredTheme() {{
+  try {{
+    const cache = await caches.open(PREFERENCE_CACHE);
+    const response = await cache.match(THEME_KEY);
+    const theme = response ? await response.text() : '';
+    return theme === 'dark' ? 'dark' : 'light';
+  }} catch (_) {{
+    return 'light';
+  }}
+}}
 
 self.addEventListener('install', (event) => {{
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS)));
@@ -133,6 +181,9 @@ self.addEventListener('install', (event) => {{
 
 self.addEventListener('message', (event) => {{
   if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
+  if (event.data && event.data.type === 'INPROFIC_THEME') {{
+    event.waitUntil(savePreferredTheme(event.data.theme));
+  }}
   if (event.data && event.data.type === 'GET_VERSION' && event.source) {{
     event.source.postMessage({{ type: 'INPROFIC_SW_VERSION', version: APP_VERSION }});
   }}
@@ -157,10 +208,14 @@ self.addEventListener('push', (event) => {{
     // the Commerce WebSocket, so don't create a duplicate operating-system alert.
     if (windows.some((client) => client.visibilityState === 'visible')) return;
     const target = new URL(data.url || '/commerce/', self.location.origin).href;
+    const theme = await preferredTheme();
+    const themedIcon = theme === 'dark'
+      ? (data.icon_dark || '/static/core/pwa/icon-mark-on-dark-192.png')
+      : (data.icon_light || data.icon || '/static/core/pwa/icon-mark-192.png');
     await self.registration.showNotification(data.title || 'INPROFIC', {{
       body: data.body || '',
-      icon: data.icon || '/static/core/pwa/icon-mark-192.png',
-      badge: data.badge || '/static/core/pwa/icon-mark-192.png',
+      icon: themedIcon,
+      badge: data.badge || '/static/core/pwa/icon-mark-monochrome-192.png',
       tag: data.id ? `${{data.channel || 'commerce'}}-${{data.id}}` : `${{data.channel || 'commerce'}}-notification`,
       renotify: true,
       requireInteraction: true,

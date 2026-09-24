@@ -191,6 +191,41 @@ Base path:
 /api/v1/storefronts/{business_slug}
 ```
 
+### 3.1 Current external route inventory
+
+This inventory was checked against `apps/commerce/urls.py` on **2026-09-24**. New headless website work should use the checkout-scoped routes first:
+
+```text
+GET  /api/v1/storefronts/{business_slug}/products
+POST /api/v1/storefronts/{business_slug}/delivery/location
+POST /api/v1/storefronts/{business_slug}/delivery/quote
+GET  /api/v1/storefronts/{business_slug}/deliveries/{delivery_id}/tracking
+GET  /api/v1/storefronts/{business_slug}/payment-methods
+POST /api/v1/storefronts/{business_slug}/checkouts
+GET  /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}
+POST /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}/payments
+GET  /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}/payments/current
+POST /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}/payments/current/claim
+GET  /api/v1/storefronts/{business_slug}/orders/{order_id}
+POST /api/v1/storefronts/{business_slug}/orders/{order_id}/preorder
+```
+
+Compatibility/server callback routes that remain exposed are:
+
+```text
+POST /api/v1/storefronts/{business_slug}/orders
+     # retired for creation; returns 410 checkout_first_required
+POST /api/v1/storefronts/{business_slug}/orders/{order_id}/payments/initiate
+GET  /api/v1/storefronts/{business_slug}/orders/{order_id}/payments/current
+POST /api/v1/storefronts/{business_slug}/orders/{order_id}/payments/current/claim
+POST /api/v1/storefronts/{business_slug}/payments/{provider}/webhook
+POST /api/v1/connectors/{business_slug}/{integration_id}/orders
+POST /api/v1/delivery/providers/custom/{business_slug}/{provider_id}/webhook
+POST /api/v1/delivery/providers/glovo/{business_slug}/webhook
+```
+
+The Glovo callback exists only as a dormant route when the Founder-level integration is disabled; disabled integration policy still blocks Glovo execution. Provider/payment webhooks and connector ingestion are server-to-server boundaries, not browser calls.
+
 Authenticated requests send:
 
 ```http

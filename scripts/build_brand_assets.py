@@ -67,20 +67,32 @@ def pwa_icon(mark: Image.Image, size: int) -> Image.Image:
     return padded_mark(mark, size=size, fill_ratio=0.70)
 
 
+def monochrome_icon(mark: Image.Image, size: int) -> Image.Image:
+    """Preserve the N silhouette and alpha for OS-controlled themed icons."""
+    rendered = pwa_icon(mark, size)
+    monochrome = Image.new("RGBA", rendered.size, (255, 255, 255, 0))
+    monochrome.putalpha(rendered.getchannel("A"))
+    return monochrome
+
+
 def save_pwa_assets(images: dict[str, Image.Image]) -> None:
     PWA.mkdir(parents=True, exist_ok=True)
-    mark = images["inprofic-mark.png"]
+    light_mark = images["inprofic-mark.png"]
+    dark_mark = images["inprofic-mark-on-dark.png"]
     outputs = {
-        "icon-mark-180.png": pwa_icon(mark, 180),
-        "icon-mark-192.png": pwa_icon(mark, 192),
-        "icon-mark-512.png": pwa_icon(mark, 512),
+        "icon-mark-180.png": pwa_icon(light_mark, 180),
+        "icon-mark-192.png": pwa_icon(light_mark, 192),
+        "icon-mark-512.png": pwa_icon(light_mark, 512),
+        "icon-mark-on-dark-180.png": pwa_icon(dark_mark, 180),
+        "icon-mark-on-dark-192.png": pwa_icon(dark_mark, 192),
+        "icon-mark-on-dark-512.png": pwa_icon(dark_mark, 512),
+        "icon-mark-monochrome-192.png": monochrome_icon(light_mark, 192),
+        "icon-mark-monochrome-512.png": monochrome_icon(light_mark, 512),
         # Keep legacy filenames correct for already-installed manifests while
         # new manifests use the explicit icon-mark URLs below.
-        "icon-180.png": pwa_icon(mark, 180),
-        "icon-192.png": pwa_icon(mark, 192),
-        "icon-512.png": pwa_icon(mark, 512),
-        "icon-maskable-192.png": pwa_icon(mark, 192),
-        "icon-maskable-512.png": pwa_icon(mark, 512),
+        "icon-180.png": pwa_icon(light_mark, 180),
+        "icon-192.png": pwa_icon(light_mark, 192),
+        "icon-512.png": pwa_icon(light_mark, 512),
     }
     for name, image in outputs.items():
         image.save(PWA / name, format="PNG", optimize=True)

@@ -148,6 +148,14 @@ class PerformanceDiagnosticMiddlewareTests(TestCase):
         self.assertNotIn("Server-Timing", response.headers)
 
 
+class BusinessBrandContrastTests(TestCase):
+    def test_light_and_dark_business_backgrounds_choose_readable_text(self):
+        self.assertEqual(Business._contrast_color("#FFFFFF"), "#182433")
+        self.assertEqual(Business._contrast_color("#FFF1E8"), "#182433")
+        self.assertEqual(Business._contrast_color("#050733"), "#FFFFFF")
+        self.assertEqual(Business._contrast_color("not-a-colour"), "#FFFFFF")
+
+
 class PwaEndpointTests(TestCase):
     def test_brand_manifest_is_public_and_uses_inprofic_identity(self):
         response = self.client.get(reverse("pwa_manifest"))
@@ -159,8 +167,11 @@ class PwaEndpointTests(TestCase):
         self.assertEqual(payload["theme_color"], "#050733")
         self.assertEqual(payload["background_color"], "#FFF1E8")
         self.assertTrue(any(icon["sizes"] == "512x512" for icon in payload["icons"]))
-        self.assertTrue(all("core/pwa/icon-mark-" in icon["src"] for icon in payload["icons"]))
-        self.assertTrue(all(icon["purpose"] == "any" for icon in payload["icons"]))
+        self.assertTrue(all("core/pwa/icon-" in icon["src"] for icon in payload["icons"]))
+        self.assertEqual({icon["purpose"] for icon in payload["icons"]}, {"any", "monochrome"})
+        dark_payload = self.client.get(f'{reverse("pwa_manifest")}?theme=dark').json()
+        self.assertEqual(dark_payload["background_color"], "#050733")
+        self.assertTrue(any("icon-mark-on-dark-192.png" in icon["src"] for icon in dark_payload["icons"]))
 
     def test_tenant_manifest_uses_tenant_name_and_theme_but_inprofic_icons(self):
         business = Business.objects.create(
@@ -188,7 +199,12 @@ class PwaEndpointTests(TestCase):
         self.assertEqual(payload["theme_color"], "#173B45")
         self.assertEqual(payload["background_color"], "#FFF1E8")
         self.assertEqual(payload["id"], "/pwa/tenant/northwind-foods")
-        self.assertTrue(all("core/pwa/icon-mark-" in icon["src"] for icon in payload["icons"]))
+        self.assertEqual({icon["purpose"] for icon in payload["icons"]}, {"any", "monochrome"})
+        dark_response = self.client.get(
+            f'{reverse("pwa_manifest_tenant", kwargs={"business_slug": business.slug})}?theme=dark'
+        )
+        self.assertEqual(dark_response.json()["background_color"], "#050733")
+        self.assertTrue(any("icon-mark-on-dark-192.png" in icon["src"] for icon in dark_response.json()["icons"]))
 
     def test_service_worker_has_root_scope_and_does_not_cache_dynamic_html(self):
         response = self.client.get(reverse("pwa_service_worker"))
@@ -201,7 +217,13 @@ class PwaEndpointTests(TestCase):
         self.assertIn("self.addEventListener('push'", script)
         self.assertIn("showNotification", script)
         self.assertIn("icon-mark-192.png", script)
+        self.assertIn("icon-mark-on-dark-180.png", script)
+        self.assertIn("icon-mark-on-dark-192.png", script)
+        self.assertIn("INPROFIC_THEME", script)
+        self.assertIn("preferredTheme", script)
+        self.assertIn("icon-mark-monochrome-192.png", script)
         self.assertIn("inprofic-wordmark-on-light.png", script)
+        self.assertIn("inprofic-wordmark-on-dark.png", script)
         self.assertIn("requireInteraction: true", script)
         self.assertIn("vibrate: [320, 140, 320, 140, 520]", script)
         self.assertIn("self.addEventListener('notificationclick'", script)

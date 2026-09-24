@@ -20,6 +20,7 @@
     .font-display { font-family: 'Fraunces', serif; }
     .font-sans { font-family: 'Sora', sans-serif; }
     .font-mono { font-family: 'IBM Plex Mono', monospace; }
+    .font-subheading { font-family:'Sora',sans-serif; font-weight:800; letter-spacing:-.025em; }
     table { font-variant-numeric: tabular-nums; }
     [x-cloak] { display: none !important; }
     .field-client-invalid { border-color: #e11d48 !important; box-shadow: 0 0 0 1px rgba(225,29,72,.15); }
@@ -73,6 +74,12 @@
       .desktop-sidebar { position: fixed; inset: 0 auto 0 0; width: 14rem; height: 100dvh; overflow: hidden; z-index: 50; }
       .desktop-main { margin-left: 14rem; min-height: 100vh; }
     }
+    #commerce-notification-dock { width:min(22rem,calc(100vw - 1.5rem)); transition:width 180ms ease; }
+    @media (max-width: 767px) {
+      #commerce-notification-dock[data-expanded="false"] { width:min(14rem,calc(100vw - 1.5rem)); }
+      #commerce-notification-dock[data-expanded="false"] #commerce-notification-expand > span:last-child { font-size:.72rem; }
+    }
+    @media (prefers-reduced-motion: reduce) { #commerce-notification-dock { transition:none; } }
   </style>
   <script src="{% static 'core/js/form-experience.js' %}" defer></script>
 </head>
@@ -88,8 +95,8 @@
         <img src="{% if biz.background_text_color == '#FFFFFF' %}{% static 'core/brand/inprofic-wordmark-on-dark.png' %}{% else %}{% static 'core/brand/inprofic-wordmark-on-light.png' %}{% endif %}" alt="INPROFIC" class="max-w-full" style="width:10.5rem;height:auto" width="1827" height="290">
       </a>
       <div class="mt-3 min-w-0 truncate font-display font-semibold">{{ biz.name }}</div>
-      <div class="text-[10px] tracking-[0.2em] uppercase text-[#C69A3E]">{{ biz.tagline|default:vertical_ui.platform_label }}</div>
-      {% if subscription %}<a href="{% url 'subscription_payment' %}" class="inline-flex mt-2 items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold {% if subscription.is_expiring_soon %}bg-rose-500 text-white{% else %}bg-white/10 text-white{% endif %}">{{ subscription.plan.name }}{% if subscription.founder_lifetime %} · Founder lifetime{% elif subscription.status == 'trial' and subscription.is_effectively_active %} · Trial{% elif subscription.plan.is_free_forever and subscription.status == 'active' %} · Free{% elif subscription.status == 'active' %} · Paid{% else %} · {{ subscription.effective_status_label }}{% endif %}</a>{% else %}{% if can_manage_business %}<a href="{% url 'subscription_plans' %}" class="inline-flex mt-2 rounded-full bg-white/10 px-2 py-1 text-[10px] font-semibold text-white">Choose plan</a>{% endif %}{% endif %}
+      <div class="tenant-tagline text-[10px] tracking-[0.2em] uppercase">{{ biz.tagline|default:vertical_ui.platform_label }}</div>
+      {% if subscription %}<a href="{% url 'subscription_payment' %}" class="inline-flex mt-2 items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold {% if subscription.is_expiring_soon %}bg-rose-500 text-white{% else %}tenant-soft-chip{% endif %}">{{ subscription.plan.name }}{% if subscription.founder_lifetime %} · Founder lifetime{% elif subscription.status == 'trial' and subscription.is_effectively_active %} · Trial{% elif subscription.plan.is_free_forever and subscription.status == 'active' %} · Free{% elif subscription.status == 'active' %} · Paid{% else %} · {{ subscription.effective_status_label }}{% endif %}</a>{% else %}{% if can_manage_business %}<a href="{% url 'subscription_plans' %}" class="tenant-soft-chip inline-flex mt-2 rounded-full px-2 py-1 text-[10px] font-semibold">Choose plan</a>{% endif %}{% endif %}
       {% if available_businesses|length > 1 %}
       <form action="{% url 'switch_business' %}" method="post" class="mt-3">
         {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
@@ -104,7 +111,7 @@
     </nav>
     <form action="{% url 'logout' %}" method="post" class="shrink-0 px-5 py-3 border-t border-white/10">
       {% csrf_token %}
-      <button class="text-[11px] text-[#9DB5A6] hover:text-white">Log Out ({{ user.fullname|default:user.username }})</button>
+      <button class="tenant-muted-control text-[11px] hover:opacity-100">Log Out ({{ user.fullname|default:user.username }})</button>
     </form>
   </aside>
 
@@ -130,7 +137,7 @@
       </nav>
       <form action="{% url 'logout' %}" method="post" class="shrink-0 px-5 py-3 border-t border-white/10">
         {% csrf_token %}
-        <button class="text-[11px] text-[#9DB5A6] hover:text-white">Log Out ({{ user.fullname|default:user.username }})</button>
+        <button class="tenant-muted-control text-[11px] hover:opacity-100">Log Out ({{ user.fullname|default:user.username }})</button>
       </form>
     </div>
   </div>
@@ -175,7 +182,7 @@
   {% if user.is_authenticated and module_permissions.commerce.view or user.is_authenticated and module_permissions.delivery.view or user.is_authenticated and module_permissions.delivery_rider.view or user.is_authenticated and module_permissions.inventory.view %}
   <aside id="commerce-notification-dock"
          class="fixed bottom-3 z-[80] hidden overflow-hidden rounded-2xl border border-stone-200 bg-[#FFFDF8] shadow-[0_20px_55px_rgba(33,29,26,.32)]"
-         style="right:.75rem;width:min(22rem,calc(100vw - 1.5rem));"
+         style="right:.75rem;" data-expanded="false"
          data-has-commerce="{% if module_permissions.commerce.view or module_permissions.delivery.view or module_permissions.delivery_rider.view %}1{% else %}0{% endif %}"
          data-has-inventory="{% if module_permissions.inventory.view %}1{% else %}0{% endif %}"
          data-feed-url="{% url 'commerce_notification_feed' %}"
@@ -184,16 +191,16 @@
          data-inventory-feed-url="{% url 'inventory_alert_feed' %}"
          data-inventory-ack-url="{% url 'inventory_alert_acknowledge' %}"
          aria-live="polite">
-    <div id="commerce-notification-drag-handle" class="flex cursor-grab select-none items-center gap-2.5 border-b border-white/10 px-3 py-2.5 text-white active:cursor-grabbing" style="background:var(--tenant-background)" title="Drag left or right to move alerts">
-      <span class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10" aria-hidden="true">
+    <div id="commerce-notification-drag-handle" class="notification-tray-handle flex cursor-grab border-b select-none items-center gap-2.5 px-3 py-2.5 active:cursor-grabbing" style="background:var(--tenant-background);color:var(--tenant-background-contrast);border-color:color-mix(in srgb,var(--tenant-background-contrast) 18%,transparent)" title="Drag left or right to move alerts">
+      <span class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style="background:color-mix(in srgb,var(--tenant-background-contrast) 11%,transparent)" aria-hidden="true">
         <svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
-        <span id="notification-tray-pulse" class="absolute -right-1 -top-1 h-2.5 w-2.5 animate-pulse rounded-full bg-amber-400 ring-2 ring-white/80"></span>
+        <span id="notification-tray-pulse" class="absolute -right-1 -top-1 h-2.5 w-2.5 animate-pulse rounded-full bg-amber-400" style="box-shadow:0 0 0 2px color-mix(in srgb,var(--tenant-background-contrast) 72%,transparent)"></span>
       </span>
       <button type="button" id="commerce-notification-expand" class="min-w-0 flex-1 text-left" aria-expanded="false" aria-controls="notification-tray-body">
-        <span class="block text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-300">Activity alerts</span>
+        <span class="block text-[10px] font-extrabold uppercase tracking-[0.18em]" style="color:var(--tenant-background-contrast);opacity:.72">Activity alerts</span>
         <span class="block truncate text-sm font-semibold"><span id="notification-tray-total-count">0</span> alert<span id="notification-tray-total-plural">s</span> need attention</span>
       </button>
-      <button type="button" id="commerce-notification-minimize" class="rounded-lg p-2 text-stone-300 transition hover:bg-white/10 hover:text-white" aria-label="Minimize activity alerts">
+      <button type="button" id="commerce-notification-minimize" class="rounded-lg p-2 transition hover:opacity-75" style="color:var(--tenant-background-contrast)" aria-label="Minimize activity alerts">
         <svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
       </button>
     </div>
@@ -317,17 +324,49 @@
       const customAlertPlayers = new Map();
 
       const positionKey = 'inprofic-alert-tray-left';
+      const storedDockLeft = window.localStorage.getItem(positionKey);
+      const legacyDockLeft = window.localStorage.getItem('inprofic-commerce-dock-left');
+      let mobileDockMoved = false;
+      function dockWidth() {
+        const measured = dock.getBoundingClientRect().width;
+        if (measured > 0) return measured;
+        if (window.innerWidth <= 767 && !expanded) return Math.min(224, window.innerWidth - 24);
+        return Math.min(352, window.innerWidth - 24);
+      }
       function clampDockLeft(left) {
         const margin = 12;
-        return Math.max(margin, Math.min(left, window.innerWidth - dock.offsetWidth - margin));
+        return Math.max(margin, Math.min(left, window.innerWidth - dockWidth() - margin));
+      }
+      function centerMobileDock() {
+        dock.style.right = 'auto';
+        dock.style.left = '50%';
+        dock.style.transform = 'translateX(-50%)';
       }
       function restoreDockPosition() {
-        const modern = Number(window.localStorage.getItem(positionKey));
-        const legacy = Number(window.localStorage.getItem('inprofic-commerce-dock-left'));
-        const stored = Number.isFinite(modern) ? modern : legacy;
-        if (!Number.isFinite(stored)) return;
+        if (window.innerWidth <= 767) {
+          centerMobileDock();
+          return;
+        }
+        const raw = storedDockLeft !== null ? storedDockLeft : legacyDockLeft;
+        const stored = raw === null ? NaN : Number(raw);
+        if (!Number.isFinite(stored)) {
+          dock.style.left = '';
+          dock.style.right = '.75rem';
+          dock.style.transform = '';
+          return;
+        }
         dock.style.right = 'auto';
+        dock.style.transform = '';
         dock.style.left = `${clampDockLeft(stored)}px`;
+      }
+      function reconcileDockPosition() {
+        if (window.innerWidth <= 767 && !mobileDockMoved) {
+          centerMobileDock();
+        } else if (dock.style.left) {
+          const rect = dock.getBoundingClientRect();
+          dock.style.transform = '';
+          dock.style.left = `${clampDockLeft(rect.left)}px`;
+        }
       }
       if (dragHandle) {
         let dragStartX = 0;
@@ -338,6 +377,7 @@
           dragStartX = event.clientX;
           dragStartLeft = rect.left;
           dock.style.right = 'auto';
+          dock.style.transform = '';
           dock.style.left = `${rect.left}px`;
           dragHandle.setPointerCapture(event.pointerId);
         });
@@ -348,11 +388,15 @@
         dragHandle.addEventListener('pointerup', function (event) {
           if (!dragHandle.hasPointerCapture(event.pointerId)) return;
           dragHandle.releasePointerCapture(event.pointerId);
+          if (window.innerWidth <= 767) mobileDockMoved = true;
           window.localStorage.setItem(positionKey, String(Math.round(dock.getBoundingClientRect().left)));
         });
       }
       window.addEventListener('resize', function () {
-        if (dock.style.left) dock.style.left = `${clampDockLeft(dock.getBoundingClientRect().left)}px`;
+        reconcileDockPosition();
+      });
+      dock.addEventListener('transitionend', function (event) {
+        if (event.propertyName === 'width') reconcileDockPosition();
       });
       restoreDockPosition();
 
@@ -383,6 +427,7 @@
       }
       function setExpanded(value) {
         expanded = !!value;
+        dock.dataset.expanded = expanded ? 'true' : 'false';
         trayBody.classList.toggle('hidden', !expanded);
         trayBody.classList.toggle('flex', expanded);
         trayBody.setAttribute('aria-hidden', expanded ? 'false' : 'true');
@@ -390,6 +435,7 @@
         minimize.classList.toggle('rotate-180', !expanded);
         minimize.setAttribute('aria-label', expanded ? 'Minimize activity alerts' : 'Expand activity alerts');
         selectChannel(activeChannel, false);
+        requestAnimationFrame(reconcileDockPosition);
       }
       function selectInventoryTab(tab, userChoice) {
         activeInventoryTab = tab === 'finished' ? 'finished' : 'raw';
@@ -639,13 +685,14 @@
           return;
         }
         dock.classList.remove('hidden');
+        requestAnimationFrame(reconcileDockPosition);
         if (!channelIsAvailable(activeChannel)) activeChannel = commerceAvailable ? 'commerce' : 'inventory';
         if (!expanded) selectChannel(activeChannel, false);
       }
 
       function desktopAlert(item) {
         if (!('Notification' in window) || Notification.permission !== 'granted') return;
-        const alert = new Notification(item.title, { body: item.message, tag: item.id, renotify: true });
+        const alert = new Notification(item.title, { body: item.message, tag: item.id, renotify: true, icon: '{% static "core/pwa/icon-mark-192.png" %}', badge: '{% static "core/pwa/icon-mark-monochrome-192.png" %}' });
         alert.onclick = function () { window.focus(); window.location.href = item.target_url || '/commerce/'; alert.close(); };
       }
       function renderCommerce(data) {

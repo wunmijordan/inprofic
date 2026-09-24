@@ -256,6 +256,24 @@ INPROFIC provides synthesized foreground tones plus eight bundled audio chimes. 
 When the app/browser is backgrounded or closed, Web Push is durable and repeats
 when due, but the operating system/browser controls the notification sound.
 
+The installed PWA manifest follows the device colour scheme at page load: light
+mode advertises the navy/orange transparent INPROFIC N on the cream launch canvas,
+while dark mode advertises the white/orange transparent N on the navy launch canvas.
+The transparent artwork is deliberately advertised as a regular icon rather than a
+maskable icon, because the maskable standard requires an opaque canvas. Monochrome N
+entries let supporting operating systems tint themed launcher artwork themselves.
+The app-controlled launch overlay
+also follows live `prefers-color-scheme`, holds the matching full wordmark plus the
+orange **Production to Commerce** line for about two seconds, then fades into the
+workspace. Native launcher/splash behaviour remains browser/OS controlled and an
+already-installed app may not refresh its native artwork until that platform refreshes
+the manifest.
+
+Push notifications use the transparent INPROFIC N as the full notification icon and a
+monochrome N as the device badge. Browsers/operating systems that support themed
+or monochrome notification badges may tint that mark automatically for the device
+theme; exact tray/icon treatment remains platform-controlled.
+
 ### Tenant backups and Founder Console backup restore
 
 Reports → Backup is explicitly tenant-scoped. The exporter includes only the

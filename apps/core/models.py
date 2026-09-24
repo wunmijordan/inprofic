@@ -87,13 +87,26 @@ class Business(models.Model):
 
     @staticmethod
     def _contrast_color(value):
-        """Return a readable black/white foreground for a configured hex colour."""
+        """Return whichever brand foreground has the stronger WCAG contrast."""
         try:
-            red, green, blue = (int(value[index:index + 2], 16) for index in (1, 3, 5))
+            channels = [int(value[index:index + 2], 16) / 255 for index in (1, 3, 5)]
         except (TypeError, ValueError):
             return "#FFFFFF"
-        luminance = (red * 299 + green * 587 + blue * 114) / 1000
-        return "#211D1A" if luminance > 150 else "#FFFFFF"
+
+        def luminance(rgb):
+            linear = [
+                channel / 12.92
+                if channel <= 0.04045
+                else ((channel + 0.055) / 1.055) ** 2.4
+                for channel in rgb
+            ]
+            return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+        background = luminance(channels)
+        dark = luminance([0x18 / 255, 0x24 / 255, 0x33 / 255])
+        dark_ratio = (max(background, dark) + 0.05) / (min(background, dark) + 0.05)
+        white_ratio = 1.05 / (background + 0.05)
+        return "#182433" if dark_ratio >= white_ratio else "#FFFFFF"
 
     @property
     def button_text_color(self):

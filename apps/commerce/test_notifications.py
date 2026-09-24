@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 
@@ -261,6 +262,10 @@ class CommerceNotificationTests(TestCase):
             result = dispatch_pending_pushes()
         self.assertEqual(result["sent"], 1)
         send.assert_called_once()
+        payload = json.loads(send.call_args.kwargs["data"])
+        self.assertEqual(payload["icon_light"], "/static/core/pwa/icon-mark-192.png")
+        self.assertEqual(payload["icon_dark"], "/static/core/pwa/icon-mark-on-dark-192.png")
+        self.assertEqual(payload["badge"], "/static/core/pwa/icon-mark-monochrome-192.png")
         notice.refresh_from_db()
         self.assertIsNotNone(notice.push_processed_at)
         delivery = CommercePushDelivery.objects.get(notification=notice, subscription=subscription)
@@ -276,6 +281,8 @@ class CommerceNotificationTests(TestCase):
         self.assertContains(response, "storetrack:storefront-basket:")
         self.assertContains(response, "storetrack:storefront-order-history:")
         self.assertContains(response, "Track orders")
+        self.assertContains(response, "--brand-dark-contrast:")
+        self.assertContains(response, "storefront-brand-surface")
         self.assertContains(response, "localStorage.setItem")
         self.assertContains(response, "Find your next favourite.")
         self.assertNotContains(response, "Available now")

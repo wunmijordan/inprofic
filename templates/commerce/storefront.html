@@ -12,10 +12,14 @@
   <style>
     @font-face { font-family:'Sora'; src:url('{% static "core/fonts/Sora-Variable.ttf" %}') format('truetype'); font-weight:100 800; font-style:normal; font-display:swap; }
     @font-face { font-family:'Fraunces'; src:url('{% static "core/fonts/Fraunces-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
-    :root { --brand: {{ store_business.accent_color }}; --brand-dark: {{ store_business.background_color }}; --tenant-button: {{ store_business.accent_color }}; --tenant-button-contrast: {{ store_business.button_text_color|default:'#FFFFFF' }}; }
+    :root { --brand: {{ store_business.accent_color }}; --brand-dark: {{ store_business.background_color }}; --brand-dark-contrast: {{ store_business.background_text_color|default:'#FFFFFF' }}; --tenant-button: {{ store_business.accent_color }}; --tenant-button-contrast: {{ store_business.button_text_color|default:'#FFFFFF' }}; }
     body { font-family: 'Sora', sans-serif; background: #f7f4ee; color: #211d1a; }
     .font-display { font-family: 'Fraunces', serif; }
-    .catalogue-noise { background-image: radial-gradient(rgba(255,255,255,.16) 1px, transparent 1px); background-size: 18px 18px; }
+    .catalogue-noise { background-image:radial-gradient(color-mix(in srgb,var(--brand-dark-contrast) 16%,transparent) 1px,transparent 1px);background-size:18px 18px; }
+    .storefront-brand-surface { background:var(--brand-dark)!important;color:var(--brand-dark-contrast)!important; }
+    .storefront-brand-muted { color:color-mix(in srgb,var(--brand-dark-contrast) 68%,transparent)!important; }
+    .storefront-brand-control { color:var(--brand-dark-contrast)!important;border-color:color-mix(in srgb,var(--brand-dark-contrast) 20%,transparent)!important;background:color-mix(in srgb,var(--brand-dark) 78%,transparent)!important; }
+    .storefront-brand-inverse { background:var(--brand-dark-contrast)!important;color:var(--brand-dark)!important; }
     .product-card { box-shadow: 0 14px 42px rgba(43,36,31,.08); transition: transform .24s ease, box-shadow .24s ease; }
     .product-card:hover { transform: translateY(-4px); box-shadow: 0 22px 55px rgba(43,36,31,.14); }
     .product-card img { transition: transform .55s cubic-bezier(.2,.8,.2,1); }
@@ -29,7 +33,7 @@
   <script src="{% static 'core/js/form-experience.js' %}" defer></script>
 </head>
 <body class="min-h-screen">
-  <header class="relative isolate overflow-hidden text-white" style="background:var(--brand-dark)">
+  <header class="storefront-brand-surface relative isolate overflow-hidden">
     {% if commerce_settings.storefront_hero_image %}
     <div class="absolute inset-y-0 right-0 w-full md:w-[58%]">
       <img src="{{ commerce_settings.storefront_hero_image.url }}" alt="" class="h-full w-full object-cover opacity-75" style="object-position:{{ commerce_settings.storefront_hero_image_position }}">
@@ -41,14 +45,14 @@
       <nav class="flex items-center justify-between gap-4">
         <a href="{% url 'storefront' store_business.slug %}" class="flex min-w-0 items-center gap-3">
           {% if store_business.storefront_logo %}<img src="{{ store_business.storefront_logo.url }}" alt="{{ store_business.name }} logo" class="h-11 w-11 shrink-0 rounded-xl border border-white/20 bg-white/95 object-contain p-1 shadow-sm">{% endif %}
-          <span class="min-w-0"><span class="block truncate font-display text-xl font-semibold sm:text-2xl">{{ store_business.name }}</span><span class="mt-0.5 block text-[10px] font-bold uppercase tracking-[.22em] text-white/55">{{ storefront_copy.range_label }}</span></span>
+          <span class="min-w-0"><span class="block truncate font-display text-xl font-semibold sm:text-2xl">{{ store_business.name }}</span><span class="storefront-brand-muted mt-0.5 block text-[10px] font-bold uppercase tracking-[.22em]">{{ storefront_copy.range_label }}</span></span>
         </a>
-        <div class="flex items-center gap-2"><button type="button" id="open-order-history" class="hidden rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold backdrop-blur transition hover:bg-white/20">Track orders</button>{% if storefront_customer %}<a href="{% url 'storefront_customer_account' store_business.slug %}" class="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold backdrop-blur transition hover:bg-white/20">{{ storefront_customer.name|truncatechars:18 }}</a>{% else %}<a href="{% url 'storefront_customer_login' store_business.slug %}" class="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold backdrop-blur transition hover:bg-white/20">Sign in</a>{% endif %}<span class="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold backdrop-blur">{% if order_now_mode %}Order now{% else %}Browse &amp; order{% endif %}</span></div>
+        <div class="flex items-center gap-2"><button type="button" id="open-order-history" class="storefront-brand-control hidden rounded-full border px-3 py-1.5 text-[11px] font-semibold backdrop-blur transition hover:brightness-95">Track orders</button>{% if storefront_customer %}<a href="{% url 'storefront_customer_account' store_business.slug %}" class="storefront-brand-control rounded-full border px-3 py-1.5 text-[11px] font-semibold backdrop-blur transition hover:brightness-95">{{ storefront_customer.name|truncatechars:18 }}</a>{% else %}<a href="{% url 'storefront_customer_login' store_business.slug %}" class="storefront-brand-control rounded-full border px-3 py-1.5 text-[11px] font-semibold backdrop-blur transition hover:brightness-95">Sign in</a>{% endif %}<span class="storefront-brand-control rounded-full border px-3 py-1.5 text-[11px] font-semibold backdrop-blur">{% if order_now_mode %}Order now{% else %}Browse &amp; order{% endif %}</span></div>
       </nav>
       <div class="mt-8 max-w-xl sm:mt-10">
-        <p class="text-[11px] font-bold uppercase tracking-[.22em] text-white/65">{{ storefront_copy.eyebrow }}</p>
+        <p class="storefront-brand-muted text-[11px] font-bold uppercase tracking-[.22em]">{{ storefront_copy.eyebrow }}</p>
         <h1 class="mt-3 font-display text-3xl font-semibold leading-[1.08] sm:text-5xl">{{ commerce_settings.storefront_headline|default:storefront_copy.headline }}</h1>
-        <p class="mt-4 max-w-lg text-sm leading-6 text-white/75">{{ commerce_settings.public_note|default:storefront_copy.intro }}</p>
+        <p class="storefront-brand-muted mt-4 max-w-lg text-sm leading-6">{{ commerce_settings.public_note|default:storefront_copy.intro }}</p>
       </div>
     </div>
   </header>
@@ -155,8 +159,8 @@
   <footer class="border-t border-stone-200 bg-white px-5 py-8 text-center"><p class="flex flex-col items-center gap-1.5 text-xs text-stone-400"><img src="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" alt="INPROFIC" class="max-w-full" style="width:8.5rem;height:auto" width="1944" height="309"><span>Ordering made simple</span></p></footer>
 
   <div id="basket-dock" class="pointer-events-none fixed inset-x-0 bottom-4 z-30 hidden px-4">
-    <button type="button" id="open-basket" class="pointer-events-auto mx-auto flex w-full max-w-xl items-center justify-between rounded-2xl border border-white/15 px-4 py-3 text-left text-white shadow-[0_18px_55px_rgba(25,20,17,.32)] backdrop-blur" style="background:color-mix(in srgb,var(--brand-dark) 94%,transparent)">
-      <span><strong class="block text-sm"><span id="basket-count">0</span> selected</strong><small class="text-white/65">Review quantities and checkout</small></span><span class="rounded-xl bg-white px-3 py-2 text-xs font-bold" style="color:var(--brand-dark)">View basket →</span>
+    <button type="button" id="open-basket" class="storefront-brand-surface pointer-events-auto mx-auto flex w-full max-w-xl items-center justify-between rounded-2xl border px-4 py-3 text-left shadow-[0_18px_55px_rgba(25,20,17,.32)] backdrop-blur" style="border-color:color-mix(in srgb,var(--brand-dark-contrast) 18%,transparent);background:color-mix(in srgb,var(--brand-dark) 94%,transparent)!important">
+      <span><strong class="block text-sm"><span id="basket-count">0</span> selected</strong><small class="storefront-brand-muted">Review quantities and checkout</small></span><span class="storefront-brand-inverse rounded-xl px-3 py-2 text-xs font-bold">View basket →</span>
     </button>
   </div>
 

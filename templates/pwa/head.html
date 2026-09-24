@@ -1,16 +1,56 @@
 {% load static %}
 {% include "_brand_icons.html" %}
-{% if user.is_authenticated and biz %}<link rel="manifest" href="{% url 'pwa_manifest_tenant' business_slug=biz.slug %}" crossorigin="use-credentials">{% else %}<link rel="manifest" href="{% url 'pwa_manifest' %}">{% endif %}
-<meta name="theme-color" content="{% if user.is_authenticated and biz %}{{ biz.background_color }}{% else %}#050733{% endif %}">
+{% if user.is_authenticated and biz %}
+  {% url 'pwa_manifest_tenant' business_slug=biz.slug as pwa_manifest_url %}
+  <link id="inprofic-pwa-manifest" rel="manifest" href="{{ pwa_manifest_url }}?theme=light" data-base-href="{{ pwa_manifest_url }}" crossorigin="use-credentials">
+{% else %}
+  {% url 'pwa_manifest' as pwa_manifest_url %}
+  <link id="inprofic-pwa-manifest" rel="manifest" href="{{ pwa_manifest_url }}?theme=light" data-base-href="{{ pwa_manifest_url }}">
+{% endif %}
+<link id="inprofic-apple-touch-icon" rel="apple-touch-icon" sizes="180x180" href="{% static 'core/pwa/icon-mark-180.png' %}" data-light-href="{% static 'core/pwa/icon-mark-180.png' %}" data-dark-href="{% static 'core/pwa/icon-mark-on-dark-180.png' %}">
+<script>
+  (function () {
+    const manifest = document.getElementById('inprofic-pwa-manifest');
+    const touchIcon = document.getElementById('inprofic-apple-touch-icon');
+    if ((!manifest && !touchIcon) || !window.matchMedia) return;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const syncInstalledTheme = function () {
+      const dark = media.matches;
+      if (manifest) {
+        const scheme = dark ? 'dark' : 'light';
+        const separator = manifest.dataset.baseHref.includes('?') ? '&' : '?';
+        manifest.href = `${manifest.dataset.baseHref}${separator}theme=${scheme}`;
+      }
+      if (touchIcon) touchIcon.href = dark ? touchIcon.dataset.darkHref : touchIcon.dataset.lightHref;
+      if ('serviceWorker' in navigator) {
+        const message = { type: 'INPROFIC_THEME', theme: dark ? 'dark' : 'light' };
+        if (navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage(message);
+        navigator.serviceWorker.ready.then(registration => registration.active?.postMessage(message)).catch(() => {});
+      }
+    };
+    syncInstalledTheme();
+    if (media.addEventListener) media.addEventListener('change', syncInstalledTheme);
+    else if (media.addListener) media.addListener(syncInstalledTheme);
+  }());
+</script>
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#FFF1E8">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#050733">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="{% if user.is_authenticated and biz %}{{ biz.name|truncatechars:30 }}{% else %}INPROFIC{% endif %}">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="apple-touch-icon" sizes="180x180" href="{% static 'core/pwa/icon-mark-180.png' %}">
 <style>
-  html.pwa-launching,html.pwa-launching body{min-height:100%;overflow:hidden;background:#fff1e8}
-  html.pwa-launching body>*{visibility:hidden!important}
-  html.pwa-launching body::before{content:"";position:fixed;inset:0;z-index:2147483647;visibility:visible;background:#fff1e8 url("{% static 'core/brand/inprofic-wordmark-on-light.png' %}") center/ min(76vw,22rem) auto no-repeat}
+  html.pwa-launching,html.pwa-launching body{min-height:100%;overflow:hidden}
+  html.pwa-launching body::before{content:"";position:fixed;inset:0;z-index:2147483646;background:#fff1e8 url("{% static 'core/brand/inprofic-wordmark-on-light.png' %}") center/ min(76vw,22rem) auto no-repeat;opacity:1;pointer-events:none;transition:opacity .38s ease}
+  html.pwa-launching body::after{content:"Production to Commerce";position:fixed;z-index:2147483647;left:50%;top:calc(50% + 3.35rem);transform:translateX(-50%);width:min(86vw,28rem);color:#d14900;font-family:'Sora',system-ui,sans-serif;font-size:clamp(.68rem,2.8vw,.85rem);font-weight:800;letter-spacing:.12em;text-align:center;text-transform:uppercase;opacity:1;pointer-events:none;transition:opacity .38s ease}
+  html.pwa-launching.pwa-launch-fading body::before,html.pwa-launching.pwa-launch-fading body::after{opacity:0}
+  @media(prefers-color-scheme:dark){
+    html.pwa-launching body::before{background-color:#050733;background-image:url("{% static 'core/brand/inprofic-wordmark-on-dark.png' %}")}
+    html.pwa-launching body::after{color:#f2782d}
+  }
+  @media(prefers-reduced-motion:reduce){
+    html.pwa-launching body::before,html.pwa-launching body::after{transition:none}
+  }
 </style>
 <script>
   (function () {
@@ -19,12 +59,17 @@
     const key = 'inprofic:pwa-launch-shown';
     try { if (window.sessionStorage.getItem(key)) return; } catch (_error) {}
     document.documentElement.classList.add('pwa-launching');
-    document.addEventListener('DOMContentLoaded', function () {
+    const finish = function () {
       window.setTimeout(function () {
-        document.documentElement.classList.remove('pwa-launching');
-        try { window.sessionStorage.setItem(key, '1'); } catch (_error) {}
-      }, 650);
-    }, { once: true });
+        document.documentElement.classList.add('pwa-launch-fading');
+        window.setTimeout(function () {
+          document.documentElement.classList.remove('pwa-launching', 'pwa-launch-fading');
+          try { window.sessionStorage.setItem(key, '1'); } catch (_error) {}
+        }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 400);
+      }, 2000);
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', finish, { once: true });
+    else finish();
   }());
 </script>
 <link rel="stylesheet" href="{% static 'core/pwa/install.css' %}">

@@ -17,6 +17,7 @@
     html { scroll-behavior:smooth; }
     body { font-family:'Sora',sans-serif; background:var(--paper); color:#211d1a; }
     .font-display { font-family:'Fraunces',serif; }
+    .font-subheading { font-family:'Sora',sans-serif; font-weight:800; letter-spacing:-.025em; }
     .hero-grid { background-image:linear-gradient(rgba(255,255,255,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.055) 1px,transparent 1px); background-size:30px 30px; }
     .glass { background:rgba(255,255,255,.09); border:1px solid rgba(255,255,255,.14); backdrop-filter:blur(14px); }
     .soft-card { box-shadow:0 18px 55px rgba(52,34,28,.09); }
@@ -177,7 +178,7 @@
     .ip-demo-channel.internal { background:#fff7ed; color:#c2410c; }
     #storefront-demo .ip-demo-head-copy { height:5rem; min-height:5rem; overflow:visible; }
     #storefront-demo .ip-demo-caption { display:block; min-height:0; overflow:visible; -webkit-line-clamp:unset; }
-    #general-product-demo .ip-demo-head-copy { height:auto; min-height:2.75rem; overflow:visible; }
+    #general-product-demo .ip-demo-head-copy { height:3.75rem; min-height:3.75rem; overflow:hidden; }
     .js [data-reveal] { opacity:0; transform:translateY(34px); transition:opacity .72s ease,transform .72s cubic-bezier(.2,.75,.2,1); transition-delay:var(--reveal-delay,0ms); }
     .js [data-reveal].is-revealed { opacity:1; transform:translateY(0); }
     .js .feature-card.is-flippable[data-reveal] { transform:translateY(34px) !important; }
@@ -197,11 +198,23 @@
     @media(max-width:780px){#storefront-demo .ip-demo-head-copy{height:6.25rem;min-height:6.25rem}.ip-demo-window{height:430px;grid-template-columns:92px minmax(0,1fr)}.ip-demo.is-detailed .ip-demo-window{height:455px}.ip-demo.is-compact .ip-demo-window{height:380px}.ip-demo-form{grid-template-columns:1fr}.promo-bridge-shell{padding-top:1px}.promo-bridge-overlap{position:relative;transform:none;margin:-2rem auto 0}.promo-stage{padding-top:1.5rem}.promo-slide-grid{grid-template-columns:1fr;padding:30px 20px 42px}.promo-media{min-height:210px;transform:none}.promo-media img,.promo-media video{min-height:210px}.promo-animation-marquee::after{font-size:28px}.ip-demo-window,.ip-demo.is-compact .ip-demo-window{grid-template-columns:72px minmax(0,1fr)}.ip-demo-sidebar{padding:13px 7px}.ip-demo-nav button{padding:6px 5px;font-size:8px}.ip-demo-main{padding:12px}.ip-demo-kpis{gap:5px}.ip-demo-kpi{padding:7px}.ip-demo-row{grid-template-columns:minmax(0,1fr) auto}.ip-demo-row>span:nth-child(2){display:none}}
     @media(max-width:780px){
       .ip-demo { touch-action:pan-y; }
-      #general-product-demo .ip-demo-head-copy,#storefront-demo .ip-demo-head-copy { height:auto; min-height:0; overflow:visible; }
+      #storefront-demo .ip-demo-head-copy { height:auto; min-height:0; overflow:visible; }
       .ip-demo-window,.ip-demo.is-compact .ip-demo-window { height:auto; min-height:380px; overflow:visible; }
       .ip-demo.is-detailed .ip-demo-window { height:auto; min-height:455px; }
       .ip-demo-main { height:auto; min-height:380px; overflow:visible; }
       .ip-demo.is-detailed .ip-demo-main { min-height:455px; }
+    }
+    /* The first operational walkthrough must never resize as richer scenes render.
+       Keep its viewport and caption area fixed through tablet/mobile; only the
+       inner operation pane scrolls when a scene needs more vertical room. */
+    @media(max-width:1024px){
+      #general-product-demo .ip-demo-head-copy { height:3.75rem; min-height:3.75rem; overflow:hidden; }
+      #general-product-demo .ip-demo-window { height:430px; min-height:430px; overflow:hidden; }
+      #general-product-demo .ip-demo-main { height:100%; min-height:0; overflow-y:auto; overflow-x:hidden; }
+    }
+    @media(max-width:780px){
+      #general-product-demo .ip-demo-window { height:440px; min-height:440px; overflow:hidden; }
+      #general-product-demo .ip-demo-main { height:100%; min-height:0; overflow-y:auto; overflow-x:hidden; }
     }
     @media (prefers-reduced-motion:reduce) { html{scroll-behavior:auto}.js [data-reveal]{opacity:1!important;transform:none!important;transition:none!important}.feature-card,.flow-step{transition:none}.ambient-orb,.hero-preview,.bridge-card>div,.process-flow::before,.promo-stage::before,.promo-slide,.promo-copy>*,.promo-media,.promo-animation-marquee::after,.promo-progress span::after,.hero-typed-text,.hero-typecursor,.ip-demo-chart i,.ip-demo-pointer,.ip-demo-pointer-ring{animation:none!important;transition:none!important} }
     .plan-card { transition: transform .24s ease, box-shadow .24s ease; }
@@ -316,7 +329,7 @@
               <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M3 21v-13l9 -4l9 4v13" /><path d="M13 13h4v8h-10v-6h6" /><path d="M13 21v-9a1 1 0 0 0 -1 -1h-2a1 1 0 0 0 -1 1v3" />
             </svg>
           </span>
-          <h3 class="mt-4 font-display text-xl font-semibold">Inventory</h3>
+          <h3 class="mt-4 font-subheading text-xl">Inventory</h3>
           <p class="mt-2 text-sm leading-6 text-stone-500">Track raw materials and finished products, warnings, stock movement history, precise units and purchase-to-usage conversions.</p>
         </article>
         <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
@@ -326,7 +339,7 @@
               <path d="M15 19a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" /><path d="M17 17h-11v-14h-2" /><path d="M6 5l14 1l-1 7h-13" />
             </svg>
           </span>
-          <h3 class="mt-4 font-display text-xl font-semibold">Procurement</h3>
+          <h3 class="mt-4 font-subheading text-xl">Procurement</h3>
           <p class="mt-2 text-sm leading-6 text-stone-500">Raise purchase orders, receive arrivals, update landed stock and costs, and retain supplier-side history.</p>
         </article>
         <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
@@ -336,7 +349,7 @@
               <path d="M3.173 17.619a4.63 4.63 0 0 0 3.284 3.26a4.67 4.67 0 0 0 4.487 -1.194c1.85 -1.836 4.07 -10.65 4.07 -10.65s-8.88 2.296 -10.639 4.132a4.59 4.59 0 0 0 -1.202 4.452" />
             </svg>
           </span>
-          <h3 class="mt-4 font-display text-xl font-semibold">Production</h3>
+          <h3 class="mt-4 font-subheading text-xl">Production</h3>
           <p class="mt-2 text-sm leading-6 text-stone-500">Plan work from recipes, formulas or bills of materials; control releases, batches, quality, wastage, offcuts and shortages.</p>
         </article>
         <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
@@ -347,7 +360,7 @@
               <path d="M19 21l0 -10.15" /><path d="M9 21v-4a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v4" />
             </svg>
           </span>
-          <h3 class="mt-4 font-display text-xl font-semibold">Sales & customers</h3>
+          <h3 class="mt-4 font-subheading text-xl">Sales & customers</h3>
           <p class="mt-2 text-sm leading-6 text-stone-500">Handle walk-ins, direct orders, online demand, distribution pricing, customer credit and fulfilment without losing context.</p>
         </article>
         <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
@@ -357,7 +370,7 @@
               <path d="M5 10h14" /><path d="M5 14h14" />
             </svg>
           </span>
-          <h3 class="mt-4 font-display text-xl font-semibold">Finance & expenses</h3>
+          <h3 class="mt-4 font-subheading text-xl">Finance & expenses</h3>
           <p class="mt-2 text-sm leading-6 text-stone-500">See cash accounts, money movements, receivables, payables and expenses with audit-preserving corrections.</p>
         </article>
         <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
@@ -367,7 +380,7 @@
               <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /><path d="M9 17l0 -5" /><path d="M12 17l0 -1" /><path d="M15 17l0 -3" />
             </svg>
           </span>
-          <h3 class="mt-4 font-display text-xl font-semibold">Reports & backup</h3>
+          <h3 class="mt-4 font-subheading text-xl">Reports & backup</h3>
           <p class="mt-2 text-sm leading-6 text-stone-500">Understand stock, sales, procurement, production and financial performance, with practical exports and backup tools.</p>
         </article>
         <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
@@ -377,7 +390,7 @@
               <path d="M5 17h-2v-4m-1 -8h11v12m-4 0h6m4 0h2v-6h-8m0 -5h5l3 5" /><path d="M3 9l4 0" />
             </svg>
           </span>
-          <h3 class="mt-4 font-display text-xl font-semibold">Delivery operations</h3>
+          <h3 class="mt-4 font-subheading text-xl">Delivery operations</h3>
           <p class="mt-2 text-sm leading-6 text-stone-500">Quote delivery fees before payment, run a rider workspace for in-house jobs, and keep in-house and external delivery providers genuinely interchangeable in Hybrid mode.{% if glovo_platform_enabled %} Optionally use Glovo LaaS for live quotes, paid-order dispatch, tracking and status sync.{% endif %}</p>
         </article>
         <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
@@ -387,7 +400,7 @@
               <path d="M10 13l0 .01" /><path d="M10 10a1.5 1.5 0 1 0 -1.14 -2.474" />
             </svg>
           </span>
-          <h3 class="mt-4 font-display text-xl font-semibold">Audit Workspace</h3>
+          <h3 class="mt-4 font-subheading text-xl">Audit Workspace</h3>
           <p class="mt-2 text-sm leading-6 text-stone-500">Give external auditors a read-only, tenant-scoped evidence workspace with flags, queries and exportable audit packs.</p>
         </article>
         <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
@@ -396,7 +409,7 @@
               <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M5 21v-16a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v16l-3 -2l-2 2l-2 -2l-2 2l-2 -2l-3 2m4 -14h6m-6 4h6m-2 4h2" />
             </svg>
           </span>
-          <h3 class="mt-4 font-display text-xl font-semibold">Dedicated in-premise POS</h3>
+          <h3 class="mt-4 font-subheading text-xl">Dedicated in-premise POS</h3>
           <p class="mt-2 text-sm leading-6 text-stone-500">Cashier-only users can land straight in the counter storefront, sell safely, and log out without entering the wider workspace.</p>
         </article>
       </div>
@@ -445,14 +458,14 @@
         <div class="mt-10 grid items-stretch gap-5 lg:grid-cols-3">
           {% for plan in plans %}
           <article class="flex h-full flex-col rounded-3xl border {% if plan.code == 'business_pro' %}border-[#e7bd65]/60 ring-1 ring-[#e7bd65]/20{% else %}border-white/15{% endif %} bg-white/[.07] p-6 backdrop-blur-sm transition hover:-translate-y-1 hover:bg-white/[.1]">
-            <div class="flex items-center justify-between gap-2"><h3 class="font-display text-2xl font-semibold text-white">{{ plan.name }}</h3>{% if plan.code == 'business_pro' %}<span class="rounded-full bg-[#e7bd65] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#050733]">Complete</span>{% endif %}</div>
+            <div class="flex items-center justify-between gap-2"><h3 class="font-subheading text-2xl text-white">{{ plan.name }}</h3>{% if plan.code == 'business_pro' %}<span class="rounded-full bg-[#e7bd65] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#050733]">Complete</span>{% endif %}</div>
             {% if plan.current_monthly_promotion %}
-            <div class="mt-4 flex flex-wrap items-end gap-x-2 gap-y-1"><span class="text-sm text-white/35 line-through">{{ plan.monthly_price|money:"₦" }}</span><span class="font-display text-3xl font-semibold text-[#e7bd65]">{{ plan.promo_monthly_price|money:"₦" }}</span><span class="text-xs text-white/50"> / month</span></div>
+            <div class="mt-4 flex flex-wrap items-end gap-x-2 gap-y-1"><span class="font-mono text-sm text-white/35 line-through">{{ plan.monthly_price|money:"₦" }}</span><span class="font-mono text-3xl font-semibold text-[#e7bd65]">{{ plan.promo_monthly_price|money:"₦" }}</span><span class="text-xs text-white/50"> / month</span></div>
             <p class="mt-2 text-xs font-semibold text-[#f3d99b]">{{ plan.current_monthly_promotion.reason }} · ends {{ plan.current_monthly_promotion.ends_at|date:"j M Y" }}</p>
             {% else %}
-            <div class="mt-4"><span class="font-display text-3xl font-semibold text-[#e7bd65]">{% if plan.is_free_forever %}Free{% else %}{{ plan.monthly_price|money:"₦" }}{% endif %}</span>{% if not plan.is_free_forever %}<span class="text-xs text-white/50"> / month</span>{% endif %}</div>
+            <div class="mt-4"><span class="font-mono text-3xl font-semibold text-[#e7bd65]">{% if plan.is_free_forever %}Free{% else %}{{ plan.monthly_price|money:"₦" }}{% endif %}</span>{% if not plan.is_free_forever %}<span class="text-xs text-white/50"> / month</span>{% endif %}</div>
             {% endif %}
-            {% if plan.is_free_forever %}<p class="mt-1 text-xs text-emerald-300">No expiry and no card required</p>{% elif plan.current_yearly_promotion %}<p class="mt-2 text-xs font-semibold text-emerald-300">{{ plan.promo_yearly_price|money:"₦" }} yearly · {{ plan.current_yearly_promotion.reason }}</p>{% else %}<p class="mt-1 text-xs text-emerald-300">{{ plan.yearly_price|money:"₦" }} yearly{% if plan.code != 'starter' %} · {{ plan.yearly_discount_percent|floatformat:-2 }}% discount{% endif %}</p>{% endif %}
+            {% if plan.is_free_forever %}<p class="mt-1 text-xs text-emerald-300">No expiry and no card required</p>{% elif plan.current_yearly_promotion %}<p class="mt-2 text-xs font-semibold text-emerald-300"><span class="font-mono">{{ plan.promo_yearly_price|money:"₦" }}</span> yearly · {{ plan.current_yearly_promotion.reason }}</p>{% else %}<p class="mt-1 text-xs text-emerald-300"><span class="font-mono">{{ plan.yearly_price|money:"₦" }}</span> yearly{% if plan.code != 'starter' %} · {{ plan.yearly_discount_percent|floatformat:-2 }}% discount{% endif %}</p>{% endif %}
             <div class="mt-5 border-t border-white/10 pt-4 text-xs leading-6 text-white/65">
               <p><strong class="text-white">{% if plan.user_limit %}{{ plan.user_limit }} user{{ plan.user_limit|pluralize }}{% else %}Unlimited users{% endif %}</strong></p>
               <p>{% if plan.additional_service_limit == None %}Unlimited additional service profiles{% elif plan.additional_service_limit %}{{ plan.additional_service_limit }} additional service profile{{ plan.additional_service_limit|pluralize }}{% else %}Single service profile{% endif %}</p>

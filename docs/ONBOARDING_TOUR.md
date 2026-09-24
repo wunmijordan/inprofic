@@ -45,6 +45,9 @@ Then deploy normally and run the project's normal `collectstatic` step. Do **not
 
 ## Display behaviour
 
+- Automatic first-time tours wait about 2.4 seconds after the workspace finishes opening before the card appears, so the newly authenticated user sees the dashboard first. An explicit `?tour=1` replay remains immediate.
+- The step progress bar begins at 0% on first open, grows in both directions with Previous/Next, and keeps its brand gradient visibly moving; each step change also sends a highlight across the filled portion.
+- The final step changes the primary action from **Next** to **Finish**.
 - The original INPROFIC animated flow artwork always remains first.
 - A compact tenant-vertical-aware module preview appears immediately underneath that artwork when no custom file is configured.
 - Wholesale and retail previews stay stock-first; production-led tenants receive material/batch/output examples.

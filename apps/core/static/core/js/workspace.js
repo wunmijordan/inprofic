@@ -14,9 +14,23 @@
     const end = target === 'white' ? 255 : 0;
     return `#${source.map(value => Math.round(value + (end - value) * amount).toString(16).padStart(2,'0')).join('')}`;
   };
+  const blend = (foreground, background, foregroundWeight = .68) => {
+    const fg = [1,3,5].map(index => parseInt(foreground.slice(index,index + 2),16));
+    const bg = [1,3,5].map(index => parseInt(background.slice(index,index + 2),16));
+    const weight = Math.max(0, Math.min(1, foregroundWeight));
+    return `#${fg.map((value,index) => Math.round(value * weight + bg[index] * (1 - weight)).toString(16).padStart(2,'0')).join('')}`;
+  };
+  const relativeLuminance = hex => {
+    const valid = /^#[0-9a-f]{6}$/i.test(hex) ? hex : '#050733';
+    const channels = [1,3,5].map(index => parseInt(valid.slice(index,index + 2),16) / 255);
+    const linear = channels.map(value => value <= .04045 ? value / 12.92 : Math.pow((value + .055) / 1.055, 2.4));
+    return .2126 * linear[0] + .7152 * linear[1] + .0722 * linear[2];
+  };
+  const contrastRatio = (first, second) => (Math.max(first, second) + .05) / (Math.min(first, second) + .05);
   const contrast = hex => {
-    const channels = [1,3,5].map(index => parseInt(hex.slice(index,index + 2),16));
-    return ((channels[0] * 299 + channels[1] * 587 + channels[2] * 114) / 1000) > 150 ? '#182433' : '#ffffff';
+    const background = relativeLuminance(hex);
+    const dark = relativeLuminance('#182433');
+    return contrastRatio(background, dark) >= contrastRatio(background, 1) ? '#182433' : '#ffffff';
   };
   const accentOptions = () => ({
     tenant: configuredAccent,
@@ -59,17 +73,20 @@
     const options = backgroundOptions();
     const chosen = options[preference] ? preference : 'tenant';
     const color = options[chosen];
-    const channels = [1,3,5].map(index => parseInt(color.slice(index,index + 2),16));
-    const luminance = (channels[0] * 299 + channels[1] * 587 + channels[2] * 114) / 1000;
-    const darkBase = mix(color, 'black', luminance > 150 ? .72 : .28);
+    const surfaceText = contrast(color);
+    const darkBase = mix(color, 'black', surfaceText === '#182433' ? .72 : .28);
     root.dataset.backgroundPreference = chosen;
     root.style.setProperty('--tenant-background', color);
     root.style.setProperty('--tenant-background-contrast', contrast(color));
     // Canvas and surface choices are intentionally independent. The fixed
     // canvas stays neutral while primary cards keep the exact palette colour.
+    const mutedSurface = mix(color,'black',.08);
+    const mutedSurfaceText = contrast(mutedSurface);
     root.style.setProperty('--ui-dark-bg', useDefaultDarkCanvas ? 'var(--ui-default-dark-canvas, #111827)' : mix(darkBase,'white',.18));
     root.style.setProperty('--ui-dark-surface', color);
-    root.style.setProperty('--ui-dark-surface-muted', mix(color,'black',.08));
+    root.style.setProperty('--ui-dark-surface-muted', mutedSurface);
+    root.style.setProperty('--ui-dark-surface-text', surfaceText);
+    root.style.setProperty('--ui-dark-surface-muted-text', blend(mutedSurfaceText, mutedSurface, .76));
     root.style.setProperty('--ui-dark-border', mix(color,'white',.25));
     document.querySelectorAll('[data-background-choice]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.backgroundChoice === chosen)));
     document.querySelectorAll('[data-dark-canvas-toggle]').forEach(toggle => { toggle.checked = useDefaultDarkCanvas; });

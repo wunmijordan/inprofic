@@ -333,6 +333,8 @@ class TenantRoutingTests(TestCase):
         self.assertContains(response, "Try this next")
         self.assertContains(response, "const tourMedia = {")
         self.assertContains(response, "built-in animated art ALWAYS stays above")
+        self.assertContains(response, "const openingDelay = 2400")
+        self.assertContains(response, "if (forced) openTour()")
 
         complete = self.client.post(reverse("onboarding_tour_complete"))
         self.assertEqual(complete.status_code, 200)
