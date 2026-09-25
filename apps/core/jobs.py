@@ -7,7 +7,7 @@ the authenticated HTTP trigger always execute the same job set.
 from django.core.management import call_command
 
 
-SCHEDULED_COMMANDS = ("sync_subscriptions",)
+SCHEDULED_COMMANDS = ("sync_subscriptions", "dispatch_platform_mail")
 
 
 def run_all_jobs(*, stdout=None):

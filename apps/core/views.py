@@ -11,6 +11,7 @@ from django.core import serializers
 from django.db.models import Prefetch, Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from openpyxl import Workbook
@@ -63,10 +64,37 @@ def marketing_home(request):
     )
     starter_plan = next((plan for plan in plans if plan.code == SubscriptionPlan.CODE_STARTER), None)
     trial_policy = SubscriptionPolicySettings.load()
+    from accounts.models import BusinessSubscription, MarketingTrustLogo, MarketingTrustSettings
+    trust_settings = MarketingTrustSettings.objects.filter(pk=1).first()
+    trust_strip_enabled = bool(trust_settings and trust_settings.enabled)
+    trusted_businesses = []
+    manual_trust_logos = []
+    if trust_strip_enabled:
+        paid_subscriptions = BusinessSubscription.objects.filter(
+            status=BusinessSubscription.STATUS_ACTIVE, paid_until__gte=moment
+        ).exclude(plan__code="starter", plan__monthly_price__lte=0)
+        trusted_businesses = list(
+            Business.objects.filter(
+                Q(subscription__in=paid_subscriptions)
+                | Q(subscription_service__subscription__in=paid_subscriptions)
+            )
+            .exclude(storefront_logo="")
+            .order_by("name", "id")
+            .distinct()
+        )
+        manual_trust_logos = list(MarketingTrustLogo.objects.filter(active=True))
+    from django.templatetags.static import static
+    canonical_url = request.build_absolute_uri(reverse("marketing_home"))
     return render(request, "marketing/home.html", {
         "plans": plans, "starter_plan": starter_plan, "marketing_campaigns": marketing_campaigns,
         "general_trial_days": max(1, int(trial_policy.general_trial_days or 30)),
         "plan_feature_matrix": build_plan_feature_matrix(plans),
+        "canonical_url": canonical_url,
+        "social_image_url": request.build_absolute_uri(static("core/brand/inprofic-wordmark-on-dark.png")),
+        "trust_strip_enabled": trust_strip_enabled,
+        "trust_business_count": Business.objects.count() if trust_strip_enabled else 0,
+        "trusted_businesses": trusted_businesses,
+        "manual_trust_logos": manual_trust_logos,
     })
 
 
@@ -1925,3 +1953,19 @@ def backup_json(request):
     response["Content-Disposition"] = f'attachment; filename="inprofic-{business.slug}-backup-{today()}.json"'
     response["X-Content-Type-Options"] = "nosniff"
     return response
+
+
+def robots_txt(request):
+    sitemap = request.build_absolute_uri(reverse("seo_sitemap"))
+    body = f"User-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /users/\nDisallow: /dashboard/\nSitemap: {sitemap}\n"
+    return HttpResponse(body, content_type="text/plain; charset=utf-8")
+
+
+def seo_sitemap(request):
+    urls = [
+        (request.build_absolute_uri(reverse("marketing_home")), "1.0", "weekly"),
+        (request.build_absolute_uri(reverse("signup")), "0.9", "monthly"),
+        (request.build_absolute_uri(reverse("login")), "0.4", "monthly"),
+    ]
+    rows = "".join(f"<url><loc>{loc}</loc><changefreq>{freq}</changefreq><priority>{priority}</priority></url>" for loc, priority, freq in urls)
+    return HttpResponse(f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{rows}</urlset>', content_type="application/xml")

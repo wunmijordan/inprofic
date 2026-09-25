@@ -148,7 +148,7 @@
     "name": "Hosted storefront and Order Now",
     "group": "commerce",
     "audience": "businesses selling online without a custom commerce stack",
-    "proof": "Publish tenant products, take baskets and start payment-first checkout without creating premature operational records.",
+    "proof": "Publish tenant products, show only the selected channel price (or rotate available prices in Full menu), generate shareable tenant QR codes, and take payment-first baskets without premature operational records.",
     "highlight": "",
     "added_on": ""
   },
@@ -157,7 +157,7 @@
     "name": "Headless Commerce API",
     "group": "commerce",
     "audience": "businesses with custom websites or apps",
-    "proof": "External websites consume authoritative catalogue, checkout, payment, delivery and tracking endpoints while keys stay server-side; external pricing exposes Online and Distribution/Bulk only, never the in-premise Physical Store price.",
+    "proof": "External websites consume authoritative catalogue, checkout, payment, delivery and tracking endpoints; catalogue discovery declares the selected-channel price display and 2-second Full menu rotation contract while external pricing never exposes the in-premise price.",
     "highlight": "",
     "added_on": ""
   },
@@ -373,8 +373,26 @@
     "name": "Interactive product demos",
     "group": "experience",
     "audience": "prospective businesses exploring INPROFIC",
-    "proof": "The marketing site provides a vertical-aware click-through workflow plus module-card flip previews and a detailed storefront-to-fulfilment flow.",
+    "proof": "The marketing site provides a vertical-aware workflow, a floating module constellation with flowing brand connectors and viewport-centred previews, plus a detailed storefront-to-fulfilment flow.",
     "highlight": "NEW",
     "added_on": "2026-09-21"
+  },
+  {
+    "id": "platform-mailing-workspace",
+    "name": "Targeted business mailing workspace",
+    "group": "platform operations",
+    "audience": "INPROFIC platform operators",
+    "proof": "Create reusable branded email topics, segment current businesses by service and plan, send immediately, and retry provider failures safely with per-recipient delivery totals.",
+    "highlight": "NEW",
+    "added_on": "2026-09-24"
+  },
+  {
+    "id": "trusted-business-strip",
+    "name": "Founder-managed trusted-business strip",
+    "group": "experience",
+    "audience": "prospective businesses exploring INPROFIC",
+    "proof": "Show a founder-enabled scrolling logo strip above the product demo, automatically limiting tenant logos to paid businesses while the animated platform count includes trials and approved manual logos fill gaps.",
+    "highlight": "NEW",
+    "added_on": "2026-09-25"
   }
 ]

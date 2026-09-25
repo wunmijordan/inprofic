@@ -38,9 +38,13 @@ what was borrowed and what was deliberately left out).
   transaction, with a shortage warning you can override.
 - **Reports** — CSV export for stock, procurement, production, sales, plus
   a full JSON backup.
+- **Founder mailing workspace** — platform-level mailing staff can use reusable INPROFIC-branded topics, business/service/plan targeting, immediate delivery with retry-safe queued fallback, and campaign send analytics without receiving tenant access or Founder subscription controls.
+- **Trial re-registration protection** — existing tenant owner email, phone and exact business name cannot create a second free trial after expiry or cancellation; credentials from a tenant that was hard-deleted are intentionally eligible for registration again.
 - **Shared operational alert tray** — one movable, access-aware tray keeps Commerce/Delivery, Inventory and Finance attention together without merging their underlying record state; Inventory has separate Raw Materials and Finished Goods tabs, while authorised Finance users see unpaid invoices, receivables, payables and balancing anomalies from the live finance records.
 - **Persistent inventory alerts** — separate warning/low conditions for raw materials and finished goods, with tenant-configurable repeat timing, repeating attention sounds, and per-user acknowledgement that never mutates stock.
 - **Commerce payments** — Paystack/Monnify, provider-backed instant bank transfer, and a native no-gateway **Transfer** mode that shows the tenant's bank details, requires proof on public/headless checkout, and uses explicit staff confirmation on in-premise POS.
+- **Commerce reach and pricing** — the Overview includes plain-language customer-source reporting plus tenant QR links; storefront cards show one selected-channel price, while Full menu rotates available channel prices every two seconds and the Headless API declares the same display contract.
+- **Founder-managed trust strip** — the public marketing page can show paid-tenant storefront logos plus founder-uploaded logos, alongside an animated count of all registered businesses including trials.
 - **Delivery** — plan-gated delivery setup with mapped destination centres, radius/diagonal coverage guides,
   precise-address geocoding with map-pin fallback, in-house riders, true interchangeable Hybrid routing, external
   provider-neutral custom courier adapters plus an optional Founder-gated Glovo LaaS v2 plug-in, with live base-to-destination delivery-fee quoting before payment,

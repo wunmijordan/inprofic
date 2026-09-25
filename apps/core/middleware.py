@@ -135,7 +135,7 @@ def _live_tester_mutation_blocked(request):
 
 
 EXEMPT_PREFIXES = (
-    "/accounts/login", "/accounts/logout", "/accounts/signup",
+    "/accounts/login", "/accounts/logout", "/accounts/signup", "/robots.txt", "/sitemap.xml",
     "/business/settings", "/business/switch", "/admin", "/static", "/media/", "/shop/",
     "/health/", "/ops/", "/manifest.webmanifest", "/service-worker.js", "/pwa/",
     "/api/v1/storefronts/", "/api/v1/connectors/", "/api/v1/delivery/providers/",
@@ -149,6 +149,7 @@ SUBSCRIPTION_RECOVERY_PREFIXES = (
     "/users/plans",
     "/users/founder/subscriptions",
     "/users/founder/platform/",
+    "/users/mailing/",
 )
 
 
@@ -208,6 +209,8 @@ class LoginRequiredMiddleware:
             if any(request.path.startswith(prefix) for prefix in SUBSCRIPTION_RECOVERY_PREFIXES):
                 return self.get_response(request)
             if not getattr(request, "business", None):
+                if getattr(request.user, "platform_mail_access", False):
+                    return redirect("platform_mailing_workspace")
                 from django.shortcuts import render
                 return render(request, "accounts/no_business_access.html", status=403)
             # Purpose-specific users land directly in their isolated workspace

@@ -1,13 +1,19 @@
 from django import forms
 from django.contrib.auth import password_validation
 from core.models import Business
-from .models import CustomUser, Role, RoleModulePermission, UserBusiness, UserModulePermission, SubscriptionPlan, SubscriptionPromotion, MarketingPromoCampaign, SubscriptionPolicySettings
+from .models import CustomUser, Role, RoleModulePermission, UserBusiness, UserModulePermission, SubscriptionPlan, SubscriptionPromotion, MarketingPromoCampaign, SubscriptionPolicySettings, PlatformMailTemplate, BusinessTrialIdentity, MarketingTrustSettings, MarketingTrustLogo
 from .services import ensure_permissions, is_business_admin, seed_business_roles
 
 CLS = "w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 focus:border-[#8f172d]"
 
 # POS can be a dedicated cashier-only role or a supplemental per-user permission on an existing role.
 USER_OVERRIDE_MODULES = tuple(RoleModulePermission.MODULE_CHOICES)
+
+def _trial_phone_key(value):
+    return "".join(ch for ch in (value or "") if ch.isdigit())
+
+def _trial_name_key(value):
+    return " ".join((value or "").strip().casefold().split())
 
 
 class BusinessSignupForm(forms.Form):
@@ -33,12 +39,32 @@ class BusinessSignupForm(forms.Form):
 
     def clean_email(self):
         email = (self.cleaned_data.get("email") or "").strip().lower()
-        if CustomUser.objects.filter(email__iexact=email).exists():
-            raise forms.ValidationError("An account already uses this email. Sign in instead.")
+        # Trial eligibility is tied only to currently-existing tenant records.
+        # A hard-deleted tenant is deliberately not consulted here.
+        if (BusinessTrialIdentity.objects.filter(email_key=email.casefold()).exists()
+                or UserBusiness.objects.filter(business__isnull=False, role__key=CustomUser.ROLE_BUSINESS_ADMIN, user__email__iexact=email).exists()):
+            raise forms.ValidationError("This email has already been used for an INPROFIC business and is not eligible for another free trial.")
         return email
 
     def clean(self):
         cleaned = super().clean()
+        business_name = (cleaned.get("business_name") or "").strip()
+        if business_name and (
+            Business.objects.filter(name__iexact=business_name).exists()
+            or BusinessTrialIdentity.objects.filter(business_name_key=_trial_name_key(business_name)).exists()
+        ):
+            self.add_error("business_name", "A current or previously subscribed INPROFIC business already used this exact name and it is not eligible for another free trial.")
+        phone = (cleaned.get("phone") or "").strip()
+        if phone:
+            normalized = _trial_phone_key(phone)
+            if normalized:
+                current_phones = CustomUser.objects.filter(
+                    business_memberships__business__isnull=False,
+                    business_memberships__role__key=CustomUser.ROLE_BUSINESS_ADMIN,
+                ).exclude(phone="").values_list("phone", flat=True).distinct()
+                if (BusinessTrialIdentity.objects.filter(phone_key=normalized).exists()
+                        or any(_trial_phone_key(value) == normalized for value in current_phones)):
+                    self.add_error("phone", "This phone number has already been used for an INPROFIC business and is not eligible for another free trial.")
         password = cleaned.get("password1")
         if password and password != cleaned.get("password2"):
             self.add_error("password2", "The passwords do not match.")
@@ -123,7 +149,7 @@ class FounderUserManagementForm(forms.ModelForm):
         model = CustomUser
         fields = [
             "fullname", "username", "email", "phone",
-            "is_active", "is_staff", "is_superuser",
+            "is_active", "is_staff", "platform_mail_access", "is_superuser",
         ]
 
     def __init__(self, *args, actor=None, **kwargs):
@@ -131,10 +157,13 @@ class FounderUserManagementForm(forms.ModelForm):
         self.actor = actor
         for field in self.fields.values():
             field.widget.attrs["class"] = CLS
-        for name in ("is_active", "is_staff", "is_superuser"):
+        for name in ("is_active", "is_staff", "platform_mail_access", "is_superuser"):
             self.fields[name].widget.attrs["class"] = "h-4 w-4 accent-[#8f172d]"
         self.fields["is_active"].help_text = "Paused accounts cannot sign in, but their history remains intact."
-        self.fields["is_staff"].help_text = "Allows access to Django administration when model permissions also allow it."
+        if not self.instance.pk:
+            self.fields["new_password"].required = True
+        self.fields["is_staff"].help_text = "Django administration access flag. Leave this off for mailing-only project users."
+        self.fields["platform_mail_access"].help_text = "Allows this project-level user to use only the INPROFIC mailing workspace and business mailing analytics."
         self.fields["is_superuser"].help_text = "Grants unrestricted platform access. Use only for trusted founders."
 
     def clean(self):
@@ -144,6 +173,8 @@ class FounderUserManagementForm(forms.ModelForm):
                 if not cleaned.get(field):
                     self.add_error(field, "You cannot remove this access from the account you are currently using.")
         password = cleaned.get("new_password")
+        if not self.instance.pk and not password:
+            self.add_error("new_password", "A password is required for a new project-level user.")
         if password:
             password_validation.validate_password(password, self.instance)
         return cleaned
@@ -352,6 +383,34 @@ class MarketingPromoCampaignForm(forms.ModelForm):
         return cleaned
 
 
+class MarketingTrustSettingsForm(forms.ModelForm):
+    class Meta:
+        model = MarketingTrustSettings
+        fields = ["enabled"]
+        labels = {"enabled": "Show trusted-business strip on the marketing page"}
+        help_texts = {"enabled": "The counter includes every business, including trials. Automatic logos are shown only for currently paid businesses."}
+        widgets = {"enabled": forms.CheckboxInput(attrs={"class": "h-4 w-4 accent-[#8f172d]"})}
+
+
+class MarketingTrustLogoForm(forms.ModelForm):
+    class Meta:
+        model = MarketingTrustLogo
+        fields = ["name", "logo", "sort_order"]
+        labels = {"name": "Business name", "logo": "Logo file", "sort_order": "Display order"}
+        help_texts = {"logo": "Upload the original PNG, JPG or WebP. INPROFIC keeps its natural proportions.", "sort_order": "Lower numbers appear first."}
+        widgets = {
+            "name": forms.TextInput(attrs={"class": CLS, "placeholder": "Business name"}),
+            "logo": forms.ClearableFileInput(attrs={"class": CLS, "accept": ".png,.jpg,.jpeg,.webp,image/*"}),
+            "sort_order": forms.NumberInput(attrs={"class": CLS, "min": 0}),
+        }
+
+    def clean_logo(self):
+        upload = self.cleaned_data["logo"]
+        if getattr(upload, "size", 0) > 10 * 1024 * 1024:
+            raise forms.ValidationError("Choose a logo file no larger than 10 MB.")
+        return upload
+
+
 class AddSubscriptionServiceForm(forms.Form):
     business_name = forms.CharField(max_length=120, widget=forms.TextInput(attrs={"class": CLS}))
     service_type = forms.ChoiceField(choices=Business.VERTICAL_CHOICES, widget=forms.Select(attrs={"class": CLS}))
@@ -448,3 +507,101 @@ class BusinessRestoreForm(forms.Form):
         if getattr(uploaded, "size", 0) > 200 * 1024 * 1024:
             raise forms.ValidationError("Choose a backup file no larger than 200 MB.")
         return uploaded
+
+class PlatformMailContentFormMixin:
+    personalization_help = (
+        "Available: {{ business_name }}, {{ recipient_name }}, "
+        "{{ service }} and {{ plan_name }}."
+    )
+
+    def clean_subject(self):
+        from .mailing_content import validate_personalization
+
+        value = validate_personalization((self.cleaned_data.get("subject") or "").strip())
+        if "\n" in value or "\r" in value:
+            raise forms.ValidationError("Keep the email subject on one line.")
+        return value
+
+    def clean_heading(self):
+        from .mailing_content import validate_personalization
+
+        value = validate_personalization((self.cleaned_data.get("heading") or "").strip())
+        if "\n" in value or "\r" in value:
+            raise forms.ValidationError("Keep the email heading on one line.")
+        return value
+
+    def clean_body_html(self):
+        from .mailing_content import clean_mail_html
+
+        return clean_mail_html(self.cleaned_data.get("body_html") or "")
+
+    def clean(self):
+        cleaned = super().clean()
+        label = (cleaned.get("cta_label") or "").strip()
+        url = (cleaned.get("cta_url") or "").strip()
+        if bool(label) != bool(url):
+            missing = "cta_url" if label else "cta_label"
+            self.add_error(missing, "Provide both the button label and its URL, or leave both blank.")
+        return cleaned
+
+
+class PlatformMailTemplateForm(PlatformMailContentFormMixin, forms.ModelForm):
+    class Meta:
+        model = PlatformMailTemplate
+        fields = ["name", "subject", "heading", "body_html", "cta_label", "cta_url", "active"]
+        widgets = {
+            "body_html": forms.Textarea(attrs={"rows": 14, "data-mail-html-source": ""}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault("class", CLS)
+        self.fields["name"].help_text = "A private name used to find this reusable topic."
+        self.fields["subject"].help_text = self.personalization_help
+        self.fields["heading"].help_text = self.personalization_help
+        self.fields["body_html"].help_text = (
+            "Format the message in the editor. Scripts, embedded content and unsafe links are removed. "
+            + self.personalization_help
+        )
+        self.fields["cta_label"].label = "Button label"
+        self.fields["cta_url"].label = "Button URL"
+        self.fields["active"].help_text = "Only active topics can be loaded into a new campaign."
+
+
+class PlatformMailComposeForm(PlatformMailContentFormMixin, forms.Form):
+    template = forms.ModelChoiceField(
+        queryset=PlatformMailTemplate.objects.none(),
+        required=False,
+        empty_label="Custom message (no saved topic)",
+        label="Start from topic",
+    )
+    subject = forms.CharField(max_length=180, help_text=PlatformMailContentFormMixin.personalization_help)
+    heading = forms.CharField(max_length=180, help_text=PlatformMailContentFormMixin.personalization_help)
+    body_html = forms.CharField(
+        label="Message",
+        help_text=(
+            "Format the message in the editor. Scripts, embedded content and unsafe links are removed. "
+            + PlatformMailContentFormMixin.personalization_help
+        ),
+        widget=forms.Textarea(attrs={"rows": 14, "data-mail-html-source": ""}),
+    )
+    cta_label = forms.CharField(max_length=80, required=False, label="Button label")
+    cta_url = forms.URLField(required=False, label="Button URL")
+    business_ids = forms.CharField(required=True, widget=forms.HiddenInput)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["template"].queryset = PlatformMailTemplate.objects.filter(active=True).order_by("name")
+        for field in self.fields.values():
+            if not isinstance(field.widget, forms.HiddenInput):
+                field.widget.attrs.setdefault("class", CLS)
+
+    def clean_business_ids(self):
+        raw = (self.cleaned_data.get("business_ids") or "").strip()
+        values = [value.strip() for value in raw.split(",") if value.strip()]
+        if not values:
+            raise forms.ValidationError("Choose at least one business recipient.")
+        if len(values) > 10000 or any(not value.isdigit() for value in values):
+            raise forms.ValidationError("The selected recipient list is invalid. Refresh and try again.")
+        return tuple(dict.fromkeys(int(value) for value in values))

@@ -57,6 +57,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     phone = models.CharField(max_length=30, blank=True, default="")
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+    platform_mail_access = models.BooleanField(default=False, help_text="Project-level access to the INPROFIC mailing workspace only.")
     date_joined = models.DateTimeField(auto_now_add=True)
 
     USERNAME_FIELD = "username"
@@ -451,6 +452,50 @@ class MarketingPromoCampaign(models.Model):
         super().save(*args, **kwargs)
 
 
+class MarketingTrustSettings(models.Model):
+    """Founder-controlled visibility for the public business-trust strip."""
+
+    enabled = models.BooleanField(default=False)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="marketing_trust_settings_updates",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "marketing trust setting"
+        verbose_name_plural = "marketing trust settings"
+
+    @classmethod
+    def load(cls):
+        row, _ = cls.objects.get_or_create(pk=1)
+        return row
+
+
+class MarketingTrustLogo(models.Model):
+    """Founder-approved logo shown alongside paid tenant storefront logos."""
+
+    name = models.CharField(max_length=120)
+    logo = models.ImageField(
+        upload_to="marketing/trusted-businesses/%Y/%m/",
+        validators=[FileExtensionValidator(["png", "jpg", "jpeg", "webp"])],
+    )
+    active = models.BooleanField(default=True)
+    sort_order = models.PositiveSmallIntegerField(default=50)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="marketing_trust_logos_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "name", "id"]
+
+    def __str__(self):
+        return self.name
+
+
 class SubscriptionPlanModule(models.Model):
     LEVEL_NONE = "none"
     LEVEL_BASIC = "basic"
@@ -803,6 +848,97 @@ class FounderSignupContactState(models.Model):
 
     def __str__(self):
         return self.email_key
+
+
+class BusinessTrialIdentity(models.Model):
+    """Original tenant registration credentials used only for free-trial eligibility.
+
+    It is intentionally CASCADE-bound to Business: a Founder hard-delete removes
+    this blocklist identity as well, making those credentials eligible again.
+    """
+    business = models.OneToOneField(Business, on_delete=models.CASCADE, related_name="trial_identity")
+    email_key = models.CharField(max_length=254, blank=True, default="", db_index=True)
+    phone_key = models.CharField(max_length=40, blank=True, default="", db_index=True)
+    business_name_key = models.CharField(max_length=160, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.business_name_key
+
+
+class PlatformMailTemplate(models.Model):
+    """Reusable Founder-authored mailing topic based on the INPROFIC email shell."""
+    name = models.CharField(max_length=120, unique=True)
+    subject = models.CharField(max_length=180)
+    heading = models.CharField(max_length=180)
+    body_html = models.TextField(help_text="Email body HTML inside the branded INPROFIC shell.")
+    cta_label = models.CharField(max_length=80, blank=True, default="")
+    cta_url = models.URLField(blank=True, default="")
+    active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="platform_mail_templates_created")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class PlatformMailCampaign(models.Model):
+    STATUS_DRAFT = "draft"
+    STATUS_QUEUED = "queued"
+    STATUS_SENDING = "sending"
+    STATUS_SENT = "sent"
+    STATUS_PARTIAL = "partial"
+    STATUS_CHOICES = [(STATUS_DRAFT,"Draft"),(STATUS_QUEUED,"Queued"),(STATUS_SENDING,"Sending"),(STATUS_SENT,"Sent"),(STATUS_PARTIAL,"Partially sent")]
+    template = models.ForeignKey(PlatformMailTemplate, null=True, blank=True, on_delete=models.SET_NULL, related_name="campaigns")
+    subject = models.CharField(max_length=180)
+    heading = models.CharField(max_length=180)
+    body_html = models.TextField()
+    cta_label = models.CharField(max_length=80, blank=True, default="")
+    cta_url = models.URLField(blank=True, default="")
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=STATUS_DRAFT)
+    total_recipients = models.PositiveIntegerField(default=0)
+    sent_count = models.PositiveIntegerField(default=0)
+    failed_count = models.PositiveIntegerField(default=0)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="platform_mail_campaigns_created")
+    created_at = models.DateTimeField(auto_now_add=True)
+    queued_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class PlatformMailRecipient(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_SENDING = "sending"
+    STATUS_SENT = "sent"
+    STATUS_FAILED = "failed"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_SENDING, "Sending"),
+        (STATUS_SENT, "Sent"),
+        (STATUS_FAILED, "Failed"),
+    ]
+    campaign = models.ForeignKey(PlatformMailCampaign, on_delete=models.CASCADE, related_name="recipients")
+    business_id_snapshot = models.PositiveBigIntegerField(null=True, blank=True, db_index=True)
+    business_name = models.CharField(max_length=180)
+    service = models.CharField(max_length=120, blank=True, default="")
+    plan_name = models.CharField(max_length=120, blank=True, default="")
+    recipient_name = models.CharField(max_length=160, blank=True, default="")
+    email = models.EmailField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    error = models.CharField(max_length=255, blank=True, default="")
+    delivery_attempts = models.PositiveSmallIntegerField(default=0)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [models.UniqueConstraint(fields=["campaign", "business_id_snapshot"], name="unique_platform_campaign_business")]
 
 
 class PlatformEvent(models.Model):

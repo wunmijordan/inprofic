@@ -21,12 +21,19 @@ def _pwa_build_version():
     return re.sub(r"[^A-Za-z0-9._-]", "-", raw)[:40] or "current"
 
 
-def _icons(theme="light"):
+def _icons(theme="light", platform=""):
     # Keep the transparent two-colour N as the canonical installed artwork.
     # Do not advertise it as maskable: that purpose requires an opaque canvas,
     # which would break the explicitly transparent installed-app treatment.
     # Monochrome entries let supported operating systems tint the same N to
     # the device's themed-icon palette automatically.
+    if platform == "windows":
+        # Windows may choose monochrome artwork independently of taskbar colour.
+        # Serve a distinct, dark-mark-only set so a light taskbar stays readable.
+        return [
+            {"src": static("core/pwa/icon-mark-windows-192.png"), "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": static("core/pwa/icon-mark-windows-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "any"},
+        ]
     dark = theme == "dark"
     mark_stem = "icon-mark-on-dark" if dark else "icon-mark"
     return [
@@ -97,7 +104,7 @@ def manifest(request):
             "background_color": _launch_background(request),
             "theme_color": "#050733",
             "categories": ["business", "productivity", "finance"],
-            "icons": _icons(request.GET.get("theme", "light")),
+            "icons": _icons(request.GET.get("theme", "light"), request.GET.get("platform", "")),
             "prefer_related_applications": False,
         }
     )
@@ -126,7 +133,7 @@ def tenant_manifest(request, business_slug):
             "categories": ["business", "productivity", "finance"],
             # Installed app artwork remains INPROFIC by design. The optional
             # tenant logo is storefront-only and is never used as a PWA icon.
-            "icons": _icons(request.GET.get("theme", "light")),
+            "icons": _icons(request.GET.get("theme", "light"), request.GET.get("platform", "")),
             "prefer_related_applications": False,
         },
         tenant=True,
@@ -142,6 +149,8 @@ def service_worker(request):
         static("core/pwa/icon-mark-512.png"),
         static("core/pwa/icon-mark-on-dark-192.png"),
         static("core/pwa/icon-mark-on-dark-512.png"),
+        static("core/pwa/icon-mark-windows-192.png"),
+        static("core/pwa/icon-mark-windows-512.png"),
         static("core/pwa/icon-mark-monochrome-192.png"),
         static("core/pwa/icon-mark-monochrome-512.png"),
         static("core/brand/inprofic-wordmark-on-light.png"),

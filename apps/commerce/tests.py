@@ -6,7 +6,8 @@ from django.test import override_settings
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.utils import timezone
-from accounts.models import BusinessModuleAccess
+from django.urls import reverse
+from accounts.models import BusinessModuleAccess, CustomUser, UserBusiness
 from core.models import Business
 from inventory.models import (
     BulkPackProfile, FinishedGood, FinishedGoodChannelPrice, ProductCategory,
@@ -19,6 +20,7 @@ from .models import (
     StorefrontProduct,
 )
 from .services import accept_intake, create_intake
+from .checkout_services import create_checkout
 from .delivery_services import (
     _destination, _haversine_km, delivery_area_coverage_polygon, resolve_delivery_location,
     serialize_delivery_tracking, update_delivery_status,
@@ -150,7 +152,9 @@ class CommerceApiProductTests(TestCase):
     def test_product_api_exposes_public_image_and_preorder_minimum(self):
         response = self.client.get(f"/api/v1/storefronts/{self.business.slug}/products")
         self.assertEqual(response.status_code, 200)
-        row = response.json()["products"][0]
+        payload = response.json()
+        row = payload["products"][0]
+        self.assertEqual(payload["price_display"], {"selected_channel_only": True, "full_menu_strategy": "rotate", "rotation_interval_ms": 2000, "transition_axis": "vertical"})
         category_payload = {"id": self.category.pk, "name": "Meals", "slug": "meals"}
         self.assertEqual(response.json()["categories"], [category_payload])
         self.assertEqual(row["category"], category_payload)
@@ -432,3 +436,73 @@ class StorefrontTenantLogoTests(TestCase):
             self.assertEqual(response.content.decode().count(business.storefront_logo.url), 1)
             self.assertContains(response, "INPROFIC")
             self.assertNotContains(response, f'<footer class="border-t border-stone-200 bg-white px-5 py-8 text-center"><p class="font-display text-lg font-semibold">{business.name}</p>', html=False)
+
+class CommerceAttributionTests(TestCase):
+    def test_attribution_accepts_utm_and_infers_known_referrer(self):
+        from .attribution import normalize_attribution
+        explicit = normalize_attribution({"utm_source": "Instagram", "utm_medium": "social", "utm_campaign": "launch"})
+        self.assertEqual(explicit["source"], "instagram")
+        self.assertEqual(explicit["medium"], "social")
+        self.assertEqual(explicit["campaign"], "launch")
+        inferred = normalize_attribution({}, referrer="https://www.facebook.com/some-post")
+        self.assertEqual(inferred["source"], "facebook")
+        self.assertEqual(inferred["medium"], "referral")
+
+    def test_checkout_snapshots_normalized_attribution_inside_its_tenant(self):
+        business = Business.objects.create(name="Attributed Shop", slug="attributed-shop", vertical=Business.VERTICAL_RETAIL)
+        good = FinishedGood.raw_objects.create(
+            business=business, name="Desk", unit="piece", units_per_batch=1, stock=5,
+            reorder_level=0, selling_price=Decimal("120.00"),
+        )
+        product = StorefrontProduct.raw_objects.create(
+            business=business, finished_good=good, published=True, allow_online_order=True,
+        )
+        checkout, created = create_checkout(
+            business=business, source=CommerceIntake.SOURCE_STOREFRONT,
+            customer={"name": "Ada"}, items=[{"storefront_product": product, "quantity": "1"}],
+            idempotency_key="attribution-snapshot", order_mode="online",
+            attribution={"utm_source": "WhatsApp", "utm_medium": "social", "utm_campaign": "Launch"},
+        )
+        self.assertTrue(created)
+        self.assertEqual(checkout.business, business)
+        self.assertEqual(checkout.attribution_source, "whatsapp")
+        self.assertEqual(checkout.attribution_medium, "social")
+        self.assertEqual(checkout.attribution_campaign, "Launch")
+
+    def test_storefront_visit_is_recorded_with_generic_source(self):
+        from .models import StorefrontAttributionVisit
+        business = Business.objects.create(name="Tracked Store", slug="tracked-store", vertical=Business.VERTICAL_RETAIL)
+        CommerceSettings.raw_objects.create(business=business, enabled=True, hosted_storefront_enabled=True)
+        response = self.client.get(f"/shop/{business.slug}/?source=whatsapp&campaign=launch")
+        self.assertEqual(response.status_code, 200)
+        visit = StorefrontAttributionVisit.raw_objects.get(business=business)
+        self.assertEqual(visit.attribution_source, "whatsapp")
+        self.assertEqual(visit.attribution_campaign, "launch")
+        self.assertContains(response, 'name="source" value="whatsapp"')
+
+
+class CommerceQrCodeTests(TestCase):
+    def setUp(self):
+        from accounts.services import seed_business_roles
+
+        self.business = Business.objects.create(name="QR Tenant", slug="qr-tenant")
+        BusinessModuleAccess.objects.create(business=self.business, module="commerce", enabled=True)
+        roles = seed_business_roles(self.business)
+        self.user = CustomUser.objects.create_user(username="qr-admin", password="safe-password-123")
+        UserBusiness.objects.create(user=self.user, business=self.business, role=roles[CustomUser.ROLE_BUSINESS_ADMIN])
+        self.client.force_login(self.user)
+        session = self.client.session
+        session["active_business_id"] = self.business.pk
+        session.save()
+
+    def test_qr_is_a_downloadable_png_for_the_active_tenant(self):
+        response = self.client.get(reverse("commerce_qr_code"), {"target": "order_now", "source": "whatsapp", "campaign": "launch"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/png")
+        self.assertTrue(response.content.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertIn("inprofic-qr-tenant-order_now-qr.png", response["Content-Disposition"])
+        self.assertEqual(response["Cache-Control"], "private, no-store, max-age=0")
+
+    def test_qr_rejects_unknown_destinations(self):
+        response = self.client.get(reverse("commerce_qr_code"), {"target": "outside"})
+        self.assertEqual(response.status_code, 400)

@@ -30,16 +30,16 @@
   <section data-commerce-panel="overview">
     <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
       <button type="button" data-commerce-jump="orders" class="text-left bg-white border border-[#E7DFCC] rounded-lg p-4">
-        <div class="text-xs text-stone-500">Recent orders</div><div class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{{ commerce_counts.recent_orders }}</div><div class="mt-1 text-[11px] text-stone-500">Latest commerce intake</div>
+        <div class="text-xs text-stone-500">Recent orders</div><div class="mt-1 text-2xl font-semibold font-mono text-[#8f172d]">{{ commerce_counts.recent_orders }}</div><div class="mt-1 text-[11px] text-stone-500">Latest commerce intake</div>
       </button>
       <button type="button" data-commerce-jump="orders" class="text-left bg-white border border-[#E7DFCC] rounded-lg p-4">
-        <div class="text-xs text-stone-500">Awaiting payment</div><div class="mt-1 text-2xl font-semibold font-display">{{ commerce_counts.awaiting_payment }}</div><div class="mt-1 text-[11px] text-stone-500">No stock is permanently consumed yet</div>
+        <div class="text-xs text-stone-500">Awaiting payment</div><div class="mt-1 text-2xl font-semibold font-mono">{{ commerce_counts.awaiting_payment }}</div><div class="mt-1 text-[11px] text-stone-500">No stock is permanently consumed yet</div>
       </button>
       <button type="button" data-commerce-jump="orders" class="text-left bg-white border border-[#E7DFCC] rounded-lg p-4">
-        <div class="text-xs text-stone-500">Production queue</div><div class="mt-1 text-2xl font-semibold font-display">{{ commerce_counts.production_queue }}</div><div class="mt-1 text-[11px] text-stone-500">Paid made-to-order work awaiting staff</div>
+        <div class="text-xs text-stone-500">Production queue</div><div class="mt-1 text-2xl font-semibold font-mono">{{ commerce_counts.production_queue }}</div><div class="mt-1 text-[11px] text-stone-500">Paid made-to-order work awaiting staff</div>
       </button>
       <button type="button" data-commerce-jump="orders" class="text-left bg-white border border-[#E7DFCC] rounded-lg p-4">
-        <div class="text-xs text-stone-500">Needs review</div><div class="mt-1 text-2xl font-semibold font-display {% if commerce_counts.needs_review %}text-amber-700{% endif %}">{{ commerce_counts.needs_review }}</div><div class="mt-1 text-[11px] text-stone-500">Paid orders that could not auto-process</div>
+        <div class="text-xs text-stone-500">Needs review</div><div class="mt-1 text-2xl font-semibold font-mono {% if commerce_counts.needs_review %}text-amber-700{% endif %}">{{ commerce_counts.needs_review }}</div><div class="mt-1 text-[11px] text-stone-500">Paid orders that could not auto-process</div>
       </button>
     </div>
 
@@ -101,6 +101,36 @@
     <div class="overflow-x-auto bg-white border border-[#E7DFCC] rounded-lg"><table class="w-full text-sm"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Product</th><th>Physical availability</th><th>Published</th><th>Physical</th><th>Online</th><th>Distribution / bulk</th><th></th></tr></thead><tbody>{% for good in products %}<tr class="border-t"><td class="p-2">{{ good.name }}</td><td class="text-center">{{ good.physical_saleable_stock }} {{ good.unit }}</td><td class="text-center">{% if good.storefront_product.published %}✓{% else %}—{% endif %}</td><td class="text-center">{% if good.storefront_product.allow_stock_order %}✓{% else %}—{% endif %}</td><td class="text-center">{% if good.storefront_product.allow_online_order %}✓{% else %}—{% endif %}</td><td class="text-center">{% if good.storefront_product.allow_distribution_order %}✓ · min {{ good.storefront_product.distribution_min_quantity }}{% else %}—{% endif %}</td><td class="p-2 text-right"><a href="{% url 'storefront_product_edit' good.pk %}" class="text-[#8f172d] underline">Configure</a></td></tr>{% empty %}<tr><td colspan="7" class="p-4 text-center text-stone-500">No finished goods yet.</td></tr>{% endfor %}</tbody></table></div>
   </section>
 
+  <section data-commerce-panel="overview" class="mt-7 border-t border-[#E7DFCC] pt-7">
+    <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+      <div><h2 class="font-semibold">Where customers find you</h2><p class="text-xs text-stone-500">See which shared links bring people to your shop and how many become orders. This view covers the last {{ attribution_analytics.days }} days.</p></div>
+      <a href="{% url 'commerce_attribution_export' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">Export CSV</a>
+    </div>
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+      <div class="bg-white border border-[#E7DFCC] rounded-lg p-4"><div class="text-xs text-stone-500">Shop visits</div><div class="mt-1 text-2xl font-semibold font-display font-mono text-[#8f172d]">{{ attribution_analytics.totals.visits }}</div></div>
+      <div class="bg-white border border-[#E7DFCC] rounded-lg p-4"><div class="text-xs text-stone-500">Checkouts</div><div class="mt-1 text-2xl font-semibold font-display font-mono">{{ attribution_analytics.totals.checkouts }}</div></div>
+      <div class="bg-white border border-[#E7DFCC] rounded-lg p-4"><div class="text-xs text-stone-500">Orders</div><div class="mt-1 text-2xl font-semibold font-display font-mono">{{ attribution_analytics.totals.orders }}</div></div>
+      <div class="bg-white border border-[#E7DFCC] rounded-lg p-4"><div class="text-xs text-stone-500">Sales from these visits</div><div class="mt-1 text-2xl font-semibold font-display font-mono">{{ attribution_analytics.totals.revenue|money:biz.currency_symbol }}</div></div>
+    </div>
+    <div class="overflow-x-auto bg-white border border-[#E7DFCC] rounded-lg mb-5">
+      <table class="w-full text-sm"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Source</th><th>Visits</th><th>Checkouts</th><th>Orders</th><th>Revenue</th><th>Visitors who checked out</th><th>Checkouts that became orders</th></tr></thead><tbody>
+      {% for row in attribution_analytics.sources %}<tr class="border-t"><td class="p-2 font-medium capitalize">{{ row.source }}</td><td class="p-2 text-center">{{ row.visits }}</td><td class="p-2 text-center">{{ row.checkouts }}</td><td class="p-2 text-center">{{ row.orders }}</td><td class="p-2 text-center font-mono">{{ row.revenue|money:biz.currency_symbol }}</td><td class="p-2 text-center">{% if row.checkout_rate != None %}{{ row.checkout_rate }}%{% else %}—{% endif %}</td><td class="p-2 text-center">{% if row.order_rate != None %}{{ row.order_rate }}%{% else %}—{% endif %}</td></tr>{% empty %}<tr><td colspan="7" class="p-4 text-center text-stone-500">No attributed storefront activity yet.</td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+    {% if attribution_analytics.campaigns %}<div class="overflow-x-auto bg-white border border-[#E7DFCC] rounded-lg mb-5"><div class="p-4 border-b border-[#E7DFCC]"><h3 class="font-medium">Campaign performance</h3></div><table class="w-full text-sm"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Campaign</th><th>Source</th><th>Checkouts</th><th>Orders</th><th>Revenue</th></tr></thead><tbody>{% for row in attribution_analytics.campaigns %}<tr class="border-t"><td class="p-2 font-medium">{{ row.campaign }}</td><td class="p-2 text-center capitalize">{{ row.source }}</td><td class="p-2 text-center">{{ row.checkouts }}</td><td class="p-2 text-center">{{ row.orders }}</td><td class="p-2 text-center font-mono">{{ row.revenue|money:biz.currency_symbol }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+
+    {% if can_manage_commerce %}<div class="rounded-lg border border-[#E7DFCC] bg-[#FFFDF8] p-4" data-attribution-builder data-storefront-url="{{ storefront_url }}" data-order-now-url="{{ order_now_url }}" data-qr-url="{% url 'commerce_qr_code' %}">
+      <div class="flex flex-wrap items-start justify-between gap-3"><div><h3 class="font-medium">Shareable link & QR code</h3><p class="mt-1 text-xs leading-5 text-stone-500">Create a link or QR code for WhatsApp, Instagram, email, printed material or any other place you share your shop. The optional labels help you compare what works best.</p></div><span class="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-semibold text-stone-500">No separate storefront created</span></div>
+      <div class="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+        <label class="text-xs font-semibold text-stone-600">Destination<select data-track-target class="mt-1.5 h-10 w-full rounded-md border border-[#D9CFB4] bg-white px-2 text-sm font-normal"><option value="order_now">Order Now</option><option value="storefront">Storefront</option></select></label>
+        <label class="text-xs font-semibold text-stone-600">Where will you share it?<input data-track-source maxlength="80" placeholder="WhatsApp, Instagram, shop flyer" class="mt-1.5 h-10 w-full rounded-md border border-[#D9CFB4] bg-white px-2 text-sm font-normal"></label>
+        <label class="text-xs font-semibold text-stone-600">Type of share <span class="font-normal text-stone-400">optional</span><input data-track-medium maxlength="80" placeholder="Social post, QR print, email" class="mt-1.5 h-10 w-full rounded-md border border-[#D9CFB4] bg-white px-2 text-sm font-normal"></label>
+        <label class="text-xs font-semibold text-stone-600 md:col-span-2">Campaign name <span class="font-normal text-stone-400">optional</span><input data-track-campaign maxlength="120" placeholder="Easter offer" class="mt-1.5 h-10 w-full rounded-md border border-[#D9CFB4] bg-white px-2 text-sm font-normal"></label>
+      </div>
+      <div class="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_180px] lg:items-start"><div><div class="text-xs text-stone-500">Generated link</div><div class="mt-1 flex gap-2"><code data-track-output class="min-w-0 flex-1 break-all rounded border border-[#D9CFB4] bg-white px-2 py-2 text-xs"></code><button type="button" data-track-copy class="shrink-0 rounded border border-[#D9CFB4] bg-white px-3 py-2 text-xs font-semibold">Copy</button></div><p class="mt-2 text-[11px] leading-5 text-stone-500">You can share this link anywhere. Visits and orders will be grouped under the labels you entered.</p></div><div class="rounded-lg border border-[#D9CFB4] bg-white p-3 text-center"><img data-track-qr alt="Generated QR code for this business storefront" class="mx-auto h-36 w-36 rounded-lg object-contain"><p data-track-qr-status class="mt-2 text-[11px] text-stone-500" aria-live="polite">Preparing QR code…</p><a data-track-download download="inprofic-storefront-qr.png" class="mt-2 inline-flex text-xs font-semibold text-[#8f172d] underline">Download PNG</a></div></div>
+    </div>{% endif %}
+  </section>
+
   <section data-commerce-panel="connections" style="display:none">
     <div class="mb-3 flex flex-wrap items-end justify-between gap-3"><div><h2 class="font-semibold">Connections</h2><p class="text-xs text-stone-500">Manage the access details used by your website and connected sales platforms.</p></div>{% if can_manage_commerce %}<a href="{% url 'commerce_integration_add' %}" class="px-3 py-2 bg-[#8f172d] text-white rounded-md text-sm">+ Integration</a>{% endif %}</div>
     {% if integrations %}<div class="space-y-3">{% for x in integrations %}
@@ -141,6 +171,40 @@
   try { initial = sessionStorage.getItem('inprofic-commerce-tab') || initial; } catch (_) {}
   if (!panels.some(panel => panel.dataset.commercePanel === initial)) initial = 'overview';
   activate(initial, false);
+
+  const builder = root.querySelector('[data-attribution-builder]');
+  if (builder) {
+    const target = builder.querySelector('[data-track-target]');
+    const source = builder.querySelector('[data-track-source]');
+    const medium = builder.querySelector('[data-track-medium]');
+    const campaign = builder.querySelector('[data-track-campaign]');
+    const output = builder.querySelector('[data-track-output]');
+    const qr = builder.querySelector('[data-track-qr]');
+    const download = builder.querySelector('[data-track-download]');
+    const qrStatus = builder.querySelector('[data-track-qr-status]');
+    qr.addEventListener('load', () => { qrStatus.textContent = 'Ready to scan or download.'; download.removeAttribute('aria-disabled'); });
+    qr.addEventListener('error', () => { qrStatus.textContent = 'The QR code could not be prepared. Refresh and try again.'; download.setAttribute('aria-disabled', 'true'); });
+    const build = () => {
+      const base = target.value === 'storefront' ? builder.dataset.storefrontUrl : builder.dataset.orderNowUrl;
+      const params = new URLSearchParams();
+      if (source.value.trim()) params.set('source', source.value.trim());
+      if (medium.value.trim()) params.set('medium', medium.value.trim());
+      if (campaign.value.trim()) params.set('campaign', campaign.value.trim());
+      const suffix = params.toString();
+      const link = suffix ? `${base}?${suffix}` : base;
+      output.textContent = link;
+      const qrParams = new URLSearchParams(params); qrParams.set('target', target.value);
+      const qrUrl = `${builder.dataset.qrUrl}?${qrParams.toString()}`;
+      qrStatus.textContent = 'Preparing QR code…';
+      download.setAttribute('aria-disabled', 'true');
+      qr.src = qrUrl; download.href = qrUrl;
+    };
+    [target, source, medium, campaign].forEach(node => node.addEventListener(node.tagName === 'SELECT' ? 'change' : 'input', build));
+    builder.querySelector('[data-track-copy]').addEventListener('click', async event => {
+      try { await navigator.clipboard.writeText(output.textContent.trim()); const old=event.currentTarget.textContent; event.currentTarget.textContent='Copied'; setTimeout(()=>event.currentTarget.textContent=old,1200); } catch (_) { window.prompt('Copy this link:', output.textContent.trim()); }
+    });
+    build();
+  }
 })();
 document.querySelectorAll('.copy-btn').forEach(btn => btn.addEventListener('click', async () => {
   const node = document.querySelector(btn.dataset.copy); if (!node) return;

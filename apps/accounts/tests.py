@@ -1340,3 +1340,123 @@ class JSONBusinessRestoreTests(TestCase):
         self.assertEqual(StockMovement.raw_objects.get(business=target).location.name, "Main Store")
         self.assertEqual(result["reconstructed_customers"], 1)
         self.assertEqual(InventoryLocation.raw_objects.filter(business=target, name="Main Store").count(), 1)
+
+
+class PlatformMailingTests(TestCase):
+    def _campaign(self):
+        from .models import PlatformMailCampaign, PlatformMailRecipient
+
+        campaign = PlatformMailCampaign.objects.create(
+            subject="Hello {{ business_name }}",
+            heading="An update for {{ business_name }}",
+            body_html="<p>Hi <strong>{{ recipient_name }}</strong>.</p>",
+            status=PlatformMailCampaign.STATUS_QUEUED,
+            total_recipients=1,
+            queued_at=timezone.now(),
+        )
+        recipient = PlatformMailRecipient.objects.create(
+            campaign=campaign,
+            business_id_snapshot=1,
+            business_name="Acme Bakery",
+            service="Bakery",
+            plan_name="Production",
+            recipient_name="Ada",
+            email="ada@example.com",
+        )
+        return campaign, recipient
+
+    def test_composer_sanitises_html_and_rejects_unknown_tokens(self):
+        from .forms import PlatformMailComposeForm
+
+        form = PlatformMailComposeForm(data={
+            "subject": "Update for {{ business_name }}",
+            "heading": "Hello {{ recipient_name }}",
+            "body_html": (
+                '<p onclick="bad()">Safe {{ business_name }}</p>'
+                '<script>alert(1)</script>'
+                '<a href="javascript:bad()">Unsafe link</a>'
+            ),
+            "cta_label": "",
+            "cta_url": "",
+            "business_ids": "1",
+        })
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertNotIn("script", form.cleaned_data["body_html"])
+        self.assertNotIn("onclick", form.cleaned_data["body_html"])
+        self.assertNotIn("javascript:", form.cleaned_data["body_html"])
+        self.assertIn("{{ business_name }}", form.cleaned_data["body_html"])
+
+        invalid = PlatformMailComposeForm(data={
+            "subject": "Hello {{ unknown_contact }}",
+            "heading": "Update",
+            "body_html": "<p>Message</p>",
+            "business_ids": "1",
+        })
+        self.assertFalse(invalid.is_valid())
+        self.assertIn("subject", invalid.errors)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_dispatch_delivers_and_records_each_recipient(self):
+        from .mailing import dispatch_queued_platform_mail
+        from .models import PlatformMailCampaign, PlatformMailRecipient
+
+        campaign, recipient = self._campaign()
+
+        result = dispatch_queued_platform_mail(campaign_id=campaign.pk)
+
+        self.assertEqual(result["sent"], 1)
+        recipient.refresh_from_db()
+        campaign.refresh_from_db()
+        self.assertEqual(recipient.status, PlatformMailRecipient.STATUS_SENT)
+        self.assertEqual(recipient.delivery_attempts, 1)
+        self.assertIsNotNone(recipient.sent_at)
+        self.assertEqual(campaign.status, PlatformMailCampaign.STATUS_SENT)
+        self.assertEqual(campaign.sent_count, 1)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "Hello Acme Bakery")
+
+    def test_dispatch_retries_transient_failure_then_marks_terminal_failure(self):
+        from unittest.mock import Mock, patch
+
+        from .mailing import dispatch_queued_platform_mail
+        from .models import PlatformMailCampaign, PlatformMailRecipient
+
+        campaign, recipient = self._campaign()
+        connection = Mock()
+        connection.send_messages.side_effect = RuntimeError("provider unavailable")
+
+        with patch("accounts.mailing.get_connection", return_value=connection):
+            first = dispatch_queued_platform_mail(campaign_id=campaign.pk)
+            second = dispatch_queued_platform_mail(campaign_id=campaign.pk)
+            third = dispatch_queued_platform_mail(campaign_id=campaign.pk)
+
+        self.assertEqual(first["retrying"], 1)
+        self.assertEqual(second["retrying"], 1)
+        self.assertEqual(third["failed"], 1)
+        recipient.refresh_from_db()
+        campaign.refresh_from_db()
+        self.assertEqual(recipient.status, PlatformMailRecipient.STATUS_FAILED)
+        self.assertEqual(recipient.delivery_attempts, 3)
+        self.assertEqual(campaign.status, PlatformMailCampaign.STATUS_PARTIAL)
+        self.assertEqual(campaign.failed_count, 1)
+        self.assertEqual(connection.send_messages.call_count, 3)
+
+    def test_mailing_only_user_gets_shared_workspace_and_topic_form(self):
+        user = CustomUser.objects.create_user(
+            username="project-mailer",
+            password="safe-password-123",
+            email="mailer@example.com",
+            platform_mail_access=True,
+        )
+        self.client.force_login(user)
+
+        workspace = self.client.get(reverse("platform_mailing_workspace"))
+        topic_form = self.client.get(reverse("platform_mail_template_add"))
+
+        self.assertEqual(workspace.status_code, 200)
+        self.assertContains(workspace, "Project Mailing")
+        self.assertContains(workspace, "workspace.css")
+        self.assertContains(workspace, "Send campaign now")
+        self.assertEqual(topic_form.status_code, 200)
+        self.assertContains(topic_form, "Build a reusable, branded message")

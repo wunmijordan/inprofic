@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% load core_extras %}{% block content %}
-<div class="max-w-6xl" data-founder-console data-founder-default="{% if request.GET.workspace == 'management' %}management{% elif backup_restore_report or restore_form.errors %}recovery{% elif campaign_instance or promotion_form.errors or campaign_form.errors %}promotions{% else %}plans{% endif %}" data-founder-live-url="{% url 'founder_signup_live_snapshot' %}" data-founder-socket-path="/ws/founder/signups/" data-latest-signup-id="{{ founder_analytics.latest_registration_id|default:0 }}" data-platform-query="{{ platform_query|escape }}">
+<div class="max-w-6xl" data-founder-console data-founder-default="{% if request.GET.workspace == 'management' %}management{% elif backup_restore_report or restore_form.errors %}recovery{% elif campaign_instance or promotion_form.errors or campaign_form.errors or trust_settings_form.errors or trust_logo_form.errors %}promotions{% else %}plans{% endif %}" data-founder-live-url="{% url 'founder_signup_live_snapshot' %}" data-founder-socket-path="/ws/founder/signups/" data-latest-signup-id="{{ founder_analytics.latest_registration_id|default:0 }}" data-platform-query="{{ platform_query|escape }}">
   <h1 class="text-2xl font-semibold font-display text-[#8f172d]">Founder Console</h1>
   <p class="text-sm text-stone-500 mb-4">Superuser-only subscription operations. Manage plans, promotions, subscribers and business recovery from focused workspaces.</p>
   <div id="founder-signup-live-toast" class="pointer-events-none fixed right-4 top-4 z-[190] hidden max-w-sm rounded-xl border border-emerald-200 bg-white px-4 py-3 shadow-xl" role="status" aria-live="polite"><div class="text-[10px] font-black uppercase tracking-[.16em] text-emerald-700">New business signup</div><div id="founder-signup-live-toast-copy" class="mt-1 text-sm font-semibold text-stone-800"></div></div>
@@ -48,7 +48,7 @@
       </div>
     </div>
     <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
-      <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="font-semibold">Native platform management</h2><p class="mt-1 text-xs text-stone-500">Manage businesses and global accounts here without leaving the Founder Console. Django administration remains available as a separate technical tool.</p></div><a href="{% url 'admin:index' %}" target="_blank" rel="noopener" class="rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-medium">Open Django admin ↗</a></div>
+      <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="font-semibold">Native platform management</h2><p class="mt-1 text-xs text-stone-500">Manage businesses and global accounts here without leaving the Founder Console. Django administration remains available as a separate technical tool.</p></div><div class="flex flex-wrap gap-2"><a href="{% url 'platform_mailing_workspace' %}" class="rounded-md border border-[#8f172d] bg-white px-4 py-2 text-sm font-semibold text-[#8f172d]">Mailing workspace</a><a href="{% url 'founder_platform_user_add' %}" class="rounded-md bg-[#050733] px-4 py-2 text-sm font-semibold text-white">Add project user</a><a href="{% url 'admin:index' %}" target="_blank" rel="noopener" class="rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-medium">Open Django admin ↗</a></div></div>
       <form method="get" action="{% url 'founder_subscriptions' %}" class="mt-4 flex flex-col gap-2 sm:flex-row"><input type="hidden" name="workspace" value="management"><input name="platform_q" value="{{ platform_query }}" class="min-w-0 flex-1" placeholder="Search businesses, usernames, email or phone"><button class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Search platform</button>{% if platform_query %}<a href="{% url 'founder_subscriptions' %}?workspace=management#platform-management" class="rounded-md border border-stone-300 bg-white px-4 py-2 text-center text-sm font-medium">Clear</a>{% endif %}</form>
     </div>
     <form id="platform-integrations" method="post" class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">{% csrf_token %}
@@ -175,6 +175,27 @@
       </div>
       <div class="mt-4 flex justify-end"><button name="action" value="save_plan_entitlements" class="rounded-xl bg-[#8f172d] px-5 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30">Save all module access</button></div>
     </form>
+  </section>
+
+  <section id="marketing-trust-strip" data-founder-section="promotions" class="mb-7 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div><h2 class="font-semibold">Trusted-business strip</h2><p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">Show a moving row of business logos above the first marketing demo. The number includes every registered business, including trials; automatic storefront logos come only from currently paid subscriptions.</p></div>
+      <span class="rounded-full bg-[#050733] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white">Founder controlled</span>
+    </div>
+    <form method="post" class="mt-4 rounded-xl border border-[#E7DFCC] bg-white p-4">{% csrf_token %}
+      {% include '_field.html' with field=trust_settings_form.enabled %}
+      <button name="action" value="save_trust_settings" class="mt-3 rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Save strip visibility</button>
+    </form>
+    <form method="post" enctype="multipart/form-data" class="mt-4 grid gap-3 rounded-xl border border-[#E7DFCC] bg-white p-4 md:grid-cols-3">{% csrf_token %}
+      {% for error in trust_logo_form.non_field_errors %}<div class="md:col-span-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{{ error }}</div>{% endfor %}
+      {% include '_field.html' with field=trust_logo_form.name %}
+      {% include '_field.html' with field=trust_logo_form.logo %}
+      {% include '_field.html' with field=trust_logo_form.sort_order %}
+      <div class="md:col-span-3"><button name="action" value="add_trust_logo" class="rounded-md bg-[#050733] px-4 py-2 text-sm font-semibold text-white">Upload logo</button></div>
+    </form>
+    <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {% for logo in trust_logos %}<div class="flex items-center gap-3 rounded-xl border border-[#E7DFCC] bg-white p-3"><div class="grid h-14 w-20 shrink-0 place-items-center rounded-lg bg-stone-50 p-2"><img src="{{ logo.logo.url }}" alt="{{ logo.name }} logo" class="max-h-full max-w-full object-contain"></div><div class="min-w-0 flex-1"><strong class="block truncate text-sm">{{ logo.name }}</strong><span class="text-[11px] text-stone-500">Order {{ logo.sort_order }} · {% if logo.active %}Visible{% else %}Hidden{% endif %}</span></div><form method="post">{% csrf_token %}<input type="hidden" name="trust_logo_id" value="{{ logo.pk }}"><button name="action" value="toggle_trust_logo" class="text-xs font-semibold text-[#8f172d] underline">{% if logo.active %}Hide{% else %}Show{% endif %}</button></form></div>{% empty %}<p class="text-sm text-stone-500 sm:col-span-2 lg:col-span-3">No manually uploaded logos yet. Paid businesses with a storefront logo can still appear automatically.</p>{% endfor %}
+    </div>
   </section>
 
   <section data-founder-section="promotions" class="mb-7 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
@@ -353,7 +374,7 @@
   };
   tabs.forEach(tab => tab.addEventListener('click', () => activate(tab.dataset.founderTab)));
   let initial = root.dataset.founderDefault || 'plans';
-  if (location.hash === '#marketing-promo-campaigns') initial = 'promotions';
+  if (location.hash === '#marketing-promo-campaigns' || location.hash === '#marketing-trust-strip') initial = 'promotions';
   if (location.hash === '#business-recovery') initial = 'recovery';
   if (location.hash === '#platform-management') initial = 'management';
   if (location.hash === '#plan-entitlements') initial = 'plans';

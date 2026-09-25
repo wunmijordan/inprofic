@@ -1,6 +1,10 @@
 import hashlib
 import hmac
 import json
+from collections import defaultdict
+from datetime import timedelta
+from io import BytesIO
+from urllib.parse import urlencode
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from uuid import uuid4
 
@@ -11,7 +15,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db.models import Q
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -26,9 +30,10 @@ from inventory.portioning import public_contents, standard_multiplier
 from .forms import CommerceIntegrationForm, CommerceSettingsForm, StorefrontProductForm
 from .models import (
     CommerceCheckoutSession, CommerceIntegration, CommerceIntake, CommercePayment,
-    CommercePaymentReceipt, CommerceSettings, StorefrontCustomer, StorefrontProduct, DeliveryArea, DeliveryAssignment, DeliverySettings,
+    CommercePaymentReceipt, CommerceSettings, StorefrontAttributionVisit, StorefrontCustomer, StorefrontProduct, DeliveryArea, DeliveryAssignment, DeliverySettings,
 )
 from .services import ChannelMinimumError, _channel_allowed, _channel_minimum, accept_intake, create_intake, switch_intake_to_preorder
+from .attribution import attribution_model_kwargs, normalize_attribution
 from .checkout_services import (
     CheckoutAvailabilityError,
     available_physical_stock,
@@ -49,6 +54,68 @@ from .payment_services import (
     submit_bank_claim,
 )
 
+
+
+
+def _request_attribution(request, payload=None):
+    if payload is None:
+        payload = request.GET if request.method == "GET" else request.POST
+    return normalize_attribution(payload, referrer=request.META.get("HTTP_REFERER", ""))
+
+
+def _track_storefront_visit(request, business, *, target):
+    attribution = _request_attribution(request)
+    if not request.session.session_key:
+        request.session.create()
+    visit_key = request.session.session_key or uuid4().hex
+    StorefrontAttributionVisit.raw_objects.get_or_create(
+        business=business,
+        visit_key=visit_key,
+        target=target,
+        defaults={**attribution_model_kwargs(attribution), "created_by": None},
+    )
+    return attribution
+
+
+def _commerce_attribution_analytics(business, *, days=30):
+    since = timezone.now() - timedelta(days=days)
+    visits = list(StorefrontAttributionVisit.raw_objects.filter(business=business, created_at__gte=since))
+    checkouts = list(CommerceCheckoutSession.raw_objects.filter(business=business, created_at__gte=since))
+    intakes = list(CommerceIntake.raw_objects.filter(business=business, created_at__gte=since).prefetch_related("items"))
+    sources = defaultdict(lambda: {"source": "", "visits": 0, "checkouts": 0, "orders": 0, "revenue": Decimal("0")})
+    campaigns = defaultdict(lambda: {"campaign": "", "source": "", "checkouts": 0, "orders": 0, "revenue": Decimal("0")})
+    for row in visits:
+        key = row.attribution_source or "direct"
+        bucket = sources[key]; bucket["source"] = key; bucket["visits"] += 1
+    for row in checkouts:
+        key = row.attribution_source or "direct"
+        bucket = sources[key]; bucket["source"] = key; bucket["checkouts"] += 1
+        if row.attribution_campaign:
+            ckey = (key, row.attribution_campaign)
+            cb = campaigns[ckey]; cb["source"] = key; cb["campaign"] = row.attribution_campaign; cb["checkouts"] += 1
+    for row in intakes:
+        key = row.attribution_source or "direct"
+        total = row.total
+        bucket = sources[key]; bucket["source"] = key; bucket["orders"] += 1; bucket["revenue"] += total
+        if row.attribution_campaign:
+            ckey = (key, row.attribution_campaign)
+            cb = campaigns[ckey]; cb["source"] = key; cb["campaign"] = row.attribution_campaign; cb["orders"] += 1; cb["revenue"] += total
+    source_rows = sorted(sources.values(), key=lambda r: (r["orders"], r["checkouts"], r["visits"]), reverse=True)
+    for row in source_rows:
+        row["checkout_rate"] = round((row["checkouts"] / row["visits"] * 100), 1) if row["visits"] else None
+        row["order_rate"] = round((row["orders"] / row["checkouts"] * 100), 1) if row["checkouts"] else None
+    campaign_rows = sorted(campaigns.values(), key=lambda r: (r["orders"], r["checkouts"]), reverse=True)
+    return {
+        "days": days,
+        "sources": source_rows,
+        "campaigns": campaign_rows[:20],
+        "totals": {
+            "visits": len(visits),
+            "checkouts": len(checkouts),
+            "orders": len(intakes),
+            "revenue": sum((row.total for row in intakes), Decimal("0")),
+        },
+    }
 
 def _settings_for(business):
     settings, _ = CommerceSettings.raw_objects.get_or_create(business=business, defaults={"created_by": None})
@@ -112,6 +179,9 @@ def commerce_dashboard(request):
             )
         ),
     }
+    attribution_analytics = _commerce_attribution_analytics(request.business)
+    storefront_url = request.build_absolute_uri(reverse("storefront", kwargs={"business_slug": request.business.slug}))
+    order_now_url = request.build_absolute_uri(reverse("storefront_order_now", kwargs={"business_slug": request.business.slug}))
     return render(request, "commerce/dashboard.html", {
         "commerce_settings": settings,
         "products": products,
@@ -119,8 +189,60 @@ def commerce_dashboard(request):
         "checkouts": checkouts,
         "integrations": integrations,
         "commerce_counts": commerce_counts,
+        "attribution_analytics": attribution_analytics,
+        "storefront_url": storefront_url,
+        "order_now_url": order_now_url,
         "can_manage_commerce": is_admin,
     })
+
+
+@login_required
+def commerce_attribution_export(request):
+    analytics = _commerce_attribution_analytics(request.business)
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = 'attachment; filename="commerce-attribution.csv"'
+    import csv
+    writer = csv.writer(response)
+    writer.writerow(["Source", "Visits", "Checkouts", "Orders", "Revenue", "Visit to checkout %", "Checkout to order %"])
+    for row in analytics["sources"]:
+        writer.writerow([row["source"], row["visits"], row["checkouts"], row["orders"], row["revenue"], row["checkout_rate"] or "", row["order_rate"] or ""])
+    return response
+
+
+@login_required
+def commerce_qr_code(request):
+    if not is_business_admin(request.user, request.business):
+        return render(request, "403.html", status=403)
+    target = (request.GET.get("target") or "order_now").strip()
+    routes = {"storefront": "storefront", "order_now": "storefront_order_now"}
+    if target not in routes:
+        return JsonResponse({"detail": "Choose Storefront or Order Now."}, status=400)
+    url = request.build_absolute_uri(reverse(routes[target], kwargs={"business_slug": request.business.slug}))
+    params = {}
+    limits = {"source": 80, "medium": 80, "campaign": 120, "content": 120, "term": 120}
+    for key, limit in limits.items():
+        value = (request.GET.get(key) or "").strip()
+        if value:
+            params[key] = value[:limit]
+    if params:
+        url = f"{url}?{urlencode(params)}"
+    try:
+        import qrcode
+        from qrcode.constants import ERROR_CORRECT_H
+    except ImportError:
+        return JsonResponse({"detail": "QR code support is not installed."}, status=503)
+    qr = qrcode.QRCode(version=None, error_correction=ERROR_CORRECT_H, box_size=12, border=4)
+    qr.add_data(url)
+    qr.make(fit=True)
+    image = qr.make_image(fill_color="#050733", back_color="#FFFFFF").convert("RGB")
+    stream = BytesIO()
+    image.save(stream, format="PNG", optimize=True)
+    response = HttpResponse(stream.getvalue(), content_type="image/png")
+    filename = f"inprofic-{request.business.slug}-{target}-qr.png"
+    response["Content-Disposition"] = f'inline; filename="{filename}"'
+    response["Cache-Control"] = "private, no-store, max-age=0"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @login_required
@@ -260,7 +382,7 @@ def _public_catalog_data(business):
     }
 
 
-def _public_catalog(request, business, settings, *, order_now_mode=False):
+def _public_catalog(request, business, settings, *, order_now_mode=False, attribution=None):
     storefront_copy = vertical_config(business)["storefront"]
     return render(request, "commerce/storefront.html", {
         "store_business": business,
@@ -271,6 +393,7 @@ def _public_catalog(request, business, settings, *, order_now_mode=False):
         "storefront_copy": storefront_copy,
         "storefront_customer": _storefront_customer(request, business),
         "checkout_key": uuid4().hex,
+        "attribution": attribution or _request_attribution(request),
     })
 
 
@@ -328,7 +451,8 @@ def storefront(request,business_slug):
     settings=_settings_for(business)
     if not _commerce_enabled(business) or not settings.hosted_storefront_enabled:
         return render(request,"404.html",status=404)
-    return _public_catalog(request, business, settings)
+    attribution = _track_storefront_visit(request, business, target=StorefrontAttributionVisit.TARGET_STOREFRONT)
+    return _public_catalog(request, business, settings, attribution=attribution)
 
 
 def order_now(request, business_slug):
@@ -336,7 +460,8 @@ def order_now(request, business_slug):
     settings = _settings_for(business)
     if not _commerce_enabled(business) or not settings.order_now_link_enabled:
         return render(request, "404.html", status=404)
-    return _public_catalog(request, business, settings, order_now_mode=True)
+    attribution = _track_storefront_visit(request, business, target=StorefrontAttributionVisit.TARGET_ORDER_NOW)
+    return _public_catalog(request, business, settings, order_now_mode=True, attribution=attribution)
 
 
 @require_http_methods(["POST"])
@@ -409,6 +534,7 @@ def storefront_order(request,business_slug):
             table_reference=request.POST.get("table_reference", ""),
             delivery_quote_id=delivery_quote_id,
             storefront_customer=storefront_customer,
+            attribution=_request_attribution(request),
         )
         return redirect("storefront_checkout", business_slug=business.slug, checkout_id=checkout.public_id)
     except (ValidationError, InvalidOperation, TypeError, ValueError) as exc:
@@ -422,6 +548,7 @@ def storefront_order(request,business_slug):
             "order_now_mode":request.POST.get("catalog_mode") == "order_now",
             "order_error":_validation_message(exc),
             "checkout_key":uuid4().hex,
+            "attribution": _request_attribution(request),
         },status=400)
 
 
@@ -859,7 +986,7 @@ def api_products(request,business_slug):
                 "online_min_quantity": option.get("online_min_quantity"),
                 "distribution_min_quantity": option.get("distribution_min_quantity"),
             })
-    return JsonResponse({"business":business.name,"business_slug":business.slug,"service":business.get_vertical_display(),"categories":categories,"delivery":delivery,"products":rows,"catalogue_items":catalogue_items})
+    return JsonResponse({"business":business.name,"business_slug":business.slug,"service":business.get_vertical_display(),"price_display":{"selected_channel_only":True,"full_menu_strategy":"rotate","rotation_interval_ms":2000,"transition_axis":"vertical"},"categories":categories,"delivery":delivery,"products":rows,"catalogue_items":catalogue_items})
 
 
 @csrf_exempt
@@ -915,6 +1042,7 @@ def api_checkouts(request, business_slug):
             items=items,
             idempotency_key=request.headers.get("Idempotency-Key", ""),
             delivery_quote_id=data.get("delivery_quote_id") or None,
+            attribution=normalize_attribution(data.get("attribution") or {}, referrer=request.META.get("HTTP_REFERER", "")),
         )
         payload = serialize_checkout(checkout)
         payload["created"] = created
@@ -987,7 +1115,7 @@ def api_order_detail(request,business_slug,public_id):
             key: normalized[key]
             for key in ("payment_id", "method", "status", "amount", "currency", "reference", "amount_paid", "balance", "verified_at")
         }
-    return JsonResponse({"id":str(intake.public_id),"number":intake.public_number,"status":intake.status,"order_mode":intake.sales_channel,"fulfilment_mode":intake.ordering_mode,"ordering_mode":intake.ordering_mode,"payment_state":intake.payment_state,"payment":compact_payment,"fulfilment_state":intake.fulfilment_state,"subtotal":str(intake.total - intake.delivery_fee),"delivery_fee":str(intake.delivery_fee),"delivery":_delivery_payload(intake),"total":str(intake.total),"items":[{
+    return JsonResponse({"id":str(intake.public_id),"number":intake.public_number,"status":intake.status,"order_mode":intake.sales_channel,"fulfilment_mode":intake.ordering_mode,"ordering_mode":intake.ordering_mode,"payment_state":intake.payment_state,"payment":compact_payment,"fulfilment_state":intake.fulfilment_state,"attribution":{"source":intake.attribution_source or "direct","medium":intake.attribution_medium,"campaign":intake.attribution_campaign,"content":intake.attribution_content,"term":intake.attribution_term,"referrer":intake.attribution_referrer},"subtotal":str(intake.total - intake.delivery_fee),"delivery_fee":str(intake.delivery_fee),"delivery":_delivery_payload(intake),"total":str(intake.total),"items":[{
         "product": row.finished_good.name,
         "requested": str(row.requested_quantity),
         "unit": row.customer_unit or row.finished_good.unit,

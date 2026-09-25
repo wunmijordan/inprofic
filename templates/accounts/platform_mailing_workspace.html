@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mx-auto max-w-7xl">
+  <header class="mb-5 flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">INPROFIC Project Mailing</p>
+      <h1 class="mt-1 font-display text-2xl font-semibold">Business email composer</h1>
+      <p class="mt-1 max-w-2xl text-sm text-stone-500">Target registered business contacts, personalise one message and deliver it through the shared INPROFIC mail system.</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      {% if request.user.is_superuser %}<a href="{% url 'founder_subscriptions' %}?workspace=management#platform-management" class="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-medium">Founder Console</a>{% endif %}
+      <a href="{% url 'platform_mail_template_add' %}" class="rounded-md bg-[#8f172d] px-3 py-2 text-sm font-semibold text-white">New mailing topic</a>
+    </div>
+  </header>
+
+  <div class="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(19rem,.75fr)]">
+    <section class="rounded-xl border border-[#E7DFCC] bg-white p-5">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 class="font-semibold">Compose and send</h2>
+          <p class="mt-1 text-xs text-stone-500">Messages are attempted immediately and retained safely for automatic retry if the mail provider is unavailable.</p>
+        </div>
+        <span class="rounded-full bg-[#FFF4EA] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[.12em] text-[#8f172d]">{{ business_rows|length }} selected audience</span>
+      </div>
+
+      {% if topics %}
+      <div class="mt-4 flex flex-wrap items-center gap-2">
+        <span class="text-[10px] font-bold uppercase tracking-[.12em] text-stone-400">Saved topics</span>
+        {% for topic in topics %}
+        <a href="?template={{ topic.pk }}" class="rounded-full border border-[#D9CFB4] bg-[#FFFDF8] px-3 py-1.5 text-xs font-medium">{{ topic.name }}</a>
+        <a href="{% url 'platform_mail_template_edit' topic.pk %}" class="text-xs font-semibold text-[#8f172d]">Edit</a>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <form method="post" class="mt-5" id="campaign-form" novalidate>
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="mb-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{{ form.non_field_errors }}</div>{% endif %}
+        {{ form.business_ids }}
+        {% for error in form.business_ids.errors %}<p class="mb-3 text-xs text-rose-600">{{ error }}</p>{% endfor %}
+        <div class="grid gap-x-4 sm:grid-cols-2">
+          {% for field in form %}
+            {% if not field.is_hidden %}
+            <div {% if field.name == 'template' or field.name == 'subject' or field.name == 'heading' or field.name == 'body_html' %}class="sm:col-span-2"{% endif %}>
+              {% include "_field.html" with field=field %}
+            </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+        <div class="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-4">
+          <p class="text-xs text-stone-500">Only the checked contacts in the recipient table will receive this campaign.</p>
+          <button class="rounded-md bg-[#D14900] px-4 py-2.5 text-sm font-bold text-white">Send campaign now</button>
+        </div>
+      </form>
+    </section>
+
+    <aside class="space-y-4">
+      <div class="grid grid-cols-2 gap-3">
+        <div class="rounded-xl border border-[#E7DFCC] bg-white p-4">
+          <div class="text-xs text-stone-500">Businesses</div>
+          <div class="mt-1 font-mono text-2xl font-semibold">{{ total_businesses }}</div>
+        </div>
+        <div class="rounded-xl border border-[#E7DFCC] bg-white p-4">
+          <div class="text-xs text-stone-500">Eligible now</div>
+          <div class="mt-1 font-mono text-2xl font-semibold">{{ business_rows|length }}</div>
+        </div>
+      </div>
+
+      <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4">
+        <h2 class="font-semibold">Service mix</h2>
+        <div class="mt-3 space-y-2 text-xs">
+          {% for row in service_counts %}
+          <div class="flex justify-between gap-3"><span>{{ row.vertical|capfirst }}</span><strong class="font-mono">{{ row.total }}</strong></div>
+          {% empty %}<p class="text-stone-400">No businesses yet.</p>{% endfor %}
+        </div>
+      </div>
+
+      <div class="rounded-xl border border-[#E7DFCC] bg-white p-4">
+        <h2 class="font-semibold">Recent campaigns</h2>
+        <div class="mt-3 space-y-2">
+          {% for campaign in campaigns %}
+          <article class="rounded-lg border border-stone-200 bg-[#FFFDF8] p-3 text-xs">
+            <div class="font-semibold text-stone-800">{{ campaign.subject }}</div>
+            <div class="mt-1 text-stone-500">{{ campaign.get_status_display }} · <span class="font-mono">{{ campaign.sent_count }}/{{ campaign.total_recipients }}</span> sent{% if campaign.failed_count %} · {{ campaign.failed_count }} failed{% endif %}</div>
+            {% if campaign.pending_count or campaign.failed_count %}
+            <form method="post" action="{% url 'platform_mail_campaign_dispatch' campaign.pk %}" class="mt-2">
+              {% csrf_token %}
+              {% if campaign.failed_count %}<input type="hidden" name="retry_failed" value="1">{% endif %}
+              <button class="font-semibold text-[#8f172d]">{% if campaign.failed_count %}Retry failed delivery{% else %}Send queued now{% endif %}</button>
+            </form>
+            {% endif %}
+          </article>
+          {% empty %}<p class="text-xs text-stone-400">No campaigns yet.</p>{% endfor %}
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <section class="mt-5 rounded-xl border border-[#E7DFCC] bg-white p-4">
+    <form method="get" class="mb-4 flex flex-wrap items-end gap-2">
+      <label class="cf-field mb-0 min-w-48 flex-1">
+        <span class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.08em] text-stone-500">Service</span>
+        <select name="service" class="w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-2 text-sm">
+          <option value="">All services</option>
+          <option value="bakery" {% if filter_service == 'bakery' %}selected{% endif %}>Bakery</option>
+          <option value="restaurant" {% if filter_service == 'restaurant' %}selected{% endif %}>Restaurant / Food Service</option>
+          <option value="general" {% if filter_service == 'general' %}selected{% endif %}>General Production</option>
+          <option value="wholesale" {% if filter_service == 'wholesale' %}selected{% endif %}>Wholesale / Distribution</option>
+          <option value="retail" {% if filter_service == 'retail' %}selected{% endif %}>Retail Store</option>
+        </select>
+      </label>
+      <label class="cf-field mb-0 min-w-48 flex-1">
+        <span class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[.08em] text-stone-500">Plan</span>
+        <select name="plan" class="w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-2 text-sm">
+          <option value="">All plans</option>
+          {% for plan in plans %}<option value="{{ plan.pk }}" {% if filter_plan == plan.pk|stringformat:"s" %}selected{% endif %}>{{ plan.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <button class="rounded-md bg-[#050733] px-3 py-2.5 text-sm font-semibold text-white">Apply audience filter</button>
+    </form>
+
+    <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <h2 class="font-semibold">Business recipients</h2>
+        <p class="text-xs text-stone-500">Eligible active Business Admin contacts for the current filter.</p>
+      </div>
+      <label class="flex items-center gap-2 text-xs font-medium"><input type="checkbox" id="select-all" class="h-4 w-4 accent-[#8f172d]" checked> Select all shown</label>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[760px] text-xs">
+        <thead><tr class="border-b border-stone-200 text-left text-stone-500"><th class="w-10 p-2"></th><th class="p-2">Business</th><th class="p-2">Contact</th><th class="p-2">Service</th><th class="p-2">Active plan</th><th class="p-2">Status</th></tr></thead>
+        <tbody>
+          {% for row in business_rows %}
+          <tr class="border-b border-stone-100">
+            <td class="p-2"><input type="checkbox" class="recipient-box h-4 w-4 accent-[#8f172d]" value="{{ row.business.pk }}" checked aria-label="Select {{ row.business.name }}"></td>
+            <td class="p-2 font-semibold">{{ row.business.name }}</td>
+            <td class="p-2">{{ row.owner.fullname|default:row.owner.username }}<br><span class="text-stone-400">{{ row.email }}</span></td>
+            <td class="p-2">{{ row.service }}</td>
+            <td class="p-2">{{ row.plan }}</td>
+            <td class="p-2">{{ row.plan_status }}</td>
+          </tr>
+          {% empty %}<tr><td colspan="6" class="p-6 text-center text-stone-400">No eligible business contacts match this filter.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const hidden = document.getElementById('id_business_ids');
+  const boxes = [...document.querySelectorAll('.recipient-box')];
+  const selectAll = document.getElementById('select-all');
+  if (!hidden) return;
+  const submitted = new Set(hidden.value.split(',').map((value) => value.trim()).filter(Boolean));
+  if (submitted.size) boxes.forEach((box) => { box.checked = submitted.has(box.value); });
+  const sync = () => {
+    hidden.value = boxes.filter((box) => box.checked).map((box) => box.value).join(',');
+    if (selectAll) {
+      selectAll.checked = boxes.length > 0 && boxes.every((box) => box.checked);
+      selectAll.indeterminate = boxes.some((box) => box.checked) && !selectAll.checked;
+    }
+  };
+  boxes.forEach((box) => box.addEventListener('change', sync));
+  selectAll?.addEventListener('change', () => {
+    boxes.forEach((box) => { box.checked = selectAll.checked; });
+    sync();
+  });
+  sync();
+})();
+</script>
+{% include "accounts/_platform_mail_editor.html" %}
+{% endblock %}

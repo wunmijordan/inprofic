@@ -1,0 +1,89 @@
+<script>
+(() => {
+  const source = document.querySelector('textarea[data-mail-html-source]');
+  if (!source || source.dataset.editorReady === '1') return;
+  source.dataset.editorReady = '1';
+
+  const sanitiseForEditor = (html) => {
+    const template = document.createElement('template');
+    template.innerHTML = html || '';
+    template.content.querySelectorAll('script,style,iframe,object,noscript').forEach((node) => node.remove());
+    template.content.querySelectorAll('*').forEach((node) => {
+      [...node.attributes].forEach((attribute) => {
+        const name = attribute.name.toLowerCase();
+        if (name.startsWith('on') || name === 'style') node.removeAttribute(attribute.name);
+        if (name === 'href' && !/^(https?:|mailto:|{{)/i.test(attribute.value.trim())) {
+          node.removeAttribute(attribute.name);
+        }
+      });
+    });
+    return template.innerHTML;
+  };
+
+  const shell = document.createElement('div');
+  shell.className = 'overflow-hidden rounded-lg border border-[#D9CFB4] bg-white';
+  shell.innerHTML = `
+    <div class="flex flex-wrap items-center gap-1 border-b border-[#E7DFCC] bg-[#FFFDF8] p-2" role="toolbar" aria-label="Message formatting">
+      <button type="button" data-command="bold" class="rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs font-bold" aria-label="Bold">Bold</button>
+      <button type="button" data-command="italic" class="rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs italic" aria-label="Italic">Italic</button>
+      <button type="button" data-command="insertUnorderedList" class="rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs" aria-label="Bulleted list">Bullets</button>
+      <button type="button" data-command="insertOrderedList" class="rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs" aria-label="Numbered list">Numbers</button>
+      <button type="button" data-link class="rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs" aria-label="Add link">Link</button>
+      <button type="button" data-command="removeFormat" class="rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs" aria-label="Clear formatting">Clear</button>
+      <button type="button" data-source-toggle class="ml-auto rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs" aria-expanded="false">HTML source</button>
+    </div>
+    <div data-editor contenteditable="true" role="textbox" aria-multiline="true" class="min-h-64 p-3 text-sm leading-7 text-stone-700 outline-none"></div>
+  `;
+  source.parentNode.insertBefore(shell, source);
+  const editor = shell.querySelector('[data-editor]');
+  const sourceToggle = shell.querySelector('[data-source-toggle]');
+  editor.innerHTML = sanitiseForEditor(source.value);
+  source.hidden = true;
+
+  const sync = () => {
+    source.value = editor.innerHTML.trim();
+    source.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+
+  shell.querySelectorAll('[data-command]').forEach((button) => {
+    button.addEventListener('click', () => {
+      editor.focus();
+      document.execCommand(button.dataset.command, false, null);
+      sync();
+    });
+  });
+  shell.querySelector('[data-link]').addEventListener('click', () => {
+    const value = window.prompt('Enter a full https:// or mailto: link');
+    if (!value) return;
+    if (!/^(https?:\/\/|mailto:)/i.test(value.trim())) {
+      window.alert('Use a complete https:// or mailto: link.');
+      return;
+    }
+    editor.focus();
+    document.execCommand('createLink', false, value.trim());
+    sync();
+  });
+  sourceToggle.addEventListener('click', () => {
+    const showingSource = !source.hidden;
+    if (showingSource) {
+      editor.innerHTML = sanitiseForEditor(source.value);
+      source.hidden = true;
+      editor.hidden = false;
+    } else {
+      sync();
+      editor.hidden = true;
+      source.hidden = false;
+      source.focus();
+    }
+    sourceToggle.setAttribute('aria-expanded', String(!showingSource));
+  });
+  editor.addEventListener('input', sync);
+  source.addEventListener('input', () => {
+    if (source.hidden) return;
+    editor.innerHTML = sanitiseForEditor(source.value);
+  });
+  source.form?.addEventListener('submit', () => {
+    if (!editor.hidden) sync();
+  });
+})();
+</script>

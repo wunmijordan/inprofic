@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mx-auto max-w-4xl">
+  <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">{{ eyebrow }}</p>
+      <h1 class="mt-1 font-display text-2xl font-semibold">{{ title }}</h1>
+      <p class="mt-1 text-sm text-stone-500">Build a reusable, branded message for the project mailing workspace.</p>
+    </div>
+    <a href="{% url 'platform_mailing_workspace' %}" class="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-medium">Back to mailing</a>
+  </div>
+
+  <div class="grid gap-5 lg:grid-cols-[1.2fr_.8fr]">
+    <form method="post" class="rounded-xl border border-[#E7DFCC] bg-white p-5" novalidate>
+      {% csrf_token %}
+      {% if form.non_field_errors %}<div class="mb-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{{ form.non_field_errors }}</div>{% endif %}
+      <div class="grid gap-x-4 sm:grid-cols-2">
+        {% for field in form %}
+        <div {% if field.name == 'name' or field.name == 'subject' or field.name == 'heading' or field.name == 'body_html' %}class="sm:col-span-2"{% endif %}>
+          {% include "_field.html" with field=field %}
+        </div>
+        {% endfor %}
+      </div>
+      <div class="mt-3 flex justify-end">
+        <button class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Save mailing topic</button>
+      </div>
+    </form>
+
+    <aside class="h-fit rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4">
+      <h2 class="font-semibold">Personalisation</h2>
+      <p class="mt-1 text-xs leading-5 text-stone-500">These values are replaced separately for each business at delivery time.</p>
+      <div class="mt-3 space-y-2 text-xs">
+        <code class="block rounded-md border border-stone-200 bg-white px-2.5 py-2">{% templatetag openvariable %} business_name {% templatetag closevariable %}</code>
+        <code class="block rounded-md border border-stone-200 bg-white px-2.5 py-2">{% templatetag openvariable %} recipient_name {% templatetag closevariable %}</code>
+        <code class="block rounded-md border border-stone-200 bg-white px-2.5 py-2">{% templatetag openvariable %} service {% templatetag closevariable %}</code>
+        <code class="block rounded-md border border-stone-200 bg-white px-2.5 py-2">{% templatetag openvariable %} plan_name {% templatetag closevariable %}</code>
+      </div>
+      <p class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">Save the topic first, then load it in the composer to choose recipients and send.</p>
+    </aside>
+  </div>
+</div>
+{% include "accounts/_platform_mail_editor.html" %}
+{% endblock %}

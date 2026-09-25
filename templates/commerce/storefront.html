@@ -25,9 +25,13 @@
     .product-card img { transition: transform .55s cubic-bezier(.2,.8,.2,1); }
     .product-card:hover img { transform: scale(1.045); }
     .line-clamp-2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-    .channel-filter[aria-pressed="true"], .category-filter[aria-pressed="true"] { background: var(--brand); color: white; border-color: var(--brand); box-shadow: 0 8px 24px color-mix(in srgb, var(--brand) 22%, transparent); }
+    .channel-filter[aria-pressed="true"], .category-filter[aria-pressed="true"] { background: var(--brand); color: var(--tenant-button-contrast); border-color: var(--brand); box-shadow: 0 8px 24px color-mix(in srgb, var(--brand) 22%, transparent); }
+    .channel-price-pill { display:inline-flex; max-width:100%; overflow:hidden; border:1px solid color-mix(in srgb,var(--brand) 34%,transparent); background:color-mix(in srgb,var(--brand) 12%,transparent); color:#211d1a; box-shadow:inset 0 1px 0 rgba(255,255,255,.65); backdrop-filter:blur(10px); }
+    .channel-price-pill__inner { display:flex; min-width:0; align-items:baseline; gap:.35rem; white-space:nowrap; }
+    .channel-price-pill.is-changing .channel-price-pill__inner { animation:channel-price-slide .36s cubic-bezier(.2,.8,.2,1); }
+    @keyframes channel-price-slide { from { opacity:0; transform:translateY(.8rem); } to { opacity:1; transform:translateY(0); } }
     dialog::backdrop { background: rgba(25,20,17,.68); backdrop-filter: blur(5px); }
-    @media (prefers-reduced-motion: reduce) { .product-card, .product-card img { transition: none; } }
+    @media (prefers-reduced-motion: reduce) { .product-card, .product-card img { transition: none; } .channel-price-pill.is-changing .channel-price-pill__inner { animation:none; } }
     @media (max-width: 640px) { dialog[open] { margin: auto 0 0; width: 100%; max-width: none; border-radius: 1.5rem 1.5rem 0 0; } }
   </style>
   <script src="{% static 'core/js/form-experience.js' %}" defer></script>
@@ -116,9 +120,8 @@
               </div>
             </details>
             {% endif %}
-            <div class="mt-3 space-y-1.5 border-y border-stone-100 py-2.5 text-[11px]">
-              {% if p.allow_online_order %}<div class="flex items-center justify-between gap-3"><span class="truncate text-stone-500">{{ commerce_channels.online }}</span><span class="shrink-0 font-semibold text-stone-900">{{ p.preorder_price|money:store_business.currency_symbol }} <span class="font-normal text-stone-400">/ {{ p.customer_unit }}</span></span></div>{% endif %}
-              {% if p.allow_distribution_order %}<div class="flex items-center justify-between gap-3"><span class="truncate text-stone-500">{{ commerce_channels.distribution }}</span><span class="shrink-0 font-semibold text-stone-900">{{ p.distribution_price|money:store_business.currency_symbol }} <span class="font-normal text-stone-400">/ {{ p.customer_unit }}</span></span></div>{% endif %}
+            <div class="mt-3 border-y border-stone-100 py-2.5 text-[11px]">
+              <span class="channel-price-pill rounded-full px-3 py-1.5" data-channel-price-pill><span class="channel-price-pill__inner"><span data-price-channel class="font-semibold"></span><strong data-price-value></strong><span data-price-unit class="text-stone-500"></span></span></span>
             </div>
             {% if p.allow_distribution_order and p.bulk_pack_options %}
             <label class="mt-3 block text-[10px] font-bold uppercase tracking-[.14em] text-stone-400">{{ commerce_channels.distribution }} option
@@ -143,7 +146,7 @@
             <h3 class="font-display text-lg font-semibold leading-tight text-stone-900">{{ option.name }}</h3>
             <p class="line-clamp-2 mt-1.5 min-h-[2rem] text-xs leading-4 text-stone-500">{{ option.public_note|default:p.finished_good.name }}</p>
             <details class="relative mt-2" data-contents-popover><summary class="inline-flex cursor-pointer list-none items-center gap-1 text-[11px] font-semibold underline decoration-stone-300 underline-offset-4" style="color:var(--brand)">What's included? <span aria-hidden="true">ⓘ</span></summary><div class="absolute left-0 top-7 z-20 w-[min(18rem,78vw)] rounded-2xl border border-stone-200 bg-white p-3.5 text-left shadow-xl"><p class="text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">Plain individual option</p><ul class="mt-2 space-y-1.5 text-xs text-stone-700"><li>{{ p.finished_good.name }}{% if option.public_note %}<span class="ml-1 text-stone-400">· {{ option.public_note }}</span>{% endif %}</li></ul></div></details>
-            <div class="mt-3 space-y-1.5 border-y border-stone-100 py-2.5 text-[11px]">{% if option.online_enabled and option.online_price != None %}<div class="flex items-center justify-between gap-3"><span class="truncate text-stone-500">{{ commerce_channels.online }}</span><span class="shrink-0 font-semibold text-stone-900">{{ option.online_price|money:store_business.currency_symbol }} <span class="font-normal text-stone-400">/ {{ option.customer_unit|default:p.finished_good.unit }}</span></span></div>{% endif %}{% if option.distribution_enabled and option.distribution_price != None %}<div class="flex items-center justify-between gap-3"><span class="truncate text-stone-500">{{ commerce_channels.distribution }}</span><span class="shrink-0 font-semibold text-stone-900">{{ option.distribution_price|money:store_business.currency_symbol }} <span class="font-normal text-stone-400">/ {{ option.customer_unit|default:p.finished_good.unit }}</span></span></div>{% endif %}</div>
+            <div class="mt-3 border-y border-stone-100 py-2.5 text-[11px]"><span class="channel-price-pill rounded-full px-3 py-1.5" data-channel-price-pill><span class="channel-price-pill__inner"><span data-price-channel class="font-semibold"></span><strong data-price-value></strong><span data-price-unit class="text-stone-500"></span></span></span></div>
             <button type="button" class="add-product mt-auto flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-semibold text-white transition hover:brightness-90 focus:outline-none focus:ring-4 focus:ring-stone-200" style="background:var(--brand)"><span class="add-product-label">Add to basket</span><span aria-hidden="true">+</span></button>
           </div>
         </article>
@@ -170,7 +173,7 @@
       <button type="button" id="close-basket" class="flex h-9 w-9 items-center justify-center rounded-full border border-stone-200 bg-white text-xl text-stone-500 shadow-sm hover:text-stone-900" aria-label="Close basket">×</button>
     </div>
     <form id="basket-form" method="post" action="{% url 'storefront_order' store_business.slug %}" class="px-5 pb-7 pt-5 sm:px-7 sm:pb-8">{% csrf_token %}
-      <input type="hidden" name="checkout_key" value="{{ checkout_key }}"><input type="hidden" name="delivery_quote_id" id="delivery-quote-id" value=""><input type="hidden" name="delivery_latitude" id="delivery-latitude" value=""><input type="hidden" name="delivery_longitude" id="delivery-longitude" value=""><input type="hidden" name="catalog_mode" value="{% if order_now_mode %}order_now{% else %}storefront{% endif %}">
+      <input type="hidden" name="checkout_key" value="{{ checkout_key }}"><input type="hidden" name="delivery_quote_id" id="delivery-quote-id" value=""><input type="hidden" name="delivery_latitude" id="delivery-latitude" value=""><input type="hidden" name="delivery_longitude" id="delivery-longitude" value=""><input type="hidden" name="catalog_mode" value="{% if order_now_mode %}order_now{% else %}storefront{% endif %}"><input type="hidden" name="source" value="{{ attribution.source|default:'direct' }}"><input type="hidden" name="medium" value="{{ attribution.medium|default:'' }}"><input type="hidden" name="campaign" value="{{ attribution.campaign|default:'' }}"><input type="hidden" name="content" value="{{ attribution.content|default:'' }}"><input type="hidden" name="term" value="{{ attribution.term|default:'' }}"><input type="hidden" name="referrer" value="{{ attribution.referrer|default:'' }}">
       <div id="basket-items" class="divide-y divide-stone-100 rounded-2xl border border-stone-200 bg-white"></div>
       <p id="basket-mode-error" class="mt-3 hidden rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold leading-5 text-rose-700" role="alert"></p>
       <div class="mt-6 grid gap-3 sm:grid-cols-2">
@@ -267,6 +270,31 @@
           link.append(top, details, action); historyItems.append(link);
         });
       }
+      let priceCycleIndex = 0;
+      function renderCardPrice(card, animate = false) {
+        const modes = card.dataset.modes.trim().split(/\s+/).filter(Boolean);
+        const mode = activeChannel === 'all' ? modes[priceCycleIndex % Math.max(modes.length, 1)] : activeChannel;
+        const pill = card.querySelector('[data-channel-price-pill]');
+        if (!pill || !mode || !modes.includes(mode)) return;
+        let price = Number(card.dataset[`price${mode[0].toUpperCase()}${mode.slice(1)}`] || 0);
+        let unit = card.dataset.unit;
+        if (mode === 'distribution') {
+          const option = card.querySelector('[data-bulk-pack-select]')?.selectedOptions?.[0];
+          if (option?.value) { price = Number(option.dataset.price || price); unit = option.dataset.unit || option.dataset.name || unit; }
+        }
+        card.querySelector('[data-price-channel]').textContent = channelLabels[mode] || mode;
+        card.querySelector('[data-price-value]').textContent = `{{ store_business.currency_symbol }}${price.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+        card.querySelector('[data-price-unit]').textContent = `/ ${unit}`;
+        const shouldSlide = animate && activeChannel === 'all' && modes.length > 1;
+        pill.classList.remove('is-changing');
+        if (shouldSlide) { void pill.offsetWidth; pill.classList.add('is-changing'); }
+      }
+      function refreshCardPrices(animate = false) { cards.forEach(card => renderCardPrice(card, animate)); }
+      window.setInterval(() => {
+        if (activeChannel !== 'all' || document.hidden) return;
+        priceCycleIndex += 1; refreshCardPrices(true);
+      }, 2000);
+
       function applyFilters() {
         const query = search.value.trim().toLowerCase(); let visible = 0;
         cards.forEach(card => {
@@ -280,7 +308,7 @@
       }
       search.addEventListener('input', applyFilters);
       filters.forEach(button => button.addEventListener('click', function () {
-        activeChannel = button.dataset.channel;
+        activeChannel = button.dataset.channel; priceCycleIndex = 0; refreshCardPrices(true);
         filters.forEach(item => item.setAttribute('aria-pressed', item === button ? 'true' : 'false'));
         applyFilters();
       }));
@@ -290,7 +318,7 @@
         applyFilters();
       }));
       reset.addEventListener('click', function () {
-        search.value = ''; activeChannel = 'all'; activeCategory = 'all';
+        search.value = ''; activeChannel = 'all'; activeCategory = 'all'; priceCycleIndex = 0; refreshCardPrices(true);
         filters.forEach(item => item.setAttribute('aria-pressed', item.dataset.channel === 'all' ? 'true' : 'false'));
         categoryFilters.forEach(item => item.setAttribute('aria-pressed', item.dataset.category === 'all' ? 'true' : 'false'));
         applyFilters(); search.focus();
@@ -396,6 +424,7 @@
       }
       document.querySelectorAll('[data-bulk-pack-select]').forEach(select => select.addEventListener('change', function () {
         const card = select.closest('[data-product-card]');
+        renderCardPrice(card, true);
         const existing = basket.get(card.dataset.basketKey || card.dataset.productId);
         if (!existing) return;
         const replacement = productFromCard(card);
@@ -465,6 +494,7 @@
       });
       dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
       historyDialog.addEventListener('click', event => { if (event.target === historyDialog) historyDialog.close(); });
+      refreshCardPrices();
       restoreBasket();
       renderOrderHistory();
     })();

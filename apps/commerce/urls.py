@@ -5,6 +5,8 @@ from . import notification_views
 from . import delivery_views
 
 urlpatterns = [
+    path("attribution/export.csv", views.commerce_attribution_export, name="commerce_attribution_export"),
+    path("qr-code.png", views.commerce_qr_code, name="commerce_qr_code"),
     path("delivery/", delivery_views.delivery_dashboard, name="delivery_dashboard"),
     path("delivery/settings/", delivery_views.delivery_settings, name="delivery_settings"),
     path("delivery/origins/add/", delivery_views.delivery_origin_form, name="delivery_origin_add"),

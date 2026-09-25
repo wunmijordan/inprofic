@@ -10,7 +10,7 @@ INPROFIC supports bakery, restaurant, general-production, wholesale and retail o
 
 ### Interactive marketing demos and vertical-aware onboarding
 
-The public marketing page includes a native click-through product walkthrough that can switch between Bakery, Restaurant & food service, General production, Wholesale and Retail. The workflow changes its terminology and production steps to match the selected service. Module cards can flip into compact operational previews, while the storefront section carries a more detailed external-storefront / in-premise-POS / payment / fulfilment / tracking flow. These are lightweight INPROFIC-native interface simulations rather than third-party recordings.
+The public marketing page includes a native click-through product walkthrough that can switch between Bakery, Restaurant & food service, General production, Wholesale and Retail. The workflow changes its terminology and production steps to match the selected service. The module constellation keeps its floating cards and brand-gradient connector flow; selecting any card opens a sharp, viewport-centred operational preview without moving the page. A Founder-controlled trust strip can precede the demo, counting all businesses (including trials) while automatic tenant logos are limited to paid subscriptions. The storefront section carries a more detailed external-storefront / in-premise-POS / payment / fulfilment / tracking flow. These are lightweight INPROFIC-native interface simulations rather than third-party recordings.
 
 Inside the application, the onboarding tour keeps its original animated top artwork and uses a separate lower preview layer for a compact representation of the actual module being toured. That lower preview uses the active tenant vertical, so stock-first tenants do not see a production simulation and production-led tenants receive relevant material, batch and output examples.
 
@@ -86,6 +86,8 @@ Commerce is the shared boundary for public and staff checkout flows. It supports
 - the authenticated in-premise POS.
 
 Public checkout is payment-first. INPROFIC validates the basket, calculates authoritative prices and delivery charges where applicable, creates a checkout, and waits for trusted payment confirmation. Operational sales/orders are materialized only after verified settlement.
+
+On the hosted catalogue, a channel filter shows only that channel's price in a translucent tenant-accent pill. Full menu rotates through each product's available channel prices every two seconds. The product API exposes `price_display.selected_channel_only`, `price_display.full_menu_strategy`, `price_display.rotation_interval_ms` and `price_display.transition_axis` so headless storefronts can reproduce the same presentation without guessing. Commerce Overview also contains plain-language source reporting and a tenant-bound downloadable QR-link builder.
 
 This prevents an abandoned or unpaid web basket from altering inventory, production, finance or delivery records.
 

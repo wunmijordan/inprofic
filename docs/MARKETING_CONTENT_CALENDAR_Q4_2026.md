@@ -26,7 +26,9 @@ Generated from `docs/feature_marketing_catalog.json` by `scripts/generate_market
 - ✨ **Founder product and lead analytics** — added 2026-09-24: Track first-party signup leads, completed registrations, logins, subscription milestones and throttled module usage in Founder Console, with retained deleted-state and permanent-removal controls for signup mailing-list entries, without recording passwords, payment secrets or arbitrary clickstreams.
 - ✨ **Animated, consistent form validation across INPROFIC** — added 2026-09-20: HTML5 and Django validation share animated field states, contextual SVG affordances, accessible feedback and consistent toggle switches; dynamic rows inherit the same behavior.
 - ✨ **Channel-aware plain and add-on product options** — added 2026-09-20: Offer Extra Jollof, Single Chicken, bottles, pieces or other plain portions from the same Finished Good stock and recipe with independent Physical Store, Online and Bulk/Distribution availability and pricing.
-- ✨ **Interactive product demos** — added 2026-09-21: The marketing site provides a vertical-aware click-through workflow plus module-card flip previews and a detailed storefront-to-fulfilment flow.
+- ✨ **Interactive product demos** — added 2026-09-21: The marketing site provides a vertical-aware workflow, a floating module constellation with flowing brand connectors and viewport-centred previews, plus a detailed storefront-to-fulfilment flow.
+- ✨ **Targeted business mailing workspace** — added 2026-09-24: Create reusable branded email topics, segment current businesses by service and plan, send immediately, and retry provider failures safely with per-recipient delivery totals.
+- ✨ **Founder-managed trusted-business strip** — added 2026-09-25: Show a founder-enabled scrolling logo strip above the product demo, automatically limiting tenant logos to paid businesses while the animated platform count includes trials and approved manual logos fill gaps.
 
 ## Maintenance rule
 

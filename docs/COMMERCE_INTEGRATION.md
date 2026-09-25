@@ -432,6 +432,8 @@ Each product includes an `order_modes` array. Render its objects directly:
 External product APIs return only `online` and `distribution` in `order_modes`. The in-premise POS additionally uses `physical_store`/the vertical's direct-sale channel. Use the supplied vertical-specific `label`. Display the supplied `price`, minimum, maximum, availability and lead time. Do not infer whether Production
 is used; the returned `fulfilment_mode` is authoritative.
 
+The top-level `price_display` object declares the hosted presentation contract: `selected_channel_only: true`, `full_menu_strategy: "rotate"`, `rotation_interval_ms: 2000`, and `transition_axis: "vertical"`. A headless client may mirror this behavior: show only the selected channel price; when no channel is selected, rotate through the item's available `order_modes` every two seconds. This is display guidance only—checkout pricing remains server-authoritative.
+
 ### 2. Create a pre-intake checkout from the website server
 
 ```http
@@ -714,3 +716,37 @@ The public product response keeps `products[]` for backward compatibility and ad
 For a normal product line submit `product_id` + `quantity`. For an individual/plain line submit the same parent `product_id`, the selected `individual_option_id`, and `quantity`. For a Distribution/Bulk pack submit `bulk_pack_id`; a line cannot combine `individual_option_id` and `bulk_pack_id`. A `bulk_pack_id` is valid only with the Distribution/Bulk channel, while an individual option is valid only on the specific Online or Distribution/Bulk channels enabled for that option. Physical Store/direct pricing remains unavailable to external checkout and product APIs. Clients must render `order_modes[].label` from INPROFIC so vertical wording such as `Catering / Bulk Order` is preserved.
 
 At fulfilment, additional snapshotted composition rows are released from their original inventory class exactly once: Finished/procured components use finished-good stock movements and raw/packaging components use raw-material consumption movements. Fulfilment scopes (`all`, `dine_in`, `takeaway`, `delivery`, `bulk`) decide whether a component applies. Made-to-order base production still uses the existing recipe engine; its additional package/assembly components are released only when that production order completes. The snapshot boundary means later edits to a portion or pack cannot rewrite a paid historical order.
+
+## Storefront source and campaign attribution
+
+INPROFIC uses one attribution contract for the hosted storefront, **Order Now** links and headless checkout. No platform-specific storefront endpoint is required.
+
+Hosted links accept either short parameters or conventional UTM parameters:
+
+```text
+/shop/{business_slug}/order-now/?source=whatsapp&medium=social&campaign=easter
+/shop/{business_slug}/?utm_source=instagram&utm_medium=social&utm_campaign=launch
+```
+
+Supported values are `source`/`utm_source`, `medium`/`utm_medium`, `campaign`/`utm_campaign`, `content`/`utm_content`, and `term`/`utm_term`. When no explicit source is supplied, INPROFIC may infer a referral source from the HTTP referrer; otherwise the visit is reported as `direct`. Explicit tags are recommended for mobile apps and privacy-sensitive browsers because referrers are not guaranteed.
+
+A hosted attribution snapshot is carried through the checkout and copied to the materialized Commerce order after verified payment. The Commerce workspace reports the last 30 days of visits, checkouts, orders, attributed revenue, conversion rates and campaign performance, with CSV export. Business administrators can also generate a tracked storefront/Order Now URL and a high-redundancy downloadable PNG QR code from the same Overview. Each image encodes that tenant's own public address and optional source labels; it is never shared across tenants.
+
+Headless websites can submit the same information when creating a checkout:
+
+```json
+{
+  "customer": {"name": "Ada", "phone": "+234..."},
+  "items": [{"product_id": "...", "quantity": "2"}],
+  "order_mode": "online",
+  "attribution": {
+    "source": "instagram",
+    "medium": "social",
+    "campaign": "easter",
+    "content": "story-a",
+    "term": ""
+  }
+}
+```
+
+The checkout response now includes an `attribution` object. Attribution is descriptive metadata only: it does not change pricing, payment verification, stock reservation, order materialization or delivery behavior.

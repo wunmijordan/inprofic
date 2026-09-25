@@ -392,6 +392,19 @@ The hosted catalogue hides product counts. A headless website may similarly use 
 
 `order_modes` is authoritative. The legacy `ordering_modes`, `preorder_price`, and `preorder_min_quantity` aliases remain for website compatibility and refer only to the Online path. `stock_price` is no longer returned externally because it is an in-premise POS price. New code should use `order_modes`.
 
+The response also includes a top-level presentation hint:
+
+```json
+"price_display": {
+  "selected_channel_only": true,
+  "full_menu_strategy": "rotate",
+  "rotation_interval_ms": 2000,
+  "transition_axis": "vertical"
+}
+```
+
+To match the hosted storefront, render one price pill for the selected channel. In a Full menu/all-channels view, rotate vertically through only the item's available `order_modes` every two seconds. Treat this as presentation metadata; always use the current selected `order_modes[].price` only as a display estimate and let checkout return the authoritative amount.
+
 ## 5. Delivery discovery and quote
 
 Read the top-level `delivery` object from the product response on every
@@ -1231,3 +1244,25 @@ For a Distribution/Bulk pack, submit its public `bulk_pack_id` on that line:
 A `bulk_pack_id` is rejected outside the Distribution/Bulk channel. External storefront/headless contracts continue to expose only **Online** plus the vertical-specific Distribution/Bulk channel; `physical_store` and its price remain exclusive to the in-premise POS. Use the `order_modes[].label` value returned by INPROFIC instead of hardcoding the word “Distribution” (restaurants, for example, receive `Catering / Bulk Order`).
 
 The `contents` array is informational for customers; INPROFIC separately snapshots and consumes the applicable internal package components when fulfilment occurs. Headless clients must not attempt to calculate or deduct component stock themselves.
+
+## 12. Source / campaign attribution for headless websites
+
+The checkout API accepts optional platform-neutral attribution metadata. Use it when the website already knows how the visitor arrived (UTM parameters, campaign links, QR codes, affiliates, social posts, email, etc.). Do not create separate WhatsApp/Facebook/Instagram order endpoints.
+
+Add this optional object to `POST /api/v1/storefronts/{business_slug}/checkouts`:
+
+```json
+"attribution": {
+  "source": "whatsapp",
+  "medium": "social",
+  "campaign": "launch-2026",
+  "content": "status-link",
+  "term": ""
+}
+```
+
+`source` is the broad origin, `medium` is the channel type, `campaign` groups a promotion, and `content`/`term` are optional finer labels. INPROFIC returns the normalized snapshot in checkout detail responses and carries it into the paid materialized order for Commerce attribution reporting.
+
+For INPROFIC-hosted storefront and Order Now links, the same feature is available through query parameters such as `?source=whatsapp&campaign=launch-2026` or standard `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, and `utm_term`. The Commerce workspace includes a tracked-link/QR generator for businesses that want printable or shareable campaign links.
+
+Attribution must never be used as an authoritative financial or fulfilment field. Existing idempotency, tenant validation, price validation, payment verification and delivery rules remain unchanged.

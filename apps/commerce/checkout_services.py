@@ -26,6 +26,7 @@ from .models import (
     StorefrontProduct,
 )
 from .notification_services import queue_commerce_notification
+from .attribution import attribution_model_kwargs, normalize_attribution
 
 logger = logging.getLogger(__name__)
 from .services import (
@@ -170,7 +171,7 @@ def cancel_unpaid_checkout(checkout, *, reason=""):
 def create_checkout(
     *, business, source, customer, items, idempotency_key, external_order_id="",
     order_mode=None, ordering_mode=None, service_mode="", table_reference="",
-    delivery_quote_id=None, storefront_customer=None,
+    delivery_quote_id=None, storefront_customer=None, attribution=None,
 ):
     """Validate and snapshot a basket without creating CommerceIntake.
 
@@ -374,10 +375,12 @@ def create_checkout(
     if fulfilment_mode == CommerceIntake.MODE_PREORDER and not any(row[5] > 0 for row in prepared):
         effective_fulfilment_mode = CommerceIntake.MODE_STOCK
 
+    attribution = normalize_attribution(attribution or {})
     try:
         checkout = CommerceCheckoutSession.raw_objects.create(
             business=business,
             source=source,
+            **attribution_model_kwargs(attribution),
             external_order_id=(external_order_id or "").strip(),
             idempotency_key=idempotency_key,
             ordering_mode=effective_fulfilment_mode,
@@ -480,6 +483,14 @@ def serialize_checkout(checkout):
         "delivery_quote_id": str(checkout.delivery_quote.public_id) if checkout.delivery_quote_id else None,
         "delivery": delivery,
         "currency": checkout.currency,
+        "attribution": {
+            "source": checkout.attribution_source or "direct",
+            "medium": checkout.attribution_medium,
+            "campaign": checkout.attribution_campaign,
+            "content": checkout.attribution_content,
+            "term": checkout.attribution_term,
+            "referrer": checkout.attribution_referrer,
+        },
         "reservation_expires_at": checkout.reservation_expires_at.isoformat() if checkout.reservation_expires_at else None,
         "order_id": str(intake.public_id) if intake else None,
         "order_number": intake.public_number if intake else None,
@@ -582,6 +593,12 @@ def materialize_paid_checkout(checkout, *, actor=None, allow_expired_recovery=Fa
         business=checkout.business,
         created_by=actor,
         source=checkout.source,
+        attribution_source=checkout.attribution_source,
+        attribution_medium=checkout.attribution_medium,
+        attribution_campaign=checkout.attribution_campaign,
+        attribution_content=checkout.attribution_content,
+        attribution_term=checkout.attribution_term,
+        attribution_referrer=checkout.attribution_referrer,
         external_order_id=checkout.external_order_id,
         idempotency_key=f"checkout:{checkout.public_id}",
         ordering_mode=checkout.ordering_mode,

@@ -83,6 +83,9 @@ def save_pwa_assets(images: dict[str, Image.Image]) -> None:
         "icon-mark-180.png": pwa_icon(light_mark, 180),
         "icon-mark-192.png": pwa_icon(light_mark, 192),
         "icon-mark-512.png": pwa_icon(light_mark, 512),
+        # Distinct URLs avoid Windows retaining a previously selected white/themed icon.
+        "icon-mark-windows-192.png": pwa_icon(light_mark, 192),
+        "icon-mark-windows-512.png": pwa_icon(light_mark, 512),
         "icon-mark-on-dark-180.png": pwa_icon(dark_mark, 180),
         "icon-mark-on-dark-192.png": pwa_icon(dark_mark, 192),
         "icon-mark-on-dark-512.png": pwa_icon(dark_mark, 512),

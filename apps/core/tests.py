@@ -1,9 +1,11 @@
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.http import HttpResponse
 from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from accounts.models import CustomUser
 
@@ -156,6 +158,25 @@ class BusinessBrandContrastTests(TestCase):
         self.assertEqual(Business._contrast_color("not-a-colour"), "#FFFFFF")
 
 
+class MarketingTrustStripTests(TestCase):
+    def test_strip_counts_trials_but_only_auto_shows_paid_storefront_logos(self):
+        from accounts.models import BusinessSubscription, MarketingTrustSettings, SubscriptionPlan
+
+        plan, _ = SubscriptionPlan.objects.update_or_create(code=SubscriptionPlan.CODE_PRODUCTION, defaults={"name": "Production", "monthly_price": 100})
+        paid = Business.objects.create(name="Paid Bakery", slug="paid-bakery", storefront_logo="logos/paid.png")
+        trial = Business.objects.create(name="Trial Bakery", slug="trial-bakery", storefront_logo="logos/trial.png")
+        BusinessSubscription.objects.create(primary_business=paid, plan=plan, status=BusinessSubscription.STATUS_ACTIVE, paid_until=timezone.now() + timedelta(days=20))
+        BusinessSubscription.objects.create(primary_business=trial, plan=plan, status=BusinessSubscription.STATUS_TRIAL, trial_ends_at=timezone.now() + timedelta(days=20))
+        MarketingTrustSettings.objects.create(pk=1, enabled=True)
+
+        response = self.client.get(reverse("marketing_home"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["trust_business_count"], 2)
+        self.assertEqual([business.pk for business in response.context["trusted_businesses"]], [paid.pk])
+        self.assertContains(response, "logos/paid.png")
+        self.assertNotContains(response, "logos/trial.png")
+
+
 class PwaEndpointTests(TestCase):
     def test_brand_manifest_is_public_and_uses_inprofic_identity(self):
         response = self.client.get(reverse("pwa_manifest"))
@@ -172,6 +193,9 @@ class PwaEndpointTests(TestCase):
         dark_payload = self.client.get(f'{reverse("pwa_manifest")}?theme=dark').json()
         self.assertEqual(dark_payload["background_color"], "#050733")
         self.assertTrue(any("icon-mark-on-dark-192.png" in icon["src"] for icon in dark_payload["icons"]))
+        windows_payload = self.client.get(f'{reverse("pwa_manifest")}?theme=dark&platform=windows').json()
+        self.assertEqual({icon["purpose"] for icon in windows_payload["icons"]}, {"any"})
+        self.assertTrue(all("icon-mark-windows-" in icon["src"] for icon in windows_payload["icons"]))
 
     def test_tenant_manifest_uses_tenant_name_and_theme_but_inprofic_icons(self):
         business = Business.objects.create(

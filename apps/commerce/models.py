@@ -687,6 +687,28 @@ class StorefrontProduct(BusinessOwnedModel):
         return self.display_name
 
 
+class StorefrontAttributionVisit(BusinessOwnedModel):
+    TARGET_STOREFRONT = "storefront"
+    TARGET_ORDER_NOW = "order_now"
+    TARGET_CHOICES = [(TARGET_STOREFRONT, "Storefront"), (TARGET_ORDER_NOW, "Order Now")]
+
+    visit_key = models.CharField(max_length=64)
+    target = models.CharField(max_length=16, choices=TARGET_CHOICES, default=TARGET_STOREFRONT)
+    attribution_source = models.CharField(max_length=80, blank=True, default="direct")
+    attribution_medium = models.CharField(max_length=80, blank=True, default="")
+    attribution_campaign = models.CharField(max_length=120, blank=True, default="")
+    attribution_content = models.CharField(max_length=120, blank=True, default="")
+    attribution_term = models.CharField(max_length=120, blank=True, default="")
+    attribution_referrer = models.CharField(max_length=500, blank=True, default="")
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["business", "visit_key", "target"], name="unique_storefront_attribution_visit")
+        ]
+        indexes = [models.Index(fields=["business", "created_at"], name="storefront_attr_visit_idx")]
+
+
 class CommerceIntake(BusinessOwnedModel):
     SOURCE_STOREFRONT = "storefront"
     SOURCE_API = "api"
@@ -732,6 +754,12 @@ class CommerceIntake(BusinessOwnedModel):
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     public_number = models.CharField(max_length=40, blank=True, default="")
     source = models.CharField(max_length=12, choices=SOURCE_CHOICES, default=SOURCE_STOREFRONT)
+    attribution_source = models.CharField(max_length=80, blank=True, default="direct")
+    attribution_medium = models.CharField(max_length=80, blank=True, default="")
+    attribution_campaign = models.CharField(max_length=120, blank=True, default="")
+    attribution_content = models.CharField(max_length=120, blank=True, default="")
+    attribution_term = models.CharField(max_length=120, blank=True, default="")
+    attribution_referrer = models.CharField(max_length=500, blank=True, default="")
     external_order_id = models.CharField(max_length=120, blank=True, default="")
     idempotency_key = models.CharField(max_length=120, blank=True, default="")
     ordering_mode = models.CharField(max_length=12, choices=MODE_CHOICES)
@@ -874,6 +902,12 @@ class CommerceCheckoutSession(BusinessOwnedModel):
 
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     source = models.CharField(max_length=12, choices=SOURCE_CHOICES, default=SOURCE_API)
+    attribution_source = models.CharField(max_length=80, blank=True, default="direct")
+    attribution_medium = models.CharField(max_length=80, blank=True, default="")
+    attribution_campaign = models.CharField(max_length=120, blank=True, default="")
+    attribution_content = models.CharField(max_length=120, blank=True, default="")
+    attribution_term = models.CharField(max_length=120, blank=True, default="")
+    attribution_referrer = models.CharField(max_length=500, blank=True, default="")
     external_order_id = models.CharField(max_length=120, blank=True, default="")
     idempotency_key = models.CharField(max_length=120)
     ordering_mode = models.CharField(max_length=12, choices=CommerceIntake.MODE_CHOICES)

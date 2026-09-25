@@ -5,7 +5,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="INPROFIC connects inventory, procurement, production, delivery, audit, POS, sales, finance and online ordering in one business workspace.">
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+  <link rel="canonical" href="{{ canonical_url }}">
+  <meta property="og:type" content="website"><meta property="og:site_name" content="INPROFIC"><meta property="og:title" content="INPROFIC · From stock to sale, in one place"><meta property="og:description" content="Connected inventory, procurement, production, commerce, finance and fulfilment for growing businesses."><meta property="og:url" content="{{ canonical_url }}"><meta property="og:image" content="{{ social_image_url }}">
+  <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="INPROFIC · From stock to sale, in one place"><meta name="twitter:description" content="Run stock, production, sales, commerce, finance and delivery in one connected workspace."><meta name="twitter:image" content="{{ social_image_url }}">
   <title>INPROFIC · From stock to sale, in one place</title>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"INPROFIC","applicationCategory":"BusinessApplication","operatingSystem":"Web","url":"{{ canonical_url|escapejs }}","description":"Connected inventory, procurement, production, commerce, finance and fulfilment for growing businesses.","publisher":{"@type":"Organization","name":"INPROFIC","url":"{{ canonical_url|escapejs }}"}}</script>
   <script>document.documentElement.classList.add('js')</script>
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
   {% include "pwa/head.html" %}
@@ -23,32 +28,71 @@
     .soft-card { box-shadow:0 18px 55px rgba(52,34,28,.09); }
     .feature-card { position:relative; transition:transform .22s ease,box-shadow .22s ease; }
     .feature-card:hover { transform:translateY(-3px); box-shadow:0 22px 55px rgba(52,34,28,.12); }
-    .feature-card.is-flippable { min-height:17.5rem; padding:0 !important; perspective:1100px; cursor:pointer; background:transparent !important; border:0 !important; box-shadow:none !important; transition:transform .22s ease; }
-    .feature-card.is-flippable.is-revealed:hover { transform:translateY(-3px) !important; }
-    .feature-card.is-flippable:hover .feature-face { box-shadow:0 22px 55px rgba(52,34,28,.14); }
-    .feature-flip-inner { position:relative; width:100%; min-height:17.5rem; height:100%; transform-style:preserve-3d; transition:transform .55s cubic-bezier(.2,.75,.2,1); }
-    .feature-card.is-flipped .feature-flip-inner { transform:rotateY(180deg); }
-    .feature-face { position:absolute; inset:0; overflow:hidden; border:1px solid #e7dfcc; border-radius:1rem; background:#fff; padding:1.25rem; box-shadow:0 18px 55px rgba(52,34,28,.09); backface-visibility:hidden; -webkit-backface-visibility:hidden; transition:box-shadow .22s ease; }
-    .feature-face.back { transform:rotateY(180deg); background:linear-gradient(145deg,#fffdf8,#fff); }
-    .feature-demo-hint { position:absolute; right:1rem; bottom:.85rem; display:inline-flex; align-items:center; gap:.35rem; color:#a8a29e; font-size:.62rem; font-weight:750; }
+    .feature-card.is-flippable { display:flex; min-height:15rem; flex-direction:column; cursor:pointer; isolation:isolate; overflow:hidden; transform-style:preserve-3d; backface-visibility:hidden; -webkit-backface-visibility:hidden; background:linear-gradient(145deg,rgba(255,255,255,.99),rgba(255,253,248,.97)); box-shadow:0 18px 50px rgba(35,27,24,.09),inset 0 1px 0 rgba(255,255,255,.9); }
+    .feature-card.is-flippable::before { content:""; position:absolute; inset:0; z-index:-1; border-radius:inherit; padding:1px; background:linear-gradient(120deg,rgba(209,73,0,.42),rgba(231,189,101,.2),rgba(5,7,51,.2),rgba(209,73,0,.3)); -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude; pointer-events:none; }
+    .feature-card.is-flippable:hover { box-shadow:0 22px 55px rgba(52,34,28,.14),inset 0 1px 0 rgba(255,255,255,.9); }
+    .feature-card.is-opening { animation:module-card-flip-cue .46s cubic-bezier(.2,.75,.2,1) both !important; }
+    .feature-demo-hint { display:inline-flex; align-items:center; justify-content:flex-end; gap:.35rem; margin-top:auto; padding-top:.8rem; color:#a8a29e; font-size:.62rem; font-weight:750; }
     .feature-demo-hint svg { width:.8rem; height:.8rem; }
-    .feature-mini-head { display:flex; align-items:flex-start; justify-content:space-between; gap:.5rem; }
-    .feature-mini-title { font-size:.82rem; font-weight:850; color:#292524; }
-    .feature-mini-kicker { margin-top:.15rem; color:#a8a29e; font-size:.6rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
-    .feature-mini-state { border-radius:999px; background:#ecfdf5; color:#047857; padding:.28rem .45rem; font-size:.52rem; font-weight:850; }
-    .feature-mini-kpis { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.4rem; margin-top:.7rem; }
-    .feature-mini-kpi { min-width:0; border:1px solid #eee7d7; border-radius:.65rem; background:#fff; padding:.5rem; }
-    .feature-mini-kpi small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#a8a29e; font-size:.48rem; font-weight:800; text-transform:uppercase; }
-    .feature-mini-kpi strong { display:block; margin-top:.18rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#44403c; font-size:.7rem; }
-    .feature-mini-list { margin-top:.55rem; overflow:hidden; border:1px solid #eee7d7; border-radius:.72rem; background:#fff; }
-    .feature-mini-row { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,.72fr) auto; gap:.35rem; align-items:center; padding:.48rem .55rem; border-top:1px solid #f3eee5; font-size:.55rem; }
+    .feature-mini-head { display:flex; align-items:flex-start; justify-content:space-between; gap:.75rem; }
+    .feature-mini-title { font-size:1.15rem; font-weight:850; color:#292524; }
+    .feature-mini-kicker { margin-top:.25rem; color:#78716c; font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+    .feature-mini-state { border-radius:999px; background:#ecfdf5; color:#047857; padding:.38rem .62rem; font-size:.62rem; font-weight:850; }
+    .feature-mini-kpis { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.65rem; margin-top:1.1rem; }
+    .feature-mini-kpi { min-width:0; border:1px solid #eee7d7; border-radius:.8rem; background:#fff; padding:.78rem; }
+    .feature-mini-kpi small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#78716c; font-size:.56rem; font-weight:800; text-transform:uppercase; }
+    .feature-mini-kpi strong { display:block; margin-top:.25rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#44403c; font-size:.82rem; }
+    .feature-mini-list { margin-top:.8rem; overflow:hidden; border:1px solid #eee7d7; border-radius:.85rem; background:#fff; }
+    .feature-mini-row { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,.72fr) auto; gap:.55rem; align-items:center; padding:.72rem .78rem; border-top:1px solid #f3eee5; font-size:.68rem; }
     .feature-mini-row:first-child { border-top:0; }
     .feature-mini-row strong,.feature-mini-row span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .feature-mini-row span { color:#78716c; }
-    .feature-mini-chip { border-radius:999px; background:#f5efe0; color:#8f172d !important; padding:.2rem .36rem; font-size:.48rem; font-weight:850; }
+    .feature-mini-chip { border-radius:999px; background:#f5efe0; color:#8f172d !important; padding:.25rem .42rem; font-size:.54rem; font-weight:850; }
     .feature-mini-chip.good { background:#ecfdf5; color:#047857 !important; }
     .feature-mini-chip.warn { background:#fff7ed; color:#c2410c !important; }
-    .feature-mini-back { margin-top:.55rem; color:#8f172d; font-size:.56rem; font-weight:800; }
+    .feature-mini-back { margin-top:.8rem; color:#8f172d; font-size:.64rem; font-weight:800; }
+    .capability-stage { position:relative; isolation:isolate; }
+    .capability-stage::before { content:""; position:absolute; z-index:-2; inset:3rem -1rem 2rem; border-radius:3rem; background:radial-gradient(circle at 12% 18%,rgba(209,73,0,.12),transparent 28%),radial-gradient(circle at 86% 72%,rgba(5,7,51,.12),transparent 32%),linear-gradient(135deg,rgba(255,255,255,.74),rgba(245,239,224,.55)); border:0; overflow:hidden; }
+    .capability-stage::after { content:""; position:absolute; z-index:-1; width:15rem; height:15rem; right:4%; top:22%; border-radius:999px; background:conic-gradient(from 90deg,rgba(209,73,0,.20),rgba(231,189,101,.10),rgba(5,7,51,.12),rgba(209,73,0,.20)); filter:blur(38px); opacity:.65; animation:capability-orbit 12s linear infinite; pointer-events:none; }
+    .capability-grid { position:relative; isolation:isolate; }
+    .capability-connectors { position:absolute; z-index:0; inset:0; width:100%; height:100%; overflow:visible; pointer-events:none; }
+    .capability-connector-base { fill:none; stroke:rgba(5,7,51,.13); stroke-width:1.35; }
+    .capability-connector-flow { fill:none; stroke:url(#capability-flow-gradient); stroke-width:2.6; stroke-linecap:round; stroke-dasharray:13 18; animation:capability-flow 2.1s linear infinite; filter:drop-shadow(0 0 4px rgba(209,73,0,.28)); }
+    .capability-grid .feature-card { position:relative; z-index:2; }
+    .capability-grid .feature-card.is-flippable { animation:capability-card-float 7s ease-in-out infinite; animation-delay:calc(var(--module-index,0) * -0.72s); }
+    .capability-grid .feature-card.is-flippable:nth-of-type(2n) { --module-tilt:-.35deg; }
+    .capability-grid .feature-card.is-flippable:nth-of-type(3n) { --module-tilt:.35deg; }
+    .capability-hub { position:relative; z-index:1; grid-column:1/-1; display:grid; place-items:center; min-height:9rem; pointer-events:none; isolation:isolate; }
+    .capability-hub::before,.capability-hub::after { content:""; position:absolute; border-radius:999px; border:1px solid rgba(209,73,0,.22); animation:capability-hub-pulse 4.8s ease-in-out infinite; }
+    .capability-hub::before { width:8.7rem; height:8.7rem; }
+    .capability-hub::after { width:11rem; height:11rem; border-color:rgba(5,7,51,.12); animation-delay:-2.4s; }
+    .capability-hub-mark { position:relative; z-index:2; display:grid; place-items:center; width:6.9rem; height:6.9rem; border-radius:2rem; background:rgba(255,255,255,.94); border:1px solid rgba(231,223,204,.95); box-shadow:0 22px 55px rgba(35,27,24,.15),0 0 0 10px rgba(255,255,255,.35); animation:capability-hub-float 5.6s ease-in-out infinite; }
+    .capability-hub-mark img { display:block; width:68%; height:68%; object-fit:contain; }
+    @media(min-width:1024px){
+      .capability-grid { display:grid !important; grid-template-columns:repeat(12,minmax(0,1fr)); gap:1rem; align-items:stretch; }
+      .capability-grid .feature-card:nth-of-type(1){grid-column:1/4;grid-row:1}.capability-grid .feature-card:nth-of-type(2){grid-column:4/7;grid-row:1}.capability-grid .feature-card:nth-of-type(3){grid-column:7/10;grid-row:1}.capability-grid .feature-card:nth-of-type(4){grid-column:10/13;grid-row:1}
+      .capability-grid .feature-card:nth-of-type(5){grid-column:1/4;grid-row:2}.capability-grid .feature-card:nth-of-type(6){grid-column:10/13;grid-row:2}
+      .capability-grid .feature-card:nth-of-type(7){grid-column:2/5;grid-row:3}.capability-grid .feature-card:nth-of-type(8){grid-column:5/8;grid-row:3}.capability-grid .feature-card:nth-of-type(9){grid-column:8/11;grid-row:3}
+      .capability-hub { grid-column:4/10; grid-row:2; min-height:15rem; }
+    }
+    .module-preview-overlay[hidden] { display:none; }
+    .module-preview-overlay { position:fixed; z-index:130; inset:0; display:grid; place-items:center; padding:1.25rem; opacity:0; visibility:hidden; transition:opacity .26s ease,visibility .26s ease; perspective:1200px; }
+    .module-preview-overlay.is-open { opacity:1; visibility:visible; }
+    .module-preview-backdrop { position:absolute; inset:0; width:100%; height:100%; border:0; background:rgba(5,7,51,.4); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); cursor:pointer; }
+    .module-preview-shell { position:relative; width:min(42rem,calc(100vw - 2.5rem)); max-height:min(38rem,calc(100dvh - 2.5rem)); overflow:auto; border:1px solid rgba(255,255,255,.75); border-radius:1.35rem; background:linear-gradient(145deg,#fffdf8,#fff); box-shadow:0 32px 90px rgba(5,7,51,.3); padding:1.3rem; opacity:0; transform:translateY(18px) rotateY(-13deg) scale(.96); transform-origin:center; transition:opacity .32s ease,transform .44s cubic-bezier(.16,1,.3,1); }
+    .module-preview-overlay.is-open .module-preview-shell { opacity:1; transform:translateY(0) rotateY(0) scale(1); }
+    .module-preview-toolbar { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:.9rem; }
+    .module-preview-label { color:#d14900; font-size:.64rem; font-weight:850; letter-spacing:.14em; text-transform:uppercase; }
+    .module-preview-close { display:grid; place-items:center; width:2.35rem; height:2.35rem; flex:0 0 auto; border:1px solid #e7dfcc; border-radius:999px; background:#fff; color:#292524; transition:transform .2s ease,background-color .2s ease; }
+    .module-preview-close:hover { transform:rotate(7deg); background:#faf6ef; }
+    .module-preview-close svg { width:1rem; height:1rem; }
+    body.module-preview-open { overflow:hidden; }
+    @keyframes capability-card-float { 0%,100%{translate:0 0;rotate:var(--module-tilt,0deg)} 50%{translate:0 -7px;rotate:var(--module-tilt,0deg)} }
+    @keyframes capability-flow { to{stroke-dashoffset:-62} }
+    @keyframes module-card-flip-cue { 0%{transform:translateY(-3px) rotateY(0)} 48%{transform:translateY(-5px) rotateY(10deg) scale(.985)} 100%{transform:translateY(-3px) rotateY(0)} }
+    @keyframes capability-orbit { to{transform:rotate(360deg)} }
+    @keyframes capability-hub-float { 0%,100%{transform:translateY(0) rotate(-1deg)} 50%{transform:translateY(-7px) rotate(1deg)} }
+    @keyframes capability-hub-pulse { 0%,100%{transform:scale(.9);opacity:.38} 50%{transform:scale(1.06);opacity:.82} }
     .ambient-orb { animation:ambient-drift 12s ease-in-out infinite alternate; will-change:transform; }
     .ambient-orb-delayed { animation-delay:-5s; animation-duration:16s; }
     .hero-preview { animation:preview-float 7s ease-in-out infinite; }
@@ -181,9 +225,6 @@
     #general-product-demo .ip-demo-head-copy { height:3.75rem; min-height:3.75rem; overflow:hidden; }
     .js [data-reveal] { opacity:0; transform:translateY(34px); transition:opacity .72s ease,transform .72s cubic-bezier(.2,.75,.2,1); transition-delay:var(--reveal-delay,0ms); }
     .js [data-reveal].is-revealed { opacity:1; transform:translateY(0); }
-    .js .feature-card.is-flippable[data-reveal] { transform:translateY(34px) !important; }
-    .js .feature-card.is-flippable[data-reveal].is-revealed { transform:translateY(0) !important; }
-    .js .feature-card.is-flippable[data-reveal].is-revealed:hover { transform:translateY(-3px) !important; }
     @keyframes demo-bars { from{transform:scaleY(.76);opacity:.72} to{transform:scaleY(1);opacity:1} }
     @keyframes hero-gradient { from{background-position:0% 50%} to{background-position:100% 50%} }
     @keyframes hero-cursor-blink { 0%,46%{opacity:1} 47%,100%{opacity:.08} }
@@ -216,9 +257,55 @@
       #general-product-demo .ip-demo-window { height:440px; min-height:440px; overflow:hidden; }
       #general-product-demo .ip-demo-main { height:100%; min-height:0; overflow-y:auto; overflow-x:hidden; }
     }
-    @media (prefers-reduced-motion:reduce) { html{scroll-behavior:auto}.js [data-reveal]{opacity:1!important;transform:none!important;transition:none!important}.feature-card,.flow-step{transition:none}.ambient-orb,.hero-preview,.bridge-card>div,.process-flow::before,.promo-stage::before,.promo-slide,.promo-copy>*,.promo-media,.promo-animation-marquee::after,.promo-progress span::after,.hero-typed-text,.hero-typecursor,.ip-demo-chart i,.ip-demo-pointer,.ip-demo-pointer-ring{animation:none!important;transition:none!important} }
+    .marketing-whatsapp { position:fixed; right:1.15rem; bottom:1.15rem; z-index:80; display:flex; align-items:center; gap:.55rem; color:#fff; text-decoration:none; filter:drop-shadow(0 12px 24px rgba(0,0,0,.22)); }
+    .marketing-whatsapp-label { border-radius:999px; background:#fff; color:#292524; padding:.62rem .78rem; font-size:.7rem; font-weight:800; box-shadow:0 8px 24px rgba(0,0,0,.12); transition:transform .2s ease,opacity .2s ease; }
+    .marketing-whatsapp-icon { display:grid; place-items:center; width:3.25rem; height:3.25rem; border-radius:999px; background:#25D366; box-shadow:0 0 0 6px rgba(37,211,102,.12); animation:whatsapp-pulse 3s ease-in-out infinite; }
+    .marketing-whatsapp-icon svg { width:1.75rem; height:1.75rem; }
+    .marketing-whatsapp:hover .marketing-whatsapp-label { transform:translateX(-3px); }
+    @keyframes whatsapp-pulse { 0%,100%{box-shadow:0 0 0 6px rgba(37,211,102,.12)} 50%{box-shadow:0 0 0 11px rgba(37,211,102,.04)} }
+    @media(max-width:780px){ .marketing-whatsapp{right:.8rem;bottom:.8rem}.marketing-whatsapp-label{display:none}.marketing-whatsapp-icon{width:3rem;height:3rem} }
+    @media(max-width:780px){
+      .capability-stage { overflow:hidden; padding-left:0 !important; padding-right:0 !important; }
+      .capability-stage > .max-w-2xl { padding-left:1.25rem; padding-right:1.25rem; }
+      .capability-stage::before { inset:2.2rem .7rem 1.2rem; border-radius:2rem; }
+      .capability-stage::after { width:11rem; height:11rem; right:-3rem; top:18rem; }
+      .capability-grid { display:grid !important; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.72rem; overflow:visible; padding:0 1.05rem 1.25rem; margin-top:2rem !important; }
+      .capability-hub { grid-column:1/-1; min-height:6.5rem; margin:.15rem 0; }
+      .capability-hub::before { width:6.1rem; height:6.1rem; }
+      .capability-hub::after { width:7.5rem; height:7.5rem; }
+      .capability-hub-mark { width:4.8rem; height:4.8rem; border-radius:1.35rem; box-shadow:0 14px 32px rgba(35,27,24,.14),0 0 0 7px rgba(255,255,255,.32); }
+      .capability-grid .feature-card { width:100%; min-width:0; }
+      .capability-grid .feature-card.is-flippable { min-height:8.25rem; align-items:center; justify-content:center; gap:.55rem; padding:.85rem; text-align:center; animation-duration:6.2s; }
+      .capability-grid .feature-card.is-flippable > span:first-child { display:grid; place-items:center; margin:0; }
+      .capability-grid .feature-card.is-flippable > span:first-child svg { width:1.85rem; height:1.85rem; }
+      .capability-grid .feature-card.is-flippable > h3 { margin-top:0 !important; font-size:.82rem !important; line-height:1.15; }
+      .capability-grid .feature-card.is-flippable > p,.capability-grid .feature-card.is-flippable > .feature-demo-hint { display:none !important; }
+      .module-preview-overlay { padding:.75rem; }
+      .module-preview-shell { width:calc(100vw - 1.5rem); max-height:calc(100dvh - 1.5rem); border-radius:1.15rem; padding:1rem; }
+      .feature-mini-kpis { gap:.45rem; }
+      .feature-mini-kpi { padding:.62rem .5rem; }
+      .feature-mini-row { grid-template-columns:minmax(0,1fr) auto; }
+      .feature-mini-row > span:nth-child(2) { display:none; }
+    }
+    @media (prefers-reduced-motion:reduce) { html{scroll-behavior:auto}.js [data-reveal]{opacity:1!important;transform:none!important;transition:none!important}.feature-card,.flow-step,.module-preview-overlay,.module-preview-shell{transition:none!important}.ambient-orb,.hero-preview,.bridge-card>div,.process-flow::before,.promo-stage::before,.promo-slide,.promo-copy>*,.promo-media,.promo-animation-marquee::after,.promo-progress span::after,.hero-typed-text,.hero-typecursor,.ip-demo-chart i,.ip-demo-pointer,.ip-demo-pointer-ring,.capability-grid .feature-card.is-flippable,.capability-connector-flow,.capability-stage::after,.capability-hub-mark,.capability-hub::before,.capability-hub::after,.trust-logo-track{animation:none!important;transition:none!important} }
     .plan-card { transition: transform .24s ease, box-shadow .24s ease; }
     .plan-card:hover { transform: translateY(-4px); }
+
+    .trust-strip { position:relative; display:grid; grid-template-columns:minmax(8.5rem,12rem) minmax(0,1fr); overflow:hidden; border-radius:1.5rem; background:linear-gradient(105deg,rgba(5,7,51,.14),rgba(5,7,51,.07) 62%,rgba(209,73,0,.045)); color:#050733; }
+    .trust-count { position:relative; z-index:2; display:flex; min-height:7.5rem; flex-direction:column; justify-content:center; padding:1.1rem 1.35rem; background:linear-gradient(135deg,#8f172d,#d14900); color:#fff; }
+    .trust-count strong { font-family:'Sora',serif; font-size:clamp(2.2rem,5vw,3.75rem); line-height:.9; }
+    .trust-count span { margin-top:.55rem; font-size:.67rem; font-weight:800; line-height:1.35; letter-spacing:.1em; text-transform:uppercase; }
+    .trust-logo-window { display:flex; min-width:0; align-items:center; overflow:hidden; -webkit-mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent); mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent); }
+    .trust-logo-track { display:flex; width:max-content; align-items:center; padding:1rem 0; animation:trust-logo-flow 28s linear infinite; will-change:transform; }
+    .trust-logo-track.is-building,.trust-logo-track--empty { animation:none; }
+    .trust-logo-set { display:flex; flex:0 0 auto; align-items:center; gap:1.25rem; padding:0 .625rem; }
+    @media(hover:hover){ .trust-logo-window:hover .trust-logo-track { animation-play-state:paused; } }
+    .trust-logo-window.is-paused .trust-logo-track { animation-play-state:paused; }
+    .trust-logo { display:flex; width:9.5rem; height:5.4rem; min-width:0; flex:0 0 auto; align-items:center; justify-content:center; overflow:hidden; padding:.55rem .75rem; line-height:0; contain:layout paint; }
+    .trust-logo img { display:block; width:100%; height:100%; max-width:none; max-height:none; object-fit:contain; object-position:center; }
+    .trust-empty { min-width:18rem; color:rgba(5,7,51,.7); font-size:.78rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+    @keyframes trust-logo-flow { to { transform:translate3d(-50%,0,0); } }
+    @media(max-width:640px){ .trust-strip{grid-template-columns:6.6rem minmax(0,1fr);border-radius:1.2rem}.trust-count{min-height:6.5rem;padding:.85rem}.trust-count strong{font-size:2.15rem}.trust-count span{font-size:.56rem}.trust-logo{width:7.4rem;height:4.4rem;padding:.45rem .55rem}.trust-logo-track{padding:.75rem 0}.trust-logo-set{gap:.8rem;padding:0 .4rem} }
   </style>
 </head>
 <body>
@@ -300,6 +387,21 @@
     <section class="relative z-30 mx-auto -mt-12 max-w-6xl px-5 sm:px-8">{% include "marketing/_bridge.html" %}</section>
     {% endif %}
 
+    {% if trust_strip_enabled %}
+    <section class="mx-auto max-w-6xl px-5 pb-12 pt-5 sm:px-8" aria-label="Businesses building with INPROFIC" data-trust-strip>
+      <div class="trust-strip">
+        <div class="trust-count"><strong data-trust-count font-mono data-count="{{ trust_business_count }}">0</strong><span>businesses building with INPROFIC</span></div>
+        <div class="trust-logo-window">
+          {% if trusted_businesses or manual_trust_logos %}<div class="trust-logo-track">
+            {% for business in trusted_businesses %}<span class="trust-logo"><img src="{{ business.storefront_logo.url }}" alt="{{ business.name }}" loading="lazy"></span>{% endfor %}
+            {% for logo in manual_trust_logos %}<span class="trust-logo"><img src="{{ logo.logo.url }}" alt="{{ logo.name }}" loading="lazy"></span>{% endfor %}
+            <span aria-hidden="true" class="contents">{% for business in trusted_businesses %}<span class="trust-logo"><img src="{{ business.storefront_logo.url }}" alt="" loading="lazy"></span>{% endfor %}{% for logo in manual_trust_logos %}<span class="trust-logo"><img src="{{ logo.logo.url }}" alt="" loading="lazy"></span>{% endfor %}</span>
+          </div>{% else %}<div class="trust-logo-track"><span class="trust-empty">Growing businesses are connecting production to commerce.</span><span class="trust-empty" aria-hidden="true">Growing businesses are connecting production to commerce.</span></div>{% endif %}
+        </div>
+      </div>
+    </section>
+    {% endif %}
+
     <section id="interactive-demo" class="marketing-demo-intro mx-auto max-w-6xl px-5 pb-4 sm:px-8">
       <div class="mb-6">
         <h2 class="font-display text-3xl font-semibold sm:text-5xl">Want to see how things move?</h2>
@@ -320,9 +422,19 @@
       {% include "marketing/_native_demo.html" with demo_id="general-product-demo" demo_kind="general" demo_label="Interactive walkthrough" demo_note="Choose a service above. The same connected workflow changes its language and operating steps to match that kind of business." %}
     </section>
 
-    <section id="capabilities" class="mx-auto max-w-7xl px-5 py-24 sm:px-8">
+    <section id="capabilities" class="capability-stage mx-auto max-w-7xl px-5 py-24 sm:px-8">
       <div class="max-w-2xl"><p class="text-xs font-bold uppercase tracking-[.22em] text-[#d14900]">The whole operation</p><h2 class="mt-3 font-display text-3xl font-semibold sm:text-5xl">Less switching. Fewer blind spots.</h2><p class="mt-4 leading-7 text-stone-500">Every module shares the same business context and audit trail, so teams can act without stitching together scattered spreadsheets.</p></div>
-      <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div class="capability-grid mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-module-grid>
+        <svg class="capability-connectors" data-module-connectors aria-hidden="true">
+          <defs>
+            <linearGradient id="capability-flow-gradient" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#8f172d"></stop>
+              <stop offset=".52" stop-color="#d14900"></stop>
+              <stop offset="1" stop-color="#050733"></stop>
+            </linearGradient>
+          </defs>
+          <g data-module-connector-paths></g>
+        </svg>
         <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
           <span class="text-2xl">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(209, 73, 0)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-building-warehouse">
@@ -363,6 +475,9 @@
           <h3 class="mt-4 font-subheading text-xl">Sales & customers</h3>
           <p class="mt-2 text-sm leading-6 text-stone-500">Handle walk-ins, direct orders, online demand, distribution pricing, customer credit and fulfilment without losing context.</p>
         </article>
+        <div class="capability-hub" data-module-hub aria-hidden="true">
+          <span class="capability-hub-mark"><img src="{% static 'core/brand/inprofic-mark.png' %}" alt=""></span>
+        </div>
         <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
           <span class="text-2xl">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(0, 209, 45)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-currency-naira">
@@ -412,6 +527,18 @@
           <h3 class="mt-4 font-subheading text-xl">Dedicated in-premise POS</h3>
           <p class="mt-2 text-sm leading-6 text-stone-500">Cashier-only users can land straight in the counter storefront, sell safely, and log out without entering the wider workspace.</p>
         </article>
+      </div>
+      <div class="module-preview-overlay" data-module-overlay hidden>
+        <button type="button" class="module-preview-backdrop" data-module-close tabindex="-1" aria-label="Close module preview"></button>
+        <div id="module-preview-dialog" class="module-preview-shell" data-module-dialog role="dialog" aria-modal="true" aria-labelledby="module-preview-title" tabindex="-1">
+          <div class="module-preview-toolbar">
+            <span class="module-preview-label">Interactive module preview</span>
+            <button type="button" class="module-preview-close" data-module-close aria-label="Close module preview">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+            </button>
+          </div>
+          <div data-module-preview></div>
+        </div>
       </div>
 
     </section>
@@ -680,7 +807,7 @@
 
     function renderMini(back, module, profile) {
       const scene = miniScene(module, profile);
-      back.innerHTML = `<div class="feature-mini-head"><div><div class="feature-mini-title">${scene.title}</div><div class="feature-mini-kicker">${scene.kicker}</div></div><span class="feature-mini-state">${scene.state}</span></div><div class="feature-mini-kpis">${scene.kpis.map(([l,v])=>`<div class="feature-mini-kpi"><small>${l}</small><strong>${v}</strong></div>`).join('')}</div><div class="feature-mini-list">${scene.rows.map(([a,b,c])=>`<div class="feature-mini-row"><strong>${a}</strong><span>${b}</span><span class="feature-mini-chip ${statusClass(c)}">${c}</span></div>`).join('')}</div><div class="feature-mini-back">Click again to return</div>`;
+      back.innerHTML = `<div class="feature-mini-head"><div><div class="feature-mini-title" id="module-preview-title">${scene.title}</div><div class="feature-mini-kicker">${scene.kicker}</div></div><span class="feature-mini-state">${scene.state}</span></div><div class="feature-mini-kpis">${scene.kpis.map(([l,v])=>`<div class="feature-mini-kpi"><small>${l}</small><strong>${v}</strong></div>`).join('')}</div><div class="feature-mini-list">${scene.rows.map(([a,b,c])=>`<div class="feature-mini-row"><strong>${a}</strong><span>${b}</span><span class="feature-mini-chip ${statusClass(c)}">${c}</span></div>`).join('')}</div><div class="feature-mini-back">Close this preview to explore another module.</div>`;
     }
 
     const demoRoots = [...document.querySelectorAll('[data-inprofic-demo]')];
@@ -802,14 +929,138 @@
       });
     });
 
+    const trustCount=document.querySelector('[data-trust-count]');
+    if(trustCount){
+      const target=Number(trustCount.dataset.count||0);
+      const showCount=()=>{
+        if(matchMedia('(prefers-reduced-motion: reduce)').matches){trustCount.textContent=target.toLocaleString();return;}
+        const started=performance.now(),duration=1200;
+        const tick=now=>{const progress=Math.min(1,(now-started)/duration);trustCount.textContent=Math.round(target*(1-Math.pow(1-progress,3))).toLocaleString();if(progress<1)requestAnimationFrame(tick);};
+        requestAnimationFrame(tick);
+      };
+      if('IntersectionObserver'in window){const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){observer.disconnect();showCount();}},{threshold:.35});observer.observe(trustCount);}else showCount();
+    }
+
     const titleMap = {'Inventory':'inventory','Procurement':'procurement','Production':'production','Sales & customers':'sales','Finance & expenses':'finance','Reports & backup':'reports','Delivery operations':'delivery','Audit Workspace':'audit','Dedicated in-premise POS':'pos'};
-    document.querySelectorAll('#capabilities .feature-card').forEach(card=>{
-      const heading=card.querySelector('h3');const module=titleMap[heading?.textContent.trim()];if(!module)return;
-      card.classList.add('is-flippable');card.dataset.featureDemo=module;card.tabIndex=0;card.setAttribute('role','button');card.setAttribute('aria-pressed','false');card.setAttribute('aria-label',`${heading.textContent.trim()}: click to view an interactive module preview`);
-      const inner=document.createElement('div');inner.className='feature-flip-inner';const front=document.createElement('div');front.className='feature-face front';while(card.firstChild)front.appendChild(card.firstChild);front.insertAdjacentHTML('beforeend','<span class="feature-demo-hint">Click to preview <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h10v10"/><path d="M7 17L17 7"/></svg></span>');const back=document.createElement('div');back.className='feature-face back';inner.append(front,back);card.appendChild(inner);renderMini(back,module,serviceProfiles[activeService]);
-      const toggle=()=>{const flipped=card.classList.toggle('is-flipped');card.setAttribute('aria-pressed',flipped?'true':'false');if(flipped)renderMini(back,module,serviceProfiles[activeService]);};card.addEventListener('click',toggle);card.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();toggle();}});
+    const moduleGrid=document.querySelector('[data-module-grid]');
+    const moduleOverlay=document.querySelector('[data-module-overlay]');
+    const moduleDialog=moduleOverlay?.querySelector('[data-module-dialog]');
+    if(moduleOverlay&&moduleOverlay.parentElement!==document.body)document.body.appendChild(moduleOverlay);
+    const modulePreview=moduleOverlay?.querySelector('[data-module-preview]');
+    let activeModuleCard=null;
+    let moduleCloseTimer=null;
+
+    function openModulePreview(card,module){
+      if(!moduleOverlay||!moduleDialog||!modulePreview)return;
+      window.clearTimeout(moduleCloseTimer);
+      if(activeModuleCard&&activeModuleCard!==card)activeModuleCard.setAttribute('aria-expanded','false');
+      activeModuleCard=card;
+      card.setAttribute('aria-expanded','true');
+      card.classList.remove('is-opening');
+      void card.offsetWidth;
+      card.classList.add('is-opening');
+      window.setTimeout(()=>card.classList.remove('is-opening'),470);
+      renderMini(modulePreview,module,serviceProfiles[activeService]);
+      moduleOverlay.hidden=false;
+      document.body.classList.add('module-preview-open');
+      window.requestAnimationFrame(()=>{
+        moduleOverlay.classList.add('is-open');
+        moduleDialog.focus({preventScroll:true});
+      });
+    }
+
+    function closeModulePreview(){
+      if(!moduleOverlay||moduleOverlay.hidden)return;
+      moduleOverlay.classList.remove('is-open');
+      document.body.classList.remove('module-preview-open');
+      activeModuleCard?.setAttribute('aria-expanded','false');
+      const returnTarget=activeModuleCard;
+      activeModuleCard=null;
+      moduleCloseTimer=window.setTimeout(()=>{
+        moduleOverlay.hidden=true;
+        returnTarget?.focus({preventScroll:true});
+      },matchMedia('(prefers-reduced-motion: reduce)').matches?0:280);
+    }
+
+    moduleOverlay?.querySelectorAll('[data-module-close]').forEach(button=>button.addEventListener('click',closeModulePreview));
+    document.addEventListener('keydown',event=>{
+      if(!moduleOverlay||moduleOverlay.hidden)return;
+      if(event.key==='Escape'){event.preventDefault();closeModulePreview();return;}
+      if(event.key!=='Tab')return;
+      const focusable=[...moduleOverlay.querySelectorAll('button:not([disabled]),[href],[tabindex]:not([tabindex="-1"])')].filter(element=>element.offsetParent!==null);
+      if(!focusable.length)return;
+      const first=focusable[0],last=focusable[focusable.length-1];
+      if(event.shiftKey&&(document.activeElement===first||document.activeElement===moduleDialog)){event.preventDefault();last.focus();}
+      else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
     });
-    window.addEventListener('inprofic:marketing-vertical',()=>{demoRoots.forEach(root=>root.__refreshDemo?.(true));document.querySelectorAll('[data-feature-demo] .feature-face.back').forEach(back=>renderMini(back,back.closest('[data-feature-demo]').dataset.featureDemo,serviceProfiles[activeService]));});
+
+    const moduleCards=[...document.querySelectorAll('#capabilities .feature-card')];
+    moduleCards.forEach((card,moduleCardIndex)=>{
+      card.style.setProperty('--module-index',moduleCardIndex);
+      const heading=card.querySelector('h3');
+      const module=titleMap[heading?.textContent.trim()];
+      if(!module)return;
+      card.classList.add('is-flippable');
+      card.dataset.featureDemo=module;
+      card.tabIndex=0;
+      card.setAttribute('role','button');
+      card.setAttribute('aria-haspopup','dialog');
+      card.setAttribute('aria-controls','module-preview-dialog');
+      card.setAttribute('aria-expanded','false');
+      card.setAttribute('aria-label',`${heading.textContent.trim()}: open an interactive module preview`);
+      card.insertAdjacentHTML('beforeend','<span class="feature-demo-hint">Click to preview <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17L17 7"/></svg></span>');
+      const open=()=>openModulePreview(card,module);
+      card.addEventListener('click',open);
+      card.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();open();}});
+    });
+
+    function drawModuleConnectors(){
+      const svg=moduleGrid?.querySelector('[data-module-connectors]');
+      const pathLayer=svg?.querySelector('[data-module-connector-paths]');
+      const hubMark=moduleGrid?.querySelector('.capability-hub-mark');
+      if(!svg||!pathLayer||!hubMark)return;
+      const gridRect=moduleGrid.getBoundingClientRect();
+      const hubRect=hubMark.getBoundingClientRect();
+      const width=moduleGrid.clientWidth;
+      const height=moduleGrid.clientHeight;
+      if(!width||!height)return;
+      svg.setAttribute('viewBox',`0 0 ${width} ${height}`);
+      pathLayer.replaceChildren();
+      const center=rect=>({x:rect.left-gridRect.left+rect.width/2,y:rect.top-gridRect.top+rect.height/2});
+      const edge=(from,to,rect,inset=9)=>{
+        const dx=to.x-from.x,dy=to.y-from.y;
+        const halfWidth=Math.max(1,rect.width/2-inset),halfHeight=Math.max(1,rect.height/2-inset);
+        const scale=1/Math.max(Math.abs(dx)/halfWidth,Math.abs(dy)/halfHeight);
+        return {x:from.x+dx*scale,y:from.y+dy*scale};
+      };
+      const hubCenter=center(hubRect);
+      moduleCards.forEach((card,index)=>{
+        const cardRect=card.getBoundingClientRect();
+        const cardCenter=center(cardRect);
+        const start=edge(hubCenter,cardCenter,hubRect,5);
+        const end=edge(cardCenter,hubCenter,cardRect,12);
+        const dx=end.x-start.x,dy=end.y-start.y;
+        const vertical=Math.abs(dy)>=Math.abs(dx);
+        const d=vertical
+          ? `M ${start.x} ${start.y} C ${start.x} ${start.y+dy*.46}, ${end.x} ${end.y-dy*.18}, ${end.x} ${end.y}`
+          : `M ${start.x} ${start.y} C ${start.x+dx*.46} ${start.y}, ${end.x-dx*.18} ${end.y}, ${end.x} ${end.y}`;
+        ['capability-connector-base','capability-connector-flow'].forEach(className=>{
+          const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+          path.setAttribute('d',d);
+          path.setAttribute('class',className);
+          if(className==='capability-connector-flow')path.style.animationDelay=`${index*-.19}s`;
+          pathLayer.appendChild(path);
+        });
+      });
+    }
+    window.requestAnimationFrame(drawModuleConnectors);
+    if('ResizeObserver'in window&&moduleGrid)new ResizeObserver(()=>window.requestAnimationFrame(drawModuleConnectors)).observe(moduleGrid);
+    else window.addEventListener('resize',drawModuleConnectors,{passive:true});
+
+    window.addEventListener('inprofic:marketing-vertical',()=>{
+      demoRoots.forEach(root=>root.__refreshDemo?.(true));
+      if(activeModuleCard&&modulePreview)renderMini(modulePreview,activeModuleCard.dataset.featureDemo,serviceProfiles[activeService]);
+    });
 
     const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
     const revealTargets=[...document.querySelectorAll('main > section, #capabilities .feature-card, #plans article, #faq details')];
@@ -895,5 +1146,10 @@
   });
 })();
 </script>
+
+  <a class="marketing-whatsapp" href="https://wa.me/2349011099449?text=Hello%20INPROFIC%2C%20I%20need%20help." target="_blank" rel="noopener noreferrer" aria-label="Chat with INPROFIC support on WhatsApp">
+    <span class="marketing-whatsapp-label">Chat with us</span>
+    <span class="marketing-whatsapp-icon" aria-hidden="true"><svg viewBox="0 0 32 32" role="img"><path fill="currentColor" d="M16 3a12.8 12.8 0 0 0-11 19.36L3.5 29l6.82-1.43A12.94 12.94 0 1 0 16 3Zm0 23.45a10.5 10.5 0 0 1-5.35-1.46l-.38-.22-4.05.85.87-3.94-.25-.4A10.42 10.42 0 1 1 16 26.45Zm5.74-7.82c-.31-.16-1.85-.91-2.14-1.02-.29-.11-.5-.16-.71.16-.21.31-.81 1.02-.99 1.23-.18.21-.37.24-.68.08-.31-.16-1.32-.49-2.51-1.55a9.45 9.45 0 0 1-1.74-2.17c-.18-.31-.02-.48.14-.64.14-.14.31-.37.47-.55.16-.18.21-.31.31-.52.11-.21.05-.39-.03-.55-.08-.16-.71-1.71-.97-2.34-.26-.62-.52-.54-.71-.55h-.6c-.21 0-.55.08-.84.39-.29.31-1.1 1.08-1.1 2.63s1.13 3.05 1.29 3.26c.16.21 2.22 3.39 5.38 4.75.75.32 1.34.52 1.8.66.76.24 1.44.21 1.99.13.61-.09 1.85-.76 2.11-1.49.26-.73.26-1.36.18-1.49-.08-.13-.29-.21-.6-.37Z"/></svg></span>
+  </a>
 </body>
 </html>

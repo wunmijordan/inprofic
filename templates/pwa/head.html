@@ -16,10 +16,12 @@
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     const syncInstalledTheme = function () {
       const dark = media.matches;
+      const platform = navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || '';
+      const windows = /win/i.test(platform);
       if (manifest) {
-        const scheme = dark ? 'dark' : 'light';
+        const scheme = windows ? 'light' : (dark ? 'dark' : 'light');
         const separator = manifest.dataset.baseHref.includes('?') ? '&' : '?';
-        manifest.href = `${manifest.dataset.baseHref}${separator}theme=${scheme}`;
+        manifest.href = `${manifest.dataset.baseHref}${separator}theme=${scheme}${windows ? '&platform=windows' : ''}`;
       }
       if (touchIcon) touchIcon.href = dark ? touchIcon.dataset.darkHref : touchIcon.dataset.lightHref;
       if ('serviceWorker' in navigator) {

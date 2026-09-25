@@ -57,6 +57,14 @@ def signup(request):
                     role=roles[CustomUser.ROLE_BUSINESS_ADMIN],
                 )
                 ensure_permissions(membership)
+                from .models import BusinessTrialIdentity
+                from .forms import _trial_name_key, _trial_phone_key
+                BusinessTrialIdentity.objects.create(
+                    business=business,
+                    email_key=(user.email or "").strip().casefold(),
+                    phone_key=_trial_phone_key(user.phone),
+                    business_name_key=_trial_name_key(business.name),
+                )
                 from .subscription_services import start_trial_for_business
                 subscription = start_trial_for_business(business)
             auth_login(request, user)
@@ -837,11 +845,12 @@ def founder_subscriptions(request):
     from .forms import (
         FounderGrantForm, FounderTrialGrantForm, SubscriptionTrialPolicyForm,
         BusinessRestoreForm, SubscriptionPromotionForm, MarketingPromoCampaignForm,
+        MarketingTrustSettingsForm, MarketingTrustLogoForm,
     )
     from .models import (
         BusinessSubscription, FounderTrialGrant, SubscriptionPlan, SubscriptionPayment,
         SubscriptionPaymentSettings, SubscriptionPolicySettings, PlatformIntegrationSettings,
-        SubscriptionPromotion, MarketingPromoCampaign,
+        SubscriptionPromotion, MarketingPromoCampaign, MarketingTrustSettings, MarketingTrustLogo,
     )
     from .subscription_services import (
         ensure_default_plans, grant_founder_lifetime, grant_founder_trial_extension,
@@ -854,6 +863,7 @@ def founder_subscriptions(request):
     payment_settings = SubscriptionPaymentSettings.load()
     integration_settings = PlatformIntegrationSettings.load()
     trial_policy_settings = SubscriptionPolicySettings.load()
+    trust_settings = MarketingTrustSettings.load()
     action = request.POST.get("action") if request.method == "POST" else ""
     form = FounderGrantForm(request.POST if action == "grant" else None)
     trial_policy_form = SubscriptionTrialPolicyForm(
@@ -868,6 +878,13 @@ def founder_subscriptions(request):
         request.FILES if action in {"backup_preview", "backup_restore"} else None,
     )
     promotion_form = SubscriptionPromotionForm(request.POST if action == "create_promotion" else None)
+    trust_settings_form = MarketingTrustSettingsForm(
+        request.POST if action == "save_trust_settings" else None, instance=trust_settings
+    )
+    trust_logo_form = MarketingTrustLogoForm(
+        request.POST if action == "add_trust_logo" else None,
+        request.FILES if action == "add_trust_logo" else None,
+    )
     campaign_id = (request.POST.get("campaign_id") if action == "save_marketing_campaign" else None) or request.GET.get("campaign")
     try:
         campaign_pk = int(campaign_id) if campaign_id else None
@@ -981,6 +998,25 @@ def founder_subscriptions(request):
             payment = mark_payment_paid(payment)
             messages.success(request, f"Payment {payment.reference} marked paid and entitlements updated.")
             return redirect("founder_subscriptions")
+        if action == "save_trust_settings" and trust_settings_form.is_valid():
+            saved = trust_settings_form.save(commit=False)
+            saved.pk = trust_settings.pk
+            saved.updated_by = request.user
+            saved.save()
+            messages.success(request, "Marketing trust strip settings saved.")
+            return redirect(f"{reverse('founder_subscriptions')}#marketing-trust-strip")
+        if action == "add_trust_logo" and trust_logo_form.is_valid():
+            logo = trust_logo_form.save(commit=False)
+            logo.created_by = request.user
+            logo.save()
+            messages.success(request, f"{logo.name} was added to the trusted-business strip.")
+            return redirect(f"{reverse('founder_subscriptions')}#marketing-trust-strip")
+        if action == "toggle_trust_logo":
+            logo = get_object_or_404(MarketingTrustLogo, pk=request.POST.get("trust_logo_id"))
+            logo.active = not logo.active
+            logo.save(update_fields=["active", "updated_at"])
+            messages.success(request, f"{logo.name} is now {'visible' if logo.active else 'hidden'} on the marketing page.")
+            return redirect(f"{reverse('founder_subscriptions')}#marketing-trust-strip")
         if action == "create_promotion" and promotion_form.is_valid():
             promotion = promotion_form.save(commit=False)
             promotion.created_by = request.user
@@ -1200,6 +1236,9 @@ def founder_subscriptions(request):
         "restore_form": restore_form,
         "backup_restore_report": backup_restore_report,
         "promotion_form": promotion_form,
+        "trust_settings_form": trust_settings_form,
+        "trust_logo_form": trust_logo_form,
+        "trust_logos": MarketingTrustLogo.objects.select_related("created_by").all(),
         "promotions": SubscriptionPromotion.objects.select_related("plan", "created_by").order_by("-active", "-starts_at", "-id")[:50],
         "campaign_form": campaign_form,
         "campaign_instance": campaign_instance,
@@ -1218,4 +1257,287 @@ def founder_subscriptions(request):
         "platform_query": platform_query,
         "platform_businesses": businesses[:50],
         "platform_users": users[:50],
+    })
+
+
+def _can_platform_mail(user):
+    return bool(user.is_authenticated and (user.is_superuser or getattr(user, "platform_mail_access", False)))
+
+
+def _mailing_business_rows(*, service="", plan_id=None):
+    from django.core.validators import validate_email
+    from django.db.models import Prefetch
+
+    admin_memberships = (
+        UserBusiness.objects.filter(
+            active=True,
+            user__is_active=True,
+            role__key=CustomUser.ROLE_BUSINESS_ADMIN,
+        )
+        .select_related("user", "role")
+        .order_by("id")
+    )
+    businesses = Business.objects.all().order_by("name")
+    if service:
+        businesses = businesses.filter(vertical=service)
+    businesses = businesses.select_related(
+        "subscription",
+        "subscription__plan",
+        "subscription_service__subscription",
+        "subscription_service__subscription__plan",
+    ).prefetch_related(
+        Prefetch(
+            "user_memberships",
+            queryset=admin_memberships,
+            to_attr="mail_admin_memberships",
+        )
+    )
+    rows = []
+    for business in businesses:
+        subscription = getattr(business, "subscription", None)
+        service_link = getattr(business, "subscription_service", None)
+        if not subscription and service_link:
+            subscription = service_link.subscription
+        if plan_id and (not subscription or subscription.plan_id != plan_id):
+            continue
+        membership = next(iter(getattr(business, "mail_admin_memberships", [])), None)
+        email = (membership.user.email if membership else "").strip().lower()
+        if not membership or not email:
+            continue
+        try:
+            validate_email(email)
+        except ValidationError:
+            continue
+        rows.append(
+            {
+                "business": business,
+                "owner": membership.user,
+                "email": email,
+                "service": business.get_vertical_display(),
+                "plan": subscription.plan.name if subscription else "No active plan",
+                "plan_status": (
+                    subscription.effective_status_label
+                    if subscription
+                    else "No subscription"
+                ),
+            }
+        )
+    return rows
+
+
+@login_required
+def platform_mailing_workspace(request):
+    if not _can_platform_mail(request.user):
+        return render(request, "403.html", status=403)
+
+    from .forms import PlatformMailComposeForm
+    from .models import (
+        PlatformMailCampaign,
+        PlatformMailRecipient,
+        PlatformMailTemplate,
+        SubscriptionPlan,
+    )
+
+    valid_services = {value for value, _label in Business.VERTICAL_CHOICES}
+    requested_service = (request.GET.get("service") or "").strip()
+    service = requested_service if requested_service in valid_services else ""
+    requested_plan = (request.GET.get("plan") or "").strip()
+    plan_id = int(requested_plan) if requested_plan.isdigit() else None
+    rows = _mailing_business_rows(service=service, plan_id=plan_id)
+
+    if request.method == "POST":
+        form = PlatformMailComposeForm(request.POST)
+        if form.is_valid():
+            selected_ids = set(form.cleaned_data["business_ids"])
+            selected = [
+                row for row in rows if row["business"].pk in selected_ids
+            ]
+            if not selected:
+                form.add_error("business_ids", "Choose at least one available business recipient.")
+            else:
+                with transaction.atomic():
+                    campaign = PlatformMailCampaign.objects.create(
+                        template=form.cleaned_data.get("template"),
+                        subject=form.cleaned_data["subject"],
+                        heading=form.cleaned_data["heading"],
+                        body_html=form.cleaned_data["body_html"],
+                        cta_label=form.cleaned_data.get("cta_label") or "",
+                        cta_url=form.cleaned_data.get("cta_url") or "",
+                        status=PlatformMailCampaign.STATUS_QUEUED,
+                        total_recipients=len(selected),
+                        created_by=request.user,
+                        queued_at=timezone.now(),
+                    )
+                    PlatformMailRecipient.objects.bulk_create(
+                        [
+                            PlatformMailRecipient(
+                                campaign=campaign,
+                                business_id_snapshot=row["business"].pk,
+                                business_name=row["business"].name,
+                                service=row["service"],
+                                plan_name=row["plan"],
+                                recipient_name=(
+                                    row["owner"].fullname or row["owner"].username
+                                ),
+                                email=row["email"],
+                            )
+                            for row in selected
+                        ]
+                    )
+                from .mailing import dispatch_queued_platform_mail
+
+                delivery = dispatch_queued_platform_mail(
+                    campaign_id=campaign.pk,
+                    limit=100,
+                )
+                remaining = campaign.recipients.exclude(
+                    status=PlatformMailRecipient.STATUS_SENT
+                ).count()
+                if delivery["sent"]:
+                    detail = f'{delivery["sent"]} message(s) sent.'
+                    if remaining:
+                        detail += f" {remaining} remain queued for automatic retry."
+                    messages.success(request, detail)
+                else:
+                    messages.error(
+                        request,
+                        "The campaign was saved, but the mail server did not accept a message yet. "
+                        "It remains queued for automatic retry; verify the SMTP settings if this continues.",
+                    )
+                return redirect("platform_mailing_workspace")
+    else:
+        initial = {}
+        template_id = (request.GET.get("template") or "").strip()
+        if template_id.isdigit():
+            topic = PlatformMailTemplate.objects.filter(
+                pk=template_id,
+                active=True,
+            ).first()
+            if topic:
+                initial = {
+                    "template": topic,
+                    "subject": topic.subject,
+                    "heading": topic.heading,
+                    "body_html": topic.body_html,
+                    "cta_label": topic.cta_label,
+                    "cta_url": topic.cta_url,
+                }
+        form = PlatformMailComposeForm(initial=initial)
+
+    campaigns = (
+        PlatformMailCampaign.objects.select_related("template", "created_by")
+        .annotate(
+            pending_count=Count(
+                "recipients",
+                filter=Q(
+                    recipients__status__in=[
+                        PlatformMailRecipient.STATUS_PENDING,
+                        PlatformMailRecipient.STATUS_SENDING,
+                    ]
+                ),
+            )
+        )[:20]
+    )
+    return render(
+        request,
+        "accounts/platform_mailing_workspace.html",
+        {
+            "form": form,
+            "business_rows": rows,
+            "campaigns": campaigns,
+            "topics": PlatformMailTemplate.objects.order_by("name"),
+            "total_businesses": Business.objects.count(),
+            "service_counts": Business.objects.values("vertical")
+            .annotate(total=Count("id"))
+            .order_by("vertical"),
+            "filter_service": service,
+            "filter_plan": str(plan_id or ""),
+            "plans": SubscriptionPlan.objects.filter(active=True).order_by(
+                "monthly_price",
+                "name",
+            ),
+        },
+    )
+
+
+@login_required
+@require_POST
+def platform_mail_campaign_dispatch(request, pk):
+    if not _can_platform_mail(request.user):
+        return render(request, "403.html", status=403)
+
+    from .mailing import dispatch_queued_platform_mail, retry_failed_platform_mail
+    from .models import PlatformMailCampaign
+
+    campaign = get_object_or_404(PlatformMailCampaign, pk=pk)
+    if request.POST.get("retry_failed"):
+        retry_failed_platform_mail(campaign)
+    result = dispatch_queued_platform_mail(campaign_id=campaign.pk, limit=500)
+    if result["sent"]:
+        messages.success(
+            request,
+            f'{result["sent"]} queued message(s) were delivered.',
+        )
+    elif result.get("retrying"):
+        messages.error(
+            request,
+            "Delivery was attempted but the mail server did not accept a message. "
+            "The campaign remains queued for another retry.",
+        )
+    else:
+        messages.success(request, "There are no queued recipients in this campaign.")
+    return redirect("platform_mailing_workspace")
+
+
+@login_required
+def platform_mail_template_editor(request, pk=None):
+    if not _can_platform_mail(request.user):
+        return render(request, "403.html", status=403)
+
+    from .forms import PlatformMailTemplateForm
+    from .models import PlatformMailTemplate
+
+    topic = get_object_or_404(PlatformMailTemplate, pk=pk) if pk else None
+    if request.method == "POST":
+        form = PlatformMailTemplateForm(request.POST, instance=topic)
+        if form.is_valid():
+            obj = form.save(commit=False)
+            if not obj.created_by_id:
+                obj.created_by = request.user
+            obj.save()
+            messages.success(request, "Mailing topic saved.")
+            return redirect("platform_mailing_workspace")
+    else:
+        form = PlatformMailTemplateForm(instance=topic)
+    return render(
+        request,
+        "accounts/platform_mail_template_form.html",
+        {
+            "form": form,
+            "topic": topic,
+            "title": "Edit mailing topic" if topic else "Create mailing topic",
+            "eyebrow": "INPROFIC Project Mailing · Topic",
+        },
+    )
+
+
+
+
+
+@login_required
+def founder_platform_user_add(request):
+    if not request.user.is_superuser:
+        return render(request, "403.html", status=403)
+    from .forms import FounderUserManagementForm
+    if request.method == "POST":
+        form = FounderUserManagementForm(request.POST, actor=request.user)
+        if form.is_valid():
+            account = form.save()
+            messages.success(request, f"{account.fullname or account.username} was created.")
+            return redirect(f"{reverse('founder_subscriptions')}?workspace=management#platform-management")
+    else:
+        form = FounderUserManagementForm(actor=request.user)
+    return render(request, "accounts/founder_platform_form.html", {
+        "form": form, "title": "Create project-level user", "eyebrow": "Founder platform management · User",
+        "object_kind": "user", "managed_user": None, "memberships": [],
     })

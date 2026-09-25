@@ -92,11 +92,11 @@
   {% if user.is_authenticated %}
   <aside class="desktop-sidebar tenant-sidebar hidden md:flex flex-col">
     <div class="shrink-0 px-5 py-5 border-b border-white/10">
-      <a href="{% url 'dashboard' %}" aria-label="INPROFIC dashboard" class="block">
-        <img src="{% if biz.background_text_color == '#FFFFFF' %}{% static 'core/brand/inprofic-wordmark-on-dark.png' %}{% else %}{% static 'core/brand/inprofic-wordmark-on-light.png' %}{% endif %}" alt="INPROFIC" class="max-w-full" style="width:10.5rem;height:auto" width="1827" height="290">
+      <a href="{% if not biz %}{% url 'platform_mailing_workspace' %}{% else %}{% url 'dashboard' %}{% endif %}" aria-label="INPROFIC dashboard" class="block">
+        <img src="{% if not biz or biz.background_text_color == '#FFFFFF' %}{% static 'core/brand/inprofic-wordmark-on-dark.png' %}{% else %}{% static 'core/brand/inprofic-wordmark-on-light.png' %}{% endif %}" alt="INPROFIC" class="max-w-full" style="width:10.5rem;height:auto" width="1827" height="290">
       </a>
-      <div class="mt-3 min-w-0 truncate font-display font-semibold">{{ biz.name }}</div>
-      <div class="tenant-tagline text-[10px] tracking-[0.2em] uppercase">{{ biz.tagline|default:vertical_ui.platform_label }}</div>
+      <div class="mt-3 min-w-0 truncate font-display font-semibold">{% if biz %}{{ biz.name }}{% else %}Project Mailing{% endif %}</div>
+      <div class="tenant-tagline text-[10px] tracking-[0.2em] uppercase">{% if biz %}{{ biz.tagline|default:vertical_ui.platform_label }}{% else %}Project-wide communications{% endif %}</div>
       {% if subscription %}<a href="{% url 'subscription_payment' %}" class="inline-flex mt-2 items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold {% if subscription.is_expiring_soon %}bg-rose-500 text-white{% else %}tenant-soft-chip{% endif %}">{{ subscription.plan.name }}{% if subscription.founder_lifetime %} · Founder lifetime{% elif subscription.status == 'trial' and subscription.is_effectively_active %} · Trial{% elif subscription.plan.is_free_forever and subscription.status == 'active' %} · Free{% elif subscription.status == 'active' %} · Paid{% else %} · {{ subscription.effective_status_label }}{% endif %}</a>{% else %}{% if can_manage_business %}<a href="{% url 'subscription_plans' %}" class="tenant-soft-chip inline-flex mt-2 rounded-full px-2 py-1 text-[10px] font-semibold">Choose plan</a>{% endif %}{% endif %}
       {% if available_businesses|length > 1 %}
       <form action="{% url 'switch_business' %}" method="post" class="mt-3">
@@ -118,9 +118,9 @@
 
   <div id="mobile-nav-shell" class="tenant-sidebar md:hidden fixed top-0 inset-x-0 z-40">
     <div class="relative z-10 flex items-center justify-between px-4 py-3 tenant-sidebar">
-      <a href="{% url 'dashboard' %}" class="flex min-w-0 items-center gap-2 font-semibold font-display">
-        <img src="{% if biz.background_text_color == '#FFFFFF' %}{% static 'core/brand/inprofic-wordmark-on-dark.png' %}{% else %}{% static 'core/brand/inprofic-wordmark-on-light.png' %}{% endif %}" alt="INPROFIC" class="max-w-32 shrink-0" style="width:7.5rem;height:auto" width="1827" height="290">
-        <span class="truncate">{{ biz.name }}</span>
+      <a href="{% if not biz %}{% url 'platform_mailing_workspace' %}{% else %}{% url 'dashboard' %}{% endif %}" class="flex min-w-0 items-center gap-2 font-semibold font-display">
+        <img src="{% if not biz or biz.background_text_color == '#FFFFFF' %}{% static 'core/brand/inprofic-wordmark-on-dark.png' %}{% else %}{% static 'core/brand/inprofic-wordmark-on-light.png' %}{% endif %}" alt="INPROFIC" class="max-w-32 shrink-0" style="width:7.5rem;height:auto" width="1827" height="290">
+        <span class="truncate">{% if biz %}{{ biz.name }}{% else %}Project Mailing{% endif %}</span>
       </a>
       <button type="button" id="mobile-nav-button" aria-controls="mobile-nav-panel" aria-expanded="false" aria-label="Toggle navigation" class="cursor-pointer p-1 text-xl leading-none"><span aria-hidden="true">☰</span></button>
     </div>

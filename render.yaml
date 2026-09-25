@@ -64,9 +64,9 @@ services:
       - key: EMAIL_HOST_PASSWORD
         sync: false
       - key: EMAIL_USE_TLS
-        value: "True"
-      - key: EMAIL_USE_SSL
         value: "False"
+      - key: EMAIL_USE_SSL
+        value: "True"
       - key: EMAIL_TIMEOUT
         value: "8"
       - key: DEFAULT_FROM_EMAIL
