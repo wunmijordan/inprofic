@@ -1635,7 +1635,48 @@ def dashboard_financial_breakdown(request):
 
 @login_required
 def reports(request):
-    return render(request, "core/reports.html")
+    return render(request, "core/reports.html", {
+        "report_from": today().replace(day=1).isoformat(),
+        "report_to": today().isoformat(),
+    })
+
+
+@login_required
+@reports_full_required
+def operational_report_pdf(request):
+    from datetime import date
+    from .operational_report import collect_operational_report, render_operational_pdf
+
+    business = getattr(request, "business", None)
+    if business is None:
+        return JsonResponse({"error": "Select a business before generating a report."}, status=400)
+
+    raw_from = request.GET.get("from", "").strip()
+    raw_to = request.GET.get("to", "").strip()
+    if not raw_from and not raw_to:
+        end = today()
+        start = end.replace(day=1)
+    else:
+        try:
+            start = date.fromisoformat(raw_from)
+            end = date.fromisoformat(raw_to)
+        except (TypeError, ValueError):
+            start = end = None
+
+    error = None
+    if start is None or end is None:
+        error = "Choose both valid start and end dates."
+    elif start > end:
+        error = "The start date must be on or before the end date."
+    elif (end.year - start.year) * 12 + end.month - start.month >= 12:
+        error = "Choose up to 12 calendar months per report."
+    if error:
+        return render(request, "core/reports.html", {
+            "report_error": error, "report_from": raw_from, "report_to": raw_to,
+        }, status=400)
+
+    report = collect_operational_report(business, start, end)
+    return render_operational_pdf(business, report)
 
 
 @login_required

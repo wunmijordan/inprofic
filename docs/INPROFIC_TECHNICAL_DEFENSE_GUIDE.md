@@ -51,7 +51,7 @@ Django is a sensible fit because INPROFIC is primarily a data-rich business appl
 
 The deployment entry point is ASGI. `channels[daphne]` provides the ASGI server and realtime/WebSocket support. Open browser sessions can therefore receive commerce/delivery notification updates without polling every screen continuously.
 
-For one application process, Django Channels can use the in-memory channel layer. When INPROFIC is scaled to multiple application processes or multiple Render instances, `CHANNEL_REDIS_URL` must be configured so Channels uses Redis and messages can cross process boundaries. This is an important scaling invariant: adding more web instances without a shared channel layer would make realtime delivery inconsistent between workers.
+When `REDIS_URL` is absent, Django Channels uses the in-memory channel layer and Django caching uses bounded local memory. In production, one shared `REDIS_URL` can serve both workloads with separate `inprofic:channels` and `inprofic:cache` prefixes. Channels caps per-channel backlog at 500 messages and expires queued messages after 30 seconds. Before INPROFIC is scaled to multiple application processes or Render instances, configure that shared Redis service so realtime messages and cache entries can cross process boundaries.
 
 ### Database
 
@@ -660,7 +660,7 @@ The Render/Supabase path supports Psycopg pooling. This helps avoid paying for c
 
 ### Cached database sessions
 
-Production can use cached DB sessions to reduce avoidable session-store database traffic.
+INPROFIC uses Django's `cached_db` session backend in every environment. The database session row remains the source of truth; Redis is the shared production cache when `REDIS_URL` exists, and bounded local memory is the development fallback. This avoids making login continuity depend solely on cache retention.
 
 ### Deferred/lazy expensive UI
 
@@ -687,7 +687,7 @@ A larger instance can improve CPU availability, memory pressure, thread contenti
 
 Therefore “paid compute” is an accelerator, not a substitute for application/database locality and query discipline.
 
-For horizontal/multi-process scaling, configure Redis for Channels first. Keep PostgreSQL/Supabase geographically close to the Render service and size the database pool to the actual database connection budget.
+For horizontal/multi-process scaling, configure the shared `REDIS_URL` first so Channels and Django cache both use Redis with separate prefixes. Keep PostgreSQL/Supabase geographically close to the Render service and size the database pool to the actual database connection budget.
 
 No honest architecture can promise “completely lag free” under every network/load condition. The defensible goal is bounded queries, no avoidable synchronous external work, co-located infrastructure, measured slow-request diagnostics, and scale-out readiness.
 
@@ -941,7 +941,7 @@ Starter's commercial state is derived from its price. Founder Console performs t
 
 ### “What happens when the server is scaled?”
 
-Database pooling and query optimization continue to help. For multiple ASGI processes/instances, Redis must become the Channels layer so WebSocket notifications cross worker boundaries. Database/service region locality still matters.
+Database pooling and query optimization continue to help. For multiple ASGI processes/instances, the shared `REDIS_URL` makes Redis both the Channels transport and shared Django cache, with logical prefixes separating those workloads. Database/service region locality still matters.
 
 ### “Can you promise no lag?”
 

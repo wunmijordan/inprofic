@@ -49,29 +49,37 @@ immediately; automatic HTTP polling remains active only when the socket is
 unavailable. Daphne sends keepalive pings and the browser reconnects with capped
 exponential backoff after deploys, restarts, and network interruptions.
 
-The free Render starter configuration runs one Daphne process and uses an
-in-memory channel layer, so it requires no additional service. This is safe for
-INPROFIC's starter mode because the database notification is authoritative and
-polling recovers any missed transient signal. The Channels project recommends
-Redis for production channel layers; configure it before adding processes or
-instances.
+When `REDIS_URL` is absent, INPROFIC keeps its lightweight local/starter
+fallbacks: Django uses bounded `LocMemCache` and Channels uses the in-memory
+channel layer. Database notifications remain authoritative and polling can
+recover a missed transient WebSocket signal.
 
-If the web service is later scaled to multiple processes or instances, provision
-a Redis-compatible service and set this environment variable on every instance:
+For a shared production cache/channel layer, provision one Redis-compatible
+service and set the same environment variable on every application instance:
 
 ```text
-CHANNEL_REDIS_URL=rediss://<username>:<password>@<host>:<port>/0
+REDIS_URL=rediss://<username>:<password>@<host>:<port>
 ```
 
-When present, INPROFIC automatically switches to the Redis channel layer. Never
-use the in-memory layer across multiple processes because messages cannot cross
-process boundaries.
+Do not split INPROFIC across Redis database indexes such as `/0` and `/1`. The
+Django cache and Channels layer share `REDIS_URL` but use independent logical
+prefixes (`inprofic:cache` and `inprofic:channels`). For `rediss://` endpoints,
+INPROFIC applies the TLS connection options required by the configured Redis
+clients. Channels also limits queued messages to 500 per channel and expires
+stale queued messages after 30 seconds to constrain transient backlog.
+
+Django sessions always use `cached_db`: Redis is the fast cached copy while the
+database-backed `django_session` row remains authoritative. Cache eviction or a
+Redis restart therefore does not make Redis the sole store for login state.
+When Redis is not configured, the same session engine uses the local cache
+fallback with the database still authoritative.
 
 Enter the following secret values during the first Blueprint setup. For an existing Blueprint, add new `sync: false` values manually in **Service → Environment** because Render does not prompt again.
 
 | Render variable         | Where the value comes from                                                                  |
 | ----------------------- | ------------------------------------------------------------------------------------------- |
 | `DATABASE_URL`          | Supabase Connect → Session pooler URI, including the password                               |
+| `REDIS_URL`             | Shared Redis endpoint for Django cache + Channels; omit Redis DB-index suffixes such as `/0` |
 | `DB_CONN_MAX_AGE`       | `0` for ASGI; supplied by `render.yaml`                                                     |
 | `DB_POOL_MAX_SIZE`      | `2`; keeps this web service's persistent pool small against Supabase's session-client limit |
 | `DB_POOL_TIMEOUT`       | `10`; seconds to wait for a pooled connection                                               |
@@ -144,7 +152,7 @@ perform an intentional data migration.
 1. **Keep awake** — `GET https://<service>.onrender.com/health/` every 10 minutes.
 2. **INPROFIC maintenance** — `POST https://<service>.onrender.com/ops/run-jobs/` once daily, with the request header `Authorization: Bearer <CRON_SECRET>`.
 
-The health endpoint performs no database query. The maintenance endpoint rejects requests when `CRON_SECRET` is missing or incorrect. [cron-job.org supports custom methods and headers](https://cron-job.org/en/faq/), and its execution history should show HTTP 200 responses. Keep in mind that an always-awake service consumes nearly all of Render's 750 free instance hours in a typical month, and free services remain unsuitable for business-critical production.
+The health endpoint performs no database query. The maintenance endpoint rejects requests when `CRON_SECRET` is missing or incorrect. A valid trigger now returns HTTP `202 Accepted` immediately and runs the shared scheduled-job registry in a daemon background thread, so the cron request is not held open by long-running maintenance. A database-backed lease prevents an overlapping cron request or manual `python manage.py run_scheduled_jobs` invocation from starting a second registry run. The default lease is six hours (`SCHEDULED_JOB_LEASE_SECONDS=21600`) and exists for crash recovery; successful/failed runs release it immediately. If the web process is restarted or redeployed while a daemon thread is running, that in-process work can still be interrupted; after the lease expires, a later trigger can safely reclaim it. [cron-job.org supports custom methods and headers](https://cron-job.org/en/faq/), and its execution history should therefore show a successful 2xx/202 response rather than waiting for job completion. Keep in mind that an always-awake service consumes nearly all of Render's 750 free instance hours in a typical month, and free services remain unsuitable for business-critical production.
 
 ### 5. Commands in one place
 
@@ -158,7 +166,7 @@ All operational entry points are in `scripts/production.sh`:
 ./scripts/production.sh deploy   # build and release together
 ```
 
-Future idempotent recurring commands belong in `apps/core/jobs.py`. Both `python manage.py run_scheduled_jobs` and the authenticated HTTP endpoint use that same registry.
+Future idempotent recurring commands belong in `apps/core/jobs.py`. Both `python manage.py run_scheduled_jobs` and the authenticated HTTP endpoint use that same registry and the same database lease, so manual and cron execution cannot overlap.
 
 Tailwind is compiled into `apps/core/static/core/css/inprofic.css` and committed.
 The app shell, login, signup, and public storefront pages all load that local
@@ -381,7 +389,7 @@ For the fastest practical production path:
 3. use the `slow_request` diagnostics to fix query amplification before buying compute to mask it;
 4. avoid synchronous external HTTP calls on ordinary page rendering;
 5. use a paid/non-sleeping Render plan to remove free-instance cold starts;
-6. before running multiple ASGI processes or Render instances, set `CHANNEL_REDIS_URL` so Channels uses Redis rather than the in-memory channel layer;
+6. before running multiple ASGI processes or Render instances, set the shared `REDIS_URL` so Channels uses Redis rather than the in-memory channel layer and Django gains a shared cache;
 7. monitor p95/p99 request latency, database latency and provider latency separately.
 
-The current `scripts/production.sh` intentionally starts one Daphne process. Horizontal/multi-process scaling is a separate deployment topology decision because realtime notifications require a shared Redis channel layer first. Scale that deliberately rather than spawning independent in-memory workers that cannot exchange WebSocket messages.
+The current `scripts/production.sh` intentionally starts one Daphne process. Horizontal/multi-process scaling remains a deliberate topology decision: configure the shared `REDIS_URL` first so realtime notifications cross process boundaries and application cache entries are shared rather than process-local.

@@ -1,6 +1,7 @@
 Django>=5.0,<6.0
 channels[daphne]>=4.2,<5
 channels-redis>=4.2,<5
+django-redis>=5.4,<7
 dj-database-url>=2.2,<4
 django-storages[s3]>=1.14.4,<2
 psycopg[binary,pool]>=3.2,<4

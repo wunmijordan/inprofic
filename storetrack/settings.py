@@ -120,21 +120,67 @@ TEMPLATES = [
 WSGI_APPLICATION = 'storetrack.wsgi.application'
 ASGI_APPLICATION = 'storetrack.asgi.application'
 
-# A single-process installation needs no external service. Set
-# CHANNEL_REDIS_URL before adding ASGI workers or running multiple instances so
-# notifications can cross process boundaries.
-CHANNEL_REDIS_URL = os.environ.get("CHANNEL_REDIS_URL", "").strip()
-if CHANNEL_REDIS_URL:
+# -----------------------------------------------------------------------------
+# REDIS, CHANNELS & CACHING
+# -----------------------------------------------------------------------------
+# Production can share one Redis service safely across Django's cache and
+# Channels. Logical prefixes keep the two workloads separate without relying on
+# Redis database indexes, while local development retains process-local
+# fallbacks when REDIS_URL is absent.
+REDIS_URL = os.environ.get("REDIS_URL", "").strip()
+REDIS_USES_TLS = REDIS_URL.lower().startswith("rediss://")
+
+if REDIS_URL:
+    redis_cache_options = {
+        "CLIENT_CLASS": "django_redis.client.DefaultClient",
+    }
+    if REDIS_USES_TLS:
+        redis_cache_options["CONNECTION_POOL_KWARGS"] = {"ssl_cert_reqs": None}
+
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": REDIS_URL,
+            "KEY_PREFIX": "inprofic:cache",
+            "OPTIONS": redis_cache_options,
+        }
+    }
+
+    channels_redis_host = (
+        {"address": REDIS_URL, "ssl_cert_reqs": None}
+        if REDIS_USES_TLS
+        else REDIS_URL
+    )
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
-            "CONFIG": {"hosts": [CHANNEL_REDIS_URL]},
+            "CONFIG": {
+                "hosts": [channels_redis_host],
+                "prefix": "inprofic:channels",
+                "capacity": 500,
+                "expiry": 30,
+            },
         }
     }
 else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": os.environ.get("DJANGO_CACHE_LOCATION", "inprofic-runtime"),
+            "OPTIONS": {
+                "MAX_ENTRIES": int(os.environ.get("DJANGO_CACHE_MAX_ENTRIES", "5000"))
+            },
+        }
+    }
     CHANNEL_LAYERS = {
         "default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}
     }
+
+# Keep the database-backed session row authoritative. Redis (or LocMem in local
+# development) is only the read-through cache, so cache eviction does not make
+# the cached copy the sole source of authentication state.
+SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
+SESSION_CACHE_ALIAS = "default"
 
 
 # Database
@@ -284,11 +330,18 @@ if all(_r2_settings.values()):
     if r2_custom_domain:
         MEDIA_URL = f"https://{r2_custom_domain}/{r2_media_location}/"
 
-# Proxy-aware production security. Render terminates TLS before forwarding to
-# Daphne; PythonAnywhere can enable the same settings from .env.prod.
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https") if env_bool(
-    "TRUST_PROXY_SSL_HEADER", bool(RENDER_EXTERNAL_HOSTNAME)
-) else None
+# -----------------------------------------------------------------------------
+# CSRF & SECURITY
+# -----------------------------------------------------------------------------
+# Render terminates TLS before forwarding to Daphne, so proxy SSL awareness is
+# automatic whenever Render supplies its runtime hostname. Other reverse-proxy
+# deployments can opt in explicitly with TRUST_PROXY_SSL_HEADER.
+TRUST_PROXY_SSL_HEADER = bool(RENDER_EXTERNAL_HOSTNAME) or env_bool(
+    "TRUST_PROXY_SSL_HEADER", False
+)
+SECURE_PROXY_SSL_HEADER = (
+    ("HTTP_X_FORWARDED_PROTO", "https") if TRUST_PROXY_SSL_HEADER else None
+)
 SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", False)
 SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", False)
 CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", False)
@@ -298,6 +351,9 @@ SECURE_HSTS_PRELOAD = env_bool("SECURE_HSTS_PRELOAD", False)
 
 # Used only by authenticated external maintenance endpoints.
 CRON_SECRET = os.environ.get("CRON_SECRET", "")
+# A database-backed lease prevents overlapping cron/manual maintenance runs.
+# Expiry is crash recovery only; successful runs release the lease immediately.
+SCHEDULED_JOB_LEASE_SECONDS = max(300, int(os.environ.get("SCHEDULED_JOB_LEASE_SECONDS", "21600")))
 
 # Web Push uses one deployment-wide VAPID key pair. The public key is safe to
 # expose to browsers; the private key must remain an environment secret.
@@ -358,23 +414,6 @@ PERF_SERVER_TIMING = env_bool("PERF_SERVER_TIMING", True)
 PERF_EXCLUDED_PREFIXES = tuple(
     env_list("PERF_EXCLUDED_PREFIXES")
     or ["/health/", "/ops/", "/static/", "/media/", "/ws/", "/manifest.webmanifest", "/service-worker.js", "/pwa/"]
-)
-
-# Render runs this service as one Daphne process. cached_db keeps the durable
-# django_session row as the source of truth while avoiding a PostgreSQL session
-# read on every warm page navigation. It is opt-in so PythonAnywhere/local
-# behavior is unchanged unless explicitly enabled.
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": os.environ.get("DJANGO_CACHE_LOCATION", "inprofic-runtime"),
-        "OPTIONS": {"MAX_ENTRIES": int(os.environ.get("DJANGO_CACHE_MAX_ENTRIES", "5000"))},
-    }
-}
-SESSION_ENGINE = (
-    "django.contrib.sessions.backends.cached_db"
-    if env_bool("USE_CACHED_DB_SESSIONS", False)
-    else "django.contrib.sessions.backends.db"
 )
 
 LOGGING = {

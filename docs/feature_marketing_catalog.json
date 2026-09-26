@@ -310,9 +310,9 @@
     "name": "Reports, exports and business backup",
     "group": "governance",
     "audience": "owners, managers and auditors",
-    "proof": "Export operational reports and maintain a tenant backup path without flattening audit history.",
-    "highlight": "",
-    "added_on": ""
+    "proof": "Generate a date-range monthly PDF with revenue, sales-origin, procurement, production and inventory charts and tables, alongside exports and a tenant backup.",
+    "highlight": "NEW",
+    "added_on": "2026-09-25"
   },
   {
     "id": "onboarding",

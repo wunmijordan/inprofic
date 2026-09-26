@@ -118,7 +118,7 @@ def build_rows(features):
 def write_csv(rows):
     headers = list(rows[0])
     with CSV_PATH.open("w", newline="", encoding="utf-8-sig") as handle:
-        writer = csv.DictWriter(handle, fieldnames=headers)
+        writer = csv.DictWriter(handle, fieldnames=headers, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 

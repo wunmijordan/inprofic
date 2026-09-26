@@ -207,7 +207,7 @@ Modules such as Delivery and Audit Workspace can therefore be switched on only f
 
 ## Reporting, exports and backup
 
-INPROFIC provides operational reporting and export paths for core business records. Audit Workspace can export evidence for review, while the wider platform retains stock, procurement, production, sales and finance histories.
+INPROFIC provides a monthly operational performance PDF for any selected range of up to 12 calendar months. It compares paid sales revenue and source mix (manual entry, hosted storefront, in-premise POS, external API/connector) with received procurement, completed production cost and recorded stock movement values. Tables, charts and method notes distinguish purchase receipts and inventory activity from cash spending. Audit Workspace can export evidence for review, while the wider platform retains stock, procurement, production, sales and finance histories.
 
 Backups and deployment storage should preserve both database records and uploaded media. Historical commercial and costing snapshots are intentionally not recalculated every time a current setup value changes.
 

@@ -9,8 +9,13 @@ from django.utils import timezone
 
 from accounts.models import CustomUser
 
-from .jobs import SCHEDULED_COMMANDS, run_all_jobs
-from .models import Business
+from .jobs import (
+    SCHEDULED_COMMANDS,
+    acquire_scheduled_job_lease,
+    finish_scheduled_job_lease,
+    run_all_jobs,
+)
+from .models import Business, ScheduledJobLease
 from .performance import PerformanceDiagnosticMiddleware
 from .audit_views import _EXTERNAL_BUSINESS_ACTIVITY_MODELS, _public_audit_details
 
@@ -52,6 +57,34 @@ class ScheduledJobRegistryTests(TestCase):
             list(SCHEDULED_COMMANDS),
         )
 
+    @override_settings(SCHEDULED_JOB_LEASE_SECONDS=600)
+    def test_database_lease_blocks_overlap_until_released(self):
+        first = acquire_scheduled_job_lease()
+        self.assertTrue(first)
+        self.assertIsNone(acquire_scheduled_job_lease())
+
+        finish_scheduled_job_lease(first, status=ScheduledJobLease.STATUS_SUCCEEDED)
+        second = acquire_scheduled_job_lease()
+
+        self.assertTrue(second)
+        self.assertNotEqual(first, second)
+
+    @override_settings(SCHEDULED_JOB_LEASE_SECONDS=600)
+    def test_expired_database_lease_can_be_reclaimed(self):
+        stale = ScheduledJobLease.objects.create(
+            name="scheduled-job-registry",
+            owner_token="stale-token",
+            lease_expires_at=timezone.now() - timedelta(seconds=1),
+            last_status=ScheduledJobLease.STATUS_RUNNING,
+        )
+
+        token = acquire_scheduled_job_lease()
+
+        self.assertTrue(token)
+        stale.refresh_from_db()
+        self.assertEqual(stale.owner_token, token)
+        self.assertEqual(stale.last_status, ScheduledJobLease.STATUS_RUNNING)
+
 
 class OperationsEndpointTests(TestCase):
     def test_health_check_is_public_and_does_not_require_a_database_query(self):
@@ -81,16 +114,82 @@ class OperationsEndpointTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
     @override_settings(CRON_SECRET="test-cron-secret")
-    @patch("core.operations.run_all_jobs", return_value=["sync_subscriptions"])
-    def test_scheduled_jobs_run_from_the_shared_registry(self, run_all_jobs):
+    @patch("core.operations.threading.Thread")
+    @patch("core.operations.acquire_scheduled_job_lease", return_value="lease-token")
+    def test_scheduled_jobs_are_accepted_and_started_in_background(self, acquire_lease, thread_cls):
         response = self.client.post(
             reverse("run_jobs"),
             HTTP_AUTHORIZATION="Bearer test-cron-secret",
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["completed"], ["sync_subscriptions"])
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()["status"], "accepted")
+        acquire_lease.assert_called_once_with()
+        thread_cls.assert_called_once()
+        thread_cls.return_value.start.assert_called_once_with()
+
+    @override_settings(CRON_SECRET="test-cron-secret")
+    @patch("core.operations.threading.Thread")
+    @patch("core.operations.acquire_scheduled_job_lease", return_value=None)
+    def test_duplicate_scheduled_job_trigger_does_not_overlap(self, acquire_lease, thread_cls):
+        response = self.client.post(
+            reverse("run_jobs"),
+            HTTP_AUTHORIZATION="Bearer test-cron-secret",
+        )
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()["status"], "already_running")
+        thread_cls.assert_not_called()
+
+    @patch("core.operations.close_old_connections")
+    @patch("core.operations.finish_scheduled_job_lease")
+    @patch("core.operations.run_all_jobs", return_value=["sync_subscriptions"])
+    def test_background_worker_releases_lease_after_success(self, run_all_jobs, finish_lease, close_connections):
+        from core.operations import _run_scheduled_jobs_background
+
+        _run_scheduled_jobs_background("lease-token")
+
         run_all_jobs.assert_called_once_with()
+        finish_lease.assert_called_once_with(
+            "lease-token",
+            status=ScheduledJobLease.STATUS_SUCCEEDED,
+        )
+        self.assertEqual(close_connections.call_count, 2)
+
+    @override_settings(CRON_SECRET="test-cron-secret")
+    @patch("core.operations.finish_scheduled_job_lease")
+    @patch("core.operations.threading.Thread")
+    @patch("core.operations.acquire_scheduled_job_lease", return_value="lease-token")
+    def test_thread_start_failure_releases_lease(self, acquire_lease, thread_cls, finish_lease):
+        thread_cls.return_value.start.side_effect = RuntimeError("thread unavailable")
+
+        response = self.client.post(
+            reverse("run_jobs"),
+            HTTP_AUTHORIZATION="Bearer test-cron-secret",
+        )
+
+        self.assertEqual(response.status_code, 500)
+        finish_lease.assert_called_once_with(
+            "lease-token",
+            status=ScheduledJobLease.STATUS_FAILED,
+            error="thread unavailable",
+        )
+
+    @patch("core.operations.close_old_connections")
+    @patch("core.operations.finish_scheduled_job_lease")
+    @patch("core.operations.run_all_jobs", side_effect=RuntimeError("job failed"))
+    def test_background_worker_records_failure_and_releases_lease(self, run_all_jobs, finish_lease, close_connections):
+        from core.operations import _run_scheduled_jobs_background
+
+        with self.assertLogs("core.operations", level="ERROR"):
+            _run_scheduled_jobs_background("lease-token")
+
+        finish_lease.assert_called_once_with(
+            "lease-token",
+            status=ScheduledJobLease.STATUS_FAILED,
+            error="job failed",
+        )
+        self.assertEqual(close_connections.call_count, 2)
 
     @override_settings(CRON_SECRET="test-cron-secret")
     def test_web_push_retry_requires_bearer_secret(self):

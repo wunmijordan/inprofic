@@ -391,12 +391,11 @@
     <section class="mx-auto max-w-6xl px-5 pb-12 pt-5 sm:px-8" aria-label="Businesses building with INPROFIC" data-trust-strip>
       <div class="trust-strip">
         <div class="trust-count"><strong data-trust-count font-mono data-count="{{ trust_business_count }}">0</strong><span>businesses building with INPROFIC</span></div>
-        <div class="trust-logo-window">
-          {% if trusted_businesses or manual_trust_logos %}<div class="trust-logo-track">
-            {% for business in trusted_businesses %}<span class="trust-logo"><img src="{{ business.storefront_logo.url }}" alt="{{ business.name }}" loading="lazy"></span>{% endfor %}
-            {% for logo in manual_trust_logos %}<span class="trust-logo"><img src="{{ logo.logo.url }}" alt="{{ logo.name }}" loading="lazy"></span>{% endfor %}
-            <span aria-hidden="true" class="contents">{% for business in trusted_businesses %}<span class="trust-logo"><img src="{{ business.storefront_logo.url }}" alt="" loading="lazy"></span>{% endfor %}{% for logo in manual_trust_logos %}<span class="trust-logo"><img src="{{ logo.logo.url }}" alt="" loading="lazy"></span>{% endfor %}</span>
-          </div>{% else %}<div class="trust-logo-track"><span class="trust-empty">Growing businesses are connecting production to commerce.</span><span class="trust-empty" aria-hidden="true">Growing businesses are connecting production to commerce.</span></div>{% endif %}
+        <div class="trust-logo-window" data-trust-logo-window>
+          {% if trusted_businesses or manual_trust_logos %}<div class="trust-logo-track is-building" data-trust-logo-track>
+            <span class="trust-logo-set" data-trust-logo-set>{% for business in trusted_businesses %}<span class="trust-logo"><img src="{{ business.storefront_logo.url }}" alt="{{ business.name }}" loading="lazy"></span>{% endfor %}{% for logo in manual_trust_logos %}<span class="trust-logo"><img src="{{ logo.logo.url }}" alt="{{ logo.name }}" loading="lazy"></span>{% endfor %}</span>
+            <span class="trust-logo-set" data-trust-logo-copy aria-hidden="true"></span>
+          </div>{% else %}<div class="trust-logo-track trust-logo-track--empty"><span class="trust-empty">Growing businesses are connecting production to commerce.</span></div>{% endif %}
         </div>
       </div>
     </section>
@@ -941,6 +940,34 @@
       if('IntersectionObserver'in window){const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){observer.disconnect();showCount();}},{threshold:.35});observer.observe(trustCount);}else showCount();
     }
 
+    const trustLogoWindow=document.querySelector('[data-trust-logo-window]');
+    const trustLogoTrack=trustLogoWindow?.querySelector('[data-trust-logo-track]');
+    const trustLogoSet=trustLogoTrack?.querySelector('[data-trust-logo-set]');
+    const trustLogoCopy=trustLogoTrack?.querySelector('[data-trust-logo-copy]');
+    if(trustLogoWindow&&trustLogoTrack&&trustLogoSet&&trustLogoCopy){
+      const sourceLogos=[...trustLogoSet.children].map(logo=>logo.cloneNode(true));
+      const makeDecorative=logo=>{logo.setAttribute('aria-hidden','true');const image=logo.querySelector('img');if(image)image.alt='';return logo;};
+      const buildTrustLogoLoop=()=>{
+        trustLogoTrack.classList.add('is-building');
+        trustLogoSet.replaceChildren(...sourceLogos.map(logo=>logo.cloneNode(true)));
+        let repeats=0;
+        while(trustLogoSet.scrollWidth<trustLogoWindow.clientWidth&&repeats<24){
+          trustLogoSet.append(...sourceLogos.map(logo=>makeDecorative(logo.cloneNode(true))));
+          repeats+=1;
+        }
+        trustLogoCopy.replaceChildren(...[...trustLogoSet.children].map(logo=>makeDecorative(logo.cloneNode(true))));
+        requestAnimationFrame(()=>trustLogoTrack.classList.remove('is-building'));
+      };
+      let trustLogoWidth=Math.round(trustLogoWindow.clientWidth);
+      buildTrustLogoLoop();
+      if('ResizeObserver'in window)new ResizeObserver(entries=>{const width=Math.round(entries[0].contentRect.width);if(width===trustLogoWidth)return;trustLogoWidth=width;buildTrustLogoLoop();}).observe(trustLogoWindow);
+      let trustResumeTimer;
+      const pauseTrustLogos=()=>{clearTimeout(trustResumeTimer);trustLogoWindow.classList.add('is-paused');};
+      const resumeTrustLogos=()=>{clearTimeout(trustResumeTimer);trustResumeTimer=setTimeout(()=>trustLogoWindow.classList.remove('is-paused'),1200);};
+      trustLogoWindow.addEventListener('touchstart',pauseTrustLogos,{passive:true});
+      trustLogoWindow.addEventListener('touchend',resumeTrustLogos,{passive:true});
+      trustLogoWindow.addEventListener('touchcancel',resumeTrustLogos,{passive:true});
+    }
     const titleMap = {'Inventory':'inventory','Procurement':'procurement','Production':'production','Sales & customers':'sales','Finance & expenses':'finance','Reports & backup':'reports','Delivery operations':'delivery','Audit Workspace':'audit','Dedicated in-premise POS':'pos'};
     const moduleGrid=document.querySelector('[data-module-grid]');
     const moduleOverlay=document.querySelector('[data-module-overlay]');

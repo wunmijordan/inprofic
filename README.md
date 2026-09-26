@@ -36,8 +36,7 @@ what was borrowed and what was deliberately left out).
   materials by recipe (per batch, rounded up to whole batches — you can't
   make a fraction of a batch) and adds finished stock, inside a database
   transaction, with a shortage warning you can override.
-- **Reports** — CSV export for stock, procurement, production, sales, plus
-  a full JSON backup.
+- **Reports** — a date-range monthly operational PDF with revenue, channel-origin, procurement, production and inventory charts/tables; CSV/Excel exports and a full JSON backup.
 - **Founder mailing workspace** — platform-level mailing staff can use reusable INPROFIC-branded topics, business/service/plan targeting, immediate delivery with retry-safe queued fallback, and campaign send analytics without receiving tenant access or Founder subscription controls.
 - **Trial re-registration protection** — existing tenant owner email, phone and exact business name cannot create a second free trial after expiry or cancellation; credentials from a tenant that was hard-deleted are intentionally eligible for registration again.
 - **Shared operational alert tray** — one movable, access-aware tray keeps Commerce/Delivery, Inventory and Finance attention together without merging their underlying record state; Inventory has separate Raw Materials and Finished Goods tabs, while authorised Finance users see unpaid invoices, receivables, payables and balancing anomalies from the live finance records.

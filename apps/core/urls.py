@@ -30,6 +30,7 @@ urlpatterns = [
     path("search/", views.dashboard_search, name="dashboard_search"),
     path("search/detail/", views.dashboard_search_detail, name="dashboard_search_detail"),
     path("reports/", views.reports, name="reports"),
+    path("reports/operational-performance.pdf", views.operational_report_pdf, name="operational_report_pdf"),
     path("reports/export/stock.csv", views.export_stock_csv, name="export_stock_csv"),
     path("reports/export/procurement.csv", views.export_procurement_csv, name="export_procurement_csv"),
     path("reports/export/production.csv", views.export_production_csv, name="export_production_csv"),

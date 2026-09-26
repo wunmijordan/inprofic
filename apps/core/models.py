@@ -139,6 +139,37 @@ class BaseModel(models.Model):
         abstract = True
 
 
+class ScheduledJobLease(models.Model):
+    """Platform-level lease for preventing overlapping maintenance runs."""
+
+    STATUS_IDLE = "idle"
+    STATUS_RUNNING = "running"
+    STATUS_SUCCEEDED = "succeeded"
+    STATUS_FAILED = "failed"
+    STATUS_CHOICES = [
+        (STATUS_IDLE, "Idle"),
+        (STATUS_RUNNING, "Running"),
+        (STATUS_SUCCEEDED, "Succeeded"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    name = models.CharField(max_length=80, unique=True)
+    owner_token = models.CharField(max_length=64, blank=True, default="")
+    lease_expires_at = models.DateTimeField(null=True, blank=True)
+    last_started_at = models.DateTimeField(null=True, blank=True)
+    last_finished_at = models.DateTimeField(null=True, blank=True)
+    last_status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=STATUS_IDLE)
+    last_error = models.TextField(blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "scheduled job lease"
+        verbose_name_plural = "scheduled job leases"
+
+    def __str__(self):
+        return self.name
+
+
 class TimestampedModel(BaseModel):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

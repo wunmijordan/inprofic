@@ -27,8 +27,8 @@ services:
         value: "10"
       - key: DB_CONN_HEALTH_CHECKS
         value: "False"
-      - key: USE_CACHED_DB_SESSIONS
-        value: "True"
+      - key: REDIS_URL
+        sync: false
       - key: PERF_DIAGNOSTICS
         value: "True"
       - key: PERF_SLOW_REQUEST_MS
@@ -47,6 +47,8 @@ services:
         value: "3600"
       - key: CRON_SECRET
         generateValue: true
+      - key: SCHEDULED_JOB_LEASE_SECONDS
+        value: "21600"
       - key: WEB_PUSH_VAPID_PUBLIC_KEY
         sync: false
       - key: WEB_PUSH_VAPID_PRIVATE_KEY
