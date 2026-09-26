@@ -133,6 +133,10 @@ REDIS_USES_TLS = REDIS_URL.lower().startswith("rediss://")
 if REDIS_URL:
     redis_cache_options = {
         "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        # Redis is an acceleration layer, not a source of truth. If it is
+        # temporarily unavailable, treat cache operations as misses so ordinary
+        # requests can continue against the database/application state.
+        "IGNORE_EXCEPTIONS": True,
     }
     if REDIS_USES_TLS:
         redis_cache_options["CONNECTION_POOL_KWARGS"] = {"ssl_cert_reqs": None}
