@@ -11,7 +11,8 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 from django.core import serializers
 from django.core.cache import cache
-from django.db.models import Prefetch, Q, Sum
+from django.db.models import Case, DecimalField, ExpressionWrapper, F, Prefetch, Q, Sum, Value, When
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -20,6 +21,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from openpyxl import Workbook
 
 from .models import Business, FinancialTransaction
+from .performance import performance_section
 from .forms import BusinessForm
 from .services import audit
 from .verticals import vertical_config
@@ -82,63 +84,68 @@ def marketing_home(request):
     marketing_cache_key = None
     if not request.user.is_authenticated and not request.GET:
         marketing_cache_key = f"marketing:home:v2:{request.get_host().lower()}"
-        cached_html = cache.get(marketing_cache_key)
+        with performance_section(request, "marketing.cache_read"):
+            cached_html = cache.get(marketing_cache_key)
         if cached_html is not None:
             return HttpResponse(cached_html, content_type="text/html; charset=utf-8")
-    from accounts.models import MarketingPromoCampaign, SubscriptionPlan, SubscriptionPolicySettings
-    from accounts.subscription_services import attach_active_promotions, build_plan_feature_matrix
-    plans = attach_active_promotions(
-        SubscriptionPlan.objects.filter(active=True)
-        .prefetch_related("module_entitlements")
-        .order_by("monthly_price", "id")
-    )
-    moment = timezone.now()
-    marketing_campaigns = list(
-        MarketingPromoCampaign.objects.filter(
-            active=True,
-            promotion__active=True,
-            promotion__starts_at__lte=moment,
-            promotion__ends_at__gt=moment,
+    with performance_section(request, "marketing.data"):
+        from accounts.models import MarketingPromoCampaign, SubscriptionPlan, SubscriptionPolicySettings
+        from accounts.subscription_services import attach_active_promotions, build_plan_feature_matrix
+        plans = attach_active_promotions(
+            SubscriptionPlan.objects.filter(active=True)
+            .prefetch_related("module_entitlements")
+            .order_by("monthly_price", "id")
         )
-        .select_related("promotion__plan")
-        .order_by("-priority", "id")
-    )
-    starter_plan = next((plan for plan in plans if plan.code == SubscriptionPlan.CODE_STARTER), None)
-    trial_policy = SubscriptionPolicySettings.load()
-    from accounts.models import BusinessSubscription, MarketingTrustLogo, MarketingTrustSettings
-    trust_settings = MarketingTrustSettings.objects.filter(pk=1).first()
-    trust_strip_enabled = bool(trust_settings and trust_settings.enabled)
-    trusted_businesses = []
-    manual_trust_logos = []
-    if trust_strip_enabled:
-        paid_subscriptions = BusinessSubscription.objects.filter(
-            status=BusinessSubscription.STATUS_ACTIVE, paid_until__gte=moment
-        ).exclude(plan__code="starter", plan__monthly_price__lte=0)
-        trusted_businesses = list(
-            Business.objects.filter(
-                Q(subscription__in=paid_subscriptions)
-                | Q(subscription_service__subscription__in=paid_subscriptions)
+        moment = timezone.now()
+        marketing_campaigns = list(
+            MarketingPromoCampaign.objects.filter(
+                active=True,
+                promotion__active=True,
+                promotion__starts_at__lte=moment,
+                promotion__ends_at__gt=moment,
             )
-            .exclude(storefront_logo="")
-            .order_by("name", "id")
-            .distinct()
+            .select_related("promotion__plan")
+            .order_by("-priority", "id")
         )
-        manual_trust_logos = list(MarketingTrustLogo.objects.filter(active=True))
+        starter_plan = next((plan for plan in plans if plan.code == SubscriptionPlan.CODE_STARTER), None)
+        trial_policy = SubscriptionPolicySettings.load()
+        from accounts.models import BusinessSubscription, MarketingTrustLogo, MarketingTrustSettings
+        trust_settings = MarketingTrustSettings.objects.filter(pk=1).first()
+        trust_strip_enabled = bool(trust_settings and trust_settings.enabled)
+        trusted_businesses = []
+        manual_trust_logos = []
+        if trust_strip_enabled:
+            paid_subscriptions = BusinessSubscription.objects.filter(
+                status=BusinessSubscription.STATUS_ACTIVE, paid_until__gte=moment
+            ).exclude(plan__code="starter", plan__monthly_price__lte=0)
+            trusted_businesses = list(
+                Business.objects.filter(
+                    Q(subscription__in=paid_subscriptions)
+                    | Q(subscription_service__subscription__in=paid_subscriptions)
+                )
+                .exclude(storefront_logo="")
+                .order_by("name", "id")
+                .distinct()
+            )
+            manual_trust_logos = list(MarketingTrustLogo.objects.filter(active=True))
+        plan_feature_matrix = build_plan_feature_matrix(plans)
     from django.templatetags.static import static
     canonical_url = request.build_absolute_uri(reverse("marketing_home"))
-    response = render(request, "marketing/home.html", {
+    with performance_section(request, "marketing.render"):
+        response = render(request, "marketing/home.html", {
         "plans": plans, "starter_plan": starter_plan, "marketing_campaigns": marketing_campaigns,
         "general_trial_days": max(1, int(trial_policy.general_trial_days or 30)),
-        "plan_feature_matrix": build_plan_feature_matrix(plans),
+        "plan_feature_matrix": plan_feature_matrix,
         "canonical_url": canonical_url,
         "social_image_url": request.build_absolute_uri(static("core/brand/inprofic-wordmark-on-dark.png")),
         "trust_strip_enabled": trust_strip_enabled,
         "trust_business_count": Business.objects.count() if trust_strip_enabled else 0,
         "trusted_businesses": trusted_businesses,
         "manual_trust_logos": manual_trust_logos,
-    })
+        })
     if marketing_cache_key and response.status_code == 200:
-        cache.set(marketing_cache_key, bytes(response.content), timeout=60)
+        with performance_section(request, "marketing.cache_write"):
+            cache.set(marketing_cache_key, bytes(response.content), timeout=60)
     return response
 
 
@@ -424,24 +431,76 @@ def _financial_daily_ledgers(start, end):
     expense rows. Keeping that shared data in one in-memory snapshot avoids
     repeating the same PostgreSQL round trips during a dashboard render.
     """
+    # Aggregate paid-sale revenue and COGS in one tenant-scoped query instead
+    # of loading Sale rows and their item relation in two sequential round trips.
+    # These expressions mirror SaleItem.line_total and SaleItem.total_units.
+    money_field = DecimalField(max_digits=24, decimal_places=6)
+    units_field = DecimalField(max_digits=20, decimal_places=4)
+    units_per_batch = Case(
+        When(items__finished_good__units_per_batch__gt=0, then=F("items__finished_good__units_per_batch")),
+        default=Value(Decimal("1")),
+        output_field=units_field,
+    )
+    total_units = ExpressionWrapper(
+        F("items__batch_qty") * units_per_batch + F("items__piece_qty"),
+        output_field=units_field,
+    )
+    standard_line_total = ExpressionWrapper(
+        total_units * (F("items__price") - F("items__discount")),
+        output_field=money_field,
+    )
+    commercial_line_total = ExpressionWrapper(
+        F("items__commercial_quantity") * F("items__commercial_unit_price"),
+        output_field=money_field,
+    )
+    line_total = Case(
+        When(
+            items__commercial_quantity__isnull=False,
+            items__commercial_unit_price__isnull=False,
+            then=commercial_line_total,
+        ),
+        default=standard_line_total,
+        output_field=money_field,
+    )
+    cogs_total = ExpressionWrapper(
+        Coalesce(F("items__unit_cost"), Value(Decimal("0")), output_field=money_field) * total_units,
+        output_field=money_field,
+    )
+    sales_rows = Sale.objects.filter(
+        date__range=(start, end), transaction_type="paid"
+    ).values("date").annotate(
+        sales_total=Sum(line_total, output_field=money_field),
+        cogs_total=Sum(cogs_total, output_field=money_field),
+    )
     sales_by_date = defaultdict(Decimal)
     cogs_by_date = defaultdict(Decimal)
-    for sale in (
-        Sale.objects.filter(date__range=(start, end), transaction_type="paid")
-        .prefetch_related(Prefetch("items", queryset=SaleItem.objects.select_related("finished_good")))
-    ):
-        sales_by_date[sale.date] += sale.total
-        for item in sale.items.all():
-            cogs_by_date[sale.date] += (item.unit_cost or Decimal("0")) * item.total_units
+    for row in sales_rows:
+        sales_by_date[row["date"]] = row["sales_total"] or Decimal("0")
+        cogs_by_date[row["date"]] = row["cogs_total"] or Decimal("0")
 
+    # Likewise, received-procurement value is a single grouped query over the
+    # tenant-scoped PurchaseOrder queryset rather than parent + item prefetches.
+    procurement_rows = (
+        PurchaseOrder.objects.filter(status="received")
+        .filter(
+            Q(received_date__range=(start, end))
+            | Q(received_date__isnull=True, date__range=(start, end))
+        )
+        .annotate(procurement_date=Coalesce("received_date", "date"))
+        .values("procurement_date")
+        .annotate(
+            total=Sum(
+                ExpressionWrapper(
+                    F("items__qty") * F("items__unit_cost"),
+                    output_field=money_field,
+                ),
+                output_field=money_field,
+            )
+        )
+    )
     procurement_by_date = defaultdict(Decimal)
-    purchase_orders = PurchaseOrder.objects.filter(status="received").filter(
-        Q(received_date__range=(start, end))
-        | Q(received_date__isnull=True, date__range=(start, end))
-    ).prefetch_related("items")
-    for purchase_order in purchase_orders:
-        procurement_date = purchase_order.received_date or purchase_order.date
-        procurement_by_date[procurement_date] += purchase_order.total
+    for row in procurement_rows:
+        procurement_by_date[row["procurement_date"]] = row["total"] or Decimal("0")
 
     cash_procurement_by_date = {
         row["date"]: row["total"] or Decimal("0")
@@ -1531,29 +1590,32 @@ def dashboard(request):
     )
     month_start_at = timezone.make_aware(datetime.combine(month_start, time.min), current_tz)
     year_start_at = timezone.make_aware(datetime.combine(year_start, time.min), current_tz)
-    raw_materials = list(RawMaterial.objects.all())
-    finished_goods = list(FinishedGood.objects.select_related("business"))
+    with performance_section(request, "dashboard.stock"):
+        raw_materials = list(RawMaterial.objects.all())
+        finished_goods = list(FinishedGood.objects.select_related("business"))
     warning_raw = [m for m in raw_materials if m.is_warning]
     warning_goods = [g for g in finished_goods if g.is_warning]
     low_raw = [m for m in raw_materials if m.is_low]
     low_goods = [g for g in finished_goods if g.is_low]
     total_low_count = len(low_raw) + len(low_goods)
     total_warning_count = len(warning_raw) + len(warning_goods)
-    if request.business.uses_production:
-        pending_orders_count = Order.objects.filter(status="pending").count()
-        open_purchase_orders_count = 0
-    else:
-        pending_orders_count = 0
-        open_purchase_orders_count = PurchaseOrder.objects.exclude(status="received").count()
+    with performance_section(request, "dashboard.queue_counts"):
+        if request.business.uses_production:
+            pending_orders_count = Order.objects.filter(status="pending").count()
+            open_purchase_orders_count = 0
+        else:
+            pending_orders_count = 0
+            open_purchase_orders_count = PurchaseOrder.objects.exclude(status="received").count()
 
     # The dashboard uses current-month sales for today's KPIs and both channel
     # summaries. Load that relation graph once instead of repeating it for each
     # card/modal.
-    month_sales = list(
-        Sale.objects.filter(date__range=(month_start, dashboard_date))
-        .select_related("linked_order")
-        .prefetch_related(Prefetch("items", queryset=SaleItem.objects.select_related("finished_good")))
-    )
+    with performance_section(request, "dashboard.sales"):
+        month_sales = list(
+            Sale.objects.filter(date__range=(month_start, dashboard_date))
+            .select_related("linked_order")
+            .prefetch_related(Prefetch("items", queryset=SaleItem.objects.select_related("finished_good")))
+        )
     today_sales = [sale for sale in month_sales if sale.date == dashboard_date]
     today_revenue = sum(
         (sale.total for sale in today_sales if sale.transaction_type == "paid"),
@@ -1565,33 +1627,35 @@ def dashboard(request):
         quantity__gt=0,
         affects_stock=True,
     )
-    received_totals = received_products.aggregate(
-        daily=Sum("quantity", filter=Q(occurred_at__gte=today_start_at, occurred_at__lt=tomorrow_start_at)),
-        monthly=Sum("quantity", filter=Q(occurred_at__gte=month_start_at, occurred_at__lt=tomorrow_start_at)),
-        yearly=Sum("quantity", filter=Q(occurred_at__gte=year_start_at, occurred_at__lt=tomorrow_start_at)),
-    )
+    with performance_section(request, "dashboard.receipts"):
+        received_totals = received_products.aggregate(
+            daily=Sum("quantity", filter=Q(occurred_at__gte=today_start_at, occurred_at__lt=tomorrow_start_at)),
+            monthly=Sum("quantity", filter=Q(occurred_at__gte=month_start_at, occurred_at__lt=tomorrow_start_at)),
+            yearly=Sum("quantity", filter=Q(occurred_at__gte=year_start_at, occurred_at__lt=tomorrow_start_at)),
+        )
     daily_units_received = received_totals["daily"] or Decimal("0")
 
-    if request.business.uses_production:
-        completed_orders = list(
-            Order.objects.filter(status="completed", completed_date__gte=year_start)
-            .prefetch_related("items__finished_good")
-        )
-        daily_units_made = sum(
-            (order.total_units for order in completed_orders if order.completed_date == dashboard_date),
-            Decimal("0"),
-        )
-        monthly_units = sum(
-            (order.total_units for order in completed_orders if order.completed_date >= month_start),
-            Decimal("0"),
-        )
-        yearly_units = sum((order.total_units for order in completed_orders), Decimal("0"))
-    else:
-        daily_units_made = _production_units(
-            Order.objects.filter(status="completed", completed_date=dashboard_date)
-        )
-        monthly_units = received_totals["monthly"] or Decimal("0")
-        yearly_units = received_totals["yearly"] or Decimal("0")
+    with performance_section(request, "dashboard.production"):
+        if request.business.uses_production:
+            completed_orders = list(
+                Order.objects.filter(status="completed", completed_date__gte=year_start)
+                .prefetch_related("items__finished_good")
+            )
+            daily_units_made = sum(
+                (order.total_units for order in completed_orders if order.completed_date == dashboard_date),
+                Decimal("0"),
+            )
+            monthly_units = sum(
+                (order.total_units for order in completed_orders if order.completed_date >= month_start),
+                Decimal("0"),
+            )
+            yearly_units = sum((order.total_units for order in completed_orders), Decimal("0"))
+        else:
+            daily_units_made = _production_units(
+                Order.objects.filter(status="completed", completed_date=dashboard_date)
+            )
+            monthly_units = received_totals["monthly"] or Decimal("0")
+            yearly_units = received_totals["yearly"] or Decimal("0")
     financial_ledger_start = min(
         year_start, dashboard_date - timedelta(days=dashboard_date.weekday())
     )
@@ -1599,27 +1663,28 @@ def dashboard(request):
         f"dashboard:finance-ledger:v2:{request.business.pk}:"
         f"{financial_ledger_start.isoformat()}:{dashboard_date.isoformat()}"
     )
-    financial_ledger = cache.get(financial_cache_key)
-    if financial_ledger is None:
-        financial_ledger = _financial_daily_ledgers(financial_ledger_start, dashboard_date)
-        cache.set(financial_cache_key, financial_ledger, 20)
-    financial = _financial_snapshot(financial_ledger)
-    financial_json = _financial_chart_series(financial_ledger)
-    channel = _sales_by_channel(month_start, dashboard_date, sales=month_sales)
-    channel_breakdowns = {
-        "distribution": _channel_breakdown(
-            "distribution",
-            month_start,
-            dashboard_date,
-            sales=month_sales,
-        ),
-        "online": _channel_breakdown(
-            "online",
-            month_start,
-            dashboard_date,
-            sales=month_sales,
-        ),
-    }
+    with performance_section(request, "dashboard.finance"):
+        financial_ledger = cache.get(financial_cache_key)
+        if financial_ledger is None:
+            financial_ledger = _financial_daily_ledgers(financial_ledger_start, dashboard_date)
+            cache.set(financial_cache_key, financial_ledger, 20)
+        financial = _financial_snapshot(financial_ledger)
+        financial_json = _financial_chart_series(financial_ledger)
+        channel = _sales_by_channel(month_start, dashboard_date, sales=month_sales)
+        channel_breakdowns = {
+            "distribution": _channel_breakdown(
+                "distribution",
+                month_start,
+                dashboard_date,
+                sales=month_sales,
+            ),
+            "online": _channel_breakdown(
+                "online",
+                month_start,
+                dashboard_date,
+                sales=month_sales,
+            ),
+        }
 
     raw_material_categories = []
     for value, label in RawMaterial.CATEGORY_CHOICES:
@@ -1642,7 +1707,7 @@ def dashboard(request):
             stock_periods = _stock_periods(selected_item)
             stock_unit = selected_item.unit
 
-    return render(request, "core/dashboard.html", {
+    context = {
         "raw_count": len(raw_materials),
         "goods_count": len(finished_goods),
         "warning_raw": warning_raw,
@@ -1671,7 +1736,9 @@ def dashboard(request):
         "selected_item": selected_item,
         "stock_periods": stock_periods,
         "stock_unit": stock_unit,
-    })
+    }
+    with performance_section(request, "dashboard.render"):
+        return render(request, "core/dashboard.html", context)
 
 
 

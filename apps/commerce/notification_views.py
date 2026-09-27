@@ -2,26 +2,34 @@ import json
 from uuid import UUID
 
 from django.http import JsonResponse
-from django.db.models import Q
+from django.db.models import Count, Q, Window
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
 from accounts.services import user_has_permission
-from accounts.platform_integrations import redact_disabled_integrations
+from accounts.platform_integrations import glovo_platform_enabled, redact_disabled_integrations
+from core.performance import performance_section
 
 from .models import CommerceNotification, CommerceNotificationRead, CommerceSettings, DeliverySettings
 from .realtime import publish_user_notifications_changed
 
 
 def _access_profile(request):
+    cached = getattr(request, "_commerce_access_profile", None)
+    if cached is not None:
+        return cached
     if not (request.user.is_authenticated and getattr(request, "business", None)):
-        return {"commerce": False, "delivery": False, "rider": False, "inventory": False}
-    return {
+        profile = {"commerce": False, "delivery": False, "rider": False, "inventory": False}
+        request._commerce_access_profile = profile
+        return profile
+    profile = {
         "commerce": user_has_permission(request.user, request.business, "commerce", "view"),
         "delivery": user_has_permission(request.user, request.business, "delivery", "view"),
         "rider": user_has_permission(request.user, request.business, "delivery_rider", "view"),
         "inventory": user_has_permission(request.user, request.business, "inventory", "view"),
     }
+    request._commerce_access_profile = profile
+    return profile
 
 
 def _notification_authorized(request):
@@ -55,12 +63,15 @@ def _unread(request):
 @never_cache
 @require_GET
 def notification_feed(request):
-    if not _notification_authorized(request):
-        return JsonResponse({"detail": "Commerce notification access is unavailable."}, status=403)
-    settings = CommerceSettings.raw_objects.filter(business=request.business).first()
-    access = _access_profile(request)
+    with performance_section(request, "notification.access"):
+        if not _notification_authorized(request):
+            return JsonResponse({"detail": "Commerce notification access is unavailable."}, status=403)
+        access = _access_profile(request)
+    with performance_section(request, "notification.settings"):
+        settings = CommerceSettings.raw_objects.filter(business=request.business).first()
     rider_only = access["rider"] and not access["commerce"] and not access["delivery"]
-    delivery_settings = DeliverySettings.raw_objects.filter(business=request.business).first() if rider_only else None
+    with performance_section(request, "notification.rider_settings"):
+        delivery_settings = DeliverySettings.raw_objects.filter(business=request.business).first() if rider_only else None
     enabled = settings.notifications_enabled if settings else True
     if not enabled:
         return JsonResponse({
@@ -74,8 +85,25 @@ def notification_feed(request):
             "unread_count": 0,
             "notifications": [],
         })
-    unread = _unread(request)
-    rows = list(unread[:25])
+    with performance_section(request, "notification.fetch"):
+        unread = _unread(request)
+        rows = list(
+            unread.annotate(_unread_total=Window(expression=Count("pk")))[:25]
+        )
+        unread_count = int(rows[0]._unread_total) if rows else 0
+    with performance_section(request, "notification.serialize"):
+        integration_enabled = glovo_platform_enabled()
+        notifications = [
+            {
+                "id": str(row.public_id),
+                "event_type": row.event_type,
+                "title": redact_disabled_integrations(row.title, glovo_enabled=integration_enabled),
+                "message": redact_disabled_integrations(row.message, glovo_enabled=integration_enabled),
+                "target_url": row.target_url,
+                "created_at": row.created_at.isoformat(),
+            }
+            for row in rows
+        ]
     return JsonResponse({
         "enabled": True,
         "sound_enabled": (
@@ -96,18 +124,8 @@ def notification_feed(request):
         "desktop_enabled": settings.notification_desktop_enabled if settings else True,
         "rider_profile": rider_only,
         "poll_seconds": 8,
-        "unread_count": unread.count(),
-        "notifications": [
-            {
-                "id": str(row.public_id),
-                "event_type": row.event_type,
-                "title": redact_disabled_integrations(row.title),
-                "message": redact_disabled_integrations(row.message),
-                "target_url": row.target_url,
-                "created_at": row.created_at.isoformat(),
-            }
-            for row in rows
-        ],
+        "unread_count": unread_count,
+        "notifications": notifications,
     })
 
 

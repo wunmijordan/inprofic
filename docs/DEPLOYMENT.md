@@ -386,7 +386,7 @@ For the fastest practical production path:
 
 1. keep the Render service and PostgreSQL/Supabase database in the closest practical regions;
 2. keep Psycopg pooling enabled and size `DB_POOL_MAX_SIZE` to the database's real connection budget;
-3. use the `slow_request` diagnostics to fix query amplification before buying compute to mask it; the log includes total SQL time, query count, the slowest query duration (`max_sql_ms`) and the number of queries above `PERF_SLOW_QUERY_MS` (100 ms by default), without recording SQL text or parameters;
+3. use the `slow_request` diagnostics to fix query amplification before buying compute to mask it; the log includes total SQL time, derived non-SQL time (`non_sql_ms`), query count, the slowest query duration (`max_sql_ms`), the number of queries above `PERF_SLOW_QUERY_MS` (100 ms by default), and bounded named section timings in `sections=`. Each section is logged as `name:wall_ms/non_sql_ms/query_count`, so cache, serialization, rendering and other Python-side hotspots can be isolated without recording SQL text, parameters, request bodies, cookies or customer data;
 4. avoid synchronous external HTTP calls on ordinary page rendering;
 5. use a paid/non-sleeping Render plan to remove free-instance cold starts;
 6. before running multiple ASGI processes or Render instances, set the shared `REDIS_URL` so Channels uses Redis rather than the in-memory channel layer and Django gains a shared cache;

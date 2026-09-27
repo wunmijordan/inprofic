@@ -70,7 +70,7 @@
           <td class="p-2"><div class="font-medium">{{ i.public_number }}</div><div class="text-[10px] text-stone-400">{{ i.get_ordering_mode_display }}</div></td>
           <td class="p-2 text-center">{{ i.customer_name }}</td>
           <td class="p-2 text-center">{{ i.display_sales_channel }}</td>
-          <td class="p-2 text-center font-mono">{{ i.total|money:biz.currency_symbol }}</td>
+          <td class="p-2 text-center font-mono">{{ i.dashboard_total|money:biz.currency_symbol }}</td>
           <td class="p-2 text-center">
             {% with p=i.payments.first %}{% if p %}<span class="inline-flex rounded-full px-2 py-0.5 text-xs {% if p.status == 'paid' %}bg-emerald-50 text-emerald-700{% elif p.status == 'awaiting_verification' %}bg-amber-50 text-amber-700{% elif p.status == 'failed' %}bg-rose-50 text-rose-700{% else %}bg-stone-100 text-stone-600{% endif %}">{{ p.get_status_display }}</span><div class="font-mono text-[10px] text-stone-400">{{ p.reference }}</div>{% else %}<span class="text-stone-400">Not initiated</span>{% endif %}{% endwith %}
           </td>

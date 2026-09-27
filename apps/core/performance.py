@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 import logging
 import time
@@ -22,6 +22,51 @@ class DatabaseTiming:
     duration_seconds: float = 0.0
     max_query_seconds: float = 0.0
     slow_query_count: int = 0
+
+
+@dataclass
+class SectionTiming:
+    """Named request subsection timing used to isolate non-SQL work."""
+
+    wall_seconds: float = 0.0
+    sql_seconds: float = 0.0
+    query_count: int = 0
+    calls: int = 0
+
+
+@contextmanager
+def performance_section(request, name: str):
+    """Measure one static, non-sensitive request section when diagnostics are on.
+
+    The middleware owns the backing request attributes. Outside diagnostic mode
+    this is effectively a no-op, so views can leave these spans in production
+    without adding database work or retaining request/customer data.
+    """
+
+    sections = getattr(request, "_performance_sections", None)
+    db_timing = getattr(request, "_performance_db_timing", None)
+    if sections is None or db_timing is None:
+        yield
+        return
+
+    safe_name = "".join(
+        char for char in str(name)[:64]
+        if char.isalnum() or char in {"_", "-", "."}
+    ) or "section"
+    wall_started = time.perf_counter()
+    sql_started = db_timing.duration_seconds
+    query_started = db_timing.query_count
+    try:
+        yield
+    finally:
+        wall_elapsed = max(0.0, time.perf_counter() - wall_started)
+        sql_elapsed = max(0.0, db_timing.duration_seconds - sql_started)
+        query_delta = max(0, db_timing.query_count - query_started)
+        timing = sections.setdefault(safe_name, SectionTiming())
+        timing.wall_seconds += wall_elapsed
+        timing.sql_seconds += sql_elapsed
+        timing.query_count += query_delta
+        timing.calls += 1
 
 
 class QueryTimingWrapper:
@@ -78,6 +123,8 @@ class PerformanceDiagnosticMiddleware:
             return self.get_response(request)
 
         db_timing = DatabaseTiming()
+        request._performance_db_timing = db_timing
+        request._performance_sections = {}
         started = time.perf_counter()
 
         # Enter a wrapper for each configured database alias without opening a
@@ -97,6 +144,7 @@ class PerformanceDiagnosticMiddleware:
 
         total_ms = (time.perf_counter() - started) * 1000.0
         sql_ms = db_timing.duration_seconds * 1000.0
+        non_sql_ms = max(0.0, total_ms - sql_ms)
         max_sql_ms = db_timing.max_query_seconds * 1000.0
         status_code = getattr(response, "status_code", 500)
 
@@ -116,21 +164,42 @@ class PerformanceDiagnosticMiddleware:
             # keeps IDs/slugs and the query string out of production logs while
             # still identifying the slow application surface.
             logger.warning(
-                "slow_request method=%s route=%s status=%s total_ms=%.1f sql_ms=%.1f queries=%s max_sql_ms=%.1f slow_sql_queries=%s",
+                "slow_request method=%s route=%s status=%s total_ms=%.1f sql_ms=%.1f non_sql_ms=%.1f queries=%s max_sql_ms=%.1f slow_sql_queries=%s sections=%s",
                 request.method,
                 self._route_label(request),
                 status_code,
                 total_ms,
                 sql_ms,
+                non_sql_ms,
                 db_timing.query_count,
                 max_sql_ms,
                 db_timing.slow_query_count,
+                self._section_summary(request),
             )
 
         return response
 
     def _excluded(self, path: str) -> bool:
         return any(path.startswith(prefix) for prefix in self.excluded_prefixes)
+
+    @staticmethod
+    def _section_summary(request) -> str:
+        """Return bounded static timing labels as wall/non-SQL/query-count."""
+
+        sections = getattr(request, "_performance_sections", None) or {}
+        if not sections:
+            return "-"
+        rows = sorted(
+            sections.items(),
+            key=lambda item: item[1].wall_seconds,
+            reverse=True,
+        )[:10]
+        return ",".join(
+            f"{name}:{timing.wall_seconds * 1000.0:.1f}/"
+            f"{max(0.0, timing.wall_seconds - timing.sql_seconds) * 1000.0:.1f}/"
+            f"{timing.query_count}"
+            for name, timing in rows
+        )
 
     @staticmethod
     def _route_label(request) -> str:

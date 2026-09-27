@@ -5,6 +5,8 @@ from django.db import transaction
 from django.db.models import ExpressionWrapper, F, Q, Value, DecimalField
 from django.utils import timezone
 
+from core.performance import performance_section
+
 from .models import FinishedGood, InventoryAlertSettings, InventoryAlertState, RawMaterial
 
 
@@ -52,29 +54,37 @@ def alert_settings(business):
     return settings
 
 
-def _condition_rows(business):
+def _condition_rows(business, *, performance_request=None):
     rows = []
     warning_ceiling = ExpressionWrapper(
         F("reorder_level") * Value(Decimal("1.5")),
         output_field=DecimalField(max_digits=18, decimal_places=6),
     )
-    raw_rows = RawMaterial.raw_objects.filter(business=business).filter(
-        Q(stock__lte=F("reorder_level"))
-        | Q(stock__gt=F("reorder_level"), stock__lte=warning_ceiling)
-    ).only("id", "name", "stock", "reorder_level", "usage_unit").order_by("name", "id")
+    # ``low OR warning`` simplifies exactly to ``stock <= 1.5 * reorder``;
+    # classification still happens below. Keeping the SQL predicate as one
+    # comparison gives PostgreSQL a simpler tenant-scoped scan than the
+    # equivalent OR expression used previously.
+    with performance_section(performance_request, "inventory_alert.raw_conditions"):
+        raw_rows = list(
+            RawMaterial.raw_objects.filter(
+                business=business,
+                stock__lte=warning_ceiling,
+            ).only("id", "name", "stock", "reorder_level", "usage_unit").order_by("name", "id")
+        )
     for item in raw_rows:
         alert_type = InventoryAlertState.RAW_LOW if item.is_low else InventoryAlertState.RAW_WARNING
         rows.append((alert_type, item))
 
-    finished_rows = FinishedGood.raw_objects.filter(
-        business=business,
-        stock__isnull=False,
-        reorder_level__isnull=False,
-        reorder_level__gt=0,
-    ).filter(
-        Q(stock__lte=F("reorder_level"))
-        | Q(stock__gt=F("reorder_level"), stock__lte=warning_ceiling)
-    ).only("id", "name", "stock", "reorder_level", "unit").order_by("name", "id")
+    with performance_section(performance_request, "inventory_alert.finished_conditions"):
+        finished_rows = list(
+            FinishedGood.raw_objects.filter(
+                business=business,
+                stock__isnull=False,
+                reorder_level__isnull=False,
+                reorder_level__gt=0,
+                stock__lte=warning_ceiling,
+            ).only("id", "name", "stock", "reorder_level", "unit").order_by("name", "id")
+        )
     for item in finished_rows:
         alert_type = InventoryAlertState.FINISHED_LOW if item.is_low else InventoryAlertState.FINISHED_WARNING
         rows.append((alert_type, item))
@@ -100,8 +110,9 @@ def _serialize(alert_type, item, state):
     }
 
 
-def inventory_alert_feed(*, business, user):
-    settings = alert_settings(business)
+def inventory_alert_feed(*, business, user, performance_request=None):
+    with performance_section(performance_request, "inventory_alert.settings"):
+        settings = alert_settings(business)
     if not settings.enabled:
         InventoryAlertState.raw_objects.filter(
             business=business, user=user, is_active=True
@@ -112,15 +123,18 @@ def inventory_alert_feed(*, business, user):
             "alerts": [], "count": 0, "raw_count": 0, "finished_count": 0,
         }
 
-    current = _condition_rows(business)
+    current = _condition_rows(business, performance_request=performance_request)
     active_keys = {(alert_type, item.pk) for alert_type, item in current}
     raw_ids = [item.pk for alert_type, item in current if alert_type in {InventoryAlertState.RAW_WARNING, InventoryAlertState.RAW_LOW}]
     finished_ids = [item.pk for alert_type, item in current if alert_type in {InventoryAlertState.FINISHED_WARNING, InventoryAlertState.FINISHED_LOW}]
-    relevant_states = InventoryAlertState.raw_objects.filter(business=business, user=user).filter(
-        Q(is_active=True)
-        | Q(alert_type__in=[InventoryAlertState.RAW_WARNING, InventoryAlertState.RAW_LOW], object_id__in=raw_ids)
-        | Q(alert_type__in=[InventoryAlertState.FINISHED_WARNING, InventoryAlertState.FINISHED_LOW], object_id__in=finished_ids)
-    )
+    with performance_section(performance_request, "inventory_alert.states"):
+        relevant_states = list(
+            InventoryAlertState.raw_objects.filter(business=business, user=user).filter(
+                Q(is_active=True)
+                | Q(alert_type__in=[InventoryAlertState.RAW_WARNING, InventoryAlertState.RAW_LOW], object_id__in=raw_ids)
+                | Q(alert_type__in=[InventoryAlertState.FINISHED_WARNING, InventoryAlertState.FINISHED_LOW], object_id__in=finished_ids)
+            )
+        )
     existing = {
         (state.alert_type, state.object_id): state
         for state in relevant_states
@@ -146,41 +160,43 @@ def inventory_alert_feed(*, business, user):
             state.acknowledged_at = None
             reactivated_ids.append(state.pk)
 
-    if missing_states:
-        InventoryAlertState.raw_objects.bulk_create(missing_states, ignore_conflicts=True)
-    if reactivated_ids:
-        InventoryAlertState.raw_objects.filter(pk__in=reactivated_ids).update(
-            is_active=True, acknowledged_at=None
-        )
+    with performance_section(performance_request, "inventory_alert.state_sync"):
+        if missing_states:
+            InventoryAlertState.raw_objects.bulk_create(missing_states, ignore_conflicts=True)
+        if reactivated_ids:
+            InventoryAlertState.raw_objects.filter(pk__in=reactivated_ids).update(
+                is_active=True, acknowledged_at=None
+            )
 
-    stale_ids = [
-        state.pk
-        for key, state in existing.items()
-        if state.pk and state.is_active and key not in active_keys
-    ]
-    if stale_ids:
-        InventoryAlertState.raw_objects.filter(pk__in=stale_ids).update(
-            is_active=False, acknowledged_at=None
-        )
-        stale_id_set = set(stale_ids)
-        for state in existing.values():
-            if state.pk in stale_id_set:
-                state.is_active = False
-                state.acknowledged_at = None
+        stale_ids = [
+            state.pk
+            for key, state in existing.items()
+            if state.pk and state.is_active and key not in active_keys
+        ]
+        if stale_ids:
+            InventoryAlertState.raw_objects.filter(pk__in=stale_ids).update(
+                is_active=False, acknowledged_at=None
+            )
+            stale_id_set = set(stale_ids)
+            for state in existing.values():
+                if state.pk in stale_id_set:
+                    state.is_active = False
+                    state.acknowledged_at = None
 
-    now = timezone.now()
-    visible = []
-    for alert_type, item in current:
-        meta = ALERT_META[alert_type]
-        if not getattr(settings, meta["settings_enabled"]):
-            continue
-        state = existing[(alert_type, item.pk)]
-        repeat_minutes = getattr(settings, meta["settings_repeat"])
-        is_due = state.acknowledged_at is None or (
-            repeat_minutes > 0 and now >= state.acknowledged_at + timedelta(minutes=repeat_minutes)
-        )
-        if is_due:
-            visible.append(_serialize(alert_type, item, state))
+    with performance_section(performance_request, "inventory_alert.serialize"):
+        now = timezone.now()
+        visible = []
+        for alert_type, item in current:
+            meta = ALERT_META[alert_type]
+            if not getattr(settings, meta["settings_enabled"]):
+                continue
+            state = existing[(alert_type, item.pk)]
+            repeat_minutes = getattr(settings, meta["settings_repeat"])
+            is_due = state.acknowledged_at is None or (
+                repeat_minutes > 0 and now >= state.acknowledged_at + timedelta(minutes=repeat_minutes)
+            )
+            if is_due:
+                visible.append(_serialize(alert_type, item, state))
 
     raw_count = sum(1 for row in visible if row["resource"] == "raw_material")
     finished_count = sum(1 for row in visible if row["resource"] == "finished_good")

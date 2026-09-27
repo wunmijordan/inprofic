@@ -13,6 +13,7 @@ from django.views.decorators.http import require_POST
 from django.utils import timezone
 from django.utils.text import slugify
 from core.models import Business
+from core.performance import performance_section
 from .forms import BusinessSignupForm, UserForm, PermissionMatrixForm, RoleForm, RolePermissionForm
 from .models import BusinessModuleAccess, CustomUser, Role, RoleModulePermission, UserBusiness, UserModulePermission
 from .services import ensure_permissions, is_business_admin, seed_business_modules, seed_business_roles, user_has_permission
@@ -866,12 +867,13 @@ def founder_subscriptions(request):
     from .backup_restore import BackupRestoreError, analyze_backup, restore_backup
     if not request.user.is_superuser:
         return render(request, "403.html", status=403)
-    trial_policy_settings = SubscriptionPolicySettings.load()
-    ensure_default_plans(general_trial_days=trial_policy_settings.general_trial_days)
-    payment_settings = SubscriptionPaymentSettings.load()
-    integration_settings = PlatformIntegrationSettings.load()
-    trust_settings = MarketingTrustSettings.load()
-    privacy_policy = PlatformPrivacyPolicy.load()
+    with performance_section(request, "founder.bootstrap"):
+        trial_policy_settings = SubscriptionPolicySettings.load()
+        ensure_default_plans(general_trial_days=trial_policy_settings.general_trial_days)
+        payment_settings = SubscriptionPaymentSettings.load()
+        integration_settings = PlatformIntegrationSettings.load()
+        trust_settings = MarketingTrustSettings.load()
+        privacy_policy = PlatformPrivacyPolicy.load()
     action = request.POST.get("action") if request.method == "POST" else ""
 
     # These choices are rendered by several Founder forms. On ordinary GETs,
@@ -882,15 +884,16 @@ def founder_subscriptions(request):
     business_choices = None
     plan_choices = None
     if request.method != "POST":
-        plans_for_page = list(
-            SubscriptionPlan.objects.prefetch_related("module_entitlements")
-            .all().order_by("monthly_price", "id")
-        )
-        business_choices = [
-            (str(pk), name)
-            for pk, name in Business.objects.order_by("name", "id").values_list("pk", "name")
-        ]
-        plan_choices = [(str(plan.pk), plan.name) for plan in plans_for_page if plan.active]
+        with performance_section(request, "founder.form_choices"):
+            plans_for_page = list(
+                SubscriptionPlan.objects.prefetch_related("module_entitlements")
+                .all().order_by("monthly_price", "id")
+            )
+            business_choices = [
+                (str(pk), name)
+                for pk, name in Business.objects.order_by("name", "id").values_list("pk", "name")
+            ]
+            plan_choices = [(str(plan.pk), plan.name) for plan in plans_for_page if plan.active]
 
     form = FounderGrantForm(
         request.POST if action == "grant" else None,
@@ -1272,15 +1275,16 @@ def founder_subscriptions(request):
             revoke_founder_lifetime(subscription)
             messages.success(request, f"Founder lifetime access revoked for {subscription.primary_business.name}.")
             return redirect("founder_subscriptions")
-    subscriptions = list(
-        BusinessSubscription.objects
-        .select_related("primary_business", "plan", "founder_granted_by")
-        .prefetch_related("services__business")
-    )
-    pending_payments = list(
-        SubscriptionPayment.objects.filter(status=SubscriptionPayment.STATUS_PENDING)
-        .select_related("subscription__primary_business", "plan")[:50]
-    )
+    with performance_section(request, "founder.subscription_data"):
+        subscriptions = list(
+            BusinessSubscription.objects
+            .select_related("primary_business", "plan", "founder_granted_by")
+            .prefetch_related("services__business")
+        )
+        pending_payments = list(
+            SubscriptionPayment.objects.filter(status=SubscriptionPayment.STATUS_PENDING)
+            .select_related("subscription__primary_business", "plan")[:50]
+        )
     platform_query = (request.GET.get("platform_q") or "").strip()[:100]
     businesses = Business.objects.select_related(
         "subscription__plan", "subscription_service__subscription__plan"
@@ -1302,8 +1306,9 @@ def founder_subscriptions(request):
         )
     if plans_for_page is None:
         plans_for_page = SubscriptionPlan.objects.prefetch_related("module_entitlements").all().order_by("monthly_price", "id")
-    platform_businesses = list(businesses[:50])
-    platform_users = list(users[:50])
+    with performance_section(request, "founder.platform_rows"):
+        platform_businesses = list(businesses[:50])
+        platform_users = list(users[:50])
     if platform_query:
         # Search narrows the list, but the headline platform counters remain
         # global just as they did before this optimization.
@@ -1313,8 +1318,22 @@ def founder_subscriptions(request):
         platform_business_count = int(platform_businesses[0]._platform_total) if platform_businesses else 0
         platform_user_count = int(platform_users[0]._platform_total) if platform_users else 0
     from .analytics import founder_analytics_summary
-    founder_analytics = founder_analytics_summary()
-    return render(request, "accounts/founder_subscriptions.html", {
+    with performance_section(request, "founder.analytics"):
+        founder_analytics = founder_analytics_summary()
+    with performance_section(request, "founder.auxiliary"):
+        recent_trial_grants = list(FounderTrialGrant.objects.select_related(
+            "subscription__primary_business", "plan", "granted_by"
+        )[:12])
+        trust_logos = list(MarketingTrustLogo.objects.select_related("created_by").all())
+        promotions = list(
+            SubscriptionPromotion.objects.select_related("plan", "created_by")
+            .order_by("-active", "-starts_at", "-id")[:50]
+        )
+        marketing_campaign_rows = list(
+            MarketingPromoCampaign.objects.select_related("promotion__plan", "created_by")
+            .order_by("-active", "-priority", "id")[:50]
+        )
+    context = {
         "form": form,
         "subscriptions": subscriptions,
         "pending_payments": pending_payments,
@@ -1326,20 +1345,18 @@ def founder_subscriptions(request):
         "trial_policy_settings": trial_policy_settings,
         "trial_policy_form": trial_policy_form,
         "trial_grant_form": trial_grant_form,
-        "recent_trial_grants": FounderTrialGrant.objects.select_related(
-            "subscription__primary_business", "plan", "granted_by"
-        )[:12],
+        "recent_trial_grants": recent_trial_grants,
         "restore_form": restore_form,
         "backup_restore_report": backup_restore_report,
         "promotion_form": promotion_form,
         "trust_settings_form": trust_settings_form,
         "trust_logo_form": trust_logo_form,
-        "trust_logos": MarketingTrustLogo.objects.select_related("created_by").all(),
-        "promotions": SubscriptionPromotion.objects.select_related("plan", "created_by").order_by("-active", "-starts_at", "-id")[:50],
+        "trust_logos": trust_logos,
+        "promotions": promotions,
         "campaign_form": campaign_form,
         "campaign_instance": campaign_instance,
         "campaign_editor_html": campaign_editor_html,
-        "marketing_campaigns": MarketingPromoCampaign.objects.select_related("promotion__plan", "created_by").order_by("-active", "-priority", "id")[:50],
+        "marketing_campaigns": marketing_campaign_rows,
         "now": timezone.now(),
         "founder_analytics": founder_analytics,
         "platform_stats": {
@@ -1355,7 +1372,9 @@ def founder_subscriptions(request):
         "platform_query": platform_query,
         "platform_businesses": platform_businesses,
         "platform_users": platform_users,
-    })
+    }
+    with performance_section(request, "founder.render"):
+        return render(request, "accounts/founder_subscriptions.html", context)
 
 
 def _can_platform_mail(user):
@@ -1441,7 +1460,8 @@ def platform_mailing_workspace(request):
     service = requested_service if requested_service in valid_services else ""
     requested_plan = (request.GET.get("plan") or "").strip()
     plan_id = int(requested_plan) if requested_plan.isdigit() else None
-    rows = _mailing_business_rows(service=service, plan_id=plan_id)
+    with performance_section(request, "mailing.recipients"):
+        rows = _mailing_business_rows(service=service, plan_id=plan_id)
 
     if request.method == "POST":
         form = PlatformMailComposeForm(request.POST)
@@ -1522,40 +1542,52 @@ def platform_mailing_workspace(request):
                 }
         form = PlatformMailComposeForm(initial=initial)
 
-    campaigns = (
-        PlatformMailCampaign.objects.select_related("template", "created_by")
-        .annotate(
-            pending_count=Count(
-                "recipients",
-                filter=Q(
-                    recipients__status__in=[
-                        PlatformMailRecipient.STATUS_PENDING,
-                        PlatformMailRecipient.STATUS_SENDING,
-                    ]
-                ),
-            )
-        )[:20]
-    )
-    return render(
-        request,
-        "accounts/platform_mailing_workspace.html",
-        {
-            "form": form,
-            "business_rows": rows,
-            "campaigns": campaigns,
-            "topics": PlatformMailTemplate.objects.order_by("name"),
-            "total_businesses": Business.objects.count(),
-            "service_counts": Business.objects.values("vertical")
+    with performance_section(request, "mailing.reference_data"):
+        campaigns = list(
+            PlatformMailCampaign.objects.select_related("template", "created_by")
+            .annotate(
+                pending_count=Count(
+                    "recipients",
+                    filter=Q(
+                        recipients__status__in=[
+                            PlatformMailRecipient.STATUS_PENDING,
+                            PlatformMailRecipient.STATUS_SENDING,
+                        ]
+                    ),
+                )
+            )[:20]
+        )
+        topics = list(PlatformMailTemplate.objects.order_by("name"))
+        # One grouped query supplies both the per-service counts and the global
+        # total instead of issuing a second COUNT(*) round trip.
+        service_counts = list(
+            Business.objects.values("vertical")
             .annotate(total=Count("id"))
-            .order_by("vertical"),
-            "filter_service": service,
-            "filter_plan": str(plan_id or ""),
-            "plans": SubscriptionPlan.objects.filter(active=True).order_by(
+            .order_by("vertical")
+        )
+        total_businesses = sum(row["total"] for row in service_counts)
+        plans = list(
+            SubscriptionPlan.objects.filter(active=True).order_by(
                 "monthly_price",
                 "name",
-            ),
-        },
-    )
+            )
+        )
+    with performance_section(request, "mailing.render"):
+        return render(
+            request,
+            "accounts/platform_mailing_workspace.html",
+            {
+                "form": form,
+                "business_rows": rows,
+                "campaigns": campaigns,
+                "topics": topics,
+                "total_businesses": total_businesses,
+                "service_counts": service_counts,
+                "filter_service": service,
+                "filter_plan": str(plan_id or ""),
+                "plans": plans,
+            },
+        )
 
 
 @login_required

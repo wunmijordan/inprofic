@@ -24,6 +24,7 @@ from inventory.models import StockAdjustment, StockMovement
 from expenses.models import Expense, ExpensePayment
 from inventory.services import record_raw_material_movement, record_finished_good_movement
 from .finance_cache import FINANCE_ALERT_CACHE_TIMEOUT, finance_alert_cache_key
+from .performance import performance_section
 
 def today(): return timezone.localdate()
 
@@ -266,19 +267,26 @@ def _audit_trail_rows(request):
 
 @login_required
 def finance_dashboard(request):
-    accounts = _cash_account_balances(request.business)
-    tx = _finance_transactions(request)[:100]
-    open_items = _finance_open_items(request.business)
-    return render(request, "core/finance.html", {
+    with performance_section(request, "finance.accounts"):
+        accounts = _cash_account_balances(request.business)
+    with performance_section(request, "finance.transactions"):
+        tx = list(_finance_transactions(request)[:100])
+    with performance_section(request, "finance.open_items"):
+        open_items = _finance_open_items(request.business)
+    with performance_section(request, "finance.audit"):
+        audit_logs = list(_finance_audit_logs(request)[:80])
+    context = {
         "accounts": accounts,
         "transactions": tx,
-        "audit_logs": _finance_audit_logs(request)[:80],
+        "audit_logs": audit_logs,
         "receivables": open_items["receivables"],
         "payables": open_items["payables"],
         "outstanding_sales": open_items["outstanding_sales"][:30],
         "outstanding_pos": open_items["outstanding_pos"][:30],
         "outstanding_expenses": open_items["outstanding_expenses"],
-    })
+    }
+    with performance_section(request, "finance.render"):
+        return render(request, "core/finance.html", context)
 
 
 @login_required

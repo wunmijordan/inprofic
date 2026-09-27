@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.db.models import Count
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -14,6 +15,8 @@ from accounts.models import CustomUser, UserBusiness
 from accounts.platform_integrations import glovo_platform_enabled
 from accounts.services import business_has_module, is_business_admin, user_has_permission
 from core.models import Business
+from core.context import get_request_cache
+from core.performance import performance_section
 from core.verticals import vertical_config
 from core.services import audit
 
@@ -47,47 +50,77 @@ def _detail(exc):
 def _can_approve_delivery_switch(user, business):
     if getattr(user, "is_superuser", False) or is_business_admin(user, business):
         return True
-    membership = UserBusiness.objects.filter(user=user, business=business, active=True).select_related("role").first()
+    request_cache = get_request_cache()
+    snapshot = (
+        request_cache.get(("permission_snapshot", user.pk, business.pk))
+        if request_cache is not None else None
+    )
+    membership = snapshot[0] if snapshot else None
+    if membership is None:
+        membership = UserBusiness.objects.filter(
+            user=user, business=business, active=True
+        ).select_related("role").first()
     return bool(membership and membership.role.key in {
         CustomUser.ROLE_MANAGER, CustomUser.ROLE_MD_DIRECTOR, CustomUser.ROLE_BUSINESS_ADMIN,
     })
 
 
-def _settings(business):
+def _settings(business, *, ensure_provider_accounts=True):
     # Provider-neutral built-ins must also exist for businesses created after
     # the data migration that seeded existing tenants.
-    from .delivery_providers import ensure_builtin_provider_accounts
-    ensure_builtin_provider_accounts(business)
+    if ensure_provider_accounts:
+        from .delivery_providers import ensure_builtin_provider_accounts
+        ensure_builtin_provider_accounts(business)
     obj, _ = DeliverySettings.objects.get_or_create(business=business, defaults={"created_by": None})
     return obj
 
 
 @login_required
 def delivery_dashboard(request):
-    settings = _settings(request.business)
-    assignments = DeliveryAssignment.objects.select_related(
-        "intake", "driver__user", "origin", "quote", "provider_account"
-    ).prefetch_related("events", "issues", "messages")[:160]
+    with performance_section(request, "delivery.settings"):
+        settings = _settings(request.business, ensure_provider_accounts=False)
     terminal_statuses = {
         DeliveryAssignment.STATUS_DELIVERED, DeliveryAssignment.STATUS_RETURNED,
         DeliveryAssignment.STATUS_CANCELLED,
     }
-    active_assignments = [row for row in assignments if row.status not in terminal_statuses]
-    completed_assignments = [row for row in assignments if row.status in terminal_statuses]
-    active_batches = list(
-        DeliveryBatch.objects.select_related("driver__user").prefetch_related("assignments__intake")
-        .exclude(status__in=[DeliveryBatch.STATUS_COMPLETED, DeliveryBatch.STATUS_CANCELLED])[:40]
-    )
+    with performance_section(request, "delivery.assignments"):
+        active_assignments = list(
+            DeliveryAssignment.objects.exclude(status__in=terminal_statuses)
+            .select_related("intake", "driver__user", "origin", "quote", "provider_account")
+            .prefetch_related("events", "issues", "messages")[:160]
+        )
+        completed_assignments = list(
+            DeliveryAssignment.objects.filter(status__in=terminal_statuses)
+            .select_related("intake", "driver__user")[:60]
+        )
+    with performance_section(request, "delivery.batches"):
+        active_batches = list(
+            DeliveryBatch.objects.select_related("driver__user")
+            .annotate(order_count=Count("assignments"))
+            .exclude(status__in=[DeliveryBatch.STATUS_COMPLETED, DeliveryBatch.STATUS_CANCELLED])[:40]
+        )
     # Materialize setup collections once: the dashboard renders each list and also
     # derives readiness from it, so Python checks avoid duplicate EXISTS queries.
-    origins = list(DeliveryOrigin.objects.filter(business=request.business))
-    rate_bands = list(DeliveryRateBand.objects.filter(business=request.business))
-    areas = list(DeliveryArea.objects.filter(business=request.business).select_related("rate_band"))
-    drivers = list(DeliveryDriver.objects.filter(business=request.business).select_related("user"))
-    provider_accounts_qs = DeliveryProviderAccount.objects.filter(business=request.business)
-    if not glovo_platform_enabled():
-        provider_accounts_qs = provider_accounts_qs.exclude(provider_code=DeliveryProviderAccount.PROVIDER_GLOVO)
-    provider_accounts = list(provider_accounts_qs)
+    with performance_section(request, "delivery.setup_data"):
+        origins = list(DeliveryOrigin.objects.filter(business=request.business))
+        rate_bands = list(DeliveryRateBand.objects.filter(business=request.business))
+        areas = list(DeliveryArea.objects.filter(business=request.business).select_related("rate_band"))
+        drivers = list(DeliveryDriver.objects.filter(business=request.business).select_related("user"))
+        integration_enabled = glovo_platform_enabled()
+        provider_accounts_qs = DeliveryProviderAccount.objects.filter(business=request.business)
+        if not integration_enabled:
+            provider_accounts_qs = provider_accounts_qs.exclude(provider_code=DeliveryProviderAccount.PROVIDER_GLOVO)
+        provider_accounts = list(provider_accounts_qs)
+        if integration_enabled and not any(
+            row.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO for row in provider_accounts
+        ):
+            # Missing built-ins are an exceptional repair path. Healthy
+            # dashboards reuse the provider-account query above instead of
+            # issuing a duplicate existence lookup on every request.
+            from .delivery_providers import ensure_builtin_provider_accounts
+            account, created = ensure_builtin_provider_accounts(request.business)
+            if created and account:
+                provider_accounts.append(account)
     for provider in provider_accounts:
         provider.webhook_path = (
             f"/api/v1/delivery/providers/custom/{request.business.slug}/{provider.pk}/webhook"
@@ -98,10 +131,11 @@ def delivery_dashboard(request):
         if row.active and row.latitude is not None and row.longitude is not None
     ]
     active_origin = next((row for row in mapped_active_origins if row.is_default), None) or (mapped_active_origins[0] if mapped_active_origins else None)
-    for area in areas:
-        summary = delivery_area_distance_summary(area, origin=active_origin)
-        area.centre_distance_from_base_km = summary["centre_distance_km"]
-        area.maximum_distance_from_base_km = summary["maximum_base_distance_km"]
+    with performance_section(request, "delivery.distance"):
+        for area in areas:
+            summary = delivery_area_distance_summary(area, origin=active_origin)
+            area.centre_distance_from_base_km = summary["centre_distance_km"]
+            area.maximum_distance_from_base_km = summary["maximum_base_distance_km"]
     base_ready = bool(mapped_active_origins)
     pricing_ready = any(row.active for row in rate_bands)
     destinations_ready = any(row.active for row in areas)
@@ -116,14 +150,18 @@ def delivery_dashboard(request):
         if account_required:
             provider_ready = bool(
                 account and account.active
-                and not (account.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO and not glovo_platform_enabled())
+                and not (account.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO and not integration_enabled)
                 and account.is_configured_for_dispatch
             )
     public_ready = bool(settings.enabled and base_ready and pricing_ready and provider_ready)
-    return render(request, "commerce/delivery/dashboard.html", {
+    with performance_section(request, "delivery.permissions"):
+        can_manage_delivery = is_business_admin(request.user, request.business)
+        can_update_delivery = user_has_permission(request.user, request.business, "delivery", "edit")
+        can_approve_delivery_switch = _can_approve_delivery_switch(request.user, request.business)
+    context = {
         "delivery_settings": settings,
         "assignments": active_assignments,
-        "completed_assignments": completed_assignments[:60],
+        "completed_assignments": completed_assignments,
         "active_batches": active_batches,
         "origins": origins,
         "rate_bands": rate_bands,
@@ -138,13 +176,15 @@ def delivery_dashboard(request):
             "provider_ready": provider_ready,
             "public_ready": public_ready,
         },
-        "can_manage_delivery": is_business_admin(request.user, request.business),
-        "can_update_delivery": user_has_permission(request.user, request.business, "delivery", "edit"),
-        "glovo_webhook_path": (f"/api/v1/delivery/providers/glovo/{request.business.slug}/webhook" if glovo_platform_enabled() else ""),
+        "can_manage_delivery": can_manage_delivery,
+        "can_update_delivery": can_update_delivery,
+        "glovo_webhook_path": (f"/api/v1/delivery/providers/glovo/{request.business.slug}/webhook" if integration_enabled else ""),
         "status_choices": DeliveryAssignment.STATUS_CHOICES,
         "issue_status_choices": DeliveryIssue.STATUS_CHOICES,
-        "can_approve_delivery_switch": _can_approve_delivery_switch(request.user, request.business),
-    })
+        "can_approve_delivery_switch": can_approve_delivery_switch,
+    }
+    with performance_section(request, "delivery.render"):
+        return render(request, "commerce/delivery/dashboard.html", context)
 
 
 @login_required

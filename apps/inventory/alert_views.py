@@ -9,6 +9,7 @@ from django.views.decorators.http import require_GET, require_POST
 from django.utils import timezone
 
 from accounts.services import is_business_admin, user_has_permission
+from core.performance import performance_section
 
 from .alert_services import acknowledge_inventory_alerts, alert_settings, inventory_alert_feed
 from .forms import InventoryAlertSettingsForm
@@ -42,13 +43,18 @@ def alert_feed(request):
     if not user_has_permission(request.user, request.business, "inventory", "view"):
         return JsonResponse({"detail": "Inventory access is required."}, status=403)
     cache_key = _feed_cache_key(request.business.pk, request.user.pk)
-    payload = cache.get(cache_key)
+    with performance_section(request, "inventory_alert.cache_read"):
+        payload = cache.get(cache_key)
     if payload is None:
-        payload = inventory_alert_feed(business=request.business, user=request.user)
+        with performance_section(request, "inventory_alert.build"):
+            payload = inventory_alert_feed(
+                business=request.business, user=request.user, performance_request=request
+            )
         # The tray polls frequently. A short cache cuts repeated remote-DB
         # round trips while keeping stock changes visible within one polling
         # cycle; acknowledgement invalidates this user's entry immediately.
-        cache.set(cache_key, payload, timeout=20)
+        with performance_section(request, "inventory_alert.cache_write"):
+            cache.set(cache_key, payload, timeout=20)
     return JsonResponse(payload)
 
 

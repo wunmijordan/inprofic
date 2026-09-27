@@ -4,7 +4,11 @@ from io import BytesIO
 import re
 
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count, OuterRef, Prefetch, Q, Subquery, Sum, Window
+from django.db.models import (
+    Case, Count, DecimalField, ExpressionWrapper, F, OuterRef, Prefetch, Q,
+    Subquery, Sum, Value, When, Window,
+)
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -19,7 +23,8 @@ from procurement.models import PurchaseOrder, PurchaseOrderItem, RawMaterialCost
 from production.models import ProductionBatch, ProductionCostSnapshot, ProductionQualityCheck
 from sales.models import CustomerPayment, Sale, SaleItem
 from accounts.services import is_business_admin, user_has_permission
-from accounts.platform_integrations import redact_disabled_integrations
+from accounts.platform_integrations import glovo_platform_enabled, redact_disabled_integrations
+from .performance import performance_section
 
 from .models import AuditLog, AuditQuery, CashAccount, FinancialTransaction
 from .services import audit
@@ -73,7 +78,7 @@ _EXTERNAL_BUSINESS_ACTIVITY_MODELS = frozenset({
 })
 
 
-def _audit_detail_value(value):
+def _audit_detail_value(value, *, integration_enabled=None):
     if value is True:
         return "Yes"
     if value is False:
@@ -84,11 +89,11 @@ def _audit_detail_value(value):
         return "Recorded securely"
     if isinstance(value, (list, tuple)):
         value = ", ".join(str(item) for item in value)
-    text = str(redact_disabled_integrations(value))
+    text = str(redact_disabled_integrations(value, glovo_enabled=integration_enabled))
     return f"{text[:177]}…" if len(text) > 180 else text
 
 
-def _public_audit_details(metadata):
+def _public_audit_details(metadata, *, integration_enabled=None):
     if not isinstance(metadata, dict):
         return []
     rows = []
@@ -97,16 +102,23 @@ def _public_audit_details(metadata):
         if any(marker in normalized for marker in _AUDIT_PRIVATE_MARKERS):
             continue
         label = _AUDIT_DETAIL_LABELS.get(normalized, normalized.replace("_", " ").title())
-        rows.append({"label": label, "value": _audit_detail_value(value)})
+        rows.append({
+            "label": label,
+            "value": _audit_detail_value(value, integration_enabled=integration_enabled),
+        })
     return rows[:8]
 
 
-def _prepare_audit_log(log):
-    log.description = redact_disabled_integrations(log.description)
+def _prepare_audit_log(log, *, integration_enabled=None):
+    log.description = redact_disabled_integrations(
+        log.description, glovo_enabled=integration_enabled
+    )
     log.action_label = (log.action or "Activity").replace("_", " ").title()
     model = (log.model_name or "Record").split(".")[-1]
     log.record_type_label = re.sub(r"(?<!^)(?=[A-Z])", " ", model)
-    log.public_details = _public_audit_details(log.metadata)
+    log.public_details = _public_audit_details(
+        log.metadata, integration_enabled=integration_enabled
+    )
     return log
 
 
@@ -155,33 +167,120 @@ def _audit_dataset(request, *, for_export=False):
     material_value = sum((m.audit_value for m in materials), Decimal("0"))
     product_value = sum((Decimal(g.stock or 0) * Decimal(g.est_cost or 0) for g in products), Decimal("0"))
 
-    purchases = list(
+    money_field = DecimalField(max_digits=24, decimal_places=6)
+    purchase_qs = (
         PurchaseOrder.objects.filter(business=business, date__range=(date_from, date_to))
         .select_related("account")
-        .prefetch_related(
+        .order_by("-date", "-id")
+    )
+    if for_export:
+        purchase_qs = purchase_qs.prefetch_related(
             Prefetch(
                 "items",
                 queryset=PurchaseOrderItem.objects.select_related("raw_material", "finished_good"),
             ),
             Prefetch("payments", queryset=SupplierPayment.objects.select_related("account")),
         )
-        .order_by("-date", "-id")
-    )
-    purchase_total = sum((po.total for po in purchases), Decimal("0"))
-    supplier_paid = sum((sum((p.amount for p in po.payments.all()), Decimal("0")) for po in purchases), Decimal("0"))
+    else:
+        po_total_sq = (
+            PurchaseOrderItem.objects.filter(purchase_order_id=OuterRef("pk"))
+            .values("purchase_order_id")
+            .annotate(
+                total=Sum(
+                    ExpressionWrapper(F("qty") * F("unit_cost"), output_field=money_field)
+                )
+            )
+            .values("total")[:1]
+        )
+        po_paid_sq = (
+            SupplierPayment.objects.filter(purchase_order_id=OuterRef("pk"))
+            .values("purchase_order_id")
+            .annotate(total=Sum("amount"))
+            .values("total")[:1]
+        )
+        purchase_qs = purchase_qs.annotate(
+            audit_total=Coalesce(
+                Subquery(po_total_sq, output_field=money_field),
+                Value(Decimal("0"), output_field=money_field),
+            ),
+            audit_paid=Coalesce(
+                Subquery(po_paid_sq, output_field=money_field),
+                Value(Decimal("0"), output_field=money_field),
+            ),
+        )
+    purchases = list(purchase_qs)
+    if for_export:
+        for po in purchases:
+            po.audit_total = po.total
+            po.audit_paid = sum((payment.amount for payment in po.payments.all()), Decimal("0"))
+    purchase_total = sum((Decimal(po.audit_total or 0) for po in purchases), Decimal("0"))
+    supplier_paid = sum((Decimal(po.audit_paid or 0) for po in purchases), Decimal("0"))
     supplier_payable = max(Decimal("0"), purchase_total - supplier_paid)
 
-    sales = list(
+    sales_qs = (
         Sale.objects.filter(business=business, date__range=(date_from, date_to))
         .select_related("business", "account")
-        .prefetch_related(
+        .order_by("-date", "-id")
+    )
+    if for_export:
+        sales_qs = sales_qs.prefetch_related(
             Prefetch("items", queryset=SaleItem.objects.select_related("finished_good")),
             Prefetch("payments", queryset=CustomerPayment.objects.select_related("account")),
         )
-        .order_by("-date", "-id")
-    )
-    sales_total = sum((sale.total for sale in sales), Decimal("0"))
-    sales_paid = sum((sum((p.amount for p in sale.payments.all()), Decimal("0")) for sale in sales), Decimal("0"))
+    else:
+        sale_line_value = Case(
+            When(
+                commercial_quantity__isnull=False,
+                commercial_unit_price__isnull=False,
+                then=ExpressionWrapper(
+                    F("commercial_quantity") * F("commercial_unit_price"),
+                    output_field=money_field,
+                ),
+            ),
+            default=ExpressionWrapper(
+                (
+                    F("batch_qty")
+                    * Case(
+                        When(finished_good__units_per_batch__gt=0, then=F("finished_good__units_per_batch")),
+                        default=Value(Decimal("1")),
+                        output_field=DecimalField(max_digits=20, decimal_places=4),
+                    )
+                    + F("piece_qty")
+                )
+                * (F("price") - F("discount")),
+                output_field=money_field,
+            ),
+            output_field=money_field,
+        )
+        sale_total_sq = (
+            SaleItem.objects.filter(sale_id=OuterRef("pk"))
+            .values("sale_id")
+            .annotate(total=Sum(sale_line_value))
+            .values("total")[:1]
+        )
+        sale_paid_sq = (
+            CustomerPayment.objects.filter(sale_id=OuterRef("pk"))
+            .values("sale_id")
+            .annotate(total=Sum("amount"))
+            .values("total")[:1]
+        )
+        sales_qs = sales_qs.annotate(
+            audit_total=Coalesce(
+                Subquery(sale_total_sq, output_field=money_field),
+                Value(Decimal("0"), output_field=money_field),
+            ),
+            audit_paid=Coalesce(
+                Subquery(sale_paid_sq, output_field=money_field),
+                Value(Decimal("0"), output_field=money_field),
+            ),
+        )
+    sales = list(sales_qs)
+    if for_export:
+        for sale in sales:
+            sale.audit_total = sale.total
+            sale.audit_paid = sum((payment.amount for payment in sale.payments.all()), Decimal("0"))
+    sales_total = sum((Decimal(sale.audit_total or 0) for sale in sales), Decimal("0"))
+    sales_paid = sum((Decimal(sale.audit_paid or 0) for sale in sales), Decimal("0"))
     receivables = max(Decimal("0"), sales_total - sales_paid)
 
     expenses = list(Expense.objects.filter(business=business, date__range=(date_from, date_to)).order_by("-date", "-id"))
@@ -261,7 +360,11 @@ def _audit_dataset(request, *, for_export=False):
             logs_queryset.annotate(_filtered_total=Window(expression=Count("pk")))[:250]
         )
         logs_total = int(logs[0]._filtered_total) if logs else 0
-    logs = [_prepare_audit_log(log) for log in logs]
+    integration_enabled = glovo_platform_enabled()
+    logs = [
+        _prepare_audit_log(log, integration_enabled=integration_enabled)
+        for log in logs
+    ]
     audit_queries = list(
         AuditQuery.objects.filter(business=business)
         .select_related("created_by", "assigned_to", "answered_by")
@@ -310,7 +413,10 @@ def _audit_dataset(request, *, for_export=False):
 
 @login_required
 def audit_workspace(request):
-    return render(request, "core/audit_workspace.html", _audit_dataset(request))
+    with performance_section(request, "audit.dataset"):
+        data = _audit_dataset(request)
+    with performance_section(request, "audit.render"):
+        return render(request, "core/audit_workspace.html", data)
 
 
 @login_required

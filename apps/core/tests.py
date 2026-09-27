@@ -16,7 +16,7 @@ from .jobs import (
     run_all_jobs,
 )
 from .models import Business, ScheduledJobLease
-from .performance import PerformanceDiagnosticMiddleware
+from .performance import PerformanceDiagnosticMiddleware, performance_section
 from .audit_views import _EXTERNAL_BUSINESS_ACTIVITY_MODELS, _public_audit_details
 
 
@@ -224,7 +224,8 @@ class PerformanceDiagnosticMiddlewareTests(TestCase):
     )
     def test_records_aggregate_sql_timing_without_logging_request_data(self):
         def get_response(request):
-            Business.objects.exists()
+            with performance_section(request, "test.section"):
+                Business.objects.exists()
             return HttpResponse("ok")
 
         request = self.factory.get("/business/example/42/?token=do-not-log")
@@ -241,7 +242,9 @@ class PerformanceDiagnosticMiddlewareTests(TestCase):
         self.assertIn('desc="1 queries"', response.headers["Server-Timing"])
         self.assertIn("route=business-detail", captured.output[0])
         self.assertIn("max_sql_ms=", captured.output[0])
+        self.assertIn("non_sql_ms=", captured.output[0])
         self.assertIn("slow_sql_queries=1", captured.output[0])
+        self.assertIn("sections=test.section:", captured.output[0])
         self.assertNotIn("do-not-log", captured.output[0])
         self.assertNotIn("/business/example/42/", captured.output[0])
 

@@ -26,6 +26,7 @@ from django.db.models.functions import Coalesce
 
 from accounts.services import can_use_commerce_storefront, is_business_admin
 from core.models import Business
+from core.performance import performance_section
 from core.verticals import vertical_config
 from inventory.models import FinishedGood, ProductCategory
 from inventory.portioning import public_contents, standard_multiplier
@@ -179,35 +180,67 @@ def _commerce_enabled(business):
 
 @login_required
 def commerce_dashboard(request):
-    settings = _settings_for(request.business)
+    with performance_section(request, "commerce.settings"):
+        settings = _settings_for(request.business)
 
     # A storefront row is required for each product, but doing get_or_create()
     # once per FinishedGood made dashboard query count grow linearly. Discover
     # missing rows in one query and create only those, tolerating a concurrent
     # dashboard request racing on the OneToOne constraint.
-    missing_good_ids = list(
-        FinishedGood.objects.filter(storefront_product__isnull=True).values_list("pk", flat=True)
-    )
-    missing_products = [
-        StorefrontProduct(
-            business=request.business,
-            created_by=request.user,
-            finished_good_id=good_id,
-            allow_stock_order=True,
-            allow_preorder=request.business.uses_production,
+    with performance_section(request, "commerce.sync_products"):
+        missing_good_ids = list(
+            FinishedGood.objects.filter(storefront_product__isnull=True).values_list("pk", flat=True)
         )
-        for good_id in missing_good_ids
-    ]
-    if missing_products:
-        StorefrontProduct.objects.bulk_create(missing_products, ignore_conflicts=True)
+        missing_products = [
+            StorefrontProduct(
+                business=request.business,
+                created_by=request.user,
+                finished_good_id=good_id,
+                allow_stock_order=True,
+                allow_preorder=request.business.uses_production,
+            )
+            for good_id in missing_good_ids
+        ]
+        if missing_products:
+            StorefrontProduct.objects.bulk_create(missing_products, ignore_conflicts=True)
 
-    products = list(FinishedGood.objects.select_related("business", "storefront_product").order_by("name"))
-    intakes = list(CommerceIntake.objects.select_related(
-        "business", "accepted_order", "accepted_sale", "split_order"
-    ).prefetch_related("items", "payments")[:50])
-    checkouts = list(CommerceCheckoutSession.objects.select_related("materialized_intake").prefetch_related("payments")[:50])
-    is_admin = is_business_admin(request.user, request.business)
-    integrations = list(CommerceIntegration.objects.all().order_by("name")) if is_admin else []
+    with performance_section(request, "commerce.load_rows"):
+        products = list(FinishedGood.objects.select_related("business", "storefront_product").order_by("name"))
+        intake_item_total = (
+            CommerceIntakeItem.objects.filter(intake_id=OuterRef("pk"))
+            .values("intake_id")
+            .annotate(
+                total=Sum(
+                    ExpressionWrapper(
+                        F("requested_quantity") * F("unit_price"),
+                        output_field=DecimalField(max_digits=24, decimal_places=6),
+                    )
+                )
+            )
+            .values("total")[:1]
+        )
+        intakes = list(
+            CommerceIntake.objects.select_related(
+                "business", "accepted_order", "accepted_sale", "split_order"
+            )
+            .annotate(
+                dashboard_item_total=Coalesce(
+                    Subquery(
+                        intake_item_total,
+                        output_field=DecimalField(max_digits=24, decimal_places=6),
+                    ),
+                    Value(Decimal("0"), output_field=DecimalField(max_digits=24, decimal_places=6)),
+                )
+            )
+            .prefetch_related("payments")[:50]
+        )
+        for intake in intakes:
+            intake.dashboard_total = Decimal(intake.dashboard_item_total or 0) + Decimal(intake.delivery_fee or 0)
+        checkout_statuses = list(
+            CommerceCheckoutSession.objects.values_list("status", flat=True)[:50]
+        )
+        is_admin = is_business_admin(request.user, request.business)
+        integrations = list(CommerceIntegration.objects.all().order_by("name")) if is_admin else []
     commerce_counts = {
         "recent_orders": len(intakes),
         "awaiting_payment": sum(1 for row in intakes if row.payment_state == CommerceIntake.PAYMENT_PENDING),
@@ -217,7 +250,7 @@ def commerce_dashboard(request):
             or (row.split_order_id and row.split_order and row.split_order.status in {"pending", "approved"})
         ),
         "needs_review": (
-            sum(1 for row in checkouts if row.status == CommerceCheckoutSession.STATUS_PAID_REVIEW)
+            sum(1 for status in checkout_statuses if status == CommerceCheckoutSession.STATUS_PAID_REVIEW)
             + sum(
                 1 for row in intakes
                 if row.payment_state == CommerceIntake.PAYMENT_CONFIRMED
@@ -225,21 +258,23 @@ def commerce_dashboard(request):
             )
         ),
     }
-    attribution_analytics = _commerce_attribution_analytics(request.business)
+    with performance_section(request, "commerce.attribution"):
+        attribution_analytics = _commerce_attribution_analytics(request.business)
     storefront_url = request.build_absolute_uri(reverse("storefront", kwargs={"business_slug": request.business.slug}))
     order_now_url = request.build_absolute_uri(reverse("storefront_order_now", kwargs={"business_slug": request.business.slug}))
-    return render(request, "commerce/dashboard.html", {
+    context = {
         "commerce_settings": settings,
         "products": products,
         "intakes": intakes,
-        "checkouts": checkouts,
         "integrations": integrations,
         "commerce_counts": commerce_counts,
         "attribution_analytics": attribution_analytics,
         "storefront_url": storefront_url,
         "order_now_url": order_now_url,
         "can_manage_commerce": is_admin,
-    })
+    }
+    with performance_section(request, "commerce.render"):
+        return render(request, "commerce/dashboard.html", context)
 
 
 @login_required
@@ -257,8 +292,9 @@ def commerce_attribution_export(request):
 
 @login_required
 def commerce_qr_code(request):
-    if not is_business_admin(request.user, request.business):
-        return render(request, "403.html", status=403)
+    with performance_section(request, "qr.access"):
+        if not is_business_admin(request.user, request.business):
+            return render(request, "403.html", status=403)
     target = (request.GET.get("target") or "order_now").strip()
     routes = {"storefront": "storefront", "order_now": "storefront_order_now"}
     if target not in routes:
@@ -273,26 +309,29 @@ def commerce_qr_code(request):
     if params:
         url = f"{url}?{urlencode(params)}"
     qr_cache_key = f"commerce:qr:v2:{request.business.pk}:{hashlib.sha256(url.encode('utf-8')).hexdigest()}"
-    png_bytes = cache.get(qr_cache_key)
+    with performance_section(request, "qr.cache_read"):
+        png_bytes = cache.get(qr_cache_key)
     if png_bytes is None:
-        try:
-            import qrcode
-            from qrcode.constants import ERROR_CORRECT_H
-        except ImportError:
-            return JsonResponse({"detail": "QR code support is not installed."}, status=503)
-        qr = qrcode.QRCode(version=None, error_correction=ERROR_CORRECT_H, box_size=12, border=4)
-        qr.add_data(url)
-        qr.make(fit=True)
-        image = qr.make_image(fill_color="#050733", back_color="#FFFFFF").convert("RGB")
-        stream = BytesIO()
-        # Pillow's PNG optimizer is CPU-heavy and provides little value for a
-        # small monochrome QR. Normal compression is materially faster.
-        image.save(stream, format="PNG")
-        png_bytes = stream.getvalue()
+        with performance_section(request, "qr.generate"):
+            try:
+                import qrcode
+                from qrcode.constants import ERROR_CORRECT_H
+            except ImportError:
+                return JsonResponse({"detail": "QR code support is not installed."}, status=503)
+            qr = qrcode.QRCode(version=None, error_correction=ERROR_CORRECT_H, box_size=12, border=4)
+            qr.add_data(url)
+            qr.make(fit=True)
+            image = qr.make_image(fill_color="#050733", back_color="#FFFFFF").convert("RGB")
+            stream = BytesIO()
+            # Pillow's PNG optimizer is CPU-heavy and provides little value for a
+            # small monochrome QR. Normal compression is materially faster.
+            image.save(stream, format="PNG")
+            png_bytes = stream.getvalue()
         # The cache key includes the complete target URL, so the generated PNG
         # is immutable for that key. Keep it warm across normal usage instead
         # of paying Pillow/qrcode CPU cost again every five minutes.
-        cache.set(qr_cache_key, png_bytes, timeout=86400)
+        with performance_section(request, "qr.cache_write"):
+            cache.set(qr_cache_key, png_bytes, timeout=86400)
     response = HttpResponse(png_bytes, content_type="image/png")
     filename = f"inprofic-{request.business.slug}-{target}-qr.png"
     response["Content-Disposition"] = f'inline; filename="{filename}"'
