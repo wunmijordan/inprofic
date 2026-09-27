@@ -10,7 +10,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 from django.db.models.functions import Coalesce
-from django.db.models import Case, Count, DecimalField, ExpressionWrapper, F, OuterRef, Q, Subquery, Sum, Value, When
+from django.db.models import Case, Count, DecimalField, ExpressionWrapper, F, OuterRef, Q, Subquery, Sum, Value, When, Window
 from openpyxl import Workbook
 from .models import CashAccount, FinancialTransaction, AuditLog
 from accounts.platform_integrations import redact_disabled_integrations
@@ -119,13 +119,19 @@ def _finance_open_items(business):
         else:
             settlement_po_ids.append(po.pk)
 
-    unpaid_expenses = Expense.raw_objects.filter(business=business, payment_status="unpaid")
-    expense_summary = unpaid_expenses.aggregate(v=Sum("amount"), count=Count("pk"))
-    expense_payables = expense_summary["v"] or Decimal("0")
-    expense_payable_count = expense_summary["count"] or 0
+    unpaid_expenses = list(
+        Expense.raw_objects.filter(business=business, payment_status="unpaid")
+        .annotate(
+            _all_unpaid_total=Window(expression=Sum("amount")),
+            _all_unpaid_count=Window(expression=Count("pk")),
+        )
+        .order_by("-date", "-id")[:30]
+    )
+    expense_payables = (unpaid_expenses[0]._all_unpaid_total or Decimal("0")) if unpaid_expenses else Decimal("0")
+    expense_payable_count = int(unpaid_expenses[0]._all_unpaid_count or 0) if unpaid_expenses else 0
     outstanding_expenses = [
         {"expense": expense, "balance": expense.amount}
-        for expense in unpaid_expenses.order_by("-date", "-id")[:30]
+        for expense in unpaid_expenses
     ]
     return {
         "outstanding_sales": outstanding_sales,

@@ -319,9 +319,9 @@ def subscription_plans(request):
 def subscription_payment(request, plan_code=None):
     from .models import BusinessSubscription, SubscriptionPayment, SubscriptionPaymentSettings, SubscriptionPlan, SubscriptionPolicySettings
     from .payment_gateways import GatewayError, initialize_gateway
+    from .services import business_subscription_for
     from .subscription_services import (
         attach_active_promotions,
-        business_subscription_for,
         create_payment_request,
         ensure_default_plans,
         payment_amount,
@@ -776,13 +776,23 @@ def founder_signup_live_snapshot(request):
             | Q(phone__icontains=platform_query)
         )
 
-    contacts = founder_signup_contacts(include_deleted=True)
-    subscriptions = BusinessSubscription.objects.select_related("primary_business", "plan", "founder_granted_by").prefetch_related("services__business")
-    recent_events = PlatformEvent.objects.select_related("business", "user").order_by("-occurred_at", "-id")[:30]
     latest_registration_id = (
         PlatformEvent.objects.filter(event_type=PlatformEvent.EVENT_REGISTRATION)
         .order_by("-id").values_list("id", flat=True).first() or 0
     )
+    # The fallback poll exists only to recover missed signup realtime signals.
+    # When no registration has landed since the browser cursor, return after
+    # this single indexed lookup instead of rebuilding every Founder table.
+    if latest_registration_id <= after_id:
+        return JsonResponse({
+            "latest_registration_id": latest_registration_id,
+            "new_signups": [],
+            "unchanged": True,
+        })
+
+    contacts = founder_signup_contacts(include_deleted=True)
+    subscriptions = BusinessSubscription.objects.select_related("primary_business", "plan", "founder_granted_by").prefetch_related("services__business")
+    recent_events = PlatformEvent.objects.select_related("business", "user").order_by("-occurred_at", "-id")[:30]
     new_events = list(
         PlatformEvent.objects.filter(
             event_type=PlatformEvent.EVENT_REGISTRATION, id__gt=after_id
@@ -854,10 +864,10 @@ def founder_subscriptions(request):
     from .backup_restore import BackupRestoreError, analyze_backup, restore_backup
     if not request.user.is_superuser:
         return render(request, "403.html", status=403)
-    ensure_default_plans()
+    trial_policy_settings = SubscriptionPolicySettings.load()
+    ensure_default_plans(general_trial_days=trial_policy_settings.general_trial_days)
     payment_settings = SubscriptionPaymentSettings.load()
     integration_settings = PlatformIntegrationSettings.load()
-    trial_policy_settings = SubscriptionPolicySettings.load()
     trust_settings = MarketingTrustSettings.load()
     action = request.POST.get("action") if request.method == "POST" else ""
     form = FounderGrantForm(request.POST if action == "grant" else None)
@@ -1200,8 +1210,15 @@ def founder_subscriptions(request):
             revoke_founder_lifetime(subscription)
             messages.success(request, f"Founder lifetime access revoked for {subscription.primary_business.name}.")
             return redirect("founder_subscriptions")
-    subscriptions = BusinessSubscription.objects.select_related("primary_business", "plan", "founder_granted_by").prefetch_related("services__business")
-    pending_payments = SubscriptionPayment.objects.filter(status=SubscriptionPayment.STATUS_PENDING).select_related("subscription__primary_business", "plan")[:50]
+    subscriptions = list(
+        BusinessSubscription.objects
+        .select_related("primary_business", "plan", "founder_granted_by")
+        .prefetch_related("services__business")
+    )
+    pending_payments = list(
+        SubscriptionPayment.objects.filter(status=SubscriptionPayment.STATUS_PENDING)
+        .select_related("subscription__primary_business", "plan")[:50]
+    )
     platform_query = (request.GET.get("platform_q") or "").strip()[:100]
     businesses = Business.objects.select_related("subscription__plan", "subscription_service__subscription__plan").annotate(member_count=Count("user_memberships", distinct=True)).order_by("-id")
     users = CustomUser.objects.annotate(business_count=Count("business_memberships", distinct=True)).order_by("-date_joined")
@@ -1244,10 +1261,12 @@ def founder_subscriptions(request):
         "platform_stats": {
             "businesses": Business.objects.count(),
             "users": CustomUser.objects.count(),
-            "active_subscriptions": subscriptions.filter(
-                Q(founder_lifetime=True) | Q(status__in=[BusinessSubscription.STATUS_ACTIVE, BusinessSubscription.STATUS_TRIAL])
-            ).count(),
-            "pending_payments": pending_payments.count(),
+            "active_subscriptions": sum(
+                1 for subscription in subscriptions
+                if subscription.founder_lifetime
+                or subscription.status in {BusinessSubscription.STATUS_ACTIVE, BusinessSubscription.STATUS_TRIAL}
+            ),
+            "pending_payments": len(pending_payments),
         },
         "platform_query": platform_query,
         "platform_businesses": businesses[:50],
@@ -1514,6 +1533,9 @@ def platform_mail_template_editor(request, pk=None):
             "eyebrow": "INPROFIC Project Mailing · Topic",
         },
     )
+
+
+
 
 
 @login_required

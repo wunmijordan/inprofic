@@ -22,7 +22,13 @@ class BusinessMiddleware:
         # Render probes this endpoint frequently. Keep it completely outside
         # tenant/session resolution so a health check can still succeed when
         # the database connection pool is under pressure.
-        if request.path == "/health/" or request.path == "/manifest.webmanifest" or request.path == "/service-worker.js" or request.path.startswith("/pwa/"):
+        if (
+            request.path == "/health/"
+            or request.path == "/manifest.webmanifest"
+            or request.path == "/service-worker.js"
+            or request.path.startswith("/pwa/")
+            or request.path == "/users/founder/subscriptions/live-signups/"
+        ):
             request.business = None
             return self.get_response(request)
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from django.db import DatabaseError
-from django.db.models import Count
+from django.db.models import Count, Max, Q
 from django.utils import timezone
 
 
@@ -224,12 +224,51 @@ def founder_analytics_summary(*, now=None):
     now = now or timezone.now()
     since_7 = now - timedelta(days=7)
     since_30 = now - timedelta(days=30)
-    recent_30 = PlatformEvent.objects.filter(occurred_at__gte=since_30)
-    lead_sessions = recent_30.filter(event_type=PlatformEvent.EVENT_SIGNUP_VIEW).exclude(session_key="").values("session_key").distinct().count()
-    registrations = recent_30.filter(event_type=PlatformEvent.EVENT_REGISTRATION).count()
+    event_summary = PlatformEvent.objects.aggregate(
+        lead_sessions_30d=Count(
+            "session_key", distinct=True,
+            filter=(
+                Q(event_type=PlatformEvent.EVENT_SIGNUP_VIEW, occurred_at__gte=since_30)
+                & ~Q(session_key="")
+            ),
+        ),
+        registrations_7d=Count(
+            "id", filter=Q(event_type=PlatformEvent.EVENT_REGISTRATION, occurred_at__gte=since_7)
+        ),
+        registrations_30d=Count(
+            "id", filter=Q(event_type=PlatformEvent.EVENT_REGISTRATION, occurred_at__gte=since_30)
+        ),
+        latest_registration_id=Max(
+            "id", filter=Q(event_type=PlatformEvent.EVENT_REGISTRATION)
+        ),
+        logins_7d=Count(
+            "id", filter=Q(event_type=PlatformEvent.EVENT_LOGIN, occurred_at__gte=since_7)
+        ),
+        active_businesses_7d=Count(
+            "business_id", distinct=True,
+            filter=Q(
+                event_type=PlatformEvent.EVENT_MODULE_VIEW,
+                occurred_at__gte=since_7,
+                business__isnull=False,
+            ),
+        ),
+        subscription_events_30d=Count(
+            "id",
+            filter=Q(
+                event_type__in=PlatformEvent.SUBSCRIPTION_EVENTS,
+                occurred_at__gte=since_30,
+            ),
+        ),
+    )
+    lead_sessions = event_summary["lead_sessions_30d"] or 0
+    registrations = event_summary["registrations_30d"] or 0
     conversion = round((registrations / lead_sessions * 100), 1) if lead_sessions else 0
     top_modules = list(
-        recent_30.filter(event_type=PlatformEvent.EVENT_MODULE_VIEW, module__gt="")
+        PlatformEvent.objects.filter(
+            occurred_at__gte=since_30,
+            event_type=PlatformEvent.EVENT_MODULE_VIEW,
+            module__gt="",
+        )
         .values("module").annotate(total=Count("id"))
         .order_by("-total", "module")[:8]
     )
@@ -237,18 +276,17 @@ def founder_analytics_summary(*, now=None):
     active_signup_contacts = [contact for contact in all_signup_contacts if not contact["deleted"]]
     return {
         "lead_sessions_30d": lead_sessions,
-        "registrations_7d": PlatformEvent.objects.filter(event_type=PlatformEvent.EVENT_REGISTRATION, occurred_at__gte=since_7).count(),
+        "registrations_7d": event_summary["registrations_7d"] or 0,
         "registrations_30d": registrations,
-        "latest_registration_id": PlatformEvent.objects.filter(event_type=PlatformEvent.EVENT_REGISTRATION).order_by("-id").values_list("id", flat=True).first() or 0,
+        "latest_registration_id": event_summary["latest_registration_id"] or 0,
         "signup_conversion_30d": conversion,
-        "logins_7d": PlatformEvent.objects.filter(event_type=PlatformEvent.EVENT_LOGIN, occurred_at__gte=since_7).count(),
-        "active_businesses_7d": PlatformEvent.objects.filter(
-            event_type=PlatformEvent.EVENT_MODULE_VIEW, occurred_at__gte=since_7, business__isnull=False
-        ).values("business_id").distinct().count(),
-        "subscription_events_30d": recent_30.filter(event_type__in=PlatformEvent.SUBSCRIPTION_EVENTS).count(),
+        "logins_7d": event_summary["logins_7d"] or 0,
+        "active_businesses_7d": event_summary["active_businesses_7d"] or 0,
+        "subscription_events_30d": event_summary["subscription_events_30d"] or 0,
         "signup_contacts_count": len(active_signup_contacts),
         "signup_contacts_total_count": len(all_signup_contacts),
         "signup_contacts": all_signup_contacts[:50],
         "top_modules": top_modules,
         "recent_events": PlatformEvent.objects.select_related("business", "user").order_by("-occurred_at", "-id")[:30],
     }
+

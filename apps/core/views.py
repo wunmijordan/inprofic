@@ -45,6 +45,13 @@ def marketing_home(request):
     """Public product overview; remembered authenticated sessions continue to the app."""
     if request.user.is_authenticated and request.GET.get("view") != "marketing":
         return redirect("dashboard")
+
+    marketing_cache_key = None
+    if not request.user.is_authenticated and not request.GET:
+        marketing_cache_key = f"marketing:home:v2:{request.get_host().lower()}"
+        cached_html = cache.get(marketing_cache_key)
+        if cached_html is not None:
+            return HttpResponse(cached_html, content_type="text/html; charset=utf-8")
     from accounts.models import MarketingPromoCampaign, SubscriptionPlan, SubscriptionPolicySettings
     from accounts.subscription_services import attach_active_promotions, build_plan_feature_matrix
     plans = attach_active_promotions(
@@ -86,7 +93,7 @@ def marketing_home(request):
         manual_trust_logos = list(MarketingTrustLogo.objects.filter(active=True))
     from django.templatetags.static import static
     canonical_url = request.build_absolute_uri(reverse("marketing_home"))
-    return render(request, "marketing/home.html", {
+    response = render(request, "marketing/home.html", {
         "plans": plans, "starter_plan": starter_plan, "marketing_campaigns": marketing_campaigns,
         "general_trial_days": max(1, int(trial_policy.general_trial_days or 30)),
         "plan_feature_matrix": build_plan_feature_matrix(plans),
@@ -97,6 +104,9 @@ def marketing_home(request):
         "trusted_businesses": trusted_businesses,
         "manual_trust_logos": manual_trust_logos,
     })
+    if marketing_cache_key and response.status_code == 200:
+        cache.set(marketing_cache_key, bytes(response.content), timeout=60)
+    return response
 
 
 def today():

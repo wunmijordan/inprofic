@@ -2,6 +2,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import ExpressionWrapper, F, Q, Value, DecimalField
 from django.utils import timezone
 
 from .models import FinishedGood, InventoryAlertSettings, InventoryAlertState, RawMaterial
@@ -53,14 +54,30 @@ def alert_settings(business):
 
 def _condition_rows(business):
     rows = []
-    for item in RawMaterial.raw_objects.filter(business=business).order_by("name", "id"):
-        alert_type = InventoryAlertState.RAW_LOW if item.is_low else InventoryAlertState.RAW_WARNING if item.is_warning else None
-        if alert_type:
-            rows.append((alert_type, item))
-    for item in FinishedGood.raw_objects.filter(business=business).order_by("name", "id"):
-        alert_type = InventoryAlertState.FINISHED_LOW if item.is_low else InventoryAlertState.FINISHED_WARNING if item.is_warning else None
-        if alert_type:
-            rows.append((alert_type, item))
+    warning_ceiling = ExpressionWrapper(
+        F("reorder_level") * Value(Decimal("1.5")),
+        output_field=DecimalField(max_digits=18, decimal_places=6),
+    )
+    raw_rows = RawMaterial.raw_objects.filter(business=business).filter(
+        Q(stock__lte=F("reorder_level"))
+        | Q(stock__gt=F("reorder_level"), stock__lte=warning_ceiling)
+    ).order_by("name", "id")
+    for item in raw_rows:
+        alert_type = InventoryAlertState.RAW_LOW if item.is_low else InventoryAlertState.RAW_WARNING
+        rows.append((alert_type, item))
+
+    finished_rows = FinishedGood.raw_objects.filter(
+        business=business,
+        stock__isnull=False,
+        reorder_level__isnull=False,
+        reorder_level__gt=0,
+    ).filter(
+        Q(stock__lte=F("reorder_level"))
+        | Q(stock__gt=F("reorder_level"), stock__lte=warning_ceiling)
+    ).order_by("name", "id")
+    for item in finished_rows:
+        alert_type = InventoryAlertState.FINISHED_LOW if item.is_low else InventoryAlertState.FINISHED_WARNING
+        rows.append((alert_type, item))
     return rows
 
 
@@ -97,9 +114,16 @@ def inventory_alert_feed(*, business, user):
 
     current = _condition_rows(business)
     active_keys = {(alert_type, item.pk) for alert_type, item in current}
+    raw_ids = [item.pk for alert_type, item in current if alert_type in {InventoryAlertState.RAW_WARNING, InventoryAlertState.RAW_LOW}]
+    finished_ids = [item.pk for alert_type, item in current if alert_type in {InventoryAlertState.FINISHED_WARNING, InventoryAlertState.FINISHED_LOW}]
+    relevant_states = InventoryAlertState.raw_objects.filter(business=business, user=user).filter(
+        Q(is_active=True)
+        | Q(alert_type__in=[InventoryAlertState.RAW_WARNING, InventoryAlertState.RAW_LOW], object_id__in=raw_ids)
+        | Q(alert_type__in=[InventoryAlertState.FINISHED_WARNING, InventoryAlertState.FINISHED_LOW], object_id__in=finished_ids)
+    )
     existing = {
         (state.alert_type, state.object_id): state
-        for state in InventoryAlertState.raw_objects.filter(business=business, user=user)
+        for state in relevant_states
     }
 
     missing_states = []

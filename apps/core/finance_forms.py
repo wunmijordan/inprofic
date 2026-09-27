@@ -83,6 +83,14 @@ class CustomerPaymentForm(Base):
 class StockAdjustmentForm(Base):
     class Meta: model=StockAdjustment; fields=["date","raw_material","finished_good","quantity","reason","description","unit_value","location"]
     widgets={"date":forms.DateInput(attrs={"type":"date"})}
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # These selects display only names. Avoid transferring full inventory
+        # records merely to render the adjustment form. Tenant scoping remains
+        # enforced by the BusinessManager behind each queryset.
+        self.fields["raw_material"].queryset = RawMaterial.objects.only("id", "name", "stock", "cost_per_unit").order_by("name")
+        self.fields["finished_good"].queryset = FinishedGood.objects.only("id", "name", "stock", "source_type", "business_id", "units_per_batch").order_by("name")
+        self.fields["location"].queryset = InventoryLocation.objects.only("id", "name").order_by("name")
     def clean(self):
         c=super().clean()
         if bool(c.get("raw_material")) == bool(c.get("finished_good")): raise forms.ValidationError("Choose exactly one raw material or finished good.")

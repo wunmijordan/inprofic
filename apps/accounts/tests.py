@@ -1126,6 +1126,21 @@ class FounderPlatformDeletionTests(TestCase):
         self.assertIn("Delete Me Ltd", data["businesses_html"])
         self.assertIn("live@example.com", data["contacts_html"])
 
+    def test_founder_live_signup_snapshot_short_circuits_when_cursor_is_current(self):
+        event = PlatformEvent.objects.create(
+            event_type=PlatformEvent.EVENT_REGISTRATION, business=self.business,
+            metadata={"signup_email": "current@example.com"},
+        )
+        response = self.client.get(
+            reverse("founder_signup_live_snapshot"), {"after": event.pk}
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["unchanged"])
+        self.assertEqual(data["latest_registration_id"], event.pk)
+        self.assertEqual(data["new_signups"], [])
+        self.assertNotIn("businesses_html", data)
+
     def test_founder_can_delete_another_user_but_not_self(self):
         delete_url = reverse("founder_platform_user_delete", args=[self.account.pk])
         response = self.client.post(delete_url, {"confirm_delete": "yes"})

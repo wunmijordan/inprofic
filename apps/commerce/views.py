@@ -272,21 +272,28 @@ def commerce_qr_code(request):
             params[key] = value[:limit]
     if params:
         url = f"{url}?{urlencode(params)}"
-    try:
-        import qrcode
-        from qrcode.constants import ERROR_CORRECT_H
-    except ImportError:
-        return JsonResponse({"detail": "QR code support is not installed."}, status=503)
-    qr = qrcode.QRCode(version=None, error_correction=ERROR_CORRECT_H, box_size=12, border=4)
-    qr.add_data(url)
-    qr.make(fit=True)
-    image = qr.make_image(fill_color="#050733", back_color="#FFFFFF").convert("RGB")
-    stream = BytesIO()
-    image.save(stream, format="PNG", optimize=True)
-    response = HttpResponse(stream.getvalue(), content_type="image/png")
+    qr_cache_key = f"commerce:qr:v2:{request.business.pk}:{hashlib.sha256(url.encode('utf-8')).hexdigest()}"
+    png_bytes = cache.get(qr_cache_key)
+    if png_bytes is None:
+        try:
+            import qrcode
+            from qrcode.constants import ERROR_CORRECT_H
+        except ImportError:
+            return JsonResponse({"detail": "QR code support is not installed."}, status=503)
+        qr = qrcode.QRCode(version=None, error_correction=ERROR_CORRECT_H, box_size=12, border=4)
+        qr.add_data(url)
+        qr.make(fit=True)
+        image = qr.make_image(fill_color="#050733", back_color="#FFFFFF").convert("RGB")
+        stream = BytesIO()
+        # Pillow's PNG optimizer is CPU-heavy and provides little value for a
+        # small monochrome QR. Normal compression is materially faster.
+        image.save(stream, format="PNG")
+        png_bytes = stream.getvalue()
+        cache.set(qr_cache_key, png_bytes, timeout=300)
+    response = HttpResponse(png_bytes, content_type="image/png")
     filename = f"inprofic-{request.business.slug}-{target}-qr.png"
     response["Content-Disposition"] = f'inline; filename="{filename}"'
-    response["Cache-Control"] = "private, no-store, max-age=0"
+    response["Cache-Control"] = "private, max-age=3600"
     response["X-Content-Type-Options"] = "nosniff"
     return response
 
