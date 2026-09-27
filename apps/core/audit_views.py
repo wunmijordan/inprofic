@@ -3,7 +3,7 @@ from io import BytesIO
 import re
 
 from django.contrib.auth.decorators import login_required
-from django.db.models import Sum
+from django.db.models import OuterRef, Prefetch, Q, Subquery, Sum
 from django.http import HttpResponse
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -13,10 +13,10 @@ from django.utils.dateparse import parse_date
 
 from commerce.models import DeliveryAssignment
 from expenses.models import Expense
-from inventory.models import FinishedGood, RawMaterial, RawMaterialMeasurementChange
-from procurement.models import PurchaseOrder, RawMaterialCostSnapshot
+from inventory.models import FinishedGood, ProductionMaterial, RawMaterial, RawMaterialMeasurementChange, RecipeItem, StockMovement
+from procurement.models import PurchaseOrder, PurchaseOrderItem, RawMaterialCostSnapshot, SupplierPayment
 from production.models import ProductionBatch, ProductionCostSnapshot, ProductionQualityCheck
-from sales.models import CustomerPayment, Sale
+from sales.models import CustomerPayment, Sale, SaleItem
 from accounts.services import is_business_admin, user_has_permission
 from accounts.platform_integrations import redact_disabled_integrations
 
@@ -123,10 +123,24 @@ def _audit_dataset(request, *, for_export=False):
     date_from, date_to = _period(request)
 
     materials = list(RawMaterial.objects.filter(business=business).order_by("name"))
+    latest_purchase_cost = (
+        StockMovement.objects.filter(
+            business=business,
+            finished_good_id=OuterRef("pk"),
+            movement_type=StockMovement.FG_PURCHASE,
+            quantity__gt=0,
+        )
+        .order_by("-occurred_at", "-id")
+        .values("unit_value")[:1]
+    )
     products = list(
         FinishedGood.objects.filter(business=business)
-        .select_related("product_category")
-        .prefetch_related("recipe_items__raw_material", "production_materials__raw_material")
+        .select_related("business", "product_category")
+        .annotate(prefetched_latest_purchase_unit_value=Subquery(latest_purchase_cost))
+        .prefetch_related(
+            Prefetch("recipe_items", queryset=RecipeItem.objects.select_related("raw_material")),
+            Prefetch("production_materials", queryset=ProductionMaterial.objects.select_related("raw_material")),
+        )
         .order_by("name")
     )
     for material in materials:
@@ -136,7 +150,14 @@ def _audit_dataset(request, *, for_export=False):
 
     purchases = list(
         PurchaseOrder.objects.filter(business=business, date__range=(date_from, date_to))
-        .prefetch_related("items__raw_material", "items__finished_good", "payments")
+        .select_related("account")
+        .prefetch_related(
+            Prefetch(
+                "items",
+                queryset=PurchaseOrderItem.objects.select_related("raw_material", "finished_good"),
+            ),
+            Prefetch("payments", queryset=SupplierPayment.objects.select_related("account")),
+        )
         .order_by("-date", "-id")
     )
     purchase_total = sum((po.total for po in purchases), Decimal("0"))
@@ -145,7 +166,11 @@ def _audit_dataset(request, *, for_export=False):
 
     sales = list(
         Sale.objects.filter(business=business, date__range=(date_from, date_to))
-        .prefetch_related("items__finished_good", "payments")
+        .select_related("business", "account")
+        .prefetch_related(
+            Prefetch("items", queryset=SaleItem.objects.select_related("finished_good")),
+            Prefetch("payments", queryset=CustomerPayment.objects.select_related("account")),
+        )
         .order_by("-date", "-id")
     )
     sales_total = sum((sale.total for sale in sales), Decimal("0"))
@@ -163,7 +188,24 @@ def _audit_dataset(request, *, for_export=False):
     money_in = sum((t.amount for t in transactions if t.transaction_type == FinancialTransaction.INCOME and not t.reversed), Decimal("0"))
     money_out = sum((t.amount for t in transactions if t.transaction_type == FinancialTransaction.OUTFLOW and not t.reversed), Decimal("0"))
 
-    accounts = list(CashAccount.objects.filter(business=business, active=True).prefetch_related("transactions"))
+    accounts = list(
+        CashAccount.objects.filter(business=business, active=True).annotate(
+            _money_in=Sum(
+                "transactions__amount",
+                filter=Q(transactions__transaction_type=FinancialTransaction.INCOME),
+            ),
+            _money_out=Sum(
+                "transactions__amount",
+                filter=Q(transactions__transaction_type=FinancialTransaction.OUTFLOW),
+            ),
+        )
+    )
+    for account in accounts:
+        account._calculated_balance = (
+            account.opening_balance
+            + (account._money_in or Decimal("0"))
+            - (account._money_out or Decimal("0"))
+        )
     cash_balance = sum((account.balance for account in accounts), Decimal("0"))
 
     production_costs = list(

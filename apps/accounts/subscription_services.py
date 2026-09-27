@@ -151,7 +151,7 @@ def build_plan_feature_matrix(plans):
     return rows
 
 
-def ensure_default_plans():
+def ensure_default_plans(*, general_trial_days=None):
     """Ensure built-in plans and entitlement rows exist with bounded queries.
 
     Built-in defaults are seeds, not a policy reset. Founder-configured plan
@@ -163,7 +163,9 @@ def ensure_default_plans():
         SubscriptionPlan.CODE_BUSINESS_PRO: "BUSINESS PRO",
     }
     codes = tuple(names)
-    general_trial_days = max(1, int(SubscriptionPolicySettings.load().general_trial_days or 30))
+    if general_trial_days is None:
+        general_trial_days = SubscriptionPolicySettings.load().general_trial_days
+    general_trial_days = max(1, int(general_trial_days or 30))
 
     plan_rows = list(SubscriptionPlan.objects.filter(code__in=codes))
     plans = {plan.code: plan for plan in plan_rows}

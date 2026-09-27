@@ -8,6 +8,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 from django.core import serializers
+from django.core.cache import cache
 from django.db.models import Prefetch, Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
@@ -132,11 +133,23 @@ def _unpaid_product_value(start, end):
     """Retail-value and cost-value of non-cash product issues.
     This includes unpaid sales and unpaid physical-store production issues."""
     retail = Decimal("0"); cost = Decimal("0")
-    for sale in Sale.objects.filter(source="walkin", transaction_type="unpaid", date__range=(start, end)).prefetch_related("items"):
+    for sale in Sale.objects.filter(
+        source="walkin", transaction_type="unpaid", date__range=(start, end)
+    ).prefetch_related(
+        Prefetch("items", queryset=SaleItem.objects.select_related("finished_good"))
+    ):
         retail += sale.total
-        for item in sale.items.all(): cost += (item.unit_cost or Decimal("0")) * item.total_units
-    for order in Order.objects.filter(order_type="physical_store", transaction_type="unpaid", status="completed", completed_date__range=(start, end)).prefetch_related("cost_snapshots"):
-        for snap in order.cost_snapshots.all(): cost += snap.total_cost
+        for item in sale.items.all():
+            cost += (item.unit_cost or Decimal("0")) * item.total_units
+    for order in Order.objects.filter(
+        order_type="physical_store", transaction_type="unpaid", status="completed",
+        completed_date__range=(start, end),
+    ).prefetch_related(
+        "cost_snapshots",
+        Prefetch("items", queryset=OrderItem.objects.select_related("finished_good")),
+    ):
+        for snap in order.cost_snapshots.all():
+            cost += snap.total_cost
         retail += order.total
     return retail, cost
 
@@ -269,7 +282,12 @@ def _financial_breakdown(start, end):
     procurement_qs = PurchaseOrder.objects.filter(status="received").filter(
         Q(received_date__range=(start, end)) |
         Q(received_date__isnull=True, date__range=(start, end))
-    ).prefetch_related("items__raw_material", "items__finished_good")
+    ).prefetch_related(
+        Prefetch(
+            "items",
+            queryset=PurchaseOrderItem.objects.select_related("raw_material", "finished_good"),
+        )
+    )
 
     procurement = {
         "raw_materials": Decimal("0"),
@@ -295,28 +313,36 @@ def _financial_breakdown(start, end):
         "online_order": "Online",
     }
     sales_by_channel = {label: Decimal("0") for label in channel_map.values()}
-    for sale in Sale.objects.filter(date__range=(start, end), transaction_type="paid").prefetch_related("items__finished_good"):
+    paid_sales = list(
+        Sale.objects.filter(date__range=(start, end), transaction_type="paid").prefetch_related(
+            Prefetch("items", queryset=SaleItem.objects.select_related("finished_good"))
+        )
+    )
+    for sale in paid_sales:
         label = channel_map.get(sale.source, sale.source.replace("_", " ").title())
         sales_by_channel[label] = sales_by_channel.get(label, Decimal("0")) + sale.total
 
     production_orders = Order.objects.filter(
         status="completed", completed_date__range=(start, end)
-    ).prefetch_related("items__finished_good")
+    ).prefetch_related(
+        Prefetch("items", queryset=OrderItem.objects.select_related("finished_good"))
+    )
     produced_units = _production_units(production_orders)
     operational_dispensed_cost = Decimal("0")
     for movement in StockMovement.objects.filter(movement_type=StockMovement.OPERATIONAL_DISPENSE, occurred_at__date__range=(start,end)):
         operational_dispensed_cost += abs(movement.quantity or Decimal("0")) * (movement.unit_value or Decimal("0"))
 
-    procurement_total = sum(procurement.values(), Decimal("0"))
     misc_total = sum(misc_by_category.values(), Decimal("0"))
     sales_total = sum(sales_by_channel.values(), Decimal("0"))
-    paid_sales_qs = Sale.objects.filter(date__range=(start, end), transaction_type="paid")
-    cogs = _sales_cogs(paid_sales_qs)
+    cogs = Decimal("0")
+    for sale in paid_sales:
+        for item in sale.items.all():
+            cogs += (item.unit_cost or Decimal("0")) * item.total_units
     unpaid_retail, unpaid_cost = _unpaid_product_value(start, end)
     cash_procurement = _cash_procurement(start, end)
+    cash_procurement_breakdown = _cash_outflow_breakdown(start, end)
     total_cash_out = cash_procurement + misc_total
 
-    cash_procurement_breakdown = _cash_outflow_breakdown(start, end)
     outflows = [
         ("Raw materials", cash_procurement_breakdown["raw_materials"]),
         ("Production materials", cash_procurement_breakdown["production_materials"]),
@@ -359,7 +385,7 @@ def _financial_daily_ledgers(start, end):
     cogs_by_date = defaultdict(Decimal)
     for sale in (
         Sale.objects.filter(date__range=(start, end), transaction_type="paid")
-        .prefetch_related("items__finished_good")
+        .prefetch_related(Prefetch("items", queryset=SaleItem.objects.select_related("finished_good")))
     ):
         sales_by_date[sale.date] += sale.total
         for item in sale.items.all():
@@ -1476,7 +1502,7 @@ def dashboard(request):
     month_sales = list(
         Sale.objects.filter(date__range=(month_start, dashboard_date))
         .select_related("linked_order")
-        .prefetch_related("items__finished_good")
+        .prefetch_related(Prefetch("items", queryset=SaleItem.objects.select_related("finished_good")))
     )
     today_sales = [sale for sale in month_sales if sale.date == dashboard_date]
     today_revenue = sum(
@@ -1519,7 +1545,14 @@ def dashboard(request):
     financial_ledger_start = min(
         year_start, dashboard_date - timedelta(days=dashboard_date.weekday())
     )
-    financial_ledger = _financial_daily_ledgers(financial_ledger_start, dashboard_date)
+    financial_cache_key = (
+        f"dashboard:finance-ledger:v2:{request.business.pk}:"
+        f"{financial_ledger_start.isoformat()}:{dashboard_date.isoformat()}"
+    )
+    financial_ledger = cache.get(financial_cache_key)
+    if financial_ledger is None:
+        financial_ledger = _financial_daily_ledgers(financial_ledger_start, dashboard_date)
+        cache.set(financial_cache_key, financial_ledger, 20)
     financial = _financial_snapshot(financial_ledger)
     financial_json = _financial_chart_series(financial_ledger)
     channel = _sales_by_channel(month_start, dashboard_date, sales=month_sales)
@@ -1630,7 +1663,12 @@ def dashboard_financial_breakdown(request):
     else:
         return JsonResponse({"error": "Invalid financial scope."}, status=400)
 
-    return JsonResponse(_financial_breakdown(start, dashboard_date))
+    cache_key = f"dashboard:finance-breakdown:v2:{request.business.pk}:{scope}:{dashboard_date.isoformat()}"
+    payload = cache.get(cache_key)
+    if payload is None:
+        payload = _financial_breakdown(start, dashboard_date)
+        cache.set(cache_key, payload, 20)
+    return JsonResponse(payload)
 
 
 @login_required

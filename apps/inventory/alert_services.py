@@ -83,11 +83,12 @@ def _serialize(alert_type, item, state):
     }
 
 
-@transaction.atomic
 def inventory_alert_feed(*, business, user):
     settings = alert_settings(business)
     if not settings.enabled:
-        InventoryAlertState.raw_objects.filter(business=business, user=user, is_active=True).update(is_active=False, acknowledged_at=None)
+        InventoryAlertState.raw_objects.filter(
+            business=business, user=user, is_active=True
+        ).update(is_active=False, acknowledged_at=None)
         return {
             "enabled": False, "poll_seconds": settings.poll_seconds,
             "sound_enabled": False, "sound_repeat_minutes": 0, "sound_tune": settings.sound_tune,
@@ -98,10 +99,11 @@ def inventory_alert_feed(*, business, user):
     active_keys = {(alert_type, item.pk) for alert_type, item in current}
     existing = {
         (state.alert_type, state.object_id): state
-        for state in InventoryAlertState.raw_objects.select_for_update().filter(business=business, user=user)
+        for state in InventoryAlertState.raw_objects.filter(business=business, user=user)
     }
-    now = timezone.now()
-    visible = []
+
+    missing_states = []
+    reactivated_ids = []
     for alert_type, item in current:
         meta = ALERT_META[alert_type]
         if not getattr(settings, meta["settings_enabled"]):
@@ -109,27 +111,52 @@ def inventory_alert_feed(*, business, user):
         key = (alert_type, item.pk)
         state = existing.get(key)
         if state is None:
-            state = InventoryAlertState.raw_objects.create(
+            state = InventoryAlertState(
                 business=business, created_by=user, user=user,
                 alert_type=alert_type, object_id=item.pk, is_active=True,
             )
+            missing_states.append(state)
             existing[key] = state
         elif not state.is_active:
             state.is_active = True
             state.acknowledged_at = None
-            state.save(update_fields=["is_active", "acknowledged_at", "updated_at"])
+            reactivated_ids.append(state.pk)
+
+    if missing_states:
+        InventoryAlertState.raw_objects.bulk_create(missing_states, ignore_conflicts=True)
+    if reactivated_ids:
+        InventoryAlertState.raw_objects.filter(pk__in=reactivated_ids).update(
+            is_active=True, acknowledged_at=None
+        )
+
+    stale_ids = [
+        state.pk
+        for key, state in existing.items()
+        if state.pk and state.is_active and key not in active_keys
+    ]
+    if stale_ids:
+        InventoryAlertState.raw_objects.filter(pk__in=stale_ids).update(
+            is_active=False, acknowledged_at=None
+        )
+        stale_id_set = set(stale_ids)
+        for state in existing.values():
+            if state.pk in stale_id_set:
+                state.is_active = False
+                state.acknowledged_at = None
+
+    now = timezone.now()
+    visible = []
+    for alert_type, item in current:
+        meta = ALERT_META[alert_type]
+        if not getattr(settings, meta["settings_enabled"]):
+            continue
+        state = existing[(alert_type, item.pk)]
         repeat_minutes = getattr(settings, meta["settings_repeat"])
         is_due = state.acknowledged_at is None or (
             repeat_minutes > 0 and now >= state.acknowledged_at + timedelta(minutes=repeat_minutes)
         )
         if is_due:
             visible.append(_serialize(alert_type, item, state))
-
-    for key, state in existing.items():
-        if state.is_active and key not in active_keys:
-            state.is_active = False
-            state.acknowledged_at = None
-            state.save(update_fields=["is_active", "acknowledged_at", "updated_at"])
 
     raw_count = sum(1 for row in visible if row["resource"] == "raw_material")
     finished_count = sum(1 for row in visible if row["resource"] == "finished_good")

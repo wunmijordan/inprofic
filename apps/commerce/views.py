@@ -12,15 +12,17 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import validate_password
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
-from django.db.models import Q
+from django.db.models import Count, DecimalField, ExpressionWrapper, F, OuterRef, Q, Subquery, Sum, Value
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
+from django.db.models.functions import Coalesce
 
 from accounts.services import can_use_commerce_storefront, is_business_admin
 from core.models import Business
@@ -29,7 +31,7 @@ from inventory.models import FinishedGood, ProductCategory
 from inventory.portioning import public_contents, standard_multiplier
 from .forms import CommerceIntegrationForm, CommerceSettingsForm, StorefrontProductForm
 from .models import (
-    CommerceCheckoutSession, CommerceIntegration, CommerceIntake, CommercePayment,
+    CommerceCheckoutSession, CommerceIntegration, CommerceIntake, CommerceIntakeItem, CommercePayment,
     CommercePaymentReceipt, CommerceSettings, StorefrontAttributionVisit, StorefrontCustomer, StorefrontProduct, DeliveryArea, DeliveryAssignment, DeliverySettings,
 )
 from .services import ChannelMinimumError, _channel_allowed, _channel_minimum, accept_intake, create_intake, switch_intake_to_preorder
@@ -77,25 +79,67 @@ def _track_storefront_visit(request, business, *, target):
     return attribution
 
 
-def _commerce_attribution_analytics(business, *, days=30):
+def _commerce_attribution_analytics(business, *, days=30, use_cache=True):
+    cache_key = f"commerce:attribution:v2:{business.pk}:{days}"
+    if use_cache:
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
     since = timezone.now() - timedelta(days=days)
-    visits = list(StorefrontAttributionVisit.raw_objects.filter(business=business, created_at__gte=since))
-    checkouts = list(CommerceCheckoutSession.raw_objects.filter(business=business, created_at__gte=since))
-    intakes = list(CommerceIntake.raw_objects.filter(business=business, created_at__gte=since).prefetch_related("items"))
+    visit_rows = list(
+        StorefrontAttributionVisit.raw_objects.filter(business=business, created_at__gte=since)
+        .values("attribution_source")
+        .annotate(count=Count("pk"))
+    )
+    checkout_rows = list(
+        CommerceCheckoutSession.raw_objects.filter(business=business, created_at__gte=since)
+        .values("attribution_source", "attribution_campaign")
+        .annotate(count=Count("pk"))
+    )
+    money_field = DecimalField(max_digits=24, decimal_places=6)
+    intake_item_total = (
+        CommerceIntakeItem.objects.filter(intake_id=OuterRef("pk"))
+        .values("intake_id")
+        .annotate(
+            total=Sum(
+                ExpressionWrapper(
+                    F("requested_quantity") * F("unit_price"),
+                    output_field=money_field,
+                )
+            )
+        )
+        .values("total")[:1]
+    )
+    intakes = list(
+        CommerceIntake.raw_objects.filter(business=business, created_at__gte=since).annotate(
+            _attribution_item_total=Coalesce(
+                Subquery(intake_item_total, output_field=money_field), Value(Decimal("0"), output_field=money_field)
+            )
+        ).only(
+            "id", "attribution_source", "attribution_campaign", "delivery_fee"
+        )
+    )
     sources = defaultdict(lambda: {"source": "", "visits": 0, "checkouts": 0, "orders": 0, "revenue": Decimal("0")})
     campaigns = defaultdict(lambda: {"campaign": "", "source": "", "checkouts": 0, "orders": 0, "revenue": Decimal("0")})
-    for row in visits:
-        key = row.attribution_source or "direct"
-        bucket = sources[key]; bucket["source"] = key; bucket["visits"] += 1
-    for row in checkouts:
-        key = row.attribution_source or "direct"
-        bucket = sources[key]; bucket["source"] = key; bucket["checkouts"] += 1
-        if row.attribution_campaign:
-            ckey = (key, row.attribution_campaign)
-            cb = campaigns[ckey]; cb["source"] = key; cb["campaign"] = row.attribution_campaign; cb["checkouts"] += 1
+    visit_count = 0
+    for row in visit_rows:
+        key = row["attribution_source"] or "direct"
+        count = row["count"] or 0
+        visit_count += count
+        bucket = sources[key]; bucket["source"] = key; bucket["visits"] += count
+    checkout_count = 0
+    for row in checkout_rows:
+        key = row["attribution_source"] or "direct"
+        count = row["count"] or 0
+        checkout_count += count
+        bucket = sources[key]; bucket["source"] = key; bucket["checkouts"] += count
+        campaign = row["attribution_campaign"] or ""
+        if campaign:
+            ckey = (key, campaign)
+            cb = campaigns[ckey]; cb["source"] = key; cb["campaign"] = campaign; cb["checkouts"] += count
     for row in intakes:
         key = row.attribution_source or "direct"
-        total = row.total
+        total = Decimal(row._attribution_item_total or 0) + Decimal(row.delivery_fee or 0)
         bucket = sources[key]; bucket["source"] = key; bucket["orders"] += 1; bucket["revenue"] += total
         if row.attribution_campaign:
             ckey = (key, row.attribution_campaign)
@@ -105,17 +149,23 @@ def _commerce_attribution_analytics(business, *, days=30):
         row["checkout_rate"] = round((row["checkouts"] / row["visits"] * 100), 1) if row["visits"] else None
         row["order_rate"] = round((row["orders"] / row["checkouts"] * 100), 1) if row["checkouts"] else None
     campaign_rows = sorted(campaigns.values(), key=lambda r: (r["orders"], r["checkouts"]), reverse=True)
-    return {
+    payload = {
         "days": days,
         "sources": source_rows,
         "campaigns": campaign_rows[:20],
         "totals": {
-            "visits": len(visits),
-            "checkouts": len(checkouts),
+            "visits": visit_count,
+            "checkouts": checkout_count,
             "orders": len(intakes),
-            "revenue": sum((row.total for row in intakes), Decimal("0")),
+            "revenue": sum(
+                (Decimal(row._attribution_item_total or 0) + Decimal(row.delivery_fee or 0) for row in intakes),
+                Decimal("0"),
+            ),
         },
     }
+    if use_cache:
+        cache.set(cache_key, payload, 20)
+    return payload
 
 def _settings_for(business):
     settings, _ = CommerceSettings.raw_objects.get_or_create(business=business, defaults={"created_by": None})
@@ -135,12 +185,9 @@ def commerce_dashboard(request):
     # once per FinishedGood made dashboard query count grow linearly. Discover
     # missing rows in one query and create only those, tolerating a concurrent
     # dashboard request racing on the OneToOne constraint.
-    good_ids = list(FinishedGood.objects.values_list("pk", flat=True))
-    existing_ids = set(
-        StorefrontProduct.objects.filter(finished_good_id__in=good_ids).values_list(
-            "finished_good_id", flat=True
-        )
-    ) if good_ids else set()
+    missing_good_ids = list(
+        FinishedGood.objects.filter(storefront_product__isnull=True).values_list("pk", flat=True)
+    )
     missing_products = [
         StorefrontProduct(
             business=request.business,
@@ -149,8 +196,7 @@ def commerce_dashboard(request):
             allow_stock_order=True,
             allow_preorder=request.business.uses_production,
         )
-        for good_id in good_ids
-        if good_id not in existing_ids
+        for good_id in missing_good_ids
     ]
     if missing_products:
         StorefrontProduct.objects.bulk_create(missing_products, ignore_conflicts=True)
@@ -198,7 +244,7 @@ def commerce_dashboard(request):
 
 @login_required
 def commerce_attribution_export(request):
-    analytics = _commerce_attribution_analytics(request.business)
+    analytics = _commerce_attribution_analytics(request.business, use_cache=False)
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = 'attachment; filename="commerce-attribution.csv"'
     import csv

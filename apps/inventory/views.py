@@ -142,7 +142,9 @@ def inventory(request):
     if request.business.uses_production:
         finished_goods = finished_goods.prefetch_related(
             "production_batches__reconciliation_out",
-            "recipe_items", "production_materials", "market_stock_lots",
+            Prefetch("recipe_items", queryset=RecipeItem.objects.select_related("raw_material")),
+            Prefetch("production_materials", queryset=ProductionMaterial.objects.select_related("raw_material")),
+            "market_stock_lots",
         )
     else:
         # Stock-first businesses display the latest purchase cost per product.

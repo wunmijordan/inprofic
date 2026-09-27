@@ -267,16 +267,34 @@ def ensure_permissions(membership):
 
 
 def seed_business_modules(business, source=BusinessModuleAccess.SOURCE_DEFAULT):
-    """Provision today's full module set behind the future plan boundary."""
-    for module, _label in RoleModulePermission.MODULE_CHOICES:
-        if module in {"pos", "delivery_rider"}:
-            continue
-        BusinessModuleAccess.objects.get_or_create(
+    """Provision today's full module set behind the future plan boundary.
+
+    This helper runs on several read surfaces as a compatibility guard for old
+    tenants. Seed all missing rows in one bounded read/write pair instead of a
+    get-or-create query for every module. Existing entitlement rows are never
+    overwritten.
+    """
+    expected = [
+        module for module, _label in RoleModulePermission.MODULE_CHOICES
+        if module not in {"pos", "delivery_rider"}
+    ]
+    existing = set(
+        BusinessModuleAccess.objects.filter(business=business, module__in=expected)
+        .values_list("module", flat=True)
+    )
+    missing = [
+        BusinessModuleAccess(
             business=business,
             module=module,
-            defaults={"enabled": module not in {"commerce", "audit", "delivery"}, "source": source},
+            enabled=module not in {"commerce", "audit", "delivery"},
+            source=source,
         )
-    invalidate_business_access_cache(business)
+        for module in expected
+        if module not in existing
+    ]
+    if missing:
+        BusinessModuleAccess.objects.bulk_create(missing, ignore_conflicts=True)
+        invalidate_business_access_cache(business)
 
 
 def business_has_module(business, module):

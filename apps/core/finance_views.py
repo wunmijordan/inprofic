@@ -9,14 +9,15 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
-from django.db.models import Prefetch, Q, Sum
+from django.db.models.functions import Coalesce
+from django.db.models import Case, Count, DecimalField, ExpressionWrapper, F, OuterRef, Q, Subquery, Sum, Value, When
 from openpyxl import Workbook
 from .models import CashAccount, FinancialTransaction, AuditLog
 from accounts.platform_integrations import redact_disabled_integrations
 from accounts.services import user_has_permission
 from .finance_forms import CashAccountForm, SupplierPaymentForm, CustomerPaymentForm, StockAdjustmentForm
 from .services import record_cash, audit
-from procurement.models import SupplierPayment, PurchaseOrder
+from procurement.models import PurchaseOrder, PurchaseOrderItem, SupplierPayment
 from sales.models import CustomerPayment, Sale, SaleItem
 from inventory.models import StockAdjustment, StockMovement
 from expenses.models import Expense, ExpensePayment
@@ -26,55 +27,92 @@ def today(): return timezone.localdate()
 
 
 def _finance_open_items(business):
+    money_field = DecimalField(max_digits=24, decimal_places=6)
+    sale_line_value = Case(
+        When(
+            commercial_quantity__isnull=False,
+            commercial_unit_price__isnull=False,
+            then=ExpressionWrapper(
+                F("commercial_quantity") * F("commercial_unit_price"),
+                output_field=money_field,
+            ),
+        ),
+        default=ExpressionWrapper(
+            (F("batch_qty") * F("finished_good__units_per_batch") + F("piece_qty"))
+            * (F("price") - F("discount")),
+            output_field=money_field,
+        ),
+        output_field=money_field,
+    )
+    sale_total_sq = (
+        SaleItem.objects.filter(sale_id=OuterRef("pk"))
+        .values("sale_id")
+        .annotate(total=Sum(sale_line_value))
+        .values("total")[:1]
+    )
+    sale_paid_sq = (
+        CustomerPayment.raw_objects.filter(sale_id=OuterRef("pk"))
+        .values("sale_id")
+        .annotate(total=Sum("amount"))
+        .values("total")[:1]
+    )
     open_sales = list(
         Sale.raw_objects.filter(
             business=business,
-            source__in=("distribution_order", "online_order"),
+            source__in=("distribution_order", "online_order", "walkin"),
             transaction_type__in=("unpaid", "partial"),
-        ).select_related("business").prefetch_related(
-            Prefetch("items", queryset=SaleItem.objects.select_related("finished_good")),
-            "payments",
+        ).select_related("business").annotate(
+            _invoice_total=Coalesce(Subquery(sale_total_sq, output_field=money_field), Value(Decimal("0"), output_field=money_field)),
+            _paid_total=Coalesce(Subquery(sale_paid_sq, output_field=money_field), Value(Decimal("0"), output_field=money_field)),
         )
     )
     outstanding_sales = []
+    unpaid_invoice_sales = []
     receivables = Decimal("0")
     settlement_sale_ids = []
     for sale in open_sales:
-        paid = sum((payment.amount for payment in sale.payments.all()), Decimal("0"))
-        balance = max(Decimal("0"), sale.total - paid)
+        balance = max(Decimal("0"), Decimal(sale._invoice_total or 0) - Decimal(sale._paid_total or 0))
+        is_customer_order = sale.source in {"distribution_order", "online_order"}
+        is_walkin = sale.source == "walkin"
         if balance:
-            receivables += balance
-            outstanding_sales.append({"sale": sale, "balance": balance})
-        else:
+            if is_customer_order:
+                receivables += balance
+                outstanding_sales.append({"sale": sale, "balance": balance})
+            elif is_walkin:
+                unpaid_invoice_sales.append({"sale": sale, "balance": balance})
+        elif is_customer_order or is_walkin:
             settlement_sale_ids.append(sale.pk)
 
-    unpaid_invoice_sales = []
-    for sale in (
-        Sale.raw_objects.filter(
-            business=business, source="walkin", transaction_type__in=("unpaid", "partial")
-        ).prefetch_related(
-            Prefetch("items", queryset=SaleItem.objects.select_related("finished_good")),
-            "payments",
+    po_money_field = DecimalField(max_digits=24, decimal_places=6)
+    po_total_sq = (
+        PurchaseOrderItem.objects.filter(purchase_order_id=OuterRef("pk"))
+        .values("purchase_order_id")
+        .annotate(
+            total=Sum(
+                ExpressionWrapper(F("qty") * F("unit_cost"), output_field=po_money_field)
+            )
         )
-    ):
-        paid = sum((payment.amount for payment in sale.payments.all()), Decimal("0"))
-        balance = max(Decimal("0"), sale.total - paid)
-        if balance:
-            unpaid_invoice_sales.append({"sale": sale, "balance": balance})
-        else:
-            settlement_sale_ids.append(sale.pk)
-
+        .values("total")[:1]
+    )
+    po_paid_sq = (
+        SupplierPayment.raw_objects.filter(purchase_order_id=OuterRef("pk"))
+        .values("purchase_order_id")
+        .annotate(total=Sum("amount"))
+        .values("total")[:1]
+    )
     open_pos = list(
         PurchaseOrder.raw_objects.filter(
             business=business, payment_status__in=("unpaid", "partial"), status="received"
-        ).prefetch_related("items", "payments")
+        ).annotate(
+            _invoice_total=Coalesce(Subquery(po_total_sq, output_field=po_money_field), Value(Decimal("0"), output_field=po_money_field)),
+            _paid_total=Coalesce(Subquery(po_paid_sq, output_field=po_money_field), Value(Decimal("0"), output_field=po_money_field)),
+        )
     )
     outstanding_pos = []
     purchase_payables = Decimal("0")
     settlement_po_ids = []
     for po in open_pos:
-        paid = sum((payment.amount for payment in po.payments.all()), Decimal("0"))
-        balance = max(Decimal("0"), po.total - paid)
+        balance = max(Decimal("0"), Decimal(po._invoice_total or 0) - Decimal(po._paid_total or 0))
         if balance:
             purchase_payables += balance
             outstanding_pos.append({"po": po, "balance": balance})
@@ -82,8 +120,9 @@ def _finance_open_items(business):
             settlement_po_ids.append(po.pk)
 
     unpaid_expenses = Expense.raw_objects.filter(business=business, payment_status="unpaid")
-    expense_payables = unpaid_expenses.aggregate(v=Sum("amount"))["v"] or Decimal("0")
-    expense_payable_count = unpaid_expenses.count()
+    expense_summary = unpaid_expenses.aggregate(v=Sum("amount"), count=Count("pk"))
+    expense_payables = expense_summary["v"] or Decimal("0")
+    expense_payable_count = expense_summary["count"] or 0
     outstanding_expenses = [
         {"expense": expense, "balance": expense.amount}
         for expense in unpaid_expenses.order_by("-date", "-id")[:30]
@@ -107,21 +146,24 @@ def _cash_account_balances(business, *, active_only=False):
     account_qs = CashAccount.raw_objects.filter(business=business)
     if active_only:
         account_qs = account_qs.filter(active=True)
-    accounts = list(account_qs)
-    totals = {
-        row["account_id"]: row
-        for row in (
-            FinancialTransaction.raw_objects.filter(business=business, account_id__isnull=False)
-            .values("account_id")
-            .annotate(
-                money_in=Sum("amount", filter=Q(transaction_type=FinancialTransaction.INCOME)),
-                money_out=Sum("amount", filter=Q(transaction_type=FinancialTransaction.OUTFLOW)),
-            )
+    accounts = list(
+        account_qs.annotate(
+            _money_in=Sum(
+                "transactions__amount",
+                filter=Q(transactions__transaction_type=FinancialTransaction.INCOME),
+            ),
+            _money_out=Sum(
+                "transactions__amount",
+                filter=Q(transactions__transaction_type=FinancialTransaction.OUTFLOW),
+            ),
         )
-    }
+    )
     for account in accounts:
-        row = totals.get(account.pk, {})
-        account._calculated_balance = account.opening_balance + (row.get("money_in") or Decimal("0")) - (row.get("money_out") or Decimal("0"))
+        account._calculated_balance = (
+            account.opening_balance
+            + (account._money_in or Decimal("0"))
+            - (account._money_out or Decimal("0"))
+        )
     return accounts
 
 

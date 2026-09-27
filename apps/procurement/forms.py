@@ -61,43 +61,34 @@ class PurchaseOrderItemForm(StyledModelForm):
         model = PurchaseOrderItem
         fields = ["item", "qty", "unit_cost"]
 
-    def __init__(self, *args, business=None, **kwargs):
+    def __init__(self, *args, business=None, inventory_catalog=None, **kwargs):
         self.business = business
+        self.inventory_catalog = inventory_catalog
         super().__init__(*args, **kwargs)
-        raw_materials = RawMaterial.objects.filter(business=business).order_by("name")
-        products = FinishedGood.objects.filter(
-            business=business,
-            stock__isnull=False,
-        )
-        if business and business.uses_production:
-            # Production businesses may procure only products explicitly
-            # classified as bought-in resale stock. Made-in-house goods remain
-            # exclusive to recipes / production orders.
-            products = products.filter(source_type=FinishedGood.SOURCE_PURCHASED_FOR_RESALE)
-        products = products.distinct().order_by("name")
-        material_choices = []
 
-        # Same category order as the Dashboard stock movement dropdown.
+        if inventory_catalog is None:
+            raw_materials = list(RawMaterial.objects.filter(business=business).order_by("name"))
+            products_qs = FinishedGood.objects.filter(business=business, stock__isnull=False)
+            if business and business.uses_production:
+                products_qs = products_qs.filter(source_type=FinishedGood.SOURCE_PURCHASED_FOR_RESALE)
+            products = list(products_qs.distinct().order_by("name"))
+            inventory_catalog = {
+                "raw": {item.pk: item for item in raw_materials},
+                "finished": {item.pk: item for item in products},
+            }
+            self.inventory_catalog = inventory_catalog
+
+        raw_materials = list(inventory_catalog.get("raw", {}).values())
+        products = list(inventory_catalog.get("finished", {}).values())
+        material_choices = []
         for value, label in RawMaterial.CATEGORY_CHOICES:
-            items = raw_materials.filter(category=value)
-            if items.exists():
-                material_choices.append(
-                    (
-                        label,
-                        [
-                            (f"raw:{item.pk}", item.name)
-                            for item in items
-                        ],
-                    )
-                )
+            items = [item for item in raw_materials if item.category == value]
+            if items:
+                material_choices.append((label, [(f"raw:{item.pk}", item.name) for item in items]))
+
         resale_label = vertical_config(business)["product_sources"]["resale_group"] if business else "Products for resale"
-        product_group = (
-            resale_label,
-            [(f"finished:{product.pk}", product.name) for product in products],
-        )
-        groups = [product_group, *material_choices]
-        if business and business.uses_production:
-            groups = [*material_choices, product_group]
+        product_group = (resale_label, [(f"finished:{product.pk}", product.name) for product in products])
+        groups = [*material_choices, product_group] if business and business.uses_production else [product_group, *material_choices]
         self.fields["item"].choices = [("", "Select an inventory item…"), *groups]
         self.fields["qty"].min_value = Decimal("0.01")
         # The entry field captures the amount actually paid for this line.
@@ -126,20 +117,21 @@ class PurchaseOrderItemForm(StyledModelForm):
             self.add_error("item", "Select a valid inventory item.")
             return cleaned
 
+        catalog = self.inventory_catalog or {}
         if kind == "raw":
-            selected = RawMaterial.objects.filter(business=self.business, pk=pk).first()
+            selected = catalog.get("raw", {}).get(pk)
+            if selected is None:
+                selected = RawMaterial.objects.filter(business=self.business, pk=pk).first()
             if selected:
                 self.instance.raw_material = selected
                 self.instance.finished_good = None
         elif kind == "finished":
-            selected = FinishedGood.objects.filter(
-                business=self.business,
-                pk=pk,
-                stock__isnull=False,
-            )
-            if self.business and self.business.uses_production:
-                selected = selected.filter(source_type=FinishedGood.SOURCE_PURCHASED_FOR_RESALE)
-            selected = selected.distinct().first()
+            selected = catalog.get("finished", {}).get(pk)
+            if selected is None:
+                selected_qs = FinishedGood.objects.filter(business=self.business, pk=pk, stock__isnull=False)
+                if self.business and self.business.uses_production:
+                    selected_qs = selected_qs.filter(source_type=FinishedGood.SOURCE_PURCHASED_FOR_RESALE)
+                selected = selected_qs.distinct().first()
             if selected:
                 self.instance.raw_material = None
                 self.instance.finished_good = selected

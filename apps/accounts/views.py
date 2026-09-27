@@ -320,7 +320,8 @@ def subscription_payment(request, plan_code=None):
     from .models import BusinessSubscription, SubscriptionPayment, SubscriptionPaymentSettings, SubscriptionPlan, SubscriptionPolicySettings
     from .payment_gateways import GatewayError, initialize_gateway
     from .subscription_services import (
-        active_promotion_for_plan,
+        attach_active_promotions,
+        business_subscription_for,
         create_payment_request,
         ensure_default_plans,
         payment_amount,
@@ -332,26 +333,20 @@ def subscription_payment(request, plan_code=None):
     )
     if not is_business_admin(request.user, request.business):
         return render(request, "403.html", status=403)
-    plans = ensure_default_plans()
+    policy_settings = SubscriptionPolicySettings.load()
+    general_trial_days = max(1, int(policy_settings.general_trial_days or 30))
+    plans = ensure_default_plans(general_trial_days=general_trial_days)
     selected = get_object_or_404(SubscriptionPlan, code=plan_code, active=True) if plan_code else None
-    service = getattr(request.business, "subscription_service", None)
-    subscription = service.subscription if service else BusinessSubscription.objects.filter(primary_business=request.business).select_related("plan").first()
+    subscription = business_subscription_for(request.business)
     if not subscription:
         subscription = start_trial_for_business(request.business, plans[SubscriptionPlan.CODE_STARTER])
     selected = selected or subscription.plan
-    selected.current_monthly_promotion = active_promotion_for_plan(
-        selected, billing_cycle=SubscriptionPayment.CYCLE_MONTHLY
-    )
-    selected.current_yearly_promotion = active_promotion_for_plan(
-        selected, billing_cycle=SubscriptionPayment.CYCLE_YEARLY
-    )
-    selected.current_promotion = selected.current_monthly_promotion or selected.current_yearly_promotion
+    attach_active_promotions([selected])
     payment_locked = payment_is_locked(subscription, selected)
     requires_change_warning = bool(
         subscription.is_effectively_active and subscription.plan_id != selected.pk
     )
     payment_settings = SubscriptionPaymentSettings.load()
-    general_trial_days = max(1, int(SubscriptionPolicySettings.load().general_trial_days or 30))
     available_payment_providers = [
         (code, label)
         for code, label in (
@@ -1519,9 +1514,6 @@ def platform_mail_template_editor(request, pk=None):
             "eyebrow": "INPROFIC Project Mailing · Topic",
         },
     )
-
-
-
 
 
 @login_required

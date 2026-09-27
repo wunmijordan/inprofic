@@ -2,13 +2,13 @@ from decimal import Decimal
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.db.models import Prefetch
+from django.db.models import OuterRef, Prefetch, Subquery
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
 from .forms import PurchaseOrderForm, PurchaseOrderItemFormSet
 from .models import PurchaseOrder, PurchaseOrderItem, RawMaterialCostSnapshot, SupplierPayment
-from inventory.models import RawMaterial
+from inventory.models import ProductionMaterial, RawMaterial, RecipeItem
 from inventory.services import record_finished_good_movement, record_raw_material_movement
 from inventory.models import FinishedGood, StockMovement
 from core.invoice import purchase_order_pdf
@@ -78,6 +78,37 @@ def procurement_list(request):
 @login_required
 def po_form(request, pk=None):
     obj = get_object_or_404(PurchaseOrder, pk=pk) if pk else None
+
+    # The inline formset constructs both visible forms and an empty template form.
+    # Build tenant-scoped inventory choices once per request so each form does not
+    # repeat the same category/product queries while rendering or validating.
+    raw_materials = list(RawMaterial.objects.filter(business=request.business).order_by("name"))
+    latest_purchase_cost = (
+        StockMovement.objects.filter(
+            business=request.business,
+            finished_good_id=OuterRef("pk"),
+            movement_type=StockMovement.FG_PURCHASE,
+            quantity__gt=0,
+        )
+        .order_by("-occurred_at", "-id")
+        .values("unit_value")[:1]
+    )
+    products_qs = (
+        FinishedGood.objects.filter(business=request.business, stock__isnull=False)
+        .select_related("business")
+        .annotate(prefetched_latest_purchase_unit_value=Subquery(latest_purchase_cost))
+        .prefetch_related(
+            Prefetch("recipe_items", queryset=RecipeItem.objects.select_related("raw_material")),
+            Prefetch("production_materials", queryset=ProductionMaterial.objects.select_related("raw_material")),
+        )
+    )
+    if request.business.uses_production:
+        products_qs = products_qs.filter(source_type=FinishedGood.SOURCE_PURCHASED_FOR_RESALE)
+    products = list(products_qs.distinct().order_by("name"))
+    inventory_catalog = {
+        "raw": {item.pk: item for item in raw_materials},
+        "finished": {item.pk: item for item in products},
+    }
     if obj and obj.status == "received":
         messages.error(request, "This purchase order has already been received and can't be edited.")
         return redirect("procurement_list")
@@ -86,7 +117,7 @@ def po_form(request, pk=None):
         formset = PurchaseOrderItemFormSet(
             request.POST,
             instance=obj if obj else PurchaseOrder(),
-            form_kwargs={"business": request.business},
+            form_kwargs={"business": request.business, "inventory_catalog": inventory_catalog},
         )
         if form.is_valid() and formset.is_valid():
             active_items = [
@@ -157,12 +188,10 @@ def po_form(request, pk=None):
                         return redirect("procurement_list")
     else:
         form = PurchaseOrderForm(instance=obj, initial=None if obj else {"date": today()})
-        formset = PurchaseOrderItemFormSet(instance=obj, form_kwargs={"business": request.business})
+        formset = PurchaseOrderItemFormSet(instance=obj, form_kwargs={"business": request.business, "inventory_catalog": inventory_catalog})
     current_costs = {
-        **{f"raw:{m.pk}": f"{m.cost_per_purchase_unit:.2f}" for m in RawMaterial.objects.all()},
-        **{f"finished:{g.pk}": f"{g.est_cost:.2f}" for g in FinishedGood.objects.filter(
-            stock__isnull=False,
-        ).distinct()},
+        **{f"raw:{m.pk}": f"{m.cost_per_purchase_unit:.2f}" for m in raw_materials},
+        **{f"finished:{g.pk}": f"{g.est_cost:.2f}" for g in products},
     }
     return render(request, "procurement/po_form.html", {"form": form, "formset": formset, "obj": obj, "current_costs": current_costs})
 
