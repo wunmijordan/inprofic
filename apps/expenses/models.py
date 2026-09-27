@@ -39,6 +39,10 @@ class Expense(BusinessOwnedModel):
 
     class Meta:
         ordering = ["-date", "-id"]
+        indexes = [
+            models.Index(fields=["business", "payment_status", "date"], name="expense_biz_pay_date_idx"),
+            models.Index(fields=["business", "date"], name="expense_biz_date_idx"),
+        ]
 
     def __str__(self):
         return f"{self.description} — {self.amount}"
@@ -55,6 +59,9 @@ class ExpensePayment(BusinessOwnedModel):
 
     class Meta:
         ordering = ["-date", "-id"]
+        indexes = [
+            models.Index(fields=["business", "date"], name="exp_pay_biz_date_idx"),
+        ]
 
     def __str__(self):
         return f"Expense #{self.expense_id} payment — {self.amount}"

@@ -4,7 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Window
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -1282,8 +1282,16 @@ def founder_subscriptions(request):
         .select_related("subscription__primary_business", "plan")[:50]
     )
     platform_query = (request.GET.get("platform_q") or "").strip()[:100]
-    businesses = Business.objects.select_related("subscription__plan", "subscription_service__subscription__plan").annotate(member_count=Count("user_memberships", distinct=True)).order_by("-id")
-    users = CustomUser.objects.annotate(business_count=Count("business_memberships", distinct=True)).order_by("-date_joined")
+    businesses = Business.objects.select_related(
+        "subscription__plan", "subscription_service__subscription__plan"
+    ).annotate(
+        member_count=Count("user_memberships", distinct=True),
+        _platform_total=Window(expression=Count("pk")),
+    ).order_by("-id")
+    users = CustomUser.objects.annotate(
+        business_count=Count("business_memberships", distinct=True),
+        _platform_total=Window(expression=Count("pk")),
+    ).order_by("-date_joined")
     if platform_query:
         businesses = businesses.filter(Q(name__icontains=platform_query) | Q(slug__icontains=platform_query))
         users = users.filter(
@@ -1294,6 +1302,16 @@ def founder_subscriptions(request):
         )
     if plans_for_page is None:
         plans_for_page = SubscriptionPlan.objects.prefetch_related("module_entitlements").all().order_by("monthly_price", "id")
+    platform_businesses = list(businesses[:50])
+    platform_users = list(users[:50])
+    if platform_query:
+        # Search narrows the list, but the headline platform counters remain
+        # global just as they did before this optimization.
+        platform_business_count = Business.objects.count()
+        platform_user_count = CustomUser.objects.count()
+    else:
+        platform_business_count = int(platform_businesses[0]._platform_total) if platform_businesses else 0
+        platform_user_count = int(platform_users[0]._platform_total) if platform_users else 0
     from .analytics import founder_analytics_summary
     founder_analytics = founder_analytics_summary()
     return render(request, "accounts/founder_subscriptions.html", {
@@ -1325,8 +1343,8 @@ def founder_subscriptions(request):
         "now": timezone.now(),
         "founder_analytics": founder_analytics,
         "platform_stats": {
-            "businesses": Business.objects.count(),
-            "users": CustomUser.objects.count(),
+            "businesses": platform_business_count,
+            "users": platform_user_count,
             "active_subscriptions": sum(
                 1 for subscription in subscriptions
                 if subscription.founder_lifetime
@@ -1335,8 +1353,8 @@ def founder_subscriptions(request):
             "pending_payments": len(pending_payments),
         },
         "platform_query": platform_query,
-        "platform_businesses": businesses[:50],
-        "platform_users": users[:50],
+        "platform_businesses": platform_businesses,
+        "platform_users": platform_users,
     })
 
 

@@ -220,6 +220,9 @@ class CashAccount(BusinessOwnedModel):
     class Meta:
         constraints = [models.UniqueConstraint(fields=["business", "name"], name="unique_cash_account_per_business")]
         ordering = ["name"]
+        indexes = [
+            models.Index(fields=["business", "active", "account_type"], name="cash_biz_active_type_idx"),
+        ]
     def __str__(self): return self.name
     @property
     def balance(self):
@@ -246,6 +249,10 @@ class FinancialTransaction(BusinessOwnedModel):
     reversal_of = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="reversal_entries")
     class Meta:
         ordering = ["-date", "-id"]
+        indexes = [
+            models.Index(fields=["business", "date", "transaction_type"], name="fin_tx_biz_date_type_idx"),
+            models.Index(fields=["business", "transaction_type", "date"], name="fin_tx_biz_type_date_idx"),
+        ]
     @property
     def signed_amount(self): return self.amount if self.transaction_type == self.INCOME else -self.amount
 
@@ -259,6 +266,9 @@ class AuditLog(BusinessOwnedModel):
     metadata = models.JSONField(default=dict, blank=True)
     class Meta:
         ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["business", "model_name", "created_at"], name="audit_biz_model_time_idx"),
+        ]
 
 
 class AuditQuery(BusinessOwnedModel):

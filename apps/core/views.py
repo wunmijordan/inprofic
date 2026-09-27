@@ -1,7 +1,7 @@
 import csv
 import json
 from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.conf import settings
@@ -1524,6 +1524,13 @@ def dashboard(request):
     dashboard_date = today()
     month_start = dashboard_date.replace(day=1)
     year_start = dashboard_date.replace(month=1, day=1)
+    current_tz = timezone.get_current_timezone()
+    today_start_at = timezone.make_aware(datetime.combine(dashboard_date, time.min), current_tz)
+    tomorrow_start_at = timezone.make_aware(
+        datetime.combine(dashboard_date + timedelta(days=1), time.min), current_tz
+    )
+    month_start_at = timezone.make_aware(datetime.combine(month_start, time.min), current_tz)
+    year_start_at = timezone.make_aware(datetime.combine(year_start, time.min), current_tz)
     raw_materials = list(RawMaterial.objects.all())
     finished_goods = list(FinishedGood.objects.select_related("business"))
     warning_raw = [m for m in raw_materials if m.is_warning]
@@ -1559,9 +1566,9 @@ def dashboard(request):
         affects_stock=True,
     )
     received_totals = received_products.aggregate(
-        daily=Sum("quantity", filter=Q(occurred_at__date=dashboard_date)),
-        monthly=Sum("quantity", filter=Q(occurred_at__date__gte=month_start)),
-        yearly=Sum("quantity", filter=Q(occurred_at__date__gte=year_start)),
+        daily=Sum("quantity", filter=Q(occurred_at__gte=today_start_at, occurred_at__lt=tomorrow_start_at)),
+        monthly=Sum("quantity", filter=Q(occurred_at__gte=month_start_at, occurred_at__lt=tomorrow_start_at)),
+        yearly=Sum("quantity", filter=Q(occurred_at__gte=year_start_at, occurred_at__lt=tomorrow_start_at)),
     )
     daily_units_received = received_totals["daily"] or Decimal("0")
 

@@ -19,6 +19,11 @@ class PurchaseOrder(BusinessOwnedModel):
 
     class Meta:
         ordering = ["-date", "-id"]
+        indexes = [
+            models.Index(fields=["business", "status", "payment_status"], name="po_biz_status_pay_idx"),
+            models.Index(fields=["business", "date"], name="po_biz_date_idx"),
+            models.Index(fields=["business", "status", "received_date"], name="po_biz_status_recv_idx"),
+        ]
 
     def __str__(self):
         return f"PO #{self.id} — {self.supplier or 'Unnamed supplier'}"
@@ -112,6 +117,10 @@ class RawMaterialCostSnapshot(BusinessOwnedModel):
 
     class Meta:
         ordering = ["-effective_date", "-id"]
+        indexes = [
+            models.Index(fields=["raw_material", "-effective_date", "-id"], name="rawcost_mat_date_idx"),
+            models.Index(fields=["business", "effective_date"], name="rawcost_biz_date_idx"),
+        ]
 
     def __str__(self):
         return f"{self.raw_material.name} — {self.purchase_unit_cost} / {self.raw_material.purchase_unit} — {self.effective_date}"
@@ -126,4 +135,8 @@ class SupplierPayment(BusinessOwnedModel):
     notes = models.CharField(max_length=255, blank=True, default="")
     purchase_order = models.ForeignKey(PurchaseOrder, null=True, blank=True, on_delete=models.PROTECT, related_name="payments")
     account = models.ForeignKey("core.CashAccount", null=True, blank=True, on_delete=models.PROTECT, related_name="supplier_payments")
-    class Meta: ordering = ["-date", "-id"]
+    class Meta:
+        ordering = ["-date", "-id"]
+        indexes = [
+            models.Index(fields=["business", "date"], name="suppay_biz_date_idx"),
+        ]

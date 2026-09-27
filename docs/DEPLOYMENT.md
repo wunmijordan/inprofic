@@ -150,7 +150,7 @@ perform an intentional data migration.
 [Render currently spins down](https://render.com/docs/free) a free web service after 15 minutes without inbound traffic. Create these jobs at cron-job.org:
 
 1. **Keep awake** — `GET https://<service>.onrender.com/health/` every 10 minutes.
-2. **INPROFIC maintenance** — `POST https://<service>.onrender.com/ops/run-jobs/` once daily, with the request header `Authorization: Bearer <CRON_SECRET>`.
+2. **INPROFIC maintenance** — `POST https://<service>.onrender.com/ops/run-jobs/` once daily, with the request header `Authorization: Bearer <CRON_SECRET>`. **This endpoint is POST-only; a GET request intentionally returns HTTP 405.**
 
 The health endpoint performs no database query. The maintenance endpoint rejects requests when `CRON_SECRET` is missing or incorrect. A valid trigger now returns HTTP `202 Accepted` immediately and runs the shared scheduled-job registry in a daemon background thread, so the cron request is not held open by long-running maintenance. A database-backed lease prevents an overlapping cron request or manual `python manage.py run_scheduled_jobs` invocation from starting a second registry run. The default lease is six hours (`SCHEDULED_JOB_LEASE_SECONDS=21600`) and exists for crash recovery; successful/failed runs release it immediately. If the web process is restarted or redeployed while a daemon thread is running, that in-process work can still be interrupted; after the lease expires, a later trigger can safely reclaim it. [cron-job.org supports custom methods and headers](https://cron-job.org/en/faq/), and its execution history should therefore show a successful 2xx/202 response rather than waiting for job completion. Keep in mind that an always-awake service consumes nearly all of Render's 750 free instance hours in a typical month, and free services remain unsuitable for business-critical production.
 
@@ -386,7 +386,7 @@ For the fastest practical production path:
 
 1. keep the Render service and PostgreSQL/Supabase database in the closest practical regions;
 2. keep Psycopg pooling enabled and size `DB_POOL_MAX_SIZE` to the database's real connection budget;
-3. use the `slow_request` diagnostics to fix query amplification before buying compute to mask it;
+3. use the `slow_request` diagnostics to fix query amplification before buying compute to mask it; the log includes total SQL time, query count, the slowest query duration (`max_sql_ms`) and the number of queries above `PERF_SLOW_QUERY_MS` (100 ms by default), without recording SQL text or parameters;
 4. avoid synchronous external HTTP calls on ordinary page rendering;
 5. use a paid/non-sleeping Render plan to remove free-instance cold starts;
 6. before running multiple ASGI processes or Render instances, set the shared `REDIS_URL` so Channels uses Redis rather than the in-memory channel layer and Django gains a shared cache;

@@ -27,6 +27,9 @@ class Customer(BusinessOwnedModel):
         constraints = [
             models.UniqueConstraint(fields=["business", "name"], name="unique_customer_per_business")
         ]
+        indexes = [
+            models.Index(fields=["business", "active", "name"], name="customer_biz_active_idx"),
+        ]
 
     def __str__(self):
         return self.name
@@ -133,6 +136,11 @@ class Sale(BusinessOwnedModel):
 
     class Meta:
         ordering = ["-date", "-id"]
+        indexes = [
+            models.Index(fields=["business", "transaction_type", "source"], name="sale_biz_state_src_idx"),
+            models.Index(fields=["business", "date"], name="sale_biz_date_idx"),
+            models.Index(fields=["customer_master", "source", "transaction_type"], name="sale_customer_state_idx"),
+        ]
 
     def clean(self):
         super().clean()
@@ -206,4 +214,8 @@ class CustomerPayment(BusinessOwnedModel):
     notes = models.CharField(max_length=255, blank=True, default="")
     sale = models.ForeignKey(Sale, null=True, blank=True, on_delete=models.PROTECT, related_name="payments")
     account = models.ForeignKey("core.CashAccount", null=True, blank=True, on_delete=models.PROTECT, related_name="customer_payments")
-    class Meta: ordering = ["-date", "-id"]
+    class Meta:
+        ordering = ["-date", "-id"]
+        indexes = [
+            models.Index(fields=["business", "date"], name="custpay_biz_date_idx"),
+        ]

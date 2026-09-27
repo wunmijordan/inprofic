@@ -267,10 +267,14 @@ def _material_release_plan(order, post_data=None):
     aggregated = {}
     errors = []
 
-    items = list(order.items.select_related("finished_good").prefetch_related(
-        "finished_good__recipe_items__raw_material",
-        "finished_good__production_materials__raw_material",
-    ))
+    prefetched_items = getattr(order, "_prefetched_objects_cache", {}).get("items")
+    if prefetched_items is None:
+        items = list(order.items.select_related("finished_good").prefetch_related(
+            "finished_good__recipe_items__raw_material",
+            "finished_good__production_materials__raw_material",
+        ))
+    else:
+        items = prefetched_items
     for item in items:
         good = item.finished_good
         upb = good.units_per_batch or Decimal("1")
@@ -537,7 +541,18 @@ def production_run_delete(request, pk):
 
 @login_required
 def order_detail(request, pk):
-    order = get_object_or_404(Order.objects.select_related("customer"), pk=pk)
+    order = get_object_or_404(
+        Order.objects.select_related("customer").prefetch_related(
+            Prefetch(
+                "items",
+                queryset=OrderItem.objects.select_related("finished_good").prefetch_related(
+                    "finished_good__recipe_items__raw_material",
+                    "finished_good__production_materials__raw_material",
+                ),
+            )
+        ),
+        pk=pk,
+    )
     run_link = order.production_run_links.select_related("production_run").first()
     in_draft_run = bool(run_link and run_link.production_run.status == "draft")
     shortages = order.shortages() if order.status == "pending" and not in_draft_run else []

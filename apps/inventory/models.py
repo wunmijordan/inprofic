@@ -48,6 +48,9 @@ class RawMaterial(BusinessOwnedModel):
     class Meta:
         ordering = ["name"]
         constraints = [models.UniqueConstraint(fields=["business", "name"], name="unique_raw_material_per_business")]
+        indexes = [
+            models.Index(fields=["business", "category", "name"], name="raw_biz_category_name_idx"),
+        ]
 
     def __str__(self):
         return self.name
@@ -143,6 +146,9 @@ class RawMaterialMeasurementChange(BusinessOwnedModel):
 
     class Meta:
         ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["business", "created_at"], name="rawchange_biz_time_idx"),
+        ]
 
     def __str__(self):
         return f"{self.raw_material.name} measurement change — {self.created_at:%Y-%m-%d}"
@@ -201,6 +207,9 @@ class FinishedGood(BusinessOwnedModel):
     class Meta:
         ordering = ["name"]
         constraints = [models.UniqueConstraint(fields=["business", "name"], name="unique_finished_good_per_business")]
+        indexes = [
+            models.Index(fields=["business", "source_type", "name"], name="fg_biz_source_name_idx"),
+        ]
 
     def __str__(self):
         return self.name
@@ -751,7 +760,11 @@ class StockAdjustment(BusinessOwnedModel):
     unit_value = models.DecimalField(max_digits=16, decimal_places=6, default=0)
     location = models.ForeignKey(InventoryLocation, null=True, blank=True, on_delete=models.PROTECT)
     reversed = models.BooleanField(default=False)
-    class Meta: ordering = ["-date", "-id"]
+    class Meta:
+        ordering = ["-date", "-id"]
+        indexes = [
+            models.Index(fields=["business", "date"], name="stockadj_biz_date_idx"),
+        ]
     @property
     def value(self): return self.quantity * self.unit_value
 
@@ -784,6 +797,9 @@ class OperationalSupplyDispense(BusinessOwnedModel):
 
     class Meta:
         ordering = ["-date", "-id"]
+        indexes = [
+            models.Index(fields=["business", "date"], name="opsdisp_biz_date_idx"),
+        ]
 
     def __str__(self):
         return f"{self.raw_material.name} — {self.quantity} {self.raw_material.usage_unit}"
@@ -821,6 +837,9 @@ class MarketStockLot(BusinessOwnedModel):
 
     class Meta:
         ordering = ["expiry_date", "received_date", "id"]
+        indexes = [
+            models.Index(fields=["business", "finished_good", "active", "received_date"], name="mktlot_biz_fg_active_idx"),
+        ]
         constraints = [
             models.CheckConstraint(
                 condition=models.Q(quantity_received__gte=0),
@@ -893,6 +912,9 @@ class MarketStockMovement(BusinessOwnedModel):
 
     class Meta:
         ordering = ["-date", "-id"]
+        indexes = [
+            models.Index(fields=["business", "date"], name="mktmove_biz_date_idx"),
+        ]
 
     @property
     def value(self):
@@ -930,6 +952,9 @@ class DistributionReturn(BusinessOwnedModel):
                 condition=models.Q(quantity__gt=0),
                 name="distribution_return_quantity_positive",
             )
+        ]
+        indexes = [
+            models.Index(fields=["business", "date"], name="distret_biz_date_idx"),
         ]
 
     @property
@@ -1029,6 +1054,10 @@ class StockMovement(BusinessOwnedModel):
 
     class Meta:
         ordering = ["-occurred_at"]
+        indexes = [
+            models.Index(fields=["business", "movement_type", "occurred_at"], name="stock_biz_type_time_idx"),
+            models.Index(fields=["finished_good", "movement_type", "occurred_at"], name="stock_fg_type_time_idx"),
+        ]
 
 
 class InventoryAlertSettings(BusinessOwnedModel):
@@ -1094,4 +1123,7 @@ class InventoryAlertState(BusinessOwnedModel):
                 fields=["business", "user", "alert_type", "object_id"],
                 name="unique_inventory_alert_state_per_user_item",
             ),
+        ]
+        indexes = [
+            models.Index(fields=["business", "user", "is_active"], name="inv_alert_user_active_idx"),
         ]

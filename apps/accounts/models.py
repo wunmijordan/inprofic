@@ -181,6 +181,10 @@ class UserBusiness(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["user", "business"], name="unique_user_business_membership"),
         ]
+        indexes = [
+            models.Index(fields=["user", "active", "business"], name="userbiz_user_active_idx"),
+            models.Index(fields=["business", "active", "user"], name="userbiz_biz_active_idx"),
+        ]
 
     def __str__(self):
         return f"{self.user} — {self.business} — {self.role}"
@@ -539,6 +543,9 @@ class BusinessSubscription(models.Model):
 
     class Meta:
         ordering = ["primary_business__name"]
+        indexes = [
+            models.Index(fields=["status", "paid_until"], name="sub_status_paid_idx"),
+        ]
 
     def __str__(self):
         return f"{self.primary_business} — {self.plan.name}"
@@ -730,6 +737,9 @@ class SubscriptionPayment(models.Model):
 
     class Meta:
         ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["status", "-created_at"], name="subpay_status_time_idx"),
+        ]
 
 
 class SubscriptionPaymentSettings(models.Model):
@@ -1002,6 +1012,10 @@ class PlatformMailRecipient(models.Model):
     class Meta:
         ordering = ["id"]
         constraints = [models.UniqueConstraint(fields=["campaign", "business_id_snapshot"], name="unique_platform_campaign_business")]
+        indexes = [
+            models.Index(fields=["status", "last_attempt_at"], name="mailrec_status_try_idx"),
+            models.Index(fields=["status", "campaign", "id"], name="mailrec_status_camp_idx"),
+        ]
 
 
 class PlatformEvent(models.Model):

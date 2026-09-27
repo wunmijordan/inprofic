@@ -420,6 +420,7 @@ AUTHENTICATED_ACTIVITY_WRITE_INTERVAL_SECONDS = int(
 # request/database timings and logs requests that cross the configured limit.
 PERF_DIAGNOSTICS = env_bool("PERF_DIAGNOSTICS", False)
 PERF_SLOW_REQUEST_MS = int(os.environ.get("PERF_SLOW_REQUEST_MS", "500"))
+PERF_SLOW_QUERY_MS = int(os.environ.get("PERF_SLOW_QUERY_MS", "100"))
 PERF_SERVER_TIMING = env_bool("PERF_SERVER_TIMING", True)
 PERF_EXCLUDED_PREFIXES = tuple(
     env_list("PERF_EXCLUDED_PREFIXES")

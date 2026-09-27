@@ -218,6 +218,7 @@ class PerformanceDiagnosticMiddlewareTests(TestCase):
     @override_settings(
         PERF_DIAGNOSTICS=True,
         PERF_SLOW_REQUEST_MS=0,
+        PERF_SLOW_QUERY_MS=0,
         PERF_SERVER_TIMING=True,
         PERF_EXCLUDED_PREFIXES=("/health/", "/static/", "/media/", "/ws/"),
     )
@@ -236,8 +237,11 @@ class PerformanceDiagnosticMiddlewareTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("app;dur=", response.headers["Server-Timing"])
         self.assertIn("sql;dur=", response.headers["Server-Timing"])
+        self.assertIn("sqlmax;dur=", response.headers["Server-Timing"])
         self.assertIn('desc="1 queries"', response.headers["Server-Timing"])
         self.assertIn("route=business-detail", captured.output[0])
+        self.assertIn("max_sql_ms=", captured.output[0])
+        self.assertIn("slow_sql_queries=1", captured.output[0])
         self.assertNotIn("do-not-log", captured.output[0])
         self.assertNotIn("/business/example/42/", captured.output[0])
 

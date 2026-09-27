@@ -2,6 +2,7 @@ import csv
 from decimal import Decimal
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models.deletion import ProtectedError
 from django.http import HttpResponse, JsonResponse
@@ -22,6 +23,7 @@ from sales.models import CustomerPayment, Sale, SaleItem
 from inventory.models import StockAdjustment, StockMovement
 from expenses.models import Expense, ExpensePayment
 from inventory.services import record_raw_material_movement, record_finished_good_movement
+from .finance_cache import FINANCE_ALERT_CACHE_TIMEOUT, finance_alert_cache_key
 
 def today(): return timezone.localdate()
 
@@ -140,6 +142,7 @@ def _finance_open_items(business):
 
     unpaid_expenses = list(
         Expense.raw_objects.filter(business=business, payment_status="unpaid")
+        .only("id", "date", "description", "amount")
         .annotate(
             _all_unpaid_total=Window(expression=Sum("amount")),
             _all_unpaid_count=Window(expression=Count("pk")),
@@ -284,6 +287,11 @@ def finance_alert_feed(request):
     if not user_has_permission(request.user, request.business, "finance", "view"):
         return JsonResponse({"detail": "Finance alert access is unavailable."}, status=403)
 
+    cache_key = finance_alert_cache_key(request.business.pk)
+    payload = cache.get(cache_key)
+    if payload is not None:
+        return JsonResponse(payload)
+
     items = _finance_open_items(request.business)
     currency = request.business.currency_symbol
     alerts = []
@@ -375,7 +383,7 @@ def finance_alert_feed(request):
         + items["expense_payable_count"]
         + balancing_count
     )
-    return JsonResponse({
+    payload = {
         "enabled": True,
         "count": finance_count,
         "invoice_count": items["unpaid_invoice_count"],
@@ -386,7 +394,9 @@ def finance_alert_feed(request):
         "payables_total": str(items["payables"]),
         "alerts": alerts[:30],
         "poll_seconds": 45,
-    })
+    }
+    cache.set(cache_key, payload, timeout=FINANCE_ALERT_CACHE_TIMEOUT)
+    return JsonResponse(payload)
 
 
 @login_required

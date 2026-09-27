@@ -289,7 +289,10 @@ def commerce_qr_code(request):
         # small monochrome QR. Normal compression is materially faster.
         image.save(stream, format="PNG")
         png_bytes = stream.getvalue()
-        cache.set(qr_cache_key, png_bytes, timeout=300)
+        # The cache key includes the complete target URL, so the generated PNG
+        # is immutable for that key. Keep it warm across normal usage instead
+        # of paying Pillow/qrcode CPU cost again every five minutes.
+        cache.set(qr_cache_key, png_bytes, timeout=86400)
     response = HttpResponse(png_bytes, content_type="image/png")
     filename = f"inprofic-{request.business.slug}-{target}-qr.png"
     response["Content-Disposition"] = f'inline; filename="{filename}"'

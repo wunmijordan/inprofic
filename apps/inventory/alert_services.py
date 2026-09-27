@@ -61,7 +61,7 @@ def _condition_rows(business):
     raw_rows = RawMaterial.raw_objects.filter(business=business).filter(
         Q(stock__lte=F("reorder_level"))
         | Q(stock__gt=F("reorder_level"), stock__lte=warning_ceiling)
-    ).order_by("name", "id")
+    ).only("id", "name", "stock", "reorder_level", "usage_unit").order_by("name", "id")
     for item in raw_rows:
         alert_type = InventoryAlertState.RAW_LOW if item.is_low else InventoryAlertState.RAW_WARNING
         rows.append((alert_type, item))
@@ -74,7 +74,7 @@ def _condition_rows(business):
     ).filter(
         Q(stock__lte=F("reorder_level"))
         | Q(stock__gt=F("reorder_level"), stock__lte=warning_ceiling)
-    ).order_by("name", "id")
+    ).only("id", "name", "stock", "reorder_level", "unit").order_by("name", "id")
     for item in finished_rows:
         alert_type = InventoryAlertState.FINISHED_LOW if item.is_low else InventoryAlertState.FINISHED_WARNING
         rows.append((alert_type, item))

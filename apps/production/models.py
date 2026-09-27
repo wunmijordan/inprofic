@@ -75,6 +75,11 @@ class Order(BusinessOwnedModel):
         constraints = [
             models.UniqueConstraint(fields=["business", "order_number"], name="unique_order_number_per_business"),
         ]
+        indexes = [
+            models.Index(fields=["business", "status", "completed_date"], name="order_biz_status_done_idx"),
+            models.Index(fields=["business", "order_type", "status", "date"], name="order_biz_type_state_idx"),
+            models.Index(fields=["business", "-date"], name="order_biz_recent_idx"),
+        ]
 
     def save(self, *args, **kwargs):
         if self.order_number is None:
@@ -139,15 +144,25 @@ class Order(BusinessOwnedModel):
         requirements and are returned in each material's usage unit.
         """
         needed = {}
-        for item in self.items.select_related("finished_good"):
+        prefetched_items = getattr(self, "_prefetched_objects_cache", {}).get("items")
+        if prefetched_items is None:
+            items = list(
+                self.items.select_related("finished_good").prefetch_related(
+                    "finished_good__recipe_items__raw_material",
+                    "finished_good__production_materials__raw_material",
+                )
+            )
+        else:
+            items = prefetched_items
+        for item in items:
             good = item.finished_good
             upb = good.units_per_batch or Decimal("1")
             production_batches = item.effective_production_batch_qty
             production_pieces = item.effective_production_piece_qty
             per_piece_factor = production_pieces / upb
 
-            links = list(good.recipe_items.select_related("raw_material"))
-            links += list(good.production_materials.select_related("raw_material"))
+            links = list(good.recipe_items.all())
+            links += list(good.production_materials.all())
 
             for link in links:
                 qty = link.qty_per_batch * production_batches
@@ -344,6 +359,10 @@ class ProductionRun(BusinessOwnedModel):
         constraints = [
             models.UniqueConstraint(fields=["business", "run_number"], name="unique_production_run_number_per_business")
         ]
+        indexes = [
+            models.Index(fields=["business", "status", "date"], name="prun_biz_status_date_idx"),
+            models.Index(fields=["business", "-date"], name="prun_biz_recent_idx"),
+        ]
 
     def __str__(self):
         return self.run_number
@@ -380,6 +399,9 @@ class ProductionRunMaterial(BusinessOwnedModel):
         ordering = ["raw_material__name"]
         constraints = [
             models.UniqueConstraint(fields=["production_run", "raw_material"], name="unique_shared_material_per_production_run")
+        ]
+        indexes = [
+            models.Index(fields=["business", "raw_material"], name="prunmat_biz_raw_idx"),
         ]
 
     def __str__(self):
@@ -446,6 +468,10 @@ class ProductionBatch(BusinessOwnedModel):
     class Meta:
         ordering = ["-production_date", "-id"]
         constraints = [models.UniqueConstraint(fields=["business", "batch_number"], name="unique_production_batch_per_business")]
+        indexes = [
+            models.Index(fields=["business", "production_date"], name="pbatch_biz_date_idx"),
+            models.Index(fields=["business", "finished_good", "is_reversed", "production_date"], name="pbatch_biz_fg_rev_idx"),
+        ]
 
     def __str__(self):
         return f"{self.batch_number} — {self.finished_good.name}"
@@ -601,6 +627,10 @@ class ProductionCostSnapshot(BusinessOwnedModel):
 
     class Meta:
         ordering = ["-production_date", "-id"]
+        indexes = [
+            models.Index(fields=["finished_good", "-production_date", "-id"], name="pcost_fg_date_idx"),
+            models.Index(fields=["business", "production_date"], name="pcost_biz_date_idx"),
+        ]
 
     def __str__(self):
         return f"{self.finished_good.name} — {self.unit_cost} / unit — {self.production_date}"

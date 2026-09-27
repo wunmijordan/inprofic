@@ -1,9 +1,10 @@
 from decimal import Decimal
+from datetime import datetime, time, timedelta
 from io import BytesIO
 import re
 
 from django.contrib.auth.decorators import login_required
-from django.db.models import OuterRef, Prefetch, Q, Subquery, Sum
+from django.db.models import Count, OuterRef, Prefetch, Q, Subquery, Sum, Window
 from django.http import HttpResponse
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -121,6 +122,12 @@ def _period(request):
 def _audit_dataset(request, *, for_export=False):
     business = request.business
     date_from, date_to = _period(request)
+    current_tz = timezone.get_current_timezone()
+    created_from = timezone.make_aware(datetime.combine(date_from, time.min), current_tz)
+    created_until = timezone.make_aware(
+        datetime.combine(date_to + timedelta(days=1), time.min),
+        current_tz,
+    )
 
     materials = list(RawMaterial.objects.filter(business=business).order_by("name"))
     latest_purchase_cost = (
@@ -211,7 +218,6 @@ def _audit_dataset(request, *, for_export=False):
     production_costs = list(
         ProductionCostSnapshot.objects.filter(business=business, production_date__range=(date_from, date_to))
         .select_related("finished_good", "production_batch")
-        .prefetch_related("lines__raw_material")
         .order_by("-production_date", "-id")
     )
     batches = list(
@@ -229,21 +235,32 @@ def _audit_dataset(request, *, for_export=False):
     )
     measurement_changes = list(
         RawMaterialMeasurementChange.objects.filter(
-            business=business, created_at__date__range=(date_from, date_to)
+            business=business, created_at__gte=created_from, created_at__lt=created_until
         ).select_related("raw_material", "created_by").order_by("-created_at", "-id")
     )
-    deliveries = list(
-        DeliveryAssignment.objects.filter(business=business, created_at__date__range=(date_from, date_to))
+    delivery_qs = (
+        DeliveryAssignment.objects.filter(
+            business=business, created_at__gte=created_from, created_at__lt=created_until
+        )
         .select_related("intake", "driver", "quote", "origin", "provider_account")
-        .prefetch_related("events")
     )
+    if for_export:
+        delivery_qs = delivery_qs.prefetch_related("events")
+    deliveries = list(delivery_qs)
     logs_queryset = AuditLog.objects.filter(
         business=business,
-        created_at__date__range=(date_from, date_to),
+        created_at__gte=created_from,
+        created_at__lt=created_until,
         model_name__in=_EXTERNAL_BUSINESS_ACTIVITY_MODELS,
     ).select_related("created_by")
-    logs_total = logs_queryset.count()
-    logs = list(logs_queryset if for_export else logs_queryset[:250])
+    if for_export:
+        logs = list(logs_queryset)
+        logs_total = len(logs)
+    else:
+        logs = list(
+            logs_queryset.annotate(_filtered_total=Window(expression=Count("pk")))[:250]
+        )
+        logs_total = int(logs[0]._filtered_total) if logs else 0
     logs = [_prepare_audit_log(log) for log in logs]
     audit_queries = list(
         AuditQuery.objects.filter(business=business)

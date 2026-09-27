@@ -507,7 +507,22 @@ class DeliveryAssignment(BusinessOwnedModel):
 
     class Meta:
         ordering = ["-created_at", "-id"]
-        indexes = [models.Index(fields=["business", "status", "created_at"], name="delivery_assignment_idx")]
+        indexes = [
+            models.Index(fields=["business", "status", "created_at"], name="delivery_assignment_idx"),
+            models.Index(fields=["business", "-created_at"], name="delivery_biz_recent_idx"),
+            models.Index(fields=["business", "driver", "status", "-created_at"], name="delivery_driver_state_idx"),
+            models.Index(fields=["business", "batch", "batch_stop_sequence"], name="delivery_batch_stop_idx"),
+            models.Index(
+                fields=["business", "provider_account", "provider_order_id"],
+                condition=~models.Q(provider_order_id=""),
+                name="delivery_provider_order_idx",
+            ),
+            models.Index(
+                fields=["business", "provider_account", "external_reference"],
+                condition=~models.Q(external_reference=""),
+                name="delivery_provider_ref_idx",
+            ),
+        ]
 
 
 class DeliveryEvent(BusinessOwnedModel):
@@ -518,6 +533,9 @@ class DeliveryEvent(BusinessOwnedModel):
 
     class Meta:
         ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(fields=["assignment", "created_at"], name="delivery_event_time_idx"),
+        ]
 
 
 class DeliveryBatch(BusinessOwnedModel):
@@ -543,7 +561,10 @@ class DeliveryBatch(BusinessOwnedModel):
 
     class Meta:
         ordering = ["-created_at", "-id"]
-        indexes = [models.Index(fields=["business", "status", "created_at"], name="delivery_batch_status_idx")]
+        indexes = [
+            models.Index(fields=["business", "status", "created_at"], name="delivery_batch_status_idx"),
+            models.Index(fields=["business", "driver", "status", "-created_at"], name="delbatch_driver_state_idx"),
+        ]
 
 
 class DeliveryMessage(BusinessOwnedModel):
@@ -565,6 +586,9 @@ class DeliveryMessage(BusinessOwnedModel):
 
     class Meta:
         ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(fields=["assignment", "created_at"], name="delivery_msg_time_idx"),
+        ]
 
 
 class DeliveryIssue(BusinessOwnedModel):
@@ -603,7 +627,10 @@ class DeliveryIssue(BusinessOwnedModel):
 
     class Meta:
         ordering = ["-created_at", "-id"]
-        indexes = [models.Index(fields=["business", "status", "created_at"], name="delivery_issue_open_idx")]
+        indexes = [
+            models.Index(fields=["business", "status", "created_at"], name="delivery_issue_open_idx"),
+            models.Index(fields=["assignment", "-created_at"], name="delivery_issue_assign_idx"),
+        ]
 
     def __str__(self):
         return f"{self.get_category_display()} — {self.assignment.intake.public_number}"
@@ -686,6 +713,9 @@ class StorefrontProduct(BusinessOwnedModel):
 
     class Meta:
         ordering = ["finished_good__name"]
+        indexes = [
+            models.Index(fields=["business", "published"], name="sfprod_biz_published_idx"),
+        ]
 
     @property
     def display_name(self):
@@ -843,6 +873,9 @@ class CommerceIntake(BusinessOwnedModel):
 
     class Meta:
         ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["business", "-created_at"], name="intake_biz_recent_idx"),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["business", "public_number"],
@@ -1006,7 +1039,10 @@ class CommerceCheckoutSession(BusinessOwnedModel):
 
     class Meta:
         ordering = ["-created_at", "-id"]
-        indexes = [models.Index(fields=["business", "status", "reservation_expires_at"], name="commerce_checkout_res_idx")]
+        indexes = [
+            models.Index(fields=["business", "status", "reservation_expires_at"], name="commerce_checkout_res_idx"),
+            models.Index(fields=["business", "-created_at"], name="checkout_biz_recent_idx"),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["business", "source", "idempotency_key"],
@@ -1222,6 +1258,10 @@ class CommercePayment(BusinessOwnedModel):
 
     class Meta:
         ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["business", "status", "-created_at"], name="payment_biz_status_idx"),
+            models.Index(fields=["business", "-created_at"], name="payment_biz_recent_idx"),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["business", "intake", "idempotency_key"],
@@ -1434,7 +1474,10 @@ class CommerceNotification(BusinessOwnedModel):
 
     class Meta:
         ordering = ["-created_at", "-id"]
-        indexes = [models.Index(fields=["business", "created_at"], name="commerce_notice_recent_idx")]
+        indexes = [
+            models.Index(fields=["business", "created_at"], name="commerce_notice_recent_idx"),
+            models.Index(fields=["business", "recipient_user", "-created_at"], name="notice_biz_user_time_idx"),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["business", "dedupe_key"],
@@ -1503,6 +1546,7 @@ class CommercePushSubscription(TimestampedModel):
         ]
         indexes = [
             models.Index(fields=["business", "active"], name="commerce_push_active_idx"),
+            models.Index(fields=["user", "active"], name="push_user_active_idx"),
         ]
 
 
