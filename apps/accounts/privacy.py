@@ -29,7 +29,7 @@ DEFAULT_PRIVACY_POLICY_HTML = """
 <p>INPROFIC is a business operations platform that connects inventory, procurement, production, sales, point-of-sale, commerce, payments, finance, delivery, reporting, notifications and related workflows. Depending on the context, ITERATID LTD may act as a data controller for platform account, billing, security and service-administration information, and as a data processor or service provider when a business uses INPROFIC to process information about its own staff, customers, suppliers or operations.</p>
 
 <h2>Scope</h2>
-<p>This policy applies to the INPROFIC marketing website, hosted application, tenant workspaces, hosted storefronts, checkout and order-tracking pages, delivery experiences, installed web application features, platform communications and headless API services. A business using INPROFIC may have its own privacy obligations and policy for information it controls. Third-party websites, payment providers, delivery providers and other services linked to or integrated with INPROFIC may also apply their own privacy terms.</p>
+<p>This policy applies to the INPROFIC marketing website, hosted application, Business Workspaces, hosted storefronts, checkout and order-tracking pages, delivery experiences, installed web application features, platform communications and headless API services. A business using INPROFIC may have its own privacy obligations and policy for information it controls. Third-party websites, payment providers, delivery providers and other services linked to or integrated with INPROFIC may also apply their own privacy terms.</p>
 
 <h2>Information we collect</h2>
 <h3>Information you provide</h3>
@@ -53,19 +53,19 @@ DEFAULT_PRIVACY_POLICY_HTML = """
 <h2>How we use information</h2>
 <p>We use information as reasonably necessary to:</p>
 <ul>
-<li>create and administer accounts, workspaces, subscriptions, roles and access controls;</li>
-<li>provide inventory, procurement, production, sales, commerce, finance, delivery, reporting, API and related platform functions;</li>
-<li>process and reconcile orders and payment states, including staff verification where a payment method requires it;</li>
-<li>coordinate delivery assignments, route-aware estimates, live status updates and delivery communications;</li>
-<li>send transactional, security, operational and service notifications;</li>
-<li>provide customer support, diagnose faults, maintain service reliability and improve performance;</li>
-<li>protect the platform, tenants and users against fraud, abuse, unauthorised access and other security threats;</li>
-<li>measure first-party product usage and improve INPROFIC's services; and</li>
-<li>comply with applicable legal obligations and enforce our agreements.</li>
+<li>Create and administer accounts, workspaces, subscriptions, roles and access controls;</li>
+<li>Provide inventory, procurement, production, sales, commerce, finance, delivery, reporting, API and related platform functions;</li>
+<li>Process and reconcile orders and payment states, including staff verification where a payment method requires it;</li>
+<li>Coordinate delivery assignments, route-aware estimates, live status updates and delivery communications;</li>
+<li>Send transactional, security, operational and service notifications;</li>
+<li>Provide customer support, diagnose faults, maintain service reliability and improve performance;</li>
+<li>Protect the Platform, Businesses and Users against fraud, abuse, unauthorised access and other security threats;</li>
+<li>Measure first-party product usage and improve INPROFIC's services; and</li>
+<li>Comply with applicable legal obligations and enforce our agreements.</li>
 </ul>
 
 <h2>Legal bases for processing</h2>
-<p>Where the Nigeria Data Protection Act 2023 or another law requiring a legal basis applies, processing may rely on consent, performance of a contract or steps requested before a contract, compliance with a legal obligation, protection of vital interests, public-interest grounds where applicable, or legitimate interests that do not override the rights and interests of the data subject. The applicable basis depends on the specific processing activity. A tenant business remains responsible for identifying an appropriate basis where it controls the information it places in INPROFIC.</p>
+<p>Where the Nigeria Data Protection Act 2023 or another law requiring a legal basis applies, processing may rely on consent, performance of a contract or steps requested before a contract, compliance with a legal obligation, protection of vital interests, public-interest grounds where applicable, or legitimate interests that do not override the rights and interests of the data subject. The applicable basis depends on the specific processing activity. A Business remains responsible for identifying an appropriate basis where it controls the information it places in INPROFIC.</p>
 
 <h2>Cookies and browser storage</h2>
 <p>INPROFIC uses a limited set of first-party cookies and browser-storage features that support core product functions. These may include:</p>
@@ -80,12 +80,12 @@ DEFAULT_PRIVACY_POLICY_HTML = """
 <h2>How information is shared</h2>
 <p>We may share or make information available only where reasonably necessary for the service, including with:</p>
 <ul>
-<li>authorised users of the relevant business workspace according to configured roles and permissions;</li>
-<li>payment providers selected by the business or customer for payment processing and confirmation;</li>
-<li>delivery providers, in-house riders and authorised dispatch users for delivery fulfilment;</li>
-<li>hosting, storage, email, web-push and other infrastructure providers that help operate INPROFIC;</li>
-<li>professional advisers, regulators, courts or public authorities where disclosure is required or permitted by law; and</li>
-<li>a successor or relevant party in connection with a lawful business restructuring, financing, acquisition or transfer, subject to appropriate protections.</li>
+<li>Authorised users of the relevant business workspace according to configured roles and permissions;</li>
+<li>Payment providers selected by the business or customer for payment processing and confirmation;</li>
+<li>Delivery providers, in-house riders and authorised dispatch users for delivery fulfilment;</li>
+<li>Hosting, storage, email, web-push and other infrastructure providers that help operate INPROFIC;</li>
+<li>Professional advisers, regulators, courts or public authorities where disclosure is required or permitted by law; and</li>
+<li>A successor or relevant party in connection with a lawful business restructuring, financing, acquisition or transfer, subject to appropriate protections.</li>
 </ul>
 <p>We do not sell personal information for monetary consideration.</p>
 
@@ -93,10 +93,10 @@ DEFAULT_PRIVACY_POLICY_HTML = """
 <p>Businesses may use the INPROFIC headless API to present catalogue, checkout, receipt, order and other commerce functions inside their own websites or applications. The operator of that external website remains responsible for its own privacy notice, cookies and customer-facing collection practices. Information sent to INPROFIC through the API is handled under this policy and the applicable service relationship.</p>
 
 <h2>Data retention</h2>
-<p>We retain information for as long as reasonably necessary to provide the service, maintain operational and accounting records, meet contractual or legal requirements, resolve disputes, protect security and enforce agreements. Retention periods can differ by record type and tenant configuration. Where a workspace or record is deleted, some information may remain for a limited period in backups, security records or records that must be retained by law before being deleted or anonymised in the ordinary course.</p>
+<p>We retain information for as long as reasonably necessary to provide the service, maintain operational and accounting records, meet contractual or legal requirements, resolve disputes, protect security and enforce agreements. Retention periods can differ by record type and Business configuration. Where a workspace or record is deleted, some information may remain for a limited period in backups, security records or records that must be retained by law before being deleted or anonymised in the ordinary course.</p>
 
 <h2>Data security</h2>
-<p>INPROFIC uses administrative and technical safeguards appropriate to the service, including role-based access controls, tenant scoping, secure transport in production, CSRF protections, controlled secrets, audit-oriented records and other measures intended to protect confidentiality, integrity and availability. No internet transmission or storage system can be guaranteed to be completely secure.</p>
+<p>INPROFIC uses administrative and technical safeguards appropriate to the service, including role-based access controls, Business scoping, secure transport in production, CSRF protections, controlled secrets, audit-oriented records and other measures intended to protect confidentiality, integrity and availability. No internet transmission or storage system can be guaranteed to be completely secure.</p>
 
 <h2>Your privacy rights</h2>
 <p>Depending on applicable law and our role in relation to the information, you may have rights to request access to personal data, correction of inaccurate data, deletion or erasure in applicable circumstances, restriction or objection to certain processing, withdrawal of consent where consent is the basis, data portability where applicable, and information about the processing of your data. You may also have the right to lodge a complaint with the Nigeria Data Protection Commission or another competent supervisory authority.</p>
