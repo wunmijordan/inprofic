@@ -655,7 +655,7 @@ GET /api/v1/storefronts/{business_slug}/deliveries/{delivery_id}/tracking
 X-INPROFIC-Key: <tenant api key>
 ```
 
-The response contains `order`, `delivery`, `timeline` and `realtime`. The timeline begins with the paid/materialized order confirmation and then contains delivery events. The delivery object includes provider/driver display data, `picked_up_at`, `eta_min_at`, `eta_max_at`, delivered time and the current status. Before pickup, the ETA fields are `null`: INPROFIC deliberately does not count courier travel time from order confirmation. On the first `picked_up`/`out_for_delivery` transition, the ETA window is anchored to that pickup timestamp using the accepted delivery quote's minimum/maximum ETA minutes.
+The response contains `order`, `delivery`, `timeline` and `realtime`. The timeline begins with the paid/materialized order confirmation and then contains delivery events. The delivery object includes provider/driver display data, `picked_up_at`, `eta_min_at`, `eta_max_at`, delivered time and the current status. Before pickup, the ETA fields are `null`: INPROFIC deliberately does not count courier travel time from order confirmation. On the `picked_up` transition, the order is both collected and en route; there is no separate customer-facing `out_for_delivery` state. The ETA window is anchored to pickup using the accepted delivery quote's minimum/maximum ETA minutes plus any preceding-stop allowance in a rider batch.
 
 Example shape:
 
@@ -669,8 +669,8 @@ Example shape:
   },
   "delivery": {
     "id": "...",
-    "status": "out_for_delivery",
-    "status_label": "Out for delivery",
+    "status": "picked_up",
+    "status_label": "Picked up · en route",
     "provider_label": "In-house delivery",
     "driver": "Rider name",
     "picked_up_at": "2026-09-18T13:24:00Z",
@@ -680,8 +680,7 @@ Example shape:
   },
   "timeline": [
     {"status": "confirmed", "status_label": "Order confirmed", "created_at": "..."},
-    {"status": "picked_up", "status_label": "Picked up", "created_at": "..."},
-    {"status": "out_for_delivery", "status_label": "Out for delivery", "created_at": "..."}
+    {"status": "picked_up", "status_label": "Picked up · en route", "created_at": "..."}
   ],
   "realtime": {
     "event_type": "delivery.changed",
@@ -702,6 +701,18 @@ For a headless website, keep `X-INPROFIC-Key` on the website server. The normal 
 Do not expose the API key in browser JavaScript. Also do not treat the realtime wake-up as authoritative state: always re-fetch the tracking snapshot. Direct cross-origin browser WebSockets depend on the deployment's allowed-origin policy, so server-side proxy/SSE/WebSocket relay or polling is the portable headless pattern.
 
 Customer registration is not required for headless integration. A tenant website may keep its own customer profile/session and store INPROFIC checkout/order/delivery UUIDs against that profile. Guest checkout and unguessable hosted tracking remain valid.
+
+### Online fulfilment source, readiness and scheduled delivery
+
+Online is a pricing/sales channel, not a fulfilment source. For made-in-house products the external catalogue can expose `fulfilment_options` containing `stock` (take an available unit from Physical Store stock) and/or `made_to_order`. Both choices keep the Online channel price. Physical Store pricing is never exposed externally. Purchased-for-resale products remain stock-backed online and disappear from that channel when no sellable stock is available. Distribution/Bulk remains a prepared-order channel and does not expose the Physical Store choice.
+
+Submit `fulfilment_source` on each checkout item. Checkout snapshots `estimated_ready_at` per line and sets the checkout/order `estimated_ready_at` to the latest line. A delivery checkout may also submit `requested_delivery_at`; INPROFIC rejects a requested time earlier than the final readiness time plus the accepted delivery quote's upper ETA.
+
+### Headless receipts, delivery conversation and active reporting
+
+Headless payment payloads return `receipt_path` as the API-native receipt resource, with `hosted_receipt_path` retained only for explicit compatibility. Fetch receipt JSON with `GET /api/v1/storefronts/{business_slug}/receipts/{receipt_id}` and render it inside the integrating website.
+
+Active delivery tracking now also returns `messages`, `can_message` and `can_report`. Headless clients can post customer messages to `/deliveries/{delivery_id}/messages` and active-delivery reports to `/deliveries/{delivery_id}/report`. Messages are visible to the assigned rider and authorised delivery/dispatch staff. These actions close when the delivery is no longer active. Before pickup, `eta_from_pickup_min_minutes` / `eta_from_pickup_max_minutes` support copy such as “~20 minutes from pickup time”; after pickup clients should derive a live countdown from `eta_max_at` and re-sync whenever `delivery.changed` is received.
 
 ## Portion and Bulk-Pack contract
 
@@ -750,3 +761,9 @@ Headless websites can submit the same information when creating a checkout:
 ```
 
 The checkout response now includes an `attribution` object. Attribution is descriptive metadata only: it does not change pricing, payment verification, stock reservation, order materialization or delivery behavior.
+
+### Privacy Policy presentation
+
+Headless catalogue responses include a `privacy_policy` descriptor with `presentation: "modal"` and an endpoint at `/api/v1/storefronts/<slug>/privacy-policy`. Fetch that endpoint only when the customer opens Privacy. The response supplies the current effective date and either safe HTML/Word-rendered content or a PDF document URL. Render it inside the integrating website's own modal with a close control; the payload does not include navigation back to the INPROFIC overview.
+
+Customer delivery tracking is intentionally order-only. Internal rider batch IDs, stop sequence, route grouping and batch wording are not exposed. Customer/rider/dispatch messaging is available only after pickup has started the delivery (`picked_up_at` is set); the server enforces the same rule for hosted and headless message endpoints.

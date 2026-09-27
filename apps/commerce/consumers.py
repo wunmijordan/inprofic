@@ -4,8 +4,8 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from accounts.services import business_has_module, user_has_permission
 from core.models import Business
 
-from .models import DeliveryAssignment, DeliverySettings
-from .realtime import business_notification_group, public_delivery_group, user_notification_group
+from .models import CommerceCheckoutSession, DeliveryAssignment, DeliverySettings
+from .realtime import business_notification_group, public_checkout_group, public_delivery_group, user_notification_group
 
 
 class CommerceNotificationConsumer(AsyncJsonWebsocketConsumer):
@@ -50,6 +50,9 @@ class CommerceNotificationConsumer(AsyncJsonWebsocketConsumer):
             "delivery_id": event.get("delivery_id"),
             "reason": event.get("reason", "status"),
         })
+
+    async def checkout_changed(self, event):
+        await self.send_json({"type": "checkout.changed", "checkout_id": event.get("checkout_id"), "reason": event.get("reason", "payment")})
 
     @staticmethod
     def _resolve_access(user, business_id):
@@ -120,3 +123,35 @@ class StorefrontDeliveryConsumer(AsyncJsonWebsocketConsumer):
         if assignment is None:
             return None
         return business.pk, assignment.public_id
+
+
+class StorefrontCheckoutConsumer(AsyncJsonWebsocketConsumer):
+    """Customer-safe wake-up channel for one opaque checkout UUID."""
+
+    async def connect(self):
+        kwargs = self.scope.get("url_route", {}).get("kwargs", {})
+        access = await database_sync_to_async(self._resolve_checkout)(kwargs.get("business_slug"), kwargs.get("checkout_id"))
+        if access is None:
+            await self.close(code=4404)
+            return
+        business_id, checkout_id = access
+        self.checkout_group = public_checkout_group(business_id, checkout_id)
+        await self.channel_layer.group_add(self.checkout_group, self.channel_name)
+        await self.accept()
+        await self.send_json({"type": "checkout.ready", "checkout_id": str(checkout_id)})
+
+    async def disconnect(self, close_code):
+        group = getattr(self, "checkout_group", None)
+        if group:
+            await self.channel_layer.group_discard(group, self.channel_name)
+
+    async def checkout_changed(self, event):
+        await self.send_json({"type": "checkout.changed", "checkout_id": event.get("checkout_id"), "reason": event.get("reason", "payment")})
+
+    @staticmethod
+    def _resolve_checkout(business_slug, checkout_id):
+        business = Business.objects.filter(slug=business_slug).first()
+        if business is None or not business_has_module(business, "commerce"):
+            return None
+        checkout = CommerceCheckoutSession.raw_objects.filter(business=business, public_id=checkout_id).only("public_id").first()
+        return (business.pk, checkout.public_id) if checkout else None

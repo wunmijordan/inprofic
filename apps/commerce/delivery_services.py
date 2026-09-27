@@ -26,9 +26,11 @@ from .models import (
     CommerceNotification,
     DeliveryArea,
     DeliveryAssignment,
+    DeliveryBatch,
     DeliveryDriver,
     DeliveryEvent,
     DeliveryIssue,
+    DeliveryMessage,
     DeliveryOrigin,
     DeliveryProviderAccount,
     DeliveryQuote,
@@ -633,9 +635,10 @@ def serialize_delivery_tracking(assignment):
     pickup_at = assignment.picked_up_at
     eta_min_at = None
     eta_max_at = None
+    stop_minutes = int(assignment.batch_stop_minutes or 0)
     if pickup_at and quote:
-        eta_min_at = pickup_at + timezone.timedelta(minutes=quote.eta_min_minutes)
-        eta_max_at = pickup_at + timezone.timedelta(minutes=quote.eta_max_minutes)
+        eta_min_at = pickup_at + timezone.timedelta(minutes=quote.eta_min_minutes + stop_minutes)
+        eta_max_at = pickup_at + timezone.timedelta(minutes=quote.eta_max_minutes + stop_minutes)
 
     intake = assignment.intake
     timeline = [{
@@ -646,11 +649,21 @@ def serialize_delivery_tracking(assignment):
         "created_at": intake.created_at.isoformat(),
     }]
     for event in assignment.events.all():
+        note = redact_disabled_integrations(event.note or "")
+        # Batch/routing is an internal dispatch concern. Customer tracking only
+        # describes this order, even when dispatch grouped it with other jobs.
+        if (event.metadata or {}).get("batch_id"):
+            if event.status == DeliveryAssignment.STATUS_PICKED_UP:
+                note = "Your order was picked up and the rider is en route."
+            elif event.status == DeliveryAssignment.STATUS_ASSIGNED:
+                note = "A rider is assigned and preparing to collect your order."
+            else:
+                note = "Your delivery is being prepared for pickup."
         timeline.append({
             "key": f"delivery-event:{event.pk}",
             "status": event.status,
             "status_label": event.get_status_display(),
-            "note": redact_disabled_integrations(event.note or ""),
+            "note": note,
             "created_at": event.created_at.isoformat(),
         })
 
@@ -684,6 +697,8 @@ def serialize_delivery_tracking(assignment):
             "driver": assignment.driver.name if assignment.driver_id else None,
             "driver_vehicle": assignment.driver.vehicle_type if assignment.driver_id else "",
             "picked_up_at": pickup_at.isoformat() if pickup_at else None,
+            "eta_from_pickup_min_minutes": (quote.eta_min_minutes + stop_minutes) if quote else None,
+            "eta_from_pickup_max_minutes": (quote.eta_max_minutes + stop_minutes) if quote else None,
             "eta_min_at": eta_min_at.isoformat() if eta_min_at else None,
             "eta_max_at": eta_max_at.isoformat() if eta_max_at else None,
             "delivered_at": assignment.delivered_at.isoformat() if assignment.delivered_at else None,
@@ -695,6 +710,25 @@ def serialize_delivery_tracking(assignment):
                 else (assignment.external_tracking_url or None)
             ),
             "updated_at": assignment.updated_at.isoformat(),
+        },
+        "messages": [
+            {
+                "id": row.pk,
+                "sender": row.sender_type,
+                "body": row.body,
+                "created_at": row.created_at.isoformat(),
+            }
+            for row in assignment.messages.all()
+        ] if assignment.picked_up_at else [],
+        "can_message": bool(assignment.picked_up_at) and assignment.status in {
+            DeliveryAssignment.STATUS_PICKED_UP,
+            DeliveryAssignment.STATUS_FAILED,
+        },
+        "can_report": assignment.status in {
+            DeliveryAssignment.STATUS_ASSIGNED,
+            DeliveryAssignment.STATUS_READY,
+            DeliveryAssignment.STATUS_PICKED_UP,
+            DeliveryAssignment.STATUS_FAILED,
         },
         "timeline": timeline,
     }
@@ -814,7 +848,7 @@ def ensure_delivery_assignment(intake, *, actor=None):
         origin=quote.origin,
         provider=quote.provider,
         provider_account=quote.provider_account,
-        status=DeliveryAssignment.STATUS_PENDING,
+        status=(DeliveryAssignment.STATUS_READY if intake.fulfilment_state == intake.FULFIL_COMPLETE else DeliveryAssignment.STATUS_PENDING),
         # Customer ETA begins when the parcel is actually picked up, not when
         # the paid order first creates a dispatch assignment.
         eta_at=None,
@@ -875,8 +909,52 @@ def ensure_delivery_assignment(intake, *, actor=None):
 
 
 @transaction.atomic
+def mark_delivery_ready_if_fulfilled(intake, *, actor=None):
+    """Promote an existing dispatch assignment once every commerce line is ready."""
+    if intake.fulfilment_state != intake.FULFIL_COMPLETE:
+        return None
+    assignment = (
+        DeliveryAssignment.raw_objects.select_for_update()
+        .select_related("driver__user", "business", "intake")
+        .filter(business=intake.business, intake=intake)
+        .first()
+    )
+    if not assignment or assignment.status not in {
+        DeliveryAssignment.STATUS_PENDING,
+        DeliveryAssignment.STATUS_ASSIGNED,
+    }:
+        return assignment
+    previous = assignment.status
+    assignment.status = DeliveryAssignment.STATUS_READY
+    assignment.status_note = "Every order line is ready for pickup."
+    assignment.save(update_fields=["status", "status_note", "updated_at"])
+    DeliveryEvent.raw_objects.create(
+        business=assignment.business,
+        created_by=actor,
+        assignment=assignment,
+        status=DeliveryAssignment.STATUS_READY,
+        note=assignment.status_note,
+        metadata={"previous_status": previous, "reason": "fulfilment_complete"},
+    )
+    audit(
+        assignment.business, actor, "delivery_ready", assignment,
+        f"Delivery {assignment.public_id} is ready for pickup",
+        {"previous_status": previous, "status": DeliveryAssignment.STATUS_READY},
+    )
+    rider_user_id = assignment.driver.user_id if assignment.driver_id and assignment.driver else None
+    transaction.on_commit(
+        lambda business_id=assignment.business_id, delivery_id=assignment.public_id, rider_id=rider_user_id: publish_delivery_changed(
+            business_id, delivery_id, reason="ready", rider_user_ids=(rider_id,) if rider_id else ()
+        )
+    )
+    return assignment
+
+
+@transaction.atomic
 def update_delivery_status(*, assignment, status, actor=None, note="", driver=None, clear_driver=False,
                            proof_note="", proof_reference="", external_reference="", external_tracking_url=""):
+    if status == DeliveryAssignment.STATUS_OUT_FOR_DELIVERY:
+        status = DeliveryAssignment.STATUS_PICKED_UP
     allowed = {value for value, _ in DeliveryAssignment.STATUS_CHOICES}
     if status not in allowed:
         raise ValidationError("Choose a valid delivery status.")
@@ -890,8 +968,7 @@ def update_delivery_status(*, assignment, status, actor=None, note="", driver=No
         DeliveryAssignment.STATUS_PENDING: {DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_READY, DeliveryAssignment.STATUS_CANCELLED},
         DeliveryAssignment.STATUS_ASSIGNED: {DeliveryAssignment.STATUS_READY, DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_CANCELLED},
         DeliveryAssignment.STATUS_READY: {DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_CANCELLED},
-        DeliveryAssignment.STATUS_PICKED_UP: {DeliveryAssignment.STATUS_OUT_FOR_DELIVERY, DeliveryAssignment.STATUS_FAILED, DeliveryAssignment.STATUS_RETURNED},
-        DeliveryAssignment.STATUS_OUT_FOR_DELIVERY: {DeliveryAssignment.STATUS_DELIVERED, DeliveryAssignment.STATUS_FAILED, DeliveryAssignment.STATUS_RETURNED},
+        DeliveryAssignment.STATUS_PICKED_UP: {DeliveryAssignment.STATUS_DELIVERED, DeliveryAssignment.STATUS_FAILED, DeliveryAssignment.STATUS_RETURNED},
         DeliveryAssignment.STATUS_FAILED: {DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_RETURNED, DeliveryAssignment.STATUS_CANCELLED},
         DeliveryAssignment.STATUS_RETURNED: set(),
         DeliveryAssignment.STATUS_DELIVERED: set(),
@@ -902,6 +979,8 @@ def update_delivery_status(*, assignment, status, actor=None, note="", driver=No
             f"Delivery cannot move from {assignment.get_status_display()} to {dict(DeliveryAssignment.STATUS_CHOICES).get(status, status)}."
         )
     settings = DeliverySettings.raw_objects.filter(business=assignment.business).first()
+    if status in {DeliveryAssignment.STATUS_READY, DeliveryAssignment.STATUS_PICKED_UP} and assignment.intake.fulfilment_state != assignment.intake.FULFIL_COMPLETE:
+        raise ValidationError("This order is not fully ready yet. Every stock, production or procurement line must be ready before pickup.")
     if not business_has_module(assignment.business, "delivery"):
         raise ValidationError("Delivery is no longer included in this business plan.")
     if driver is not None:
@@ -912,7 +991,7 @@ def update_delivery_status(*, assignment, status, actor=None, note="", driver=No
         if assignment.provider == DeliverySettings.PROVIDER_THIRD_PARTY and driver.provider != DeliveryDriver.PROVIDER_THIRD_PARTY:
             raise ValidationError("Choose a third-party courier for an external-provider delivery.")
     effective_driver = None if clear_driver else (driver if driver is not None else assignment.driver)
-    dispatch_states = {DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_OUT_FOR_DELIVERY}
+    dispatch_states = {DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_PICKED_UP}
     if status in dispatch_states and assignment.provider == DeliverySettings.PROVIDER_INHOUSE and not effective_driver:
         raise ValidationError("Assign an active driver before moving an in-house delivery into dispatch.")
     effective_external_reference = (external_reference or assignment.external_reference or "").strip()
@@ -939,16 +1018,22 @@ def update_delivery_status(*, assignment, status, actor=None, note="", driver=No
     if proof_reference:
         assignment.proof_reference = proof_reference[:255]
     now = timezone.now()
-    if status in {DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_OUT_FOR_DELIVERY} and not assignment.picked_up_at:
+    if status == DeliveryAssignment.STATUS_PICKED_UP and not assignment.picked_up_at:
+        if assignment.batch_id and assignment.batch.status != DeliveryBatch.STATUS_ROUTED:
+            raise ValidationError("Organise and save the batch route before marking these orders as picked up.")
         assignment.picked_up_at = now
         if assignment.quote_id:
-            assignment.eta_at = now + timezone.timedelta(minutes=assignment.quote.eta_max_minutes)
+            assignment.eta_at = now + timezone.timedelta(
+                minutes=assignment.quote.eta_max_minutes + int(assignment.batch_stop_minutes or 0)
+            )
     elif assignment.picked_up_at and assignment.quote_id and status not in {
         DeliveryAssignment.STATUS_DELIVERED, DeliveryAssignment.STATUS_RETURNED, DeliveryAssignment.STATUS_CANCELLED,
     }:
         # Repair legacy assignments whose ETA was previously anchored to order
         # confirmation instead of the actual pickup timestamp.
-        assignment.eta_at = assignment.picked_up_at + timezone.timedelta(minutes=assignment.quote.eta_max_minutes)
+        assignment.eta_at = assignment.picked_up_at + timezone.timedelta(
+            minutes=assignment.quote.eta_max_minutes + int(assignment.batch_stop_minutes or 0)
+        )
     if status == DeliveryAssignment.STATUS_DELIVERED:
         assignment.delivered_at = now
     assignment.save()
@@ -966,6 +1051,13 @@ def update_delivery_status(*, assignment, status, actor=None, note="", driver=No
         f"Delivery {assignment.public_id} changed from {previous} to {status}",
         {"previous_status": previous, "status": status, "note": assignment.status_note},
     )
+    if status in {DeliveryAssignment.STATUS_DELIVERED, DeliveryAssignment.STATUS_RETURNED, DeliveryAssignment.STATUS_CANCELLED} and assignment.batch_id:
+        terminal = {DeliveryAssignment.STATUS_DELIVERED, DeliveryAssignment.STATUS_RETURNED, DeliveryAssignment.STATUS_CANCELLED}
+        remaining = DeliveryAssignment.raw_objects.filter(business=assignment.business, batch_id=assignment.batch_id).exclude(status__in=terminal).exists()
+        if not remaining:
+            DeliveryBatch.raw_objects.filter(pk=assignment.batch_id, business=assignment.business).update(
+                status=DeliveryBatch.STATUS_COMPLETED, completed_at=now, updated_at=now
+            )
     if assignment.driver_id and assignment.driver_id != previous_driver_id:
         assignment = DeliveryAssignment.raw_objects.select_related("driver__user", "intake", "quote").get(pk=assignment.pk)
         _notify_rider_assignment(assignment, previous_driver_id=previous_driver_id)
@@ -1155,3 +1247,160 @@ def raise_delivery_issue(*, assignment, driver, category, details, actor=None):
         f"issue:{issue.pk}",
     )
     return issue
+
+@transaction.atomic
+def create_delivery_batch(*, business, driver, assignments, actor=None):
+    if driver.business_id != business.pk or not driver.active or driver.provider != DeliveryDriver.PROVIDER_INHOUSE:
+        raise ValidationError("Choose an active in-house rider from this business.")
+    assignment_ids = [row.pk for row in assignments]
+    if len(set(assignment_ids)) < 2:
+        raise ValidationError("Select at least two customer deliveries for a batch pickup.")
+    locked = list(
+        DeliveryAssignment.raw_objects.select_for_update().select_related("intake", "driver")
+        .filter(business=business, pk__in=assignment_ids)
+    )
+    if len(locked) != len(set(assignment_ids)):
+        raise ValidationError("One or more selected deliveries are unavailable.")
+    allowed = {DeliveryAssignment.STATUS_PENDING, DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_READY}
+    for assignment in locked:
+        if assignment.status not in allowed or assignment.picked_up_at or assignment.batch_id:
+            raise ValidationError(f"{assignment.intake.public_number} cannot be added to a new batch.")
+        if assignment.provider != DeliverySettings.PROVIDER_INHOUSE:
+            raise ValidationError("Only in-house deliveries can be combined into a rider batch.")
+    batch = DeliveryBatch.raw_objects.create(business=business, created_by=actor, driver=driver)
+    for sequence, assignment in enumerate(sorted(locked, key=lambda row: row.created_at), 1):
+        assignment.batch = batch
+        assignment.batch_stop_sequence = sequence
+        assignment.batch_stop_minutes = 0
+        assignment.driver = driver
+        if assignment.status == DeliveryAssignment.STATUS_PENDING:
+            assignment.status = DeliveryAssignment.STATUS_ASSIGNED
+        assignment.save(update_fields=["batch", "batch_stop_sequence", "batch_stop_minutes", "driver", "status", "updated_at"])
+        DeliveryEvent.raw_objects.create(
+            business=business, created_by=actor, assignment=assignment, status=assignment.status,
+            note="Rider assigned; delivery is being prepared for pickup.",
+            metadata={"batch_id": str(batch.public_id), "sequence": sequence},
+        )
+        transaction.on_commit(
+            lambda business_id=business.pk, delivery_id=assignment.public_id, rider_id=driver.user_id: publish_delivery_changed(
+                business_id, delivery_id, reason="batch", rider_user_ids=(rider_id,) if rider_id else ()
+            )
+        )
+    audit(business, actor, "delivery_batch_create", batch, f"Created rider batch with {len(locked)} deliveries", {"driver_id": driver.pk})
+    return batch
+
+
+@transaction.atomic
+def organise_delivery_batch(*, batch, stops, actor=None, rider=None):
+    batch = DeliveryBatch.raw_objects.select_for_update().select_related("driver").get(pk=batch.pk, business=batch.business)
+    if batch.status not in {DeliveryBatch.STATUS_DRAFT, DeliveryBatch.STATUS_ROUTED}:
+        raise ValidationError("Only a batch awaiting pickup can have its route changed.")
+    if rider is not None and batch.driver_id != rider.pk:
+        raise ValidationError("This delivery batch belongs to another rider.")
+    assignments = {
+        str(row.public_id): row
+        for row in DeliveryAssignment.raw_objects.select_for_update().select_related("intake", "quote")
+        .filter(business=batch.business, batch=batch)
+    }
+    if len(stops) != len(assignments):
+        raise ValidationError("Route every delivery in this batch before pickup.")
+    seen = set()
+    for sequence, stop in enumerate(stops, 1):
+        public_id = str(stop.get("delivery_id") or "")
+        assignment = assignments.get(public_id)
+        if not assignment or public_id in seen:
+            raise ValidationError("The submitted route contains an invalid or duplicate delivery.")
+        seen.add(public_id)
+        try:
+            stop_minutes = max(0, int(stop.get("stop_minutes") or 0))
+        except (TypeError, ValueError) as exc:
+            raise ValidationError("Enter a valid stop-gap time for every delivery.") from exc
+        assignment.batch_stop_sequence = sequence
+        # This is cumulative time introduced by prior stops, not this stop's own service time.
+        assignment.batch_stop_minutes = stop_minutes
+        assignment.save(update_fields=["batch_stop_sequence", "batch_stop_minutes", "updated_at"])
+    batch.status = DeliveryBatch.STATUS_ROUTED
+    batch.routed_at = timezone.now()
+    batch.save(update_fields=["status", "routed_at", "updated_at"])
+    audit(batch.business, actor, "delivery_batch_route", batch, "Delivery batch route organised", {"stops": stops})
+    for assignment in assignments.values():
+        transaction.on_commit(
+            lambda business_id=batch.business_id, delivery_id=assignment.public_id, rider_id=batch.driver.user_id: publish_delivery_changed(
+                business_id, delivery_id, reason="batch-route", rider_user_ids=(rider_id,) if rider_id else ()
+            )
+        )
+    return batch
+
+
+@transaction.atomic
+def pickup_delivery_batch(*, batch, actor=None, rider=None):
+    batch = DeliveryBatch.raw_objects.select_for_update().select_related("driver").get(pk=batch.pk, business=batch.business)
+    if batch.status != DeliveryBatch.STATUS_ROUTED:
+        raise ValidationError("Organise the route before picking up this delivery batch.")
+    if rider is not None and batch.driver_id != rider.pk:
+        raise ValidationError("This delivery batch belongs to another rider.")
+    assignments = list(
+        DeliveryAssignment.raw_objects.select_for_update().select_related("driver", "quote", "intake")
+        .filter(business=batch.business, batch=batch).order_by("batch_stop_sequence", "id")
+    )
+    not_ready = [
+        assignment.intake.public_number or str(assignment.intake.public_id)[:8].upper()
+        for assignment in assignments
+        if assignment.intake.fulfilment_state != assignment.intake.FULFIL_COMPLETE
+    ]
+    if not_ready:
+        raise ValidationError(
+            "Every order in the batch must be fully ready before pickup. Waiting: " + ", ".join(not_ready)
+        )
+    now = timezone.now()
+    for assignment in assignments:
+        assignment.status = DeliveryAssignment.STATUS_PICKED_UP
+        assignment.picked_up_at = assignment.picked_up_at or now
+        if assignment.quote_id:
+            assignment.eta_at = assignment.picked_up_at + timezone.timedelta(
+                minutes=assignment.quote.eta_max_minutes + int(assignment.batch_stop_minutes or 0)
+            )
+        assignment.save(update_fields=["status", "picked_up_at", "eta_at", "updated_at"])
+        DeliveryEvent.raw_objects.create(
+            business=batch.business, created_by=actor, assignment=assignment,
+            status=DeliveryAssignment.STATUS_PICKED_UP,
+            note="Order picked up · rider is en route.",
+            metadata={"batch_id": str(batch.public_id), "sequence": assignment.batch_stop_sequence},
+        )
+        transaction.on_commit(
+            lambda business_id=batch.business_id, delivery_id=assignment.public_id, rider_id=batch.driver.user_id: publish_delivery_changed(
+                business_id, delivery_id, reason="batch-pickup", rider_user_ids=(rider_id,) if rider_id else ()
+            )
+        )
+    batch.status = DeliveryBatch.STATUS_PICKED_UP
+    batch.picked_up_at = now
+    batch.save(update_fields=["status", "picked_up_at", "updated_at"])
+    audit(batch.business, actor, "delivery_batch_pickup", batch, "Delivery batch picked up and en route", {"deliveries": len(assignments)})
+    return batch
+
+
+@transaction.atomic
+def add_delivery_message(*, assignment, sender_type, body, actor=None):
+    assignment = DeliveryAssignment.raw_objects.select_for_update().select_related("driver__user", "intake").get(
+        pk=assignment.pk, business=assignment.business
+    )
+    active_after_pickup = {
+        DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_FAILED,
+    }
+    if not assignment.picked_up_at or assignment.status not in active_after_pickup:
+        raise ValidationError("Delivery messaging becomes available after pickup and closes when the delivery ends.")
+    body = (body or "").strip()
+    if not body:
+        raise ValidationError("Enter a message.")
+    if len(body) > 500:
+        raise ValidationError("Delivery messages can be up to 500 characters.")
+    message = DeliveryMessage.raw_objects.create(
+        business=assignment.business, created_by=actor, assignment=assignment,
+        sender_type=sender_type, sender_user=actor, body=body,
+    )
+    transaction.on_commit(
+        lambda business_id=assignment.business_id, delivery_id=assignment.public_id, rider_id=(assignment.driver.user_id if assignment.driver_id and assignment.driver else None): publish_delivery_changed(
+            business_id, delivery_id, reason="message", rider_user_ids=(rider_id,) if rider_id else ()
+        )
+    )
+    return message

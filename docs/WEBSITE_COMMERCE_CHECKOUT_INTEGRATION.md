@@ -200,12 +200,15 @@ GET  /api/v1/storefronts/{business_slug}/products
 POST /api/v1/storefronts/{business_slug}/delivery/location
 POST /api/v1/storefronts/{business_slug}/delivery/quote
 GET  /api/v1/storefronts/{business_slug}/deliveries/{delivery_id}/tracking
+POST /api/v1/storefronts/{business_slug}/deliveries/{delivery_id}/messages
+POST /api/v1/storefronts/{business_slug}/deliveries/{delivery_id}/report
 GET  /api/v1/storefronts/{business_slug}/payment-methods
 POST /api/v1/storefronts/{business_slug}/checkouts
 GET  /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}
 POST /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}/payments
 GET  /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}/payments/current
 POST /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}/payments/current/claim
+GET  /api/v1/storefronts/{business_slug}/receipts/{receipt_id}
 GET  /api/v1/storefronts/{business_slug}/orders/{order_id}
 POST /api/v1/storefronts/{business_slug}/orders/{order_id}/preorder
 ```
@@ -240,6 +243,18 @@ Idempotency-Key: <logical-operation-key>
 ```
 
 Use decimal strings for quantity. Do not calculate financial truth with browser floats.
+
+### Online fulfilment choice and readiness
+
+Treat `online` as the price channel and `fulfilment_source` as a separate per-line choice. Render only the `fulfilment_options` returned by INPROFIC. `stock` means the customer is choosing currently available Physical Store stock while still paying the Online price; `made_to_order` uses the configured readiness estimate. Do not expose Physical Store prices. If a stock-backed product has no stock and no made-to-order option, the Online mode is absent from that product. Bulk/Distribution does not expose the Physical Store choice.
+
+Checkout responses include line-level and overall `estimated_ready_at`. For delivery, optionally send `requested_delivery_at`; it must not be earlier than the whole-order readiness plus the accepted delivery ETA.
+
+### Receipt and delivery UI stay on the website
+
+For headless payment responses, use the API-native `receipt_path`/`receipt_api_path` and render the receipt JSON on the customer website. `hosted_receipt_path` is compatibility-only and should not be used for the normal headless receipt button.
+
+Delivery tracking exposes only that customer order; internal rider batching, route grouping and batch stop identifiers are never part of the customer tracking contract. Messaging becomes available only after `picked_up_at` is set (pickup also means en route), while active-delivery reporting follows its own availability flag. The website backend should proxy allowed customer posts to the message/report endpoints with `X-INPROFIC-Key`. `picked_up` means both picked up and en route; no separate `out_for_delivery` step is required. Before pickup show the returned “from pickup” ETA; after pickup run a local countdown against `eta_max_at`, resynchronising from the authoritative tracking endpoint on realtime updates or fallback polling.
 
 ## 4. Catalogue
 
@@ -1105,6 +1120,7 @@ The browser calls the website’s own API routes; the website server attaches th
 Read/status and payment routes for already-existing historical intake UUIDs remain available during migration:
 
 ```text
+GET  /api/v1/storefronts/{business_slug}/receipts/{receipt_id}
 GET  /api/v1/storefronts/{business_slug}/orders/{order_id}
 POST /api/v1/storefronts/{business_slug}/orders/{order_id}/payments/initiate
 GET  /api/v1/storefronts/{business_slug}/orders/{order_id}/payments/current
@@ -1266,3 +1282,8 @@ Add this optional object to `POST /api/v1/storefronts/{business_slug}/checkouts`
 For INPROFIC-hosted storefront and Order Now links, the same feature is available through query parameters such as `?source=whatsapp&campaign=launch-2026` or standard `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, and `utm_term`. The Commerce workspace includes a tracked-link/QR generator for businesses that want printable or shareable campaign links.
 
 Attribution must never be used as an authoritative financial or fulfilment field. Existing idempotency, tenant validation, price validation, payment verification and delivery rules remain unchanged.
+
+
+### Privacy Policy in headless websites
+
+The products response includes `privacy_policy.presentation = "modal"` and a `privacy_policy.endpoint`. Fetch that endpoint only when the customer opens Privacy. Render the returned HTML/Word snapshot, or the returned PDF `document_url`, inside the website's own modal with an explicit close control. The headless privacy payload intentionally contains no link back to the INPROFIC marketing overview. This keeps the customer inside the integrating website and avoids an extra privacy-policy lookup during normal catalogue requests.

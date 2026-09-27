@@ -990,13 +990,25 @@ def order_complete(request, pk):
                     # the point at which the originating commerce intake is truly
                     # fulfilled.
                     from commerce.models import CommerceIntake
-                    CommerceIntake.raw_objects.filter(business=order.business).filter(
-                        Q(accepted_order=order) | Q(split_order=order)
-                    ).update(
+                    commerce_intakes = list(
+                        CommerceIntake.raw_objects.filter(business=order.business).filter(
+                            Q(accepted_order=order) | Q(split_order=order)
+                        )
+                    )
+                    CommerceIntake.raw_objects.filter(pk__in=[row.pk for row in commerce_intakes]).update(
                         status=CommerceIntake.STATUS_FULFILLED,
                         fulfilment_state=CommerceIntake.FULFIL_COMPLETE,
                         rejection_reason="",
                     )
+                    # Delivery is gated by the complete mixed-order readiness state.
+                    # Production completion is the final readiness event for these
+                    # made-to-order lines, so promote any existing assignment now.
+                    from commerce.delivery_services import mark_delivery_ready_if_fulfilled
+                    for commerce_intake in commerce_intakes:
+                        commerce_intake.status = CommerceIntake.STATUS_FULFILLED
+                        commerce_intake.fulfilment_state = CommerceIntake.FULFIL_COMPLETE
+                        commerce_intake.rejection_reason = ""
+                        mark_delivery_ready_if_fulfilled(commerce_intake, actor=request.user)
 
                 audit_allocations = []
                 for item, form, offcut_formset in completion_forms:

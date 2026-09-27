@@ -1,7 +1,8 @@
 from django import forms
+import re
 from django.contrib.auth import password_validation
 from core.models import Business
-from .models import CustomUser, Role, RoleModulePermission, UserBusiness, UserModulePermission, SubscriptionPlan, SubscriptionPromotion, MarketingPromoCampaign, SubscriptionPolicySettings, PlatformMailTemplate, BusinessTrialIdentity, MarketingTrustSettings, MarketingTrustLogo
+from .models import CustomUser, Role, RoleModulePermission, UserBusiness, UserModulePermission, SubscriptionPlan, SubscriptionPromotion, MarketingPromoCampaign, SubscriptionPolicySettings, PlatformMailTemplate, BusinessTrialIdentity, MarketingTrustSettings, MarketingTrustLogo, PlatformPrivacyPolicy
 from .services import ensure_permissions, is_business_admin, seed_business_roles
 
 CLS = "w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 focus:border-[#8f172d]"
@@ -14,6 +15,14 @@ def _trial_phone_key(value):
 
 def _trial_name_key(value):
     return " ".join((value or "").strip().casefold().split())
+
+
+def _set_static_model_choices(field, choices):
+    """Render a ModelChoiceField from already-loaded rows without changing POST validation."""
+    if choices is None:
+        return
+    empty = [] if field.empty_label is None else [("", field.empty_label)]
+    field.choices = [*empty, *choices]
 
 
 class BusinessSignupForm(forms.Form):
@@ -269,9 +278,11 @@ class SubscriptionPromotionForm(forms.ModelForm):
             "ends_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, plan_choices=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["plan"].queryset = SubscriptionPlan.objects.filter(active=True).order_by("monthly_price", "id")
+        if not self.is_bound:
+            _set_static_model_choices(self.fields["plan"], plan_choices)
         self.fields["plan"].required = False
         self.fields["plan"].help_text = "Choose one plan, or enable All plans above."
         self.fields["applies_to_all_plans"].label = "Apply this promotion to all plans"
@@ -411,6 +422,62 @@ class MarketingTrustLogoForm(forms.ModelForm):
         return upload
 
 
+class PlatformPrivacyPolicyForm(forms.ModelForm):
+    replacement_file = forms.FileField(
+        required=False,
+        label="Upload replacement policy",
+        help_text=(
+            "Optional HTML, TXT, Markdown, PDF or Word (.docx) file, up to 10 MB. "
+            "PDF and Word keep document mode; HTML/TXT/Markdown publish as the editable web policy."
+        ),
+        widget=forms.ClearableFileInput(attrs={
+            "class": CLS,
+            "accept": ".html,.htm,.txt,.md,.markdown,.pdf,.docx,text/plain,text/html,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }),
+    )
+
+    class Meta:
+        model = PlatformPrivacyPolicy
+        fields = ["effective_date", "body_html"]
+        labels = {"effective_date": "Effective / updated date", "body_html": "Editable web policy content"}
+        widgets = {
+            "effective_date": forms.DateInput(attrs={"class": CLS, "type": "date"}),
+            "body_html": forms.Textarea(attrs={"class": CLS, "rows": 22, "spellcheck": "true"}),
+        }
+        help_texts = {
+            "body_html": "Used when no PDF/Word document is published. Safe HTML supports headings, paragraphs, lists and emphasis; unsafe active markup is discarded.",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.is_bound and self.instance and not (self.instance.body_html or "").strip():
+            from .privacy import DEFAULT_PRIVACY_POLICY_HTML
+            self.initial["body_html"] = DEFAULT_PRIVACY_POLICY_HTML
+
+    def clean(self):
+        cleaned = super().clean()
+        from .privacy import privacy_upload_to_content, sanitize_privacy_html
+        upload = cleaned.get("replacement_file")
+        if upload:
+            try:
+                content = privacy_upload_to_content(upload)
+            except ValueError as exc:
+                self.add_error("replacement_file", str(exc))
+            else:
+                cleaned["replacement_source_filename"] = content["filename"]
+                cleaned["replacement_render_mode"] = content["render_mode"]
+                cleaned["replacement_rendered_document_html"] = content.get("rendered_document_html", "")
+                if content.get("body_html") is not None:
+                    cleaned["body_html"] = content["body_html"]
+        else:
+            cleaned["body_html"] = sanitize_privacy_html(cleaned.get("body_html") or "")
+            cleaned["replacement_render_mode"] = PlatformPrivacyPolicy.RENDER_HTML
+            cleaned["replacement_rendered_document_html"] = ""
+            if not re.sub(r"<[^>]+>", "", cleaned.get("body_html") or "").strip():
+                self.add_error("body_html", "Add privacy-policy content or upload a replacement file.")
+        return cleaned
+
+
 class AddSubscriptionServiceForm(forms.Form):
     business_name = forms.CharField(max_length=120, widget=forms.TextInput(attrs={"class": CLS}))
     service_type = forms.ChoiceField(choices=Business.VERTICAL_CHOICES, widget=forms.Select(attrs={"class": CLS}))
@@ -421,11 +488,14 @@ class FounderGrantForm(forms.Form):
     plan = forms.ModelChoiceField(queryset=SubscriptionPlan.objects.none(), widget=forms.Select(attrs={"class": CLS}))
     note = forms.CharField(required=False, max_length=255, widget=forms.TextInput(attrs={"class": CLS}))
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, business_choices=None, plan_choices=None, **kwargs):
         from .models import SubscriptionPlan
         super().__init__(*args, **kwargs)
         self.fields["business"].queryset = Business.objects.order_by("name")
         self.fields["plan"].queryset = SubscriptionPlan.objects.filter(active=True).order_by("monthly_price", "id")
+        if not self.is_bound:
+            _set_static_model_choices(self.fields["business"], business_choices)
+            _set_static_model_choices(self.fields["plan"], plan_choices)
 
 
 class SubscriptionTrialPolicyForm(forms.ModelForm):
@@ -458,11 +528,13 @@ class FounderTrialGrantForm(forms.Form):
         widget=forms.TextInput(attrs={"class": CLS, "placeholder": "Optional founder note"}),
     )
 
-    def __init__(self, *args, default_days=30, **kwargs):
+    def __init__(self, *args, default_days=30, business_choices=None, plan_choices=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["business"].queryset = Business.objects.order_by("name")
         self.fields["plan"].queryset = SubscriptionPlan.objects.filter(active=True).order_by("monthly_price", "id")
         if not self.is_bound:
+            _set_static_model_choices(self.fields["business"], business_choices)
+            _set_static_model_choices(self.fields["plan"], plan_choices)
             self.fields["days"].initial = max(1, int(default_days or 30))
 
     def clean_plan(self):
@@ -498,9 +570,11 @@ class BusinessRestoreForm(forms.Form):
         widget=forms.TextInput(attrs={"class": CLS, "autocomplete": "off"}),
     )
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, business_choices=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["target_business"].queryset = Business.objects.order_by("name", "id")
+        if not self.is_bound:
+            _set_static_model_choices(self.fields["target_business"], business_choices)
 
     def clean_database(self):
         uploaded = self.cleaned_data["database"]

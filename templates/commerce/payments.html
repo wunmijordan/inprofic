@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% load core_extras %}{% block content %}
-<div class="max-w-6xl">
+<div id="commerce-payment-live-root" class="max-w-6xl">
   <div class="flex flex-wrap items-end justify-between gap-3 mb-5">
     <div><h1 class="text-2xl font-semibold font-display text-[#8f172d]">Commerce payments</h1><p class="text-sm text-stone-500">Payment confirmations, customer transfer claims, cash receipts and receipt history.</p></div>
     <div class="flex gap-2"><a href="{% url 'finance_dashboard' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">Finance</a>{% if can_manage_payment_settings %}<a href="{% url 'commerce_payment_settings' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">Payment settings</a>{% endif %}</div>
@@ -46,4 +46,24 @@
     {% empty %}<div class="bg-white border border-[#E7DFCC] rounded-xl p-10 text-center text-stone-500">No commerce payment attempts yet.</div>{% endfor %}
   </div>
 </div>
+<script>
+(() => {
+  let refreshing = false;
+  async function refreshPayments() {
+    if (refreshing || document.hidden) return;
+    refreshing = true;
+    try {
+      const response = await fetch(location.href, {headers:{'X-Requested-With':'XMLHttpRequest'}, cache:'no-store'});
+      if (!response.ok) return;
+      const html = await response.text();
+      const parsed = new DOMParser().parseFromString(html, 'text/html');
+      const next = parsed.getElementById('commerce-payment-live-root');
+      const current = document.getElementById('commerce-payment-live-root');
+      if (next && current) current.replaceWith(next);
+    } finally { refreshing = false; }
+  }
+  document.addEventListener('inprofic:commerce-notifications', refreshPayments);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshPayments(); });
+})();
+</script>
 {% endblock %}

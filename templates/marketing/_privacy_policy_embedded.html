@@ -1,0 +1,22 @@
+<section class="mx-auto w-full max-w-4xl" aria-label="Privacy Policy content">
+  <div class="mx-auto max-w-3xl text-center">
+    {% if privacy_effective_date %}<p class="text-xs font-semibold uppercase tracking-[.14em] text-stone-400">Updated {{ privacy_effective_date|date:"F j, Y" }}</p>{% endif %}
+  </div>
+  {% if privacy_render_mode == 'pdf' and privacy_document_url %}
+    <div class="mx-auto mt-4 max-w-4xl overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
+      <object class="policy-pdf" data="{{ privacy_document_url }}" type="application/pdf" aria-label="Privacy Policy PDF">
+        <div class="p-6 text-sm text-stone-600">Your browser could not display the PDF inline. <a class="font-semibold underline underline-offset-2" style="color:var(--brand,#d14900)" href="{{ privacy_document_url }}" target="_blank" rel="noopener">Open the Privacy Policy PDF</a>.</div>
+      </object>
+    </div>
+  {% elif privacy_render_mode == 'docx' and privacy_document_html %}
+    <article class="privacy-modal-copy policy-document mx-auto mt-4 max-w-3xl rounded-2xl border border-stone-200 bg-white px-5 py-6 shadow-sm sm:px-8">{{ privacy_document_html|safe }}</article>
+  {% else %}
+    <article class="privacy-modal-copy mx-auto mt-4 max-w-3xl rounded-2xl border border-stone-200 bg-white px-5 py-6 shadow-sm sm:px-8">
+      {{ privacy_policy_html|safe }}
+      <div class="mt-8 rounded-2xl border border-stone-200 bg-[#faf6ef] p-4">
+        <h2 style="margin-top:0;font-size:1.15rem">Privacy contact</h2>
+        {% if support_email %}<p>For privacy questions or requests, email <a class="font-semibold underline underline-offset-2" style="color:var(--brand,#d14900)" href="mailto:{{ support_email }}">{{ support_email }}</a>.</p>{% else %}<p>For privacy questions or requests, use the current INPROFIC support contact supplied with the service.</p>{% endif %}
+      </div>
+    </article>
+  {% endif %}
+</section>

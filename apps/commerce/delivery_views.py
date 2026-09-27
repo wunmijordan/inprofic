@@ -19,14 +19,17 @@ from core.services import audit
 
 from .delivery_forms import DeliveryAreaForm, DeliveryDriverForm, DeliveryOriginForm, DeliveryProviderAccountForm, DeliveryRateBandForm, DeliverySettingsForm
 from .delivery_services import (
-    create_delivery_quote_options, delivery_area_distance_summary, delivery_available, raise_delivery_issue,
-    resolve_delivery_location, select_delivery_quote, serialize_delivery_quote, serialize_delivery_tracking, switch_delivery_method, update_delivery_status,
+    add_delivery_message, create_delivery_batch, create_delivery_quote_options, delivery_area_distance_summary,
+    delivery_available, organise_delivery_batch, pickup_delivery_batch, raise_delivery_issue,
+    resolve_delivery_location, select_delivery_quote, serialize_delivery_quote, serialize_delivery_tracking,
+    switch_delivery_method, update_delivery_status,
 )
 from .notification_services import queue_commerce_notification
 from .models import (
     CommerceIntegration, CommerceNotification, CommerceSettings,
     DeliveryArea,
     DeliveryAssignment,
+    DeliveryBatch,
     DeliveryDriver,
     DeliveryEvent,
     DeliveryIssue,
@@ -64,7 +67,17 @@ def delivery_dashboard(request):
     settings = _settings(request.business)
     assignments = DeliveryAssignment.objects.select_related(
         "intake", "driver__user", "origin", "quote", "provider_account"
-    ).prefetch_related("events", "issues")[:100]
+    ).prefetch_related("events", "issues", "messages")[:160]
+    terminal_statuses = {
+        DeliveryAssignment.STATUS_DELIVERED, DeliveryAssignment.STATUS_RETURNED,
+        DeliveryAssignment.STATUS_CANCELLED,
+    }
+    active_assignments = [row for row in assignments if row.status not in terminal_statuses]
+    completed_assignments = [row for row in assignments if row.status in terminal_statuses]
+    active_batches = list(
+        DeliveryBatch.objects.select_related("driver__user").prefetch_related("assignments__intake")
+        .exclude(status__in=[DeliveryBatch.STATUS_COMPLETED, DeliveryBatch.STATUS_CANCELLED])[:40]
+    )
     # Materialize setup collections once: the dashboard renders each list and also
     # derives readiness from it, so Python checks avoid duplicate EXISTS queries.
     origins = list(DeliveryOrigin.objects.filter(business=request.business))
@@ -109,7 +122,9 @@ def delivery_dashboard(request):
     public_ready = bool(settings.enabled and base_ready and pricing_ready and provider_ready)
     return render(request, "commerce/delivery/dashboard.html", {
         "delivery_settings": settings,
-        "assignments": assignments,
+        "assignments": active_assignments,
+        "completed_assignments": completed_assignments[:60],
+        "active_batches": active_batches,
         "origins": origins,
         "rate_bands": rate_bands,
         "areas": areas,
@@ -367,6 +382,46 @@ def delivery_assignment_switch(request, public_id):
 
 @login_required
 @require_POST
+def delivery_batch_create_view(request):
+    if not user_has_permission(request.user, request.business, "delivery", "edit"):
+        return render(request, "403.html", status=403)
+    driver = get_object_or_404(
+        DeliveryDriver, pk=request.POST.get("driver_id"), business=request.business,
+        active=True, provider=DeliveryDriver.PROVIDER_INHOUSE,
+    )
+    assignments = list(
+        DeliveryAssignment.objects.filter(
+            business=request.business, public_id__in=request.POST.getlist("delivery_id")
+        ).select_related("intake")
+    )
+    try:
+        batch = create_delivery_batch(
+            business=request.business, driver=driver, assignments=assignments, actor=request.user
+        )
+        messages.success(request, f"Batch {str(batch.public_id)[:8].upper()} created. The rider must organise its route before pickup.")
+    except ValidationError as exc:
+        messages.error(request, _detail(exc))
+    return redirect("delivery_dashboard")
+
+
+@login_required
+@require_POST
+def delivery_staff_message(request, public_id):
+    if not user_has_permission(request.user, request.business, "delivery", "edit"):
+        return render(request, "403.html", status=403)
+    assignment = get_object_or_404(DeliveryAssignment, public_id=public_id, business=request.business)
+    try:
+        add_delivery_message(
+            assignment=assignment, sender_type="staff", body=request.POST.get("body", ""), actor=request.user
+        )
+        messages.success(request, "Delivery message sent.")
+    except ValidationError as exc:
+        messages.error(request, _detail(exc))
+    return redirect("delivery_dashboard")
+
+
+@login_required
+@require_POST
 def delivery_issue_update(request, issue_id):
     if not user_has_permission(request.user, request.business, "delivery", "edit"):
         return render(request, "403.html", status=403)
@@ -421,21 +476,18 @@ def delivery_rider_dashboard(request):
         assignments = list(
             DeliveryAssignment.raw_objects.filter(business=request.business, driver=driver)
             .select_related("intake", "quote", "origin", "business")
-            .prefetch_related("events", "issues", "intake__items__finished_good")
+            .prefetch_related("events", "issues", "messages", "intake__items__finished_good")
             .order_by("status", "-created_at")[:60]
         )
     active_statuses = {
         DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_READY,
-        DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_OUT_FOR_DELIVERY,
+        DeliveryAssignment.STATUS_PICKED_UP,
         DeliveryAssignment.STATUS_FAILED,
     }
     rider_transitions = {
         DeliveryAssignment.STATUS_ASSIGNED: [DeliveryAssignment.STATUS_PICKED_UP],
         DeliveryAssignment.STATUS_READY: [DeliveryAssignment.STATUS_PICKED_UP],
         DeliveryAssignment.STATUS_PICKED_UP: [
-            DeliveryAssignment.STATUS_OUT_FOR_DELIVERY, DeliveryAssignment.STATUS_FAILED, DeliveryAssignment.STATUS_RETURNED,
-        ],
-        DeliveryAssignment.STATUS_OUT_FOR_DELIVERY: [
             DeliveryAssignment.STATUS_DELIVERED, DeliveryAssignment.STATUS_FAILED, DeliveryAssignment.STATUS_RETURNED,
         ],
         DeliveryAssignment.STATUS_FAILED: [DeliveryAssignment.STATUS_RETURNED],
@@ -449,6 +501,12 @@ def delivery_rider_dashboard(request):
         "recent_assignments": [row for row in assignments if row.status not in active_statuses][:20],
         "issue_categories": DeliveryIssue.CATEGORY_CHOICES,
         "delivery_settings": DeliverySettings.raw_objects.filter(business=request.business).first(),
+        "active_batches": list(
+            DeliveryBatch.raw_objects.filter(business=request.business, driver=driver)
+            .exclude(status__in=[DeliveryBatch.STATUS_COMPLETED, DeliveryBatch.STATUS_CANCELLED])
+            .prefetch_related("assignments__intake", "assignments__quote")
+            if driver else []
+        ),
     })
 
 
@@ -465,7 +523,7 @@ def delivery_rider_update(request, public_id):
     )
     requested_status = request.POST.get("status")
     allowed = {
-        DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_OUT_FOR_DELIVERY,
+        DeliveryAssignment.STATUS_PICKED_UP,
         DeliveryAssignment.STATUS_DELIVERED, DeliveryAssignment.STATUS_FAILED, DeliveryAssignment.STATUS_RETURNED,
     }
     if requested_status not in allowed:
@@ -501,6 +559,75 @@ def delivery_rider_issue(request, public_id):
             details=request.POST.get("details", ""), actor=request.user,
         )
         messages.success(request, "Issue sent to dispatch staff.")
+    except ValidationError as exc:
+        messages.error(request, _detail(exc))
+    return redirect("delivery_rider_dashboard")
+
+
+@login_required
+@require_POST
+def delivery_rider_message(request, public_id):
+    if not user_has_permission(request.user, request.business, "delivery_rider", "edit"):
+        return render(request, "403.html", status=403)
+    driver = _rider_profile(request)
+    if not driver:
+        return render(request, "403.html", status=403)
+    assignment = get_object_or_404(
+        DeliveryAssignment.raw_objects, business=request.business, public_id=public_id, driver=driver
+    )
+    try:
+        add_delivery_message(
+            assignment=assignment, sender_type="rider", body=request.POST.get("body", ""), actor=request.user
+        )
+        messages.success(request, "Message sent to the customer and dispatch.")
+    except ValidationError as exc:
+        messages.error(request, _detail(exc))
+    return redirect("delivery_rider_dashboard")
+
+
+@login_required
+@require_POST
+def delivery_rider_batch_route(request, public_id):
+    driver = _rider_profile(request)
+    if not driver:
+        return render(request, "403.html", status=403)
+    batch = get_object_or_404(DeliveryBatch.raw_objects, business=request.business, public_id=public_id, driver=driver)
+    delivery_ids = request.POST.getlist("delivery_id")
+    stop_minutes = request.POST.getlist("stop_minutes")
+    sequences = request.POST.getlist("sequence")
+    if len(delivery_ids) != len(stop_minutes) or len(delivery_ids) != len(sequences):
+        messages.error(request, "Every route stop needs a route position and stop-gap timing value.")
+        return redirect("delivery_rider_dashboard")
+    try:
+        rows = [
+            {"delivery_id": delivery_id, "stop_minutes": minutes, "sequence": int(sequence)}
+            for delivery_id, minutes, sequence in zip(delivery_ids, stop_minutes, sequences)
+        ]
+        rows.sort(key=lambda row: row["sequence"])
+        if len({row["sequence"] for row in rows}) != len(rows):
+            raise ValidationError("Use a different route position for every stop.")
+        organise_delivery_batch(
+            batch=batch,
+            stops=[{"delivery_id": row["delivery_id"], "stop_minutes": row["stop_minutes"]} for row in rows],
+            actor=request.user,
+            rider=driver,
+        )
+        messages.success(request, "Batch route saved. Pickup can now start the ETA countdowns.")
+    except ValidationError as exc:
+        messages.error(request, _detail(exc))
+    return redirect("delivery_rider_dashboard")
+
+
+@login_required
+@require_POST
+def delivery_rider_batch_pickup(request, public_id):
+    driver = _rider_profile(request)
+    if not driver:
+        return render(request, "403.html", status=403)
+    batch = get_object_or_404(DeliveryBatch.raw_objects, business=request.business, public_id=public_id, driver=driver)
+    try:
+        pickup_delivery_batch(batch=batch, actor=request.user, rider=driver)
+        messages.success(request, "Batch picked up. Every customer ETA is now counting down from pickup.")
     except ValidationError as exc:
         messages.error(request, _detail(exc))
     return redirect("delivery_rider_dashboard")
@@ -629,9 +756,54 @@ def api_delivery_quote(request, business_slug):
 
 def _tracking_assignment(business, public_id):
     return get_object_or_404(
-        DeliveryAssignment.raw_objects.select_related("intake", "driver", "origin", "quote").prefetch_related("events"),
+        DeliveryAssignment.raw_objects.select_related("intake", "driver", "origin", "quote", "provider_account").prefetch_related("events"),
         business=business, public_id=public_id,
     )
+
+
+def _delivery_assignment_ref(business, public_id):
+    """Lean assignment load for customer mutations that do not render the timeline."""
+    return get_object_or_404(
+        DeliveryAssignment.raw_objects.select_related("intake", "driver"),
+        business=business, public_id=public_id,
+    )
+
+
+@require_POST
+def storefront_delivery_message(request, business_slug, public_id):
+    business = get_object_or_404(Business, slug=business_slug)
+    assignment = _delivery_assignment_ref(business, public_id)
+    try:
+        add_delivery_message(
+            assignment=assignment, sender_type="customer", body=request.POST.get("body", ""), actor=None
+        )
+        return JsonResponse(_tracking_payload(business, _tracking_assignment(business, public_id)))
+    except ValidationError as exc:
+        return JsonResponse({"detail": _detail(exc)}, status=400)
+
+
+@require_POST
+def storefront_delivery_report(request, business_slug, public_id):
+    business = get_object_or_404(Business, slug=business_slug)
+    assignment = _delivery_assignment_ref(business, public_id)
+    active = {DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_READY, DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_FAILED}
+    if assignment.status not in active:
+        return JsonResponse({"detail": "Delivery reporting is available only while the delivery is active."}, status=400)
+    details = (request.POST.get("details") or "").strip()
+    if len(details) < 5:
+        return JsonResponse({"detail": "Describe the delivery problem so staff can act on it."}, status=400)
+    issue = DeliveryIssue.raw_objects.create(
+        business=business, assignment=assignment, reporter_driver=None,
+        category=request.POST.get("category") if request.POST.get("category") in {v for v, _ in DeliveryIssue.CATEGORY_CHOICES} else DeliveryIssue.CATEGORY_OTHER,
+        details=details,
+    )
+    queue_commerce_notification(
+        business=business, event_type=CommerceNotification.EVENT_DELIVERY_ISSUE,
+        title=f"Customer delivery report · {assignment.intake.public_number}",
+        message=details[:220], target_url="/delivery/", dedupe_key=f"customer-delivery-issue:{issue.pk}",
+    )
+    audit(business, None, "delivery_customer_report", issue, f"Customer reported active delivery {assignment.intake.public_number}")
+    return JsonResponse({"ok": True, "issue_id": issue.pk})
 
 
 def _tracking_payload(business, assignment):
@@ -700,6 +872,52 @@ def api_delivery_tracking(request, business_slug, public_id):
     payload = _tracking_payload(business, assignment)
     payload["realtime"]["api_status_path"] = f"/api/v1/storefronts/{business.slug}/deliveries/{assignment.public_id}/tracking"
     return JsonResponse(payload)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_delivery_message(request, business_slug, public_id):
+    business = get_object_or_404(Business, slug=business_slug)
+    commerce_settings = CommerceSettings.raw_objects.filter(business=business).first()
+    key = request.headers.get("X-INPROFIC-Key", "")
+    if not commerce_settings or not commerce_settings.enabled or not commerce_settings.api_enabled or not CommerceIntegration.raw_objects.filter(
+        business=business, active=True, integration_type=CommerceIntegration.TYPE_API, api_key=key
+    ).exists():
+        return JsonResponse({"detail": "Invalid commerce API credential."}, status=403)
+    assignment = _delivery_assignment_ref(business, public_id)
+    try:
+        data = json.loads(request.body.decode("utf-8") or "{}")
+        add_delivery_message(assignment=assignment, sender_type="customer", body=data.get("body", ""), actor=None)
+        return JsonResponse(_tracking_payload(business, _tracking_assignment(business, public_id)))
+    except (json.JSONDecodeError, ValidationError) as exc:
+        return JsonResponse({"detail": _detail(exc) if isinstance(exc, ValidationError) else "Invalid JSON."}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_delivery_report(request, business_slug, public_id):
+    business = get_object_or_404(Business, slug=business_slug)
+    commerce_settings = CommerceSettings.raw_objects.filter(business=business).first()
+    key = request.headers.get("X-INPROFIC-Key", "")
+    if not commerce_settings or not commerce_settings.enabled or not commerce_settings.api_enabled or not CommerceIntegration.raw_objects.filter(
+        business=business, active=True, integration_type=CommerceIntegration.TYPE_API, api_key=key
+    ).exists():
+        return JsonResponse({"detail": "Invalid commerce API credential."}, status=403)
+    try:
+        data = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"detail": "Invalid JSON."}, status=400)
+    assignment = _delivery_assignment_ref(business, public_id)
+    active = {DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_READY, DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_FAILED}
+    if assignment.status not in active:
+        return JsonResponse({"detail": "Delivery reporting is available only while the delivery is active."}, status=400)
+    details = (data.get("details") or "").strip()
+    if len(details) < 5:
+        return JsonResponse({"detail": "Describe the delivery problem so staff can act on it."}, status=400)
+    category = data.get("category") if data.get("category") in {v for v, _ in DeliveryIssue.CATEGORY_CHOICES} else DeliveryIssue.CATEGORY_OTHER
+    issue = DeliveryIssue.raw_objects.create(business=business, assignment=assignment, reporter_driver=None, category=category, details=details)
+    queue_commerce_notification(business=business, event_type=CommerceNotification.EVENT_DELIVERY_ISSUE, title=f"Customer delivery report · {assignment.intake.public_number}", message=details[:220], target_url="/delivery/", dedupe_key=f"customer-delivery-issue:{issue.pk}")
+    return JsonResponse({"ok": True, "issue_id": issue.pk})
 
 
 @csrf_exempt

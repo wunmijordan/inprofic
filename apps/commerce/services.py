@@ -382,124 +382,64 @@ def _make_physical_sale(intake, quantities, *, user=None):
 
 @transaction.atomic
 def accept_intake(intake, *, user=None):
-    intake = CommerceIntake.raw_objects.select_for_update().prefetch_related("items__finished_good", "items__storefront_product").get(pk=intake.pk)
+    intake = CommerceIntake.raw_objects.select_for_update().prefetch_related(
+        "items__finished_good", "items__storefront_product"
+    ).get(pk=intake.pk)
     if intake.status not in {CommerceIntake.STATUS_PENDING, CommerceIntake.STATUS_AWAITING_PREORDER}:
         raise ValidationError("Only pending commerce requests can be accepted.")
-    settings, _ = CommerceSettings.raw_objects.get_or_create(business=intake.business, defaults={"created_by": user})
+
     items = list(intake.items.select_related("finished_good"))
-    if intake.ordering_mode == CommerceIntake.MODE_PREORDER:
-        made_items = [item for item in items if item.finished_good.is_made_in_house]
-        resale_items = [item for item in items if item.finished_good.is_purchased_for_resale]
-        order = None
-        sale = None
-        if resale_items:
-            # Resale stock remains stock even when another item in the same
-            # basket is made-to-order. This supports mixed baskets such as a
-            # prepared meal plus a bottled drink without manufacturing the drink.
-            sale = _make_physical_sale(
-                intake, [(item, item.requested_quantity) for item in resale_items], user=user
-            )
-        if made_items:
-            order = _make_production_order(
-                intake, [(item, item.requested_quantity) for item in made_items], user=user
-            )
-        if not sale and not order:
-            raise ValidationError("This order has no fulfilment-ready products.")
-        intake.accepted_sale = sale
-        intake.accepted_order = order
-        # Stock-backed lines are complete immediately; made-to-order lines are
-        # only handed to Production as a pending order. Mixed baskets therefore
-        # remain partially fulfilled until staff completes the production work.
-        if sale and order:
-            intake.fulfilment_state = CommerceIntake.FULFIL_PARTIAL
-        elif order:
-            intake.fulfilment_state = CommerceIntake.FULFIL_PENDING
-        else:
-            intake.fulfilment_state = CommerceIntake.FULFIL_COMPLETE
+    stock_items = [item for item in items if item.fulfilment_source in {
+        item.FULFILMENT_STOCK, item.FULFILMENT_PROCURED,
+    }]
+    made_items = [item for item in items if item.fulfilment_source == item.FULFILMENT_MADE_TO_ORDER]
+
+    sale = None
+    order = None
+    if stock_items:
+        sale = _make_physical_sale(
+            intake, [(item, item.requested_quantity) for item in stock_items], user=user
+        )
+    if made_items:
+        if any(item.finished_good.is_purchased_for_resale for item in made_items):
+            raise ValidationError("Purchased-for-resale products cannot be manufactured.")
+        order = _make_production_order(
+            intake, [(item, item.requested_quantity) for item in made_items], user=user
+        )
+
+    if not sale and not order:
+        raise ValidationError("This order has no fulfilment-ready products.")
+
+    intake.accepted_sale = sale
+    intake.accepted_order = order
+    intake.split_order = None
+    if order:
+        intake.fulfilment_state = CommerceIntake.FULFIL_PARTIAL if sale else CommerceIntake.FULFIL_PENDING
         intake.status = CommerceIntake.STATUS_ACCEPTED
-        intake.save(update_fields=["accepted_sale", "accepted_order", "fulfilment_state", "status", "updated_at"])
-        if sale:
-            from .payment_services import sync_payment_receipts_to_sales
-            sync_payment_receipts_to_sales(intake)
-        from core.services import audit
-        from .checkout_services import release_checkout_reservation_for_intake
-        release_checkout_reservation_for_intake(intake)
-        audit(
-            intake.business, user, "commerce_accept", intake,
-            f"{intake.public_number} accepted with source-aware fulfilment",
-            {"order_id": getattr(order, "pk", None), "sale_id": getattr(sale, "pk", None)},
-        )
-        return intake
-
-    from .checkout_services import available_physical_stock
-    checkout = getattr(intake, "checkout_session", None)
-    availability = [
-        (
-            item,
-            min(
-                item.requested_quantity,
-                _customer_available(
-                    item, available_physical_stock(item.finished_good, exclude_checkout=checkout)
-                ),
-            ),
-        )
-        for item in items
-    ]
-    shortages = [(item, item.requested_quantity - available) for item, available in availability if item.requested_quantity > available]
-    policy = settings.insufficient_stock_policy
-    if shortages and policy == CommerceSettings.POLICY_REJECT:
-        intake.status = CommerceIntake.STATUS_REJECTED
-        intake.rejection_reason = "Insufficient sellable stock for one or more products."
-        intake.save(update_fields=["status", "rejection_reason", "updated_at"])
-        from core.services import audit
-        audit(intake.business, user, "commerce_reject", intake, f"{intake.public_number} rejected for insufficient stock", {})
-        return intake
-    if shortages and policy == CommerceSettings.POLICY_INVITE:
-        intake.status = CommerceIntake.STATUS_AWAITING_PREORDER
-        intake.rejection_reason = "Insufficient stock. Customer may confirm a Pre-order instead."
-        intake.save(update_fields=["status", "rejection_reason", "updated_at"])
-        from core.services import audit
-        audit(intake.business, user, "commerce_preorder_invite", intake, f"{intake.public_number} invited to switch to Pre-order", {})
-        return intake
-
-    sale_quantities = [(item, available) for item, available in availability if available > 0]
-    if sale_quantities:
-        intake.accepted_sale = _make_physical_sale(intake, sale_quantities, user=user)
-    if shortages and policy == CommerceSettings.POLICY_SPLIT:
-        producible_shortages = [
-            (item, qty) for item, qty in shortages
-            if item.finished_good.is_made_in_house
-        ]
-        resale_shortages = [
-            (item, qty) for item, qty in shortages
-            if item.finished_good.is_purchased_for_resale
-        ]
-        if producible_shortages:
-            intake.split_order = _make_production_order(intake, producible_shortages, user=user)
-        if resale_shortages:
-            intake.rejection_reason = "Purchased resale items were reduced to available supplier stock; they cannot be manufactured."
-        intake.fulfilment_state = CommerceIntake.FULFIL_PARTIAL
-    elif shortages and policy == CommerceSettings.POLICY_REDUCE:
-        intake.fulfilment_state = CommerceIntake.FULFIL_PARTIAL
-        intake.rejection_reason = "Quantity reduced to currently available stock."
     else:
         intake.fulfilment_state = CommerceIntake.FULFIL_COMPLETE
-    if not intake.accepted_sale and not intake.split_order:
-        intake.status = CommerceIntake.STATUS_REJECTED
-        intake.rejection_reason = "No requested quantity is currently available."
-    else:
-        intake.status = CommerceIntake.STATUS_ACCEPTED
-    intake.save(update_fields=["accepted_sale", "split_order", "status", "fulfilment_state", "rejection_reason", "updated_at"])
-    # A customer may settle a headless order before staff accepts it. Allocate
-    # the already-audited receipt now that a downstream Sale exists; do not post
-    # a second cash movement.
-    if intake.accepted_sale_id:
+        intake.status = CommerceIntake.STATUS_FULFILLED
+    intake.rejection_reason = ""
+    intake.save(update_fields=[
+        "accepted_sale", "accepted_order", "split_order", "fulfilment_state",
+        "status", "rejection_reason", "updated_at",
+    ])
+
+    if sale:
         from .payment_services import sync_payment_receipts_to_sales
         sync_payment_receipts_to_sales(intake)
-    from core.services import audit
     from .checkout_services import release_checkout_reservation_for_intake
     release_checkout_reservation_for_intake(intake)
-    audit(intake.business, user, "commerce_accept", intake, f"{intake.public_number} processed from sellable stock", {"sale_id": intake.accepted_sale_id, "split_order_id": intake.split_order_id, "policy": policy})
+    audit(
+        intake.business, user, "commerce_accept", intake,
+        f"{intake.public_number} accepted with per-line fulfilment",
+        {
+            "order_id": getattr(order, "pk", None),
+            "sale_id": getattr(sale, "pk", None),
+            "stock_lines": len(stock_items),
+            "made_to_order_lines": len(made_items),
+        },
+    )
     return intake
 
 

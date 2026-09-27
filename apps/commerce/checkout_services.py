@@ -8,6 +8,7 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Q, Sum
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from core.services import audit
 from core.verticals import vertical_config
@@ -172,6 +173,7 @@ def create_checkout(
     *, business, source, customer, items, idempotency_key, external_order_id="",
     order_mode=None, ordering_mode=None, service_mode="", table_reference="",
     delivery_quote_id=None, storefront_customer=None, attribution=None,
+    requested_delivery_at=None,
 ):
     """Validate and snapshot a basket without creating CommerceIntake.
 
@@ -285,11 +287,46 @@ def create_checkout(
         # Bought-in resale products are always fulfilled from purchased stock,
         # even inside a production vertical and even when the storefront sales
         # channel would normally mean made-to-order production.
-        stock_fulfilment = (
-            fulfilment_mode == CommerceIntake.MODE_STOCK
-            or good.source_type == FinishedGood.SOURCE_PURCHASED_FOR_RESALE
-        )
-        production_qty = internal_requested if (not stock_fulfilment and fulfilment_mode == CommerceIntake.MODE_PREORDER) else Decimal("0")
+        requested_source = (row.get("fulfilment_source") or "").strip().lower()
+        if sales_channel == CommerceIntake.CHANNEL_PHYSICAL_STORE:
+            requested_source = CommerceIntakeItem.FULFILMENT_STOCK
+        elif good.source_type == FinishedGood.SOURCE_PURCHASED_FOR_RESALE:
+            # Purchased-for-resale goods are stock-backed. Do not pretend they can
+            # be manufactured merely because an online/bulk channel is selected.
+            # Bulk orders still keep their preparation/readiness window below,
+            # while inventory is consumed through the existing stock-safe path.
+            allowed_resale_sources = {
+                CommerceIntakeItem.FULFILMENT_STOCK,
+                CommerceIntakeItem.FULFILMENT_PROCURED,
+            }
+            # Older Bulk Order clients submit made_to_order for every bulk line.
+            # Accept that legacy signal, but fulfil resale goods through the
+            # stock-safe path because they cannot enter Production.
+            if sales_channel == CommerceIntake.CHANNEL_DISTRIBUTION:
+                allowed_resale_sources.add(CommerceIntakeItem.FULFILMENT_MADE_TO_ORDER)
+            if requested_source and requested_source not in allowed_resale_sources:
+                raise ValidationError(
+                    f"{product.display_name} is supplied from available resale stock and cannot be made to order."
+                )
+            requested_source = CommerceIntakeItem.FULFILMENT_STOCK
+        elif sales_channel == CommerceIntake.CHANNEL_DISTRIBUTION:
+            requested_source = CommerceIntakeItem.FULFILMENT_MADE_TO_ORDER
+        else:
+            requested_source = requested_source or CommerceIntakeItem.FULFILMENT_MADE_TO_ORDER
+        if requested_source not in {value for value, _ in CommerceIntakeItem.FULFILMENT_CHOICES}:
+            raise ValidationError(f"Choose a valid fulfilment option for {product.display_name}.")
+        if requested_source == CommerceIntakeItem.FULFILMENT_PROCURED and good.source_type != FinishedGood.SOURCE_PURCHASED_FOR_RESALE:
+            raise ValidationError(f"{product.display_name} is not a procured-to-sell product.")
+
+        stock_fulfilment = requested_source == CommerceIntakeItem.FULFILMENT_STOCK
+        production_qty = internal_requested if requested_source == CommerceIntakeItem.FULFILMENT_MADE_TO_ORDER else Decimal("0")
+        # Distribution/Bulk remains a prepared-order channel even for resale
+        # inventory, so its customer-facing readiness window is never "ready now".
+        if sales_channel == CommerceIntake.CHANNEL_DISTRIBUTION:
+            ready_minutes = max(int(product.estimated_ready_minutes or 0), 1)
+        else:
+            ready_minutes = 0 if stock_fulfilment else max(int(product.estimated_ready_minutes or 0), 1)
+        estimated_ready_at = now + timedelta(minutes=ready_minutes) if ready_minutes else now
 
         if stock_fulfilment:
             available = available_physical_stock(good, now=now)
@@ -309,13 +346,6 @@ def create_checkout(
                 }]
                 if policy == CommerceSettings.POLICY_REDUCE and reserved_customer_qty > 0:
                     payable_qty = reserved_customer_qty
-                elif (
-                    policy == CommerceSettings.POLICY_SPLIT
-                    and business.uses_production
-                    and good.source_type == FinishedGood.SOURCE_MADE_IN_HOUSE
-                    and (individual_option.online_enabled if individual_option is not None else product.allow_online_order)
-                ):
-                    production_qty = (shortage * multiplier).quantize(Decimal("0.01"))
                 elif policy == CommerceSettings.POLICY_INVITE:
                     suggestions = [m for m in _mode_alternatives(product, business, qty, source=source, individual_option=individual_option) if m["code"] != sales_channel]
                     raise CheckoutAvailabilityError(
@@ -348,6 +378,7 @@ def create_checkout(
         prepared.append((
             product, good, qty, payable_qty, reserve_qty, production_qty, price,
             bulk_pack, individual_option, customer_unit, multiplier, contents_snapshot,
+            requested_source, estimated_ready_at,
         ))
 
     total = total.quantize(Decimal("0.01"))
@@ -375,6 +406,22 @@ def create_checkout(
     if fulfilment_mode == CommerceIntake.MODE_PREORDER and not any(row[5] > 0 for row in prepared):
         effective_fulfilment_mode = CommerceIntake.MODE_STOCK
 
+    estimated_ready_at = max((row[13] for row in prepared), default=now)
+    requested_delivery_dt = None
+    if requested_delivery_at:
+        requested_delivery_dt = requested_delivery_at if hasattr(requested_delivery_at, "tzinfo") else parse_datetime(str(requested_delivery_at))
+        if requested_delivery_dt is None:
+            raise ValidationError("Choose a valid requested delivery date and time.")
+        if timezone.is_naive(requested_delivery_dt):
+            requested_delivery_dt = timezone.make_aware(requested_delivery_dt, timezone.get_current_timezone())
+        earliest_delivery_at = estimated_ready_at
+        if delivery_quote:
+            earliest_delivery_at = estimated_ready_at + timedelta(minutes=delivery_quote.eta_max_minutes)
+        if requested_delivery_dt < earliest_delivery_at:
+            raise ValidationError(
+                f"Delivery cannot be scheduled before {timezone.localtime(earliest_delivery_at).strftime('%Y-%m-%d %H:%M')}."
+            )
+
     attribution = normalize_attribution(attribution or {})
     try:
         checkout = CommerceCheckoutSession.raw_objects.create(
@@ -397,6 +444,8 @@ def create_checkout(
             delivery_quote=delivery_quote,
             delivery_fee=delivery_fee,
             reservation_expires_at=expires_at,
+            requested_delivery_at=requested_delivery_dt,
+            estimated_ready_at=estimated_ready_at,
         )
     except IntegrityError:
         # Race-safe retry of the same idempotent request.
@@ -419,8 +468,10 @@ def create_checkout(
             customer_unit=customer_unit,
             fulfilment_quantity_per_unit=multiplier,
             contents_snapshot=contents_snapshot,
+            fulfilment_source=fulfilment_source,
+            estimated_ready_at=row_ready_at,
         )
-        for product, good, qty, payable_qty, reserve_qty, production_qty, price, bulk_pack, individual_option, customer_unit, multiplier, contents_snapshot in prepared
+        for product, good, qty, payable_qty, reserve_qty, production_qty, price, bulk_pack, individual_option, customer_unit, multiplier, contents_snapshot, fulfilment_source, row_ready_at in prepared
     ])
     audit(
         business, None, "commerce_checkout_create", checkout,
@@ -512,6 +563,8 @@ def serialize_checkout(checkout):
             "payment_state": intake.payment_state,
             "fulfilment_state": intake.fulfilment_state,
         } if intake else None),
+        "estimated_ready_at": checkout.estimated_ready_at.isoformat() if checkout.estimated_ready_at else None,
+        "requested_delivery_at": checkout.requested_delivery_at.isoformat() if checkout.requested_delivery_at else None,
         "materialization_error": checkout.materialization_error if checkout.status == CommerceCheckoutSession.STATUS_PAID_REVIEW else "",
         "items": [
             {
@@ -528,6 +581,8 @@ def serialize_checkout(checkout):
                 # conversions are intentionally not exposed through the public API.
                 "reserved_stock_quantity": str((row.reserved_stock_quantity / (row.fulfilment_quantity_per_unit or Decimal("1"))).quantize(Decimal("0.01"))),
                 "production_quantity": str((row.production_quantity / (row.fulfilment_quantity_per_unit or Decimal("1"))).quantize(Decimal("0.01"))),
+                "fulfilment_source": row.fulfilment_source,
+                "estimated_ready_at": row.estimated_ready_at.isoformat() if row.estimated_ready_at else None,
                 "unit_price": f"{row.unit_price:.2f}",
                 "line_total": f"{row.line_total:.2f}",
             }
@@ -613,6 +668,8 @@ def materialize_paid_checkout(checkout, *, actor=None, allow_expired_recovery=Fa
         delivery_quote=checkout.delivery_quote,
         delivery_fee=checkout.delivery_fee,
         payment_state=CommerceIntake.PAYMENT_CONFIRMED,
+        requested_delivery_at=checkout.requested_delivery_at,
+        estimated_ready_at=checkout.estimated_ready_at,
     )
     CommerceIntakeItem.objects.bulk_create([
         CommerceIntakeItem(
@@ -629,6 +686,8 @@ def materialize_paid_checkout(checkout, *, actor=None, allow_expired_recovery=Fa
             customer_unit=row.customer_unit,
             fulfilment_quantity_per_unit=row.fulfilment_quantity_per_unit,
             contents_snapshot=row.contents_snapshot,
+            fulfilment_source=row.fulfilment_source,
+            estimated_ready_at=row.estimated_ready_at,
         )
         for row in checkout.items.all()
     ])

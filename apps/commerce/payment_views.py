@@ -53,6 +53,16 @@ def _error(exc):
     return "; ".join(exc.messages) if isinstance(exc, ValidationError) else str(exc)
 
 
+def _headless_payment_payload(payment):
+    payload = serialize_payment(payment)
+    if payload and payload.get("receipt_api_path"):
+        # Headless clients should stay on the integrating website.  Keep the
+        # hosted receipt URL available only under an explicit compatibility key.
+        payload["hosted_receipt_path"] = payload.get("receipt_path")
+        payload["receipt_path"] = payload["receipt_api_path"]
+    return payload
+
+
 def _request_payload(request):
     """Keep JSON compatibility while allowing multipart proof uploads."""
     if (request.content_type or "").split(";", 1)[0].strip().lower() == "multipart/form-data":
@@ -112,7 +122,7 @@ def api_checkout_payment_initiate(request, business_slug, checkout_id):
             idempotency_key=request.headers.get("Idempotency-Key", ""),
             return_url=data.get("return_url", ""),
         )
-        payload = serialize_payment(payment)
+        payload = _headless_payment_payload(payment)
         payload["checkout"] = serialize_checkout(checkout)
         return JsonResponse(payload, status=200)
     except (json.JSONDecodeError, ValidationError, GatewayError, TypeError, ValueError) as exc:
@@ -131,7 +141,7 @@ def api_checkout_payment_current(request, business_slug, checkout_id):
     payment = current_checkout_payment(checkout)
     return JsonResponse({
         "checkout": serialize_checkout(checkout),
-        "payment": serialize_payment(payment) if payment else None,
+        "payment": _headless_payment_payload(payment) if payment else None,
     })
 
 
@@ -157,7 +167,7 @@ def api_checkout_payment_claim(request, business_slug, checkout_id):
             payment_proof=request.FILES.get("payment_proof"),
         )
         payment.refresh_from_db()
-        payload = serialize_payment(payment)
+        payload = _headless_payment_payload(payment)
         payload["claim_created"] = created
         payload["checkout"] = serialize_checkout(checkout)
         return JsonResponse(payload, status=201 if created else 200)
@@ -182,7 +192,7 @@ def api_payment_initiate(request, business_slug, public_id):
             idempotency_key=request.headers.get("Idempotency-Key", ""),
             return_url=data.get("return_url", ""),
         )
-        return JsonResponse(serialize_payment(payment), status=200)
+        return JsonResponse(_headless_payment_payload(payment), status=200)
     except (json.JSONDecodeError, ValidationError, GatewayError, TypeError, ValueError) as exc:
         return JsonResponse({"detail": _error(exc)}, status=400)
 
@@ -196,7 +206,7 @@ def api_payment_current(request, business_slug, public_id):
     payment = current_payment(intake)
     if payment is None:
         return JsonResponse({"detail": "No payment has been initiated for this order."}, status=404)
-    return JsonResponse(serialize_payment(payment))
+    return JsonResponse(_headless_payment_payload(payment))
 
 
 @csrf_exempt
@@ -218,7 +228,7 @@ def api_payment_claim(request, business_slug, public_id):
             payment_proof=request.FILES.get("payment_proof"),
         )
         payment.refresh_from_db()
-        payload = serialize_payment(payment)
+        payload = _headless_payment_payload(payment)
         payload["claim_created"] = created
         return JsonResponse(payload, status=201 if created else 200)
     except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as exc:

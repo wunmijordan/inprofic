@@ -41,8 +41,10 @@
         <button class="w-full mt-2 bg-[#d14900] text-white rounded-md py-2.5 text-sm font-medium hover:bg-[#050733]">Create Workspace</button>
       </form>
       <p class="text-xs text-center text-stone-500 mt-4">Already have an Account? <a class="text-[#d14900] underline" href="{% url 'login' %}">Sign In</a></p>
+      <p class="mt-2 text-center text-[11px] text-stone-400">By using INPROFIC, information is handled as described in our <a class="underline underline-offset-2 hover:text-[#d14900]" href="{% url 'privacy_policy' %}">Privacy Policy</a>.</p>
     </div>
   </main>
   {% include "pwa/install_prompt.html" %}
+  {% include "_privacy_notice.html" %}
 </body>
 </html>

@@ -417,6 +417,32 @@ class DeliveryRealtimeTrackingTests(TestCase):
         self.assertEqual(data["delivery"]["id"], str(self.assignment.public_id))
         self.assertEqual(data["timeline"][0]["status_label"], "Order confirmed")
         self.assertEqual(data["realtime"]["api_status_path"], url)
+        self.assertNotIn("batch_id", data["delivery"])
+        self.assertNotIn("batch_stop_sequence", data["delivery"])
+
+    def test_customer_tracking_hides_batch_details_and_messages_wait_for_pickup(self):
+        from commerce.delivery_services import add_delivery_message
+        from commerce.models import DeliveryBatch
+        batch = DeliveryBatch.raw_objects.create(business=self.business, driver=self.driver)
+        self.assignment.batch = batch
+        self.assignment.batch_stop_sequence = 2
+        self.assignment.batch_stop_minutes = 8
+        self.assignment.save(update_fields=["batch", "batch_stop_sequence", "batch_stop_minutes", "updated_at"])
+        DeliveryEvent.raw_objects.create(
+            business=self.business, assignment=self.assignment,
+            status=DeliveryAssignment.STATUS_ASSIGNED,
+            note="Added to rider batch TEST; route must be organised before pickup.",
+            metadata={"batch_id": str(batch.public_id), "sequence": 2},
+        )
+        with self.assertRaises(ValidationError):
+            add_delivery_message(assignment=self.assignment, sender_type="customer", body="Hello")
+        tracked = DeliveryAssignment.raw_objects.select_related("intake", "driver", "quote", "batch").prefetch_related("events", "messages").get(pk=self.assignment.pk)
+        payload = serialize_delivery_tracking(tracked)
+        self.assertNotIn("batch_id", payload["delivery"])
+        self.assertNotIn("batch_stop_sequence", payload["delivery"])
+        self.assertFalse(payload["can_message"])
+        self.assertEqual(payload["messages"], [])
+        self.assertFalse(any("batch" in (item.get("note") or "").lower() for item in payload["timeline"]))
 
 
 class StorefrontTenantLogoTests(TestCase):

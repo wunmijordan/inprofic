@@ -2,9 +2,17 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from django.core.cache import cache
 from django.db import DatabaseError
 from django.db.models import Count, Max, Q
 from django.utils import timezone
+
+
+_FOUNDER_ANALYTICS_CACHE_KEY = "founder-analytics-summary:v2"
+
+
+def invalidate_founder_analytics_cache():
+    cache.delete(_FOUNDER_ANALYTICS_CACHE_KEY)
 
 
 def _default_business_for_user(user):
@@ -86,6 +94,7 @@ def record_founder_signup_contact(*, business, user=None, email="", name="", sig
                 "updated_by": None,
             },
         )
+        invalidate_founder_analytics_cache()
         return state
     except (DatabaseError, Exception):
         # Signup must remain operational while a new migration is rolling out.
@@ -137,6 +146,7 @@ def mark_founder_signup_business_deleted(*, business, updated_by=None):
                     "updated_by": updated_by,
                 },
             )
+        invalidate_founder_analytics_cache()
     except (DatabaseError, Exception):
         # The existing hard-delete flow must not be blocked by Founder-list bookkeeping.
         return None
@@ -221,72 +231,81 @@ def founder_signup_contacts(*, limit=None, include_deleted=False):
 def founder_analytics_summary(*, now=None):
     from .models import PlatformEvent
 
-    now = now or timezone.now()
-    since_7 = now - timedelta(days=7)
-    since_30 = now - timedelta(days=30)
-    event_summary = PlatformEvent.objects.aggregate(
-        lead_sessions_30d=Count(
-            "session_key", distinct=True,
-            filter=(
-                Q(event_type=PlatformEvent.EVENT_SIGNUP_VIEW, occurred_at__gte=since_30)
-                & ~Q(session_key="")
+    cached = cache.get(_FOUNDER_ANALYTICS_CACHE_KEY)
+    if cached is None:
+        now = now or timezone.now()
+        since_7 = now - timedelta(days=7)
+        since_30 = now - timedelta(days=30)
+        event_summary = PlatformEvent.objects.aggregate(
+            lead_sessions_30d=Count(
+                "session_key", distinct=True,
+                filter=(
+                    Q(event_type=PlatformEvent.EVENT_SIGNUP_VIEW, occurred_at__gte=since_30)
+                    & ~Q(session_key="")
+                ),
             ),
-        ),
-        registrations_7d=Count(
-            "id", filter=Q(event_type=PlatformEvent.EVENT_REGISTRATION, occurred_at__gte=since_7)
-        ),
-        registrations_30d=Count(
-            "id", filter=Q(event_type=PlatformEvent.EVENT_REGISTRATION, occurred_at__gte=since_30)
-        ),
-        latest_registration_id=Max(
-            "id", filter=Q(event_type=PlatformEvent.EVENT_REGISTRATION)
-        ),
-        logins_7d=Count(
-            "id", filter=Q(event_type=PlatformEvent.EVENT_LOGIN, occurred_at__gte=since_7)
-        ),
-        active_businesses_7d=Count(
-            "business_id", distinct=True,
-            filter=Q(
-                event_type=PlatformEvent.EVENT_MODULE_VIEW,
-                occurred_at__gte=since_7,
-                business__isnull=False,
+            registrations_7d=Count(
+                "id", filter=Q(event_type=PlatformEvent.EVENT_REGISTRATION, occurred_at__gte=since_7)
             ),
-        ),
-        subscription_events_30d=Count(
-            "id",
-            filter=Q(
-                event_type__in=PlatformEvent.SUBSCRIPTION_EVENTS,
-                occurred_at__gte=since_30,
+            registrations_30d=Count(
+                "id", filter=Q(event_type=PlatformEvent.EVENT_REGISTRATION, occurred_at__gte=since_30)
             ),
-        ),
-    )
-    lead_sessions = event_summary["lead_sessions_30d"] or 0
-    registrations = event_summary["registrations_30d"] or 0
-    conversion = round((registrations / lead_sessions * 100), 1) if lead_sessions else 0
-    top_modules = list(
-        PlatformEvent.objects.filter(
-            occurred_at__gte=since_30,
-            event_type=PlatformEvent.EVENT_MODULE_VIEW,
-            module__gt="",
+            latest_registration_id=Max(
+                "id", filter=Q(event_type=PlatformEvent.EVENT_REGISTRATION)
+            ),
+            logins_7d=Count(
+                "id", filter=Q(event_type=PlatformEvent.EVENT_LOGIN, occurred_at__gte=since_7)
+            ),
+            active_businesses_7d=Count(
+                "business_id", distinct=True,
+                filter=Q(
+                    event_type=PlatformEvent.EVENT_MODULE_VIEW,
+                    occurred_at__gte=since_7,
+                    business__isnull=False,
+                ),
+            ),
+            subscription_events_30d=Count(
+                "id",
+                filter=Q(
+                    event_type__in=PlatformEvent.SUBSCRIPTION_EVENTS,
+                    occurred_at__gte=since_30,
+                ),
+            ),
         )
-        .values("module").annotate(total=Count("id"))
-        .order_by("-total", "module")[:8]
-    )
-    all_signup_contacts = founder_signup_contacts(include_deleted=True)
-    active_signup_contacts = [contact for contact in all_signup_contacts if not contact["deleted"]]
-    return {
-        "lead_sessions_30d": lead_sessions,
-        "registrations_7d": event_summary["registrations_7d"] or 0,
-        "registrations_30d": registrations,
-        "latest_registration_id": event_summary["latest_registration_id"] or 0,
-        "signup_conversion_30d": conversion,
-        "logins_7d": event_summary["logins_7d"] or 0,
-        "active_businesses_7d": event_summary["active_businesses_7d"] or 0,
-        "subscription_events_30d": event_summary["subscription_events_30d"] or 0,
-        "signup_contacts_count": len(active_signup_contacts),
-        "signup_contacts_total_count": len(all_signup_contacts),
-        "signup_contacts": all_signup_contacts[:50],
-        "top_modules": top_modules,
-        "recent_events": PlatformEvent.objects.select_related("business", "user").order_by("-occurred_at", "-id")[:30],
-    }
+        lead_sessions = event_summary["lead_sessions_30d"] or 0
+        registrations = event_summary["registrations_30d"] or 0
+        conversion = round((registrations / lead_sessions * 100), 1) if lead_sessions else 0
+        top_modules = list(
+            PlatformEvent.objects.filter(
+                occurred_at__gte=since_30,
+                event_type=PlatformEvent.EVENT_MODULE_VIEW,
+                module__gt="",
+            )
+            .values("module").annotate(total=Count("id"))
+            .order_by("-total", "module")[:8]
+        )
+        all_signup_contacts = founder_signup_contacts(include_deleted=True)
+        active_signup_contacts = [contact for contact in all_signup_contacts if not contact["deleted"]]
+        cached = {
+            "lead_sessions_30d": lead_sessions,
+            "registrations_7d": event_summary["registrations_7d"] or 0,
+            "registrations_30d": registrations,
+            "latest_registration_id": event_summary["latest_registration_id"] or 0,
+            "signup_conversion_30d": conversion,
+            "logins_7d": event_summary["logins_7d"] or 0,
+            "active_businesses_7d": event_summary["active_businesses_7d"] or 0,
+            "subscription_events_30d": event_summary["subscription_events_30d"] or 0,
+            "signup_contacts_count": len(active_signup_contacts),
+            "signup_contacts_total_count": len(all_signup_contacts),
+            "signup_contacts": all_signup_contacts[:50],
+            "top_modules": top_modules,
+        }
+        # Founder analytics is read-only operational telemetry. A very short
+        # cache removes repeated full signup-history scans while signup/deletion
+        # actions explicitly invalidate it.
+        cache.set(_FOUNDER_ANALYTICS_CACHE_KEY, cached, timeout=20)
+
+    result = dict(cached)
+    result["recent_events"] = PlatformEvent.objects.select_related("business", "user").order_by("-occurred_at", "-id")[:30]
+    return result
 

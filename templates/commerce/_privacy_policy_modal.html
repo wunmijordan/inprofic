@@ -1,0 +1,56 @@
+<dialog id="storefront-privacy-dialog" class="m-auto max-h-[92dvh] w-[min(94vw,58rem)] overflow-hidden rounded-3xl border-0 bg-white p-0 shadow-2xl" aria-labelledby="storefront-privacy-title">
+  <div class="flex max-h-[92dvh] min-h-[18rem] flex-col">
+    <header class="flex shrink-0 items-center justify-between gap-4 border-b px-5 py-4 sm:px-6" style="border-color:color-mix(in srgb,var(--brand) 18%,#e7dfcc);background:var(--brand-dark);color:var(--brand-dark-contrast)">
+      <div><p class="text-[10px] font-bold uppercase tracking-[.18em] opacity-70">Privacy &amp; data</p><h2 id="storefront-privacy-title" class="font-display mt-1 text-xl font-semibold">Privacy Policy</h2></div>
+      <button type="button" data-privacy-modal-close class="flex h-9 w-9 items-center justify-center rounded-full border text-xl" style="border-color:color-mix(in srgb,var(--brand-dark-contrast) 24%,transparent);background:color-mix(in srgb,var(--brand-dark-contrast) 10%,transparent);color:var(--brand-dark-contrast)" aria-label="Close Privacy Policy">×</button>
+    </header>
+    <div data-privacy-modal-body class="privacy-modal-scroll min-h-0 flex-1 overflow-y-auto bg-[#faf6ef] px-4 py-5 sm:px-6 sm:py-6">
+      <div class="mx-auto max-w-3xl rounded-2xl border border-stone-200 bg-white p-5 text-sm text-stone-500">Loading Privacy Policy…</div>
+    </div>
+  </div>
+</dialog>
+<style>
+  #storefront-privacy-dialog{width:min(94vw,58rem);max-height:92dvh;margin:auto;border:0;border-radius:1.5rem;padding:0;overflow:hidden;background:#fff;box-shadow:0 25px 70px rgba(25,20,17,.32)}
+  #storefront-privacy-dialog::backdrop{background:rgba(25,20,17,.68);backdrop-filter:blur(5px)}
+  #storefront-privacy-dialog .privacy-modal-scroll{min-height:0;max-height:calc(92dvh - 5rem);overflow-y:auto!important;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;scrollbar-width:none;-ms-overflow-style:none}
+  #storefront-privacy-dialog .privacy-modal-scroll::-webkit-scrollbar{display:none;width:0;height:0}
+  #storefront-privacy-dialog .privacy-modal-copy{font-family:Sora,sans-serif;font-size:.92rem;line-height:1.8;color:#57534e}
+  #storefront-privacy-dialog .privacy-modal-copy h2{margin:2rem 0 .65rem;font-family:Fraunces,serif;font-size:1.45rem;line-height:1.25;font-weight:600;color:var(--brand-dark,#050733)}
+  #storefront-privacy-dialog .privacy-modal-copy h3,#storefront-privacy-dialog .privacy-modal-copy h4{margin:1.25rem 0 .4rem;font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#292524}
+  #storefront-privacy-dialog .privacy-modal-copy p{margin:.7rem 0}#storefront-privacy-dialog .privacy-modal-copy ul,#storefront-privacy-dialog .privacy-modal-copy ol{margin:.75rem 0;padding-left:1.35rem}#storefront-privacy-dialog .privacy-modal-copy ul{list-style:disc}#storefront-privacy-dialog .privacy-modal-copy ol{list-style:decimal}#storefront-privacy-dialog .privacy-modal-copy li{margin:.35rem 0}
+  #storefront-privacy-dialog .policy-pdf{width:100%;height:min(68vh,48rem);min-height:30rem;border:0;background:#fff}
+  #storefront-privacy-dialog .doc-align-center{text-align:center}#storefront-privacy-dialog .doc-align-right{text-align:right}#storefront-privacy-dialog .doc-align-justify{text-align:justify}#storefront-privacy-dialog .doc-align-left{text-align:left}#storefront-privacy-dialog .doc-empty{min-height:1rem}#storefront-privacy-dialog .doc-table{width:100%;border-collapse:collapse;margin:1rem 0}#storefront-privacy-dialog .doc-table td,#storefront-privacy-dialog .doc-table th{border:1px solid #d6d3d1;padding:.65rem;vertical-align:top}
+  @media(max-width:640px){#storefront-privacy-dialog[open]{margin:auto 0 0;width:100%;max-width:none;border-radius:1.5rem 1.5rem 0 0}#storefront-privacy-dialog .privacy-modal-scroll{max-height:calc(90dvh - 4.75rem)}#storefront-privacy-dialog .policy-pdf{height:62vh;min-height:24rem}}
+</style>
+<script>
+(() => {
+  const dialog = document.getElementById('storefront-privacy-dialog');
+  if (!dialog) return;
+  const body = dialog.querySelector('[data-privacy-modal-body]');
+  let loaded = false;
+  let loading = false;
+  const loadPolicy = async () => {
+    if (loaded || loading) return;
+    loading = true;
+    try {
+      const response = await fetch('{% url "privacy_policy" %}?embedded=1', {headers:{'Accept':'text/html'}, cache:'no-store'});
+      if (!response.ok) throw new Error('Privacy Policy could not be loaded.');
+      body.innerHTML = await response.text();
+      body.scrollTop = 0;
+      loaded = true;
+    } catch (_) {
+      body.innerHTML = '<div class="mx-auto max-w-3xl rounded-2xl border border-rose-200 bg-white p-5 text-sm text-rose-700">The Privacy Policy could not be loaded right now. Close this window and try again.</div>';
+    } finally { loading = false; }
+  };
+  document.addEventListener('click', event => {
+    const opener = event.target.closest('[data-privacy-modal-open]');
+    if (!opener) return;
+    event.preventDefault();
+    dialog.showModal();
+    body.scrollTop = 0;
+    loadPolicy();
+  });
+  dialog.querySelector('[data-privacy-modal-close]')?.addEventListener('click', () => dialog.close());
+  dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
+})();
+</script>

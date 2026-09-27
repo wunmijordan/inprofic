@@ -104,7 +104,7 @@ The default LaaS status map is:
   "ACCEPTED": "assigned",
   "WAITING_FOR_PICKUP": "ready",
   "PICKED": "picked_up",
-  "WAITING_FOR_DELIVERY": "out_for_delivery",
+  "WAITING_FOR_DELIVERY": "picked_up",
   "DELIVERED": "delivered",
   "REJECTED": "failed",
   "CANCELLED": "cancelled",

@@ -20,6 +20,10 @@ def public_delivery_group(business_id, delivery_public_id):
     return f"commerce.delivery.public.{int(business_id)}.{delivery_public_id}"
 
 
+def public_checkout_group(business_id, checkout_public_id):
+    return f"commerce.checkout.public.{int(business_id)}.{checkout_public_id}"
+
+
 def _publish(group, event_type, **payload):
     channel_layer = get_channel_layer()
     if channel_layer is None:
@@ -54,3 +58,9 @@ def publish_delivery_changed(business_id, delivery_public_id, reason="status", r
     _publish(public_delivery_group(business_id, delivery_id), "delivery.changed", **payload)
     for user_id in {int(value) for value in rider_user_ids if value}:
         _publish(user_notification_group(business_id, user_id), "delivery.changed", **payload)
+
+
+def publish_checkout_changed(business_id, checkout_public_id, reason="payment"):
+    checkout_id = str(checkout_public_id)
+    _publish(public_checkout_group(business_id, checkout_id), "checkout.changed", checkout_id=checkout_id, reason=reason)
+    _publish(business_notification_group(business_id), "checkout.changed", checkout_id=checkout_id, reason=reason)

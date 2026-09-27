@@ -55,9 +55,10 @@
       <button type="submit" class="w-full bg-[#d14900] text-white rounded-md py-2 text-sm font-medium hover:bg-[#050733]">Sign In</button>
     </form>
     <p class="text-xs text-center text-stone-500 mt-4">Starting a new Business Workspace? <a class="text-[#d14900] underline" href="{% url 'signup' %}">Sign Up</a></p>
-    <p class="mt-2 text-center text-xs"><a class="text-stone-400 underline underline-offset-2 hover:text-[#d14900]" href="{% url 'marketing_home' %}">Back to the INPROFIC Overview</a></p>
+    <p class="mt-2 text-center text-xs"><a class="text-stone-400 underline underline-offset-2 hover:text-[#d14900]" href="{% url 'marketing_home' %}">Back to the INPROFIC Overview</a><span class="text-stone-300" style="margin:0 .5rem">·</span><a class="text-stone-400 underline underline-offset-2 hover:text-[#d14900]" href="{% url 'privacy_policy' %}">Privacy Policy</a></p>
   </div>
 </main>
   {% include "pwa/install_prompt.html" %}
+  {% include "_privacy_notice.html" %}
 </body>
 </html>

@@ -41,6 +41,8 @@
     </nav>
   </header>{% endif %}
   {% block content %}{% endblock %}
-  {% if not hide_storefront_header %}<footer class="mt-16 border-t border-stone-200 bg-white px-5 py-8 text-center"><p class="flex flex-col items-center gap-1.5 text-xs text-stone-400"><img src="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" alt="INPROFIC" class="max-w-full" style="width:8.5rem;height:auto" width="1944" height="309"><span>Ordering made simple</span></p></footer>{% endif %}
+  {% if not hide_storefront_header %}<footer class="mt-16 border-t border-stone-200 bg-white px-5 py-8 text-center"><p class="flex flex-col items-center gap-1.5 text-xs text-stone-400"><img src="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" alt="INPROFIC" class="max-w-full" style="width:8.5rem;height:auto" width="1944" height="309"><span>Ordering made simple · <a class="underline" href="{% url 'privacy_policy' %}" data-privacy-modal-open>Privacy</a></span></p></footer>{% endif %}
+  {% include "commerce/_privacy_policy_modal.html" %}
+  {% include "_privacy_notice.html" with privacy_policy_modal=True %}
 </body>
 </html>

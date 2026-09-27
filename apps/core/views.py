@@ -4,6 +4,8 @@ from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
+from django.core.files.storage import default_storage
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
@@ -39,6 +41,37 @@ from procurement.models import PurchaseOrder, PurchaseOrderItem, RawMaterialCost
 from production.models import Order, OrderItem, ProductionBatch
 from sales.models import Sale, SaleItem
 from expenses.models import Expense
+
+
+def privacy_policy(request):
+    """Public, Founder-managed privacy policy with a cached single-row read."""
+    from accounts.privacy import get_public_privacy_policy
+
+    policy = get_public_privacy_policy()
+    effective_date = policy.get("effective_date")
+    if effective_date is None and policy.get("updated_at"):
+        effective_date = policy["updated_at"].date()
+
+    document_url = ""
+    source_file = policy.get("source_file") or ""
+    if source_file and policy.get("render_mode") == "pdf":
+        try:
+            document_url = default_storage.url(source_file)
+        except Exception:
+            document_url = ""
+
+    context = {
+        "privacy_policy_html": policy["body_html"],
+        "privacy_document_html": policy.get("rendered_document_html", ""),
+        "privacy_render_mode": policy.get("render_mode", "html"),
+        "privacy_document_url": document_url,
+        "privacy_effective_date": effective_date,
+        "support_email": getattr(settings, "INPROFIC_SUPPORT_EMAIL", "") or "",
+        "canonical_url": request.build_absolute_uri(reverse("privacy_policy")),
+    }
+    if request.GET.get("embedded") == "1":
+        return render(request, "marketing/_privacy_policy_embedded.html", context)
+    return render(request, "marketing/privacy_policy.html", context)
 
 
 def marketing_home(request):
@@ -2054,6 +2087,7 @@ def seo_sitemap(request):
     urls = [
         (request.build_absolute_uri(reverse("marketing_home")), "1.0", "weekly"),
         (request.build_absolute_uri(reverse("signup")), "0.9", "monthly"),
+        (request.build_absolute_uri(reverse("privacy_policy")), "0.5", "monthly"),
         (request.build_absolute_uri(reverse("login")), "0.4", "monthly"),
     ]
     rows = "".join(f"<url><loc>{loc}</loc><changefreq>{freq}</changefreq><priority>{priority}</priority></url>" for loc, priority, freq in urls)

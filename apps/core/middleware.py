@@ -24,6 +24,7 @@ class BusinessMiddleware:
         # the database connection pool is under pressure.
         if (
             request.path == "/health/"
+            or request.path == "/privacy-policy/"
             or request.path == "/manifest.webmanifest"
             or request.path == "/service-worker.js"
             or request.path.startswith("/pwa/")
@@ -141,7 +142,7 @@ def _live_tester_mutation_blocked(request):
 
 
 EXEMPT_PREFIXES = (
-    "/accounts/login", "/accounts/logout", "/accounts/signup", "/robots.txt", "/sitemap.xml",
+    "/accounts/login", "/accounts/logout", "/accounts/signup", "/privacy-policy", "/robots.txt", "/sitemap.xml",
     "/business/settings", "/business/switch", "/admin", "/static", "/media/", "/shop/",
     "/health/", "/ops/", "/manifest.webmanifest", "/service-worker.js", "/pwa/",
     "/api/v1/storefronts/", "/api/v1/connectors/", "/api/v1/delivery/providers/",

@@ -591,6 +591,38 @@ def finished_good_form(request, pk=None):
     obj = get_object_or_404(FinishedGood, pk=pk) if pk else None
     uses_production = request.business.uses_production
 
+    # The product form renders the same material/product selectors across
+    # several inline formsets. On GET, load each tenant-owned option table once
+    # and reuse labels; bound POST forms keep their ModelChoice querysets for
+    # authoritative validation.
+    raw_option_rows = None
+    good_option_rows = None
+    ingredient_choices = None
+    production_material_choices = None
+    all_raw_choices = None
+    composition_good_choices = None
+    if request.method != "POST":
+        raw_option_rows = list(
+            RawMaterial.objects.only("id", "name", "category", "usage_unit")
+            .order_by("category", "name")
+        )
+        good_option_rows = list(
+            FinishedGood.objects.only("id", "name", "unit").order_by("name")
+        )
+        ingredient_choices = [
+            (str(row.pk), row.name) for row in sorted(raw_option_rows, key=lambda item: item.name.casefold())
+            if row.category == RawMaterial.CATEGORY_INGREDIENT
+        ]
+        production_material_choices = [
+            (str(row.pk), row.name) for row in sorted(raw_option_rows, key=lambda item: item.name.casefold())
+            if row.category in {RawMaterial.CATEGORY_PACKAGING, RawMaterial.CATEGORY_PRODUCTION_SUPPLY}
+        ]
+        all_raw_choices = [(str(row.pk), row.name) for row in raw_option_rows]
+        composition_good_choices = [
+            (str(row.pk), row.name) for row in good_option_rows
+            if not obj or row.pk != obj.pk
+        ]
+
     existing_portion = None
     if obj:
         existing_portion = ProductPortionProfile.raw_objects.filter(
@@ -631,7 +663,9 @@ def finished_good_form(request, pk=None):
     profile_choices = profile_choices_from_submission()
 
     if request.method == "POST":
-        form = FinishedGoodForm(request.POST, instance=obj, business=request.business)
+        form = FinishedGoodForm(
+            request.POST, instance=obj, business=request.business, ingredient_choices=ingredient_choices
+        )
         selected_source = (
             request.POST.get("source_type")
             or getattr(obj, "source_type", FinishedGood.SOURCE_MADE_IN_HOUSE)
@@ -639,10 +673,12 @@ def finished_good_form(request, pk=None):
         show_production_fields = uses_production and selected_source != FinishedGood.SOURCE_PURCHASED_FOR_RESALE
         parent_instance = obj if obj else FinishedGood()
         formset = RecipeItemFormSet(
-            request.POST, instance=parent_instance, prefix="recipe_items"
+            request.POST, instance=parent_instance, prefix="recipe_items",
+            form_kwargs={"raw_material_choices": ingredient_choices},
         ) if uses_production else None
         production_formset = ProductionMaterialFormSet(
-            request.POST, instance=parent_instance, prefix="production_materials"
+            request.POST, instance=parent_instance, prefix="production_materials",
+            form_kwargs={"raw_material_choices": production_material_choices},
         ) if uses_production else None
         channel_price_formset = FinishedGoodChannelPriceFormSet(
             request.POST, instance=parent_instance, prefix="channel_prices",
@@ -665,6 +701,8 @@ def finished_good_form(request, pk=None):
                 "business": request.business,
                 "parent_good": obj,
                 "profile_choices": profile_choices,
+                "finished_good_choices": composition_good_choices,
+                "raw_material_choices": all_raw_choices,
             },
         ) if uses_production else None
 
@@ -798,11 +836,19 @@ def finished_good_form(request, pk=None):
             )
             return redirect("finished_good_add" if "save_add_new" in request.POST else "inventory")
     else:
-        form = FinishedGoodForm(instance=obj, business=request.business)
+        form = FinishedGoodForm(
+            instance=obj, business=request.business, ingredient_choices=ingredient_choices
+        )
         selected_source = getattr(obj, "source_type", FinishedGood.SOURCE_MADE_IN_HOUSE)
         show_production_fields = uses_production and selected_source != FinishedGood.SOURCE_PURCHASED_FOR_RESALE
-        formset = RecipeItemFormSet(instance=obj, prefix="recipe_items") if uses_production else None
-        production_formset = ProductionMaterialFormSet(instance=obj, prefix="production_materials") if uses_production else None
+        formset = RecipeItemFormSet(
+            instance=obj, prefix="recipe_items",
+            form_kwargs={"raw_material_choices": ingredient_choices},
+        ) if uses_production else None
+        production_formset = ProductionMaterialFormSet(
+            instance=obj, prefix="production_materials",
+            form_kwargs={"raw_material_choices": production_material_choices},
+        ) if uses_production else None
         channel_price_formset = FinishedGoodChannelPriceFormSet(
             instance=obj, prefix="channel_prices", form_kwargs={"business": request.business}
         )
@@ -821,17 +867,19 @@ def finished_good_form(request, pk=None):
                 "business": request.business,
                 "parent_good": obj,
                 "profile_choices": profile_choices,
+                "finished_good_choices": composition_good_choices,
+                "raw_material_choices": all_raw_choices,
             },
         ) if uses_production else None
 
-    raw_material_units = {
-        str(material.pk): material.usage_unit
-        for material in RawMaterial.objects.all()
-    }
-    finished_good_units = {
-        str(good.pk): good.unit
-        for good in FinishedGood.raw_objects.filter(business=request.business)
-    }
+    if raw_option_rows is None:
+        raw_option_rows = list(RawMaterial.objects.only("id", "usage_unit"))
+    if good_option_rows is None:
+        good_option_rows = list(
+            FinishedGood.objects.only("id", "unit")
+        )
+    raw_material_units = {str(material.pk): material.usage_unit for material in raw_option_rows}
+    finished_good_units = {str(good.pk): good.unit for good in good_option_rows}
     return render(request, "inventory/finishedgood_form.html", {
         "form": form,
         "formset": formset,

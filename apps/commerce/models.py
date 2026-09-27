@@ -460,6 +460,8 @@ class DeliveryAssignment(BusinessOwnedModel):
     STATUS_ASSIGNED = "assigned"
     STATUS_READY = "ready"
     STATUS_PICKED_UP = "picked_up"
+    # Legacy provider/webhook value. New UI and state transitions normalize it
+    # to picked_up, which now means both collected and en route.
     STATUS_OUT_FOR_DELIVERY = "out_for_delivery"
     STATUS_DELIVERED = "delivered"
     STATUS_FAILED = "failed"
@@ -469,8 +471,7 @@ class DeliveryAssignment(BusinessOwnedModel):
         (STATUS_PENDING, "Pending dispatch"),
         (STATUS_ASSIGNED, "Driver assigned"),
         (STATUS_READY, "Ready for pickup"),
-        (STATUS_PICKED_UP, "Picked up"),
-        (STATUS_OUT_FOR_DELIVERY, "Out for delivery"),
+        (STATUS_PICKED_UP, "Picked up · en route"),
         (STATUS_DELIVERED, "Delivered"),
         (STATUS_FAILED, "Delivery failed"),
         (STATUS_RETURNED, "Returned"),
@@ -497,6 +498,12 @@ class DeliveryAssignment(BusinessOwnedModel):
     proof_reference = models.CharField(max_length=255, blank=True, default="")
     method_switch_count = models.PositiveSmallIntegerField(default=0)
     last_method_switched_at = models.DateTimeField(null=True, blank=True)
+    batch = models.ForeignKey(
+        "DeliveryBatch", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="assignments",
+    )
+    batch_stop_sequence = models.PositiveSmallIntegerField(null=True, blank=True)
+    batch_stop_minutes = models.PositiveSmallIntegerField(default=0)
 
     class Meta:
         ordering = ["-created_at", "-id"]
@@ -508,6 +515,53 @@ class DeliveryEvent(BusinessOwnedModel):
     status = models.CharField(max_length=20, choices=DeliveryAssignment.STATUS_CHOICES)
     note = models.CharField(max_length=255, blank=True, default="")
     metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+
+class DeliveryBatch(BusinessOwnedModel):
+    STATUS_DRAFT = "draft"
+    STATUS_ROUTED = "routed"
+    STATUS_PICKED_UP = "picked_up"
+    STATUS_COMPLETED = "completed"
+    STATUS_CANCELLED = "cancelled"
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, "Organising route"),
+        (STATUS_ROUTED, "Route ready"),
+        (STATUS_PICKED_UP, "Picked up · en route"),
+        (STATUS_COMPLETED, "Completed"),
+        (STATUS_CANCELLED, "Cancelled"),
+    ]
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    driver = models.ForeignKey(DeliveryDriver, on_delete=models.PROTECT, related_name="batches")
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_DRAFT)
+    routed_at = models.DateTimeField(null=True, blank=True)
+    picked_up_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["business", "status", "created_at"], name="delivery_batch_status_idx")]
+
+
+class DeliveryMessage(BusinessOwnedModel):
+    SENDER_CUSTOMER = "customer"
+    SENDER_RIDER = "rider"
+    SENDER_STAFF = "staff"
+    SENDER_CHOICES = [
+        (SENDER_CUSTOMER, "Customer"),
+        (SENDER_RIDER, "Rider"),
+        (SENDER_STAFF, "Dispatch staff"),
+    ]
+    assignment = models.ForeignKey(DeliveryAssignment, on_delete=models.CASCADE, related_name="messages")
+    sender_type = models.CharField(max_length=12, choices=SENDER_CHOICES)
+    sender_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="commerce_delivery_messages",
+    )
+    body = models.CharField(max_length=500)
 
     class Meta:
         ordering = ["created_at", "id"]
@@ -625,6 +679,10 @@ class StorefrontProduct(BusinessOwnedModel):
     preorder_min_quantity = models.DecimalField(max_digits=14, decimal_places=2, default=1)
     distribution_min_quantity = models.DecimalField(max_digits=14, decimal_places=2, default=1)
     preorder_lead_time = models.CharField(max_length=80, blank=True, default="")
+    estimated_ready_minutes = models.PositiveSmallIntegerField(
+        default=30,
+        help_text="Typical made-to-order readiness estimate shown to customers and used to validate delivery timing.",
+    )
 
     class Meta:
         ordering = ["finished_good__name"]
@@ -780,6 +838,8 @@ class CommerceIntake(BusinessOwnedModel):
     accepted_sale = models.ForeignKey("sales.Sale", null=True, blank=True, on_delete=models.SET_NULL, related_name="commerce_intakes")
     split_order = models.ForeignKey("production.Order", null=True, blank=True, on_delete=models.SET_NULL, related_name="split_commerce_intakes")
     rejection_reason = models.CharField(max_length=255, blank=True, default="")
+    requested_delivery_at = models.DateTimeField(null=True, blank=True)
+    estimated_ready_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at", "-id"]
@@ -842,6 +902,14 @@ class CommerceOrderNumberSequence(BusinessOwnedModel):
 
 
 class CommerceIntakeItem(models.Model):
+    FULFILMENT_STOCK = "stock"
+    FULFILMENT_MADE_TO_ORDER = "made_to_order"
+    FULFILMENT_PROCURED = "procured"
+    FULFILMENT_CHOICES = [
+        (FULFILMENT_STOCK, "From Physical Store stock"),
+        (FULFILMENT_MADE_TO_ORDER, "Made to order"),
+        (FULFILMENT_PROCURED, "Procured to sell"),
+    ]
     intake = models.ForeignKey(CommerceIntake, on_delete=models.CASCADE, related_name="items")
     storefront_product = models.ForeignKey(StorefrontProduct, on_delete=models.PROTECT)
     finished_good = models.ForeignKey("inventory.FinishedGood", on_delete=models.PROTECT)
@@ -861,6 +929,8 @@ class CommerceIntakeItem(models.Model):
     fulfilment_quantity_per_unit = models.DecimalField(max_digits=14, decimal_places=3, default=1)
     contents_snapshot = models.JSONField(default=list, blank=True)
     assembly_consumed_at = models.DateTimeField(null=True, blank=True)
+    fulfilment_source = models.CharField(max_length=16, choices=FULFILMENT_CHOICES, default=FULFILMENT_MADE_TO_ORDER)
+    estimated_ready_at = models.DateTimeField(null=True, blank=True)
 
     @property
     def fulfilment_quantity(self):
@@ -931,6 +1001,8 @@ class CommerceCheckoutSession(BusinessOwnedModel):
         CommerceIntake, null=True, blank=True, on_delete=models.PROTECT, related_name="checkout_session"
     )
     materialization_error = models.CharField(max_length=500, blank=True, default="")
+    requested_delivery_at = models.DateTimeField(null=True, blank=True)
+    estimated_ready_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at", "-id"]
@@ -980,6 +1052,12 @@ class CommerceCheckoutItem(models.Model):
     customer_unit = models.CharField(max_length=100, blank=True, default="")
     fulfilment_quantity_per_unit = models.DecimalField(max_digits=14, decimal_places=3, default=1)
     contents_snapshot = models.JSONField(default=list, blank=True)
+    fulfilment_source = models.CharField(
+        max_length=16,
+        choices=CommerceIntakeItem.FULFILMENT_CHOICES,
+        default=CommerceIntakeItem.FULFILMENT_MADE_TO_ORDER,
+    )
+    estimated_ready_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         indexes = [models.Index(fields=["finished_good", "reserved_stock_quantity"], name="commerce_checkout_good_idx")]

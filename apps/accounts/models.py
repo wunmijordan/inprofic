@@ -819,6 +819,69 @@ class PlatformIntegrationSettings(models.Model):
         return row
 
 
+class PlatformPrivacyPolicy(models.Model):
+    """Founder-managed platform privacy policy shown on the public website."""
+
+    RENDER_HTML = "html"
+    RENDER_PDF = "pdf"
+    RENDER_DOCX = "docx"
+    RENDER_MODE_CHOICES = [
+        (RENDER_HTML, "Editable web policy"),
+        (RENDER_PDF, "Uploaded PDF"),
+        (RENDER_DOCX, "Uploaded Word document"),
+    ]
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    body_html = models.TextField(blank=True, default="")
+    rendered_document_html = models.TextField(
+        blank=True, default="",
+        help_text="Safe rendered snapshot used for an uploaded Word policy document.",
+    )
+    render_mode = models.CharField(max_length=12, choices=RENDER_MODE_CHOICES, default=RENDER_HTML)
+    effective_date = models.DateField(null=True, blank=True)
+    source_file = models.FileField(
+        upload_to="platform/privacy/", blank=True,
+        validators=[FileExtensionValidator(["html", "htm", "txt", "md", "markdown", "pdf", "docx"])],
+        help_text="Optional HTML, TXT, Markdown, PDF or Word (.docx) source retained with the current policy.",
+    )
+    source_filename = models.CharField(max_length=255, blank=True, default="")
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="platform_privacy_policy_updates",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "platform privacy policy"
+        verbose_name_plural = "platform privacy policy"
+
+    @classmethod
+    def load(cls):
+        row = cls.objects.select_related("updated_by").filter(pk=1).first()
+        if row is not None:
+            return row
+        return cls.objects.create(pk=1)
+
+    @property
+    def published_body_html(self):
+        if self.body_html.strip():
+            return self.body_html
+        from .privacy import DEFAULT_PRIVACY_POLICY_HTML
+        return DEFAULT_PRIVACY_POLICY_HTML
+
+    def save(self, *args, **kwargs):
+        result = super().save(*args, **kwargs)
+        from .privacy import invalidate_privacy_policy_cache
+        invalidate_privacy_policy_cache()
+        return result
+
+    def delete(self, *args, **kwargs):
+        result = super().delete(*args, **kwargs)
+        from .privacy import invalidate_privacy_policy_cache
+        invalidate_privacy_policy_cache()
+        return result
+
+
 class FounderSignupContactState(models.Model):
     """Durable Founder signup-list record keyed by normalized signup email.
 

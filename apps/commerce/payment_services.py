@@ -28,6 +28,7 @@ from .models import (
 )
 from .payment_gateways import initialize_gateway, verify_gateway
 from .notification_services import queue_commerce_notification
+from .realtime import publish_checkout_changed
 
 
 PAYMENT_METHOD_TO_SALE_METHOD = {
@@ -245,6 +246,7 @@ def serialize_payment(payment, config=None):
         "order_id": str(payment.intake.public_id) if payment.intake_id else None,
         "receipt_id": str(latest_receipt.public_id) if latest_receipt else None,
         "receipt_path": (f"/shop/{payment.business.slug}/receipts/{latest_receipt.public_id}/" if latest_receipt else None),
+        "receipt_api_path": (f"/api/v1/storefronts/{payment.business.slug}/receipts/{latest_receipt.public_id}" if latest_receipt else None),
         "claim": ({
             "payer_name": latest_claim.payer_name,
             "transfer_reference": latest_claim.transfer_reference,
@@ -504,6 +506,8 @@ def submit_bank_claim(*, payment, payer_name, transfer_reference, payment_proof=
         target_url="/finance/commerce-payments/",
         dedupe_key=f"claim:{claim.pk}:submitted",
     )
+    if payment.checkout_id:
+        transaction.on_commit(lambda business_id=payment.business_id, checkout_id=payment.checkout.public_id: publish_checkout_changed(business_id, checkout_id, reason="claim"))
     return claim, True
 
 
@@ -734,6 +738,8 @@ def record_verified_payment(
             target_url="/finance/commerce-payments/",
             dedupe_key=f"receipt:{receipt.pk}:verified",
         )
+    if checkout_before_payment:
+        transaction.on_commit(lambda business_id=payment.business_id, checkout_id=checkout_before_payment.public_id: publish_checkout_changed(business_id, checkout_id, reason="payment-confirmed"))
     return receipt, True
 
 

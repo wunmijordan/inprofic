@@ -61,7 +61,9 @@ def _finance_open_items(business):
             business=business,
             source__in=("distribution_order", "online_order", "walkin"),
             transaction_type__in=("unpaid", "partial"),
-        ).select_related("business").annotate(
+        ).only(
+            "id", "source", "customer", "date", "transaction_type"
+        ).annotate(
             _invoice_total=Coalesce(Subquery(sale_total_sq, output_field=money_field), Value(Decimal("0"), output_field=money_field)),
             _paid_total=Coalesce(Subquery(sale_paid_sq, output_field=money_field), Value(Decimal("0"), output_field=money_field)),
         )
@@ -70,6 +72,9 @@ def _finance_open_items(business):
     unpaid_invoice_sales = []
     receivables = Decimal("0")
     settlement_sale_ids = []
+    outstanding_sales_count = 0
+    unpaid_invoice_count = 0
+    settlement_sale_count = 0
     for sale in open_sales:
         balance = max(Decimal("0"), Decimal(sale._invoice_total or 0) - Decimal(sale._paid_total or 0))
         is_customer_order = sale.source in {"distribution_order", "online_order"}
@@ -77,11 +82,17 @@ def _finance_open_items(business):
         if balance:
             if is_customer_order:
                 receivables += balance
-                outstanding_sales.append({"sale": sale, "balance": balance})
+                outstanding_sales_count += 1
+                if len(outstanding_sales) < 30:
+                    outstanding_sales.append({"sale": sale, "balance": balance})
             elif is_walkin:
-                unpaid_invoice_sales.append({"sale": sale, "balance": balance})
+                unpaid_invoice_count += 1
+                if len(unpaid_invoice_sales) < 10:
+                    unpaid_invoice_sales.append({"sale": sale, "balance": balance})
         elif is_customer_order or is_walkin:
-            settlement_sale_ids.append(sale.pk)
+            settlement_sale_count += 1
+            if len(settlement_sale_ids) < 8:
+                settlement_sale_ids.append(sale.pk)
 
     po_money_field = DecimalField(max_digits=24, decimal_places=6)
     po_total_sq = (
@@ -103,6 +114,8 @@ def _finance_open_items(business):
     open_pos = list(
         PurchaseOrder.raw_objects.filter(
             business=business, payment_status__in=("unpaid", "partial"), status="received"
+        ).only(
+            "id", "supplier", "date", "received_date", "payment_status", "status"
         ).annotate(
             _invoice_total=Coalesce(Subquery(po_total_sq, output_field=po_money_field), Value(Decimal("0"), output_field=po_money_field)),
             _paid_total=Coalesce(Subquery(po_paid_sq, output_field=po_money_field), Value(Decimal("0"), output_field=po_money_field)),
@@ -111,13 +124,19 @@ def _finance_open_items(business):
     outstanding_pos = []
     purchase_payables = Decimal("0")
     settlement_po_ids = []
+    outstanding_pos_count = 0
+    settlement_po_count = 0
     for po in open_pos:
         balance = max(Decimal("0"), Decimal(po._invoice_total or 0) - Decimal(po._paid_total or 0))
         if balance:
             purchase_payables += balance
-            outstanding_pos.append({"po": po, "balance": balance})
+            outstanding_pos_count += 1
+            if len(outstanding_pos) < 30:
+                outstanding_pos.append({"po": po, "balance": balance})
         else:
-            settlement_po_ids.append(po.pk)
+            settlement_po_count += 1
+            if len(settlement_po_ids) < 8:
+                settlement_po_ids.append(po.pk)
 
     unpaid_expenses = list(
         Expense.raw_objects.filter(business=business, payment_status="unpaid")
@@ -145,6 +164,11 @@ def _finance_open_items(business):
         "payables": purchase_payables + expense_payables,
         "settlement_sale_ids": settlement_sale_ids,
         "settlement_po_ids": settlement_po_ids,
+        "outstanding_sales_count": outstanding_sales_count,
+        "unpaid_invoice_count": unpaid_invoice_count,
+        "outstanding_pos_count": outstanding_pos_count,
+        "settlement_sale_count": settlement_sale_count,
+        "settlement_po_count": settlement_po_count,
     }
 
 
@@ -340,23 +364,23 @@ def finance_alert_feed(request):
 
     alerts.sort(key=lambda item: item["sort_date"], reverse=True)
     balancing_count = (
-        len(items["settlement_sale_ids"])
-        + len(items["settlement_po_ids"])
+        items["settlement_sale_count"]
+        + items["settlement_po_count"]
         + sum(1 for account in account_balances if account.balance < 0)
     )
     finance_count = (
-        len(items["unpaid_invoice_sales"])
-        + len(items["outstanding_sales"])
-        + len(items["outstanding_pos"])
+        items["unpaid_invoice_count"]
+        + items["outstanding_sales_count"]
+        + items["outstanding_pos_count"]
         + items["expense_payable_count"]
         + balancing_count
     )
     return JsonResponse({
         "enabled": True,
         "count": finance_count,
-        "invoice_count": len(items["unpaid_invoice_sales"]),
-        "receivable_count": len(items["outstanding_sales"]),
-        "payable_count": len(items["outstanding_pos"]) + items["expense_payable_count"],
+        "invoice_count": items["unpaid_invoice_count"],
+        "receivable_count": items["outstanding_sales_count"],
+        "payable_count": items["outstanding_pos_count"] + items["expense_payable_count"],
         "balancing_count": balancing_count,
         "receivables_total": str(items["receivables"]),
         "payables_total": str(items["payables"]),

@@ -81,7 +81,7 @@ class CommerceSettingsForm(forms.ModelForm):
 class StorefrontProductForm(forms.ModelForm):
     class Meta:
         model = StorefrontProduct
-        fields = ["published", "public_name", "description", "image", "allow_stock_order", "allow_online_order", "allow_distribution_order", "min_quantity", "preorder_min_quantity", "distribution_min_quantity", "max_quantity", "preorder_lead_time"]
+        fields = ["published", "public_name", "description", "image", "allow_stock_order", "allow_online_order", "allow_distribution_order", "min_quantity", "preorder_min_quantity", "distribution_min_quantity", "max_quantity", "preorder_lead_time", "estimated_ready_minutes"]
         widgets = {
             "description": forms.Textarea(attrs={"rows": 3}),
             "image": forms.ClearableFileInput(attrs={"accept": "image/avif,image/gif,image/jpeg,image/png,image/webp"}),
@@ -96,6 +96,8 @@ class StorefrontProductForm(forms.ModelForm):
         self.fields["min_quantity"].label = "Physical Store / direct minimum"
         self.fields["preorder_min_quantity"].label = "Online minimum"
         self.fields["distribution_min_quantity"].label = "Distribution / bulk minimum"
+        self.fields["estimated_ready_minutes"].label = "Typical made-to-order readiness (minutes)"
+        self.fields["estimated_ready_minutes"].help_text = "Used for product-card readiness and the earliest valid delivery time."
         self.fields["published"].help_text = (
             "Publish this finished/procured good as its own customer-buyable catalogue item. "
             "Raw and packaging materials used inside composed products are not published automatically."
@@ -163,9 +165,17 @@ class CommercePaymentConfigurationForm(forms.ModelForm):
         self.fields["paystack_terminal_enabled"].label = "Paystack Terminal"
         self.fields["cash_enabled"].label = "Cash at the in-premise POS"
         accounts = CashAccount.raw_objects.filter(business=business, active=True).order_by("name")
+        account_rows = list(accounts.only("id", "name")) if not self.is_bound else None
         for name in ("paystack_account", "monnify_account", "transfer_account", "bank_cash_account", "paystack_terminal_account", "cash_account"):
-            self.fields[name].queryset = accounts
-            self.fields[name].required = False
+            field = self.fields[name]
+            field.queryset = accounts
+            field.required = False
+            if account_rows is not None:
+                # Six settlement-account selects share the same tenant-owned
+                # choices. Render from one loaded list instead of issuing the
+                # same account query once per field. POST validation continues
+                # to use the ModelChoiceField queryset.
+                field.choices = [("", field.empty_label), *[(str(row.pk), row.name) for row in account_rows]]
         for name, field in self.fields.items():
             if isinstance(field.widget, forms.CheckboxInput):
                 field.widget.attrs["class"] = "sr-only peer"

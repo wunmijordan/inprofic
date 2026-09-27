@@ -712,6 +712,8 @@ def founder_mailing_list_contact_action(request):
     state.permanently_hidden = True
     state.updated_by = request.user
     state.save(update_fields=["permanently_hidden", "updated_by", "updated_at"])
+    from .analytics import invalidate_founder_analytics_cache
+    invalidate_founder_analytics_cache()
     messages.success(request, f"{email} permanently removed from the signup mailing-list table.")
     return redirect(f"{reverse('founder_subscriptions')}?workspace=management#signup-mailing-list")
 
@@ -850,12 +852,12 @@ def founder_subscriptions(request):
     from .forms import (
         FounderGrantForm, FounderTrialGrantForm, SubscriptionTrialPolicyForm,
         BusinessRestoreForm, SubscriptionPromotionForm, MarketingPromoCampaignForm,
-        MarketingTrustSettingsForm, MarketingTrustLogoForm,
+        MarketingTrustSettingsForm, MarketingTrustLogoForm, PlatformPrivacyPolicyForm,
     )
     from .models import (
         BusinessSubscription, FounderTrialGrant, SubscriptionPlan, SubscriptionPayment,
         SubscriptionPaymentSettings, SubscriptionPolicySettings, PlatformIntegrationSettings,
-        SubscriptionPromotion, MarketingPromoCampaign, MarketingTrustSettings, MarketingTrustLogo,
+        SubscriptionPromotion, MarketingPromoCampaign, MarketingTrustSettings, MarketingTrustLogo, PlatformPrivacyPolicy,
     )
     from .subscription_services import (
         ensure_default_plans, grant_founder_lifetime, grant_founder_trial_extension,
@@ -869,26 +871,59 @@ def founder_subscriptions(request):
     payment_settings = SubscriptionPaymentSettings.load()
     integration_settings = PlatformIntegrationSettings.load()
     trust_settings = MarketingTrustSettings.load()
+    privacy_policy = PlatformPrivacyPolicy.load()
     action = request.POST.get("action") if request.method == "POST" else ""
-    form = FounderGrantForm(request.POST if action == "grant" else None)
+
+    # These choices are rendered by several Founder forms. On ordinary GETs,
+    # load them once and reuse the labels instead of making each ModelChoiceField
+    # independently query the same remote database table while rendering. POST
+    # validation keeps the original tenant/platform querysets authoritative.
+    plans_for_page = None
+    business_choices = None
+    plan_choices = None
+    if request.method != "POST":
+        plans_for_page = list(
+            SubscriptionPlan.objects.prefetch_related("module_entitlements")
+            .all().order_by("monthly_price", "id")
+        )
+        business_choices = [
+            (str(pk), name)
+            for pk, name in Business.objects.order_by("name", "id").values_list("pk", "name")
+        ]
+        plan_choices = [(str(plan.pk), plan.name) for plan in plans_for_page if plan.active]
+
+    form = FounderGrantForm(
+        request.POST if action == "grant" else None,
+        business_choices=business_choices, plan_choices=plan_choices,
+    )
     trial_policy_form = SubscriptionTrialPolicyForm(
         request.POST if action == "save_trial_policy" else None, instance=trial_policy_settings
     )
     trial_grant_form = FounderTrialGrantForm(
         request.POST if action == "grant_trial" else None,
         default_days=trial_policy_settings.general_trial_days,
+        business_choices=business_choices, plan_choices=plan_choices,
     )
     restore_form = BusinessRestoreForm(
         request.POST if action in {"backup_preview", "backup_restore"} else None,
         request.FILES if action in {"backup_preview", "backup_restore"} else None,
+        business_choices=business_choices,
     )
-    promotion_form = SubscriptionPromotionForm(request.POST if action == "create_promotion" else None)
+    promotion_form = SubscriptionPromotionForm(
+        request.POST if action == "create_promotion" else None,
+        plan_choices=plan_choices,
+    )
     trust_settings_form = MarketingTrustSettingsForm(
         request.POST if action == "save_trust_settings" else None, instance=trust_settings
     )
     trust_logo_form = MarketingTrustLogoForm(
         request.POST if action == "add_trust_logo" else None,
         request.FILES if action == "add_trust_logo" else None,
+    )
+    privacy_policy_form = PlatformPrivacyPolicyForm(
+        request.POST if action == "save_privacy_policy" else None,
+        request.FILES if action == "save_privacy_policy" else None,
+        instance=privacy_policy,
     )
     campaign_id = (request.POST.get("campaign_id") if action == "save_marketing_campaign" else None) or request.GET.get("campaign")
     try:
@@ -1195,6 +1230,33 @@ def founder_subscriptions(request):
             ])
             messages.success(request, "Subscription payment channels updated. Existing payment callbacks remain active.")
             return redirect("founder_subscriptions")
+        if action == "save_privacy_policy" and privacy_policy_form.is_valid():
+            old_source_name = privacy_policy.source_file.name if privacy_policy.source_file else ""
+            old_source_storage = privacy_policy.source_file.storage if privacy_policy.source_file else None
+            policy = privacy_policy_form.save(commit=False)
+            replacement_file = privacy_policy_form.cleaned_data.get("replacement_file")
+            if replacement_file:
+                policy.source_file = replacement_file
+                policy.source_filename = privacy_policy_form.cleaned_data.get("replacement_source_filename", "")
+                policy.render_mode = privacy_policy_form.cleaned_data.get(
+                    "replacement_render_mode", PlatformPrivacyPolicy.RENDER_HTML
+                )
+                policy.rendered_document_html = privacy_policy_form.cleaned_data.get(
+                    "replacement_rendered_document_html", ""
+                )
+            else:
+                # A manual edit supersedes any older uploaded document/source so
+                # Founder never sees stale source metadata for the live policy.
+                policy.source_file = ""
+                policy.source_filename = ""
+                policy.render_mode = PlatformPrivacyPolicy.RENDER_HTML
+                policy.rendered_document_html = ""
+            policy.updated_by = request.user
+            policy.save()
+            if old_source_name and old_source_storage and old_source_name != getattr(policy.source_file, "name", ""):
+                old_source_storage.delete(old_source_name)
+            messages.success(request, "Privacy Policy updated and the public cached copy was refreshed.")
+            return redirect(f"{reverse('founder_subscriptions')}?workspace=management#privacy-policy-management")
         if action == "save_platform_integrations":
             integration_settings.glovo_enabled = request.POST.get("glovo_enabled") == "on"
             integration_settings.updated_by = request.user
@@ -1230,15 +1292,19 @@ def founder_subscriptions(request):
             | Q(email__icontains=platform_query)
             | Q(phone__icontains=platform_query)
         )
+    if plans_for_page is None:
+        plans_for_page = SubscriptionPlan.objects.prefetch_related("module_entitlements").all().order_by("monthly_price", "id")
     from .analytics import founder_analytics_summary
     founder_analytics = founder_analytics_summary()
     return render(request, "accounts/founder_subscriptions.html", {
         "form": form,
         "subscriptions": subscriptions,
         "pending_payments": pending_payments,
-        "plans": SubscriptionPlan.objects.prefetch_related("module_entitlements").all().order_by("monthly_price", "id"),
+        "plans": plans_for_page,
         "payment_settings": payment_settings,
         "integration_settings": integration_settings,
+        "privacy_policy": privacy_policy,
+        "privacy_policy_form": privacy_policy_form,
         "trial_policy_settings": trial_policy_settings,
         "trial_policy_form": trial_policy_form,
         "trial_grant_form": trial_grant_form,

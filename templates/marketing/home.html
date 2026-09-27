@@ -664,10 +664,11 @@
       <p class="text-xs leading-5">
         <span style="display:inline-block;font-size:inherit;line-height:inherit;vertical-align:baseline;position:relative;top:.06em">&copy;</span> {% now "Y" %} <img src="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" alt="INPROFIC" style="display:inline-block;width:4.75rem;height:auto;margin:0 1rem 0 .18rem;vertical-align:baseline" width="1944" height="309"><span>An ITERATID LTD Product. All Rights Reserved.</span>
       </p>
-      <p>Inventory, Operations and Commerce—working together.</p>
+      <p class="flex items-center gap-3"><span>Inventory, Operations and Commerce—working together.</span><a href="{% url 'privacy_policy' %}" class="font-semibold text-[#8f172d] underline underline-offset-2">Privacy Policy</a></p>
     </div>
   </footer>
   {% include "pwa/install_prompt.html" %}
+  {% include "_privacy_notice.html" %}
   {% if marketing_campaigns|length > 1 %}<script>
   (() => {
     const stage = document.querySelector('[data-promo-stage]'); if (!stage) return;

@@ -1,0 +1,21 @@
+<div data-inprofic-privacy-notice hidden role="status" aria-label="Cookie and privacy notice" style="position:fixed;left:50%;bottom:1rem;z-index:220;width:min(44rem,calc(100% - 2rem));transform:translateX(-50%);border:1px solid color-mix(in srgb,var(--brand,var(--accent,#d14900)) 18%,#e7dfcc);border-radius:1rem;background:var(--paper,#faf6ef);color:#211d1a;box-shadow:0 18px 55px color-mix(in srgb,var(--brand-dark,var(--deep,#050733)) 18%,transparent);padding:.85rem 1rem;font-family:Sora,system-ui,sans-serif">
+  <div style="display:flex;align-items:center;gap:.8rem;justify-content:space-between;flex-wrap:wrap">
+    <p style="margin:0;flex:1 1 28rem;font-size:.76rem;line-height:1.6;color:#57534e"><strong style="color:var(--brand-dark,var(--deep,#050733))">Essential privacy notice.</strong> INPROFIC uses first-party session/CSRF cookies and functional browser storage for sign-in, security, baskets, preferences and order continuity. We do not load advertising or cross-site tracking cookies by default. <a href="{% url 'privacy_policy' %}"{% if privacy_policy_modal %} data-privacy-modal-open{% endif %} style="color:var(--brand,var(--accent,#d14900));font-weight:700;text-decoration:underline;text-underline-offset:2px">Privacy Policy</a></p>
+    <button type="button" data-inprofic-privacy-dismiss style="border:0;border-radius:.65rem;background:var(--brand,var(--accent,#d14900));color:var(--tenant-button-contrast,#fff);padding:.55rem .8rem;font-family:inherit;font-size:.72rem;font-weight:700;cursor:pointer">Got it</button>
+  </div>
+</div>
+<script>
+(() => {
+  const notice = document.querySelector('[data-inprofic-privacy-notice]');
+  if (!notice) return;
+  const key = 'inprofic:essential-privacy-notice:v1';
+  let dismissed = false;
+  try { dismissed = localStorage.getItem(key) === 'dismissed'; } catch (_) {}
+  if (dismissed) return;
+  notice.hidden = false;
+  notice.querySelector('[data-inprofic-privacy-dismiss]')?.addEventListener('click', () => {
+    try { localStorage.setItem(key, 'dismissed'); } catch (_) {}
+    notice.hidden = true;
+  });
+})();
+</script>

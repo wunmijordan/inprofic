@@ -316,7 +316,7 @@ def ensure_builtin_provider_accounts(business):
         status_mapping={
             "CREATED": "assigned", "SCHEDULED": "assigned", "ACTIVATED": "assigned",
             "ACCEPTED": "assigned", "WAITING_FOR_PICKUP": "ready", "PICKED": "picked_up",
-            "WAITING_FOR_DELIVERY": "out_for_delivery", "DELIVERED": "delivered",
+            "WAITING_FOR_DELIVERY": "picked_up", "DELIVERED": "delivered",
             "REJECTED": "failed", "CANCELLED": "cancelled", "RETURNED": "returned",
         },
     )

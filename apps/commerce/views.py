@@ -410,6 +410,21 @@ def _public_catalog_data(business):
 
     products = list(_public_products(business))
     for product in products:
+        multiplier = standard_multiplier(product.finished_good)
+        product.public_stock_available = (
+            Decimal(available_physical_stock(product.finished_good)) / multiplier
+        ).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+        product.public_stock_source_available = bool(product.allow_online_order and product.public_stock_available > 0)
+        product.public_made_source_available = bool(
+            product.allow_online_order and business.uses_production and product.finished_good.is_made_in_house
+        )
+        # Purchased-for-resale products are stock-backed online; procurement is
+        # an internal replenishment workflow, not a promise that an unavailable
+        # item can be ordered from the public catalogue.
+        product.public_procured_source_available = False
+        product.public_online_available = bool(
+            product.allow_online_order and (product.public_stock_source_available or product.public_made_source_available)
+        )
         product.public_individual_options = [
             option for option in product.individual_sale_options
             if option.active and (
@@ -535,6 +550,7 @@ def storefront_order(request,business_slug):
         quantities = request.POST.getlist("quantity")
         bulk_pack_ids = request.POST.getlist("bulk_pack_id")
         individual_option_ids = request.POST.getlist("individual_option_id")
+        fulfilment_sources = request.POST.getlist("fulfilment_source")
         if bulk_pack_ids and len(bulk_pack_ids) != len(product_ids):
             raise ValidationError("Bulk option selections do not match the submitted basket.")
         if individual_option_ids and len(individual_option_ids) != len(product_ids):
@@ -543,6 +559,10 @@ def storefront_order(request,business_slug):
             bulk_pack_ids = [""] * len(product_ids)
         if not individual_option_ids:
             individual_option_ids = [""] * len(product_ids)
+        if fulfilment_sources and len(fulfilment_sources) != len(product_ids):
+            raise ValidationError("Fulfilment selections do not match the submitted basket.")
+        if not fulfilment_sources:
+            fulfilment_sources = [""] * len(product_ids)
         if not product_ids or len(product_ids) != len(quantities):
             raise ValidationError("Choose at least one product and enter a quantity for each one.")
         products = {
@@ -558,7 +578,7 @@ def storefront_order(request,business_slug):
             )
         }
         items = []
-        for product_id, quantity, bulk_pack_id, individual_option_id in zip(product_ids, quantities, bulk_pack_ids, individual_option_ids):
+        for product_id, quantity, bulk_pack_id, individual_option_id, fulfilment_source in zip(product_ids, quantities, bulk_pack_ids, individual_option_ids, fulfilment_sources):
             product = products.get(product_id)
             if product is None:
                 raise ValidationError("One of the selected products is no longer available.")
@@ -567,6 +587,7 @@ def storefront_order(request,business_slug):
                 "quantity": quantity,
                 "bulk_pack_id": bulk_pack_id or None,
                 "individual_option_id": individual_option_id or None,
+                "fulfilment_source": fulfilment_source or None,
             })
         delivery_quote_id = request.POST.get("delivery_quote_id") or None
         if request.POST.get("request_delivery") == "on" and not delivery_quote_id:
@@ -588,6 +609,7 @@ def storefront_order(request,business_slug):
             delivery_quote_id=delivery_quote_id,
             storefront_customer=storefront_customer,
             attribution=_request_attribution(request),
+            requested_delivery_at=request.POST.get("requested_delivery_at") or None,
         )
         return redirect("storefront_checkout", business_slug=business.slug, checkout_id=checkout.public_id)
     except (ValidationError, InvalidOperation, TypeError, ValueError) as exc:
@@ -630,8 +652,8 @@ def _delivery_payload(intake):
     eta_min_at = None
     eta_max_at = None
     if pickup_at and assignment.quote_id:
-        eta_min_at = pickup_at + timezone.timedelta(minutes=assignment.quote.eta_min_minutes)
-        eta_max_at = pickup_at + timezone.timedelta(minutes=assignment.quote.eta_max_minutes)
+        eta_min_at = pickup_at + timezone.timedelta(minutes=assignment.quote.eta_min_minutes + int(assignment.batch_stop_minutes or 0))
+        eta_max_at = pickup_at + timezone.timedelta(minutes=assignment.quote.eta_max_minutes + int(assignment.batch_stop_minutes or 0))
     return {
         "id": str(assignment.public_id),
         "status": assignment.status,
@@ -869,6 +891,47 @@ def _api_business_and_auth(request,business_slug,write=False):
     return business,CommerceIntegration.raw_objects.filter(business=business,active=True,integration_type=CommerceIntegration.TYPE_API,api_key=key).exists()
 
 
+@require_http_methods(["GET"])
+def api_privacy_policy(request, business_slug):
+    """Headless-safe policy payload intended to be presented in the website's own modal."""
+    business, ok = _api_business_and_auth(request, business_slug)
+    if not ok:
+        return JsonResponse({"detail": "Commerce API unavailable."}, status=404)
+    from django.conf import settings as django_settings
+    from django.core.files.storage import default_storage
+    from accounts.privacy import get_public_privacy_policy
+
+    policy = get_public_privacy_policy()
+    effective_date = policy.get("effective_date")
+    if effective_date is None and policy.get("updated_at"):
+        effective_date = policy["updated_at"].date()
+    render_mode = policy.get("render_mode", "html")
+    document_url = ""
+    if render_mode == "pdf" and policy.get("source_file"):
+        try:
+            document_url = default_storage.url(policy["source_file"])
+        except Exception:
+            document_url = ""
+    html = policy.get("rendered_document_html", "") if render_mode == "docx" else policy.get("body_html", "")
+    return JsonResponse({
+        "title": "Privacy Policy",
+        "presentation": "modal",
+        "close_control_required": True,
+        "effective_date": effective_date.isoformat() if effective_date else None,
+        "render_mode": render_mode,
+        "html": html if render_mode != "pdf" else "",
+        "document_url": request.build_absolute_uri(document_url) if document_url and document_url.startswith("/") else document_url,
+        "support_email": getattr(django_settings, "INPROFIC_SUPPORT_EMAIL", "") or "",
+        "theme": {
+            "font_family": "Sora",
+            "display_font_family": "Fraunces",
+            "accent_color": getattr(business, "accent_color", "#d14900") or "#d14900",
+            "background_color": getattr(business, "background_color", "#050733") or "#050733",
+            "background_text_color": getattr(business, "background_text_color", "#FFFFFF") or "#FFFFFF",
+        },
+    })
+
+
 def api_products(request,business_slug):
     business,ok=_api_business_and_auth(request,business_slug)
     if not ok:return JsonResponse({"detail":"Commerce API unavailable."},status=404)
@@ -894,14 +957,29 @@ def api_products(request,business_slug):
         for code, enabled, minimum in mode_config:
             if not enabled:
                 continue
-            fulfilment = (
-                "stock"
-                if (
-                    not business.uses_production
-                    or p.finished_good.is_purchased_for_resale
-                )
-                else "preorder"
-            )
+            stock_available = (Decimal(available_physical_stock(p.finished_good)) / standard_multiplier(p.finished_good)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+            if code == "distribution":
+                fulfilment = "preorder"
+                if p.finished_good.is_purchased_for_resale:
+                    fulfilment_options = [{
+                        "code": "stock", "label": "Prepared bulk order", "available": stock_available > 0,
+                        "available_now": str(stock_available), "estimated_ready_minutes": p.estimated_ready_minutes,
+                    }]
+                    if stock_available <= 0:
+                        continue
+                else:
+                    fulfilment_options = [{"code": "made_to_order", "label": "Made to order", "available": True, "estimated_ready_minutes": p.estimated_ready_minutes}]
+            else:
+                fulfilment = "choice"
+                fulfilment_options = []
+                if stock_available > 0:
+                    fulfilment_options.append({"code": "stock", "label": "From Physical Store stock", "available": True, "available_now": str(stock_available), "estimated_ready_minutes": 0})
+                if p.finished_good.is_made_in_house and business.uses_production:
+                    fulfilment_options.append({"code": "made_to_order", "label": "Made to order", "available": True, "estimated_ready_minutes": p.estimated_ready_minutes})
+                if not fulfilment_options:
+                    # No public online fulfilment source is currently available.
+                    # Keep other channels (notably Bulk Order) independently visible.
+                    continue
             order_modes.append({
                 "code": code,
                 "label": channel_labels[code],
@@ -911,6 +989,7 @@ def api_products(request,business_slug):
                 "fulfilment_mode": fulfilment,
                 "available_now": str((Decimal(available_physical_stock(p.finished_good)) / standard_multiplier(p.finished_good)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)) if fulfilment == "stock" else None,
                 "lead_time": p.preorder_lead_time if fulfilment == "preorder" else "",
+                "fulfilment_options": fulfilment_options,
             })
         # Legacy ordering_modes remains stable for older website clients while
         # order_modes is the authoritative channel-aware contract.
@@ -946,7 +1025,36 @@ def api_products(request,business_slug):
                 price = option.price_for(code)
                 if not enabled or price is None:
                     continue
-                fulfilment = "stock" if (not business.uses_production or p.finished_good.is_purchased_for_resale) else "preorder"
+                option_available = (Decimal(available_physical_stock(p.finished_good)) / Decimal(option.base_quantity or 1)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+                fulfilment_options = []
+                if code == "distribution":
+                    fulfilment = "preorder"
+                    if p.finished_good.is_purchased_for_resale:
+                        if option_available <= 0:
+                            continue
+                        fulfilment_options.append({
+                            "code": "stock", "label": "Prepared bulk order", "available": True,
+                            "available_now": str(option_available), "estimated_ready_minutes": p.estimated_ready_minutes,
+                        })
+                    else:
+                        fulfilment_options.append({
+                            "code": "made_to_order", "label": "Made to order", "available": True,
+                            "estimated_ready_minutes": p.estimated_ready_minutes,
+                        })
+                else:
+                    fulfilment = "choice"
+                    if option_available > 0:
+                        fulfilment_options.append({
+                            "code": "stock", "label": "From Physical Store stock", "available": True,
+                            "available_now": str(option_available), "estimated_ready_minutes": 0,
+                        })
+                    if p.finished_good.is_made_in_house and business.uses_production:
+                        fulfilment_options.append({
+                            "code": "made_to_order", "label": "Made to order", "available": True,
+                            "estimated_ready_minutes": p.estimated_ready_minutes,
+                        })
+                    if not fulfilment_options:
+                        continue
                 option_modes.append({
                     "code": code,
                     "label": channel_labels[code],
@@ -954,8 +1062,9 @@ def api_products(request,business_slug):
                     "min_quantity": str(option.minimum_for(code)),
                     "max_quantity": str(p.max_quantity) if p.max_quantity is not None else None,
                     "fulfilment_mode": fulfilment,
-                    "available_now": str((Decimal(available_physical_stock(p.finished_good)) / Decimal(option.base_quantity or 1)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)) if fulfilment == "stock" else None,
+                    "available_now": str(option_available) if fulfilment == "stock" else None,
                     "lead_time": p.preorder_lead_time if fulfilment == "preorder" else "",
+                    "fulfilment_options": fulfilment_options,
                 })
             if option_modes:
                 individual_options.append({
@@ -995,6 +1104,7 @@ def api_products(request,business_slug):
             "distribution_min_quantity": str(p.distribution_min_quantity),
             "max_quantity": str(p.max_quantity) if p.max_quantity is not None else None,
             "preorder_lead_time": p.preorder_lead_time,
+            "estimated_ready_minutes": p.estimated_ready_minutes,
             "online_price": str(p.finished_good.selling_price_for("online")) if p.allow_online_order else None,
             "preorder_price": str(p.finished_good.selling_price_for("online")) if p.allow_online_order else None,
             "distribution_price": str(p.finished_good.selling_price_for("distribution")) if p.allow_distribution_order else None,
@@ -1039,7 +1149,7 @@ def api_products(request,business_slug):
                 "online_min_quantity": option.get("online_min_quantity"),
                 "distribution_min_quantity": option.get("distribution_min_quantity"),
             })
-    return JsonResponse({"business":business.name,"business_slug":business.slug,"service":business.get_vertical_display(),"price_display":{"selected_channel_only":True,"full_menu_strategy":"rotate","rotation_interval_ms":2000,"transition_axis":"vertical"},"categories":categories,"delivery":delivery,"products":rows,"catalogue_items":catalogue_items})
+    return JsonResponse({"business":business.name,"business_slug":business.slug,"service":business.get_vertical_display(),"price_display":{"selected_channel_only":True,"full_menu_strategy":"rotate","rotation_interval_ms":2000,"transition_axis":"vertical"},"privacy_policy":{"presentation":"modal","endpoint":f"/api/v1/storefronts/{business.slug}/privacy-policy"},"categories":categories,"delivery":delivery,"products":rows,"catalogue_items":catalogue_items})
 
 
 @csrf_exempt
@@ -1082,6 +1192,7 @@ def api_checkouts(request, business_slug):
                 "quantity": row.get("quantity"),
                 "bulk_pack_id": row.get("bulk_pack_id") or None,
                 "individual_option_id": row.get("individual_option_id") or None,
+                "fulfilment_source": row.get("fulfilment_source") or None,
             })
         checkout, created = create_checkout(
             business=business,
@@ -1096,6 +1207,7 @@ def api_checkouts(request, business_slug):
             idempotency_key=request.headers.get("Idempotency-Key", ""),
             delivery_quote_id=data.get("delivery_quote_id") or None,
             attribution=normalize_attribution(data.get("attribution") or {}, referrer=request.META.get("HTTP_REFERER", "")),
+            requested_delivery_at=data.get("requested_delivery_at") or None,
         )
         payload = serialize_checkout(checkout)
         payload["created"] = created
@@ -1155,6 +1267,17 @@ def api_orders(request, business_slug):
     }, status=410)
 
 
+@csrf_exempt
+@require_http_methods(["GET"])
+def api_receipt(request, business_slug, receipt_id):
+    """Return verified receipt data to the integrating website without a hosted-storefront redirect."""
+    business, ok = _api_business_and_auth(request, business_slug, write=True)
+    if not ok:
+        return JsonResponse({"detail": "Invalid or disabled commerce API credential."}, status=403)
+    receipt = get_object_or_404(_receipt_queryset(), business=business, public_id=receipt_id)
+    return JsonResponse(_receipt_details(receipt))
+
+
 def api_order_detail(request,business_slug,public_id):
     business,ok=_api_business_and_auth(request,business_slug,write=True)
     if not ok:return JsonResponse({"detail":"Commerce API unavailable."},status=404)
@@ -1168,7 +1291,7 @@ def api_order_detail(request,business_slug,public_id):
             key: normalized[key]
             for key in ("payment_id", "method", "status", "amount", "currency", "reference", "amount_paid", "balance", "verified_at")
         }
-    return JsonResponse({"id":str(intake.public_id),"number":intake.public_number,"status":intake.status,"order_mode":intake.sales_channel,"fulfilment_mode":intake.ordering_mode,"ordering_mode":intake.ordering_mode,"payment_state":intake.payment_state,"payment":compact_payment,"fulfilment_state":intake.fulfilment_state,"attribution":{"source":intake.attribution_source or "direct","medium":intake.attribution_medium,"campaign":intake.attribution_campaign,"content":intake.attribution_content,"term":intake.attribution_term,"referrer":intake.attribution_referrer},"subtotal":str(intake.total - intake.delivery_fee),"delivery_fee":str(intake.delivery_fee),"delivery":_delivery_payload(intake),"total":str(intake.total),"items":[{
+    return JsonResponse({"id":str(intake.public_id),"number":intake.public_number,"status":intake.status,"order_mode":intake.sales_channel,"fulfilment_mode":intake.ordering_mode,"ordering_mode":intake.ordering_mode,"payment_state":intake.payment_state,"payment":compact_payment,"fulfilment_state":intake.fulfilment_state,"estimated_ready_at":intake.estimated_ready_at.isoformat() if intake.estimated_ready_at else None,"requested_delivery_at":intake.requested_delivery_at.isoformat() if intake.requested_delivery_at else None,"attribution":{"source":intake.attribution_source or "direct","medium":intake.attribution_medium,"campaign":intake.attribution_campaign,"content":intake.attribution_content,"term":intake.attribution_term,"referrer":intake.attribution_referrer},"subtotal":str(intake.total - intake.delivery_fee),"delivery_fee":str(intake.delivery_fee),"delivery":_delivery_payload(intake),"total":str(intake.total),"items":[{
         "product": row.finished_good.name,
         "requested": str(row.requested_quantity),
         "unit": row.customer_unit or row.finished_good.unit,
@@ -1178,6 +1301,8 @@ def api_order_detail(request,business_slug,public_id):
         "stock_fulfilled": str((row.accepted_stock_quantity / (row.fulfilment_quantity_per_unit or Decimal("1"))).quantize(Decimal("0.01"))),
         "production": str((row.production_quantity / (row.fulfilment_quantity_per_unit or Decimal("1"))).quantize(Decimal("0.01"))),
         "price": str(row.unit_price),
+        "fulfilment_source": row.fulfilment_source,
+        "estimated_ready_at": row.estimated_ready_at.isoformat() if row.estimated_ready_at else None,
     } for row in intake.items.select_related("bulk_pack", "individual_option").all()]})
 
 

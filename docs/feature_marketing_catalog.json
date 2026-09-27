@@ -148,7 +148,7 @@
     "name": "Hosted storefront and Order Now",
     "group": "commerce",
     "audience": "businesses selling online without a custom commerce stack",
-    "proof": "Publish tenant products, show only the selected channel price (or rotate available prices in Full menu), generate shareable tenant QR codes, and take payment-first baskets without premature operational records.",
+    "proof": "Publish tenant products with channel-safe pricing, let Online customers choose available store stock or made-to-order fulfilment without changing the Online price, show readiness before checkout, and create operational orders only after verified payment.",
     "highlight": "",
     "added_on": ""
   },
@@ -157,7 +157,7 @@
     "name": "Headless Commerce API",
     "group": "commerce",
     "audience": "businesses with custom websites or apps",
-    "proof": "External websites consume authoritative catalogue, checkout, payment, delivery and tracking endpoints; catalogue discovery declares the selected-channel price display and 2-second Full menu rotation contract while external pricing never exposes the in-premise price.",
+    "proof": "External websites consume authoritative catalogue, fulfilment-choice/readiness, checkout, payment, API-native receipt, delivery conversation/reporting and tracking endpoints without redirecting customers into the hosted storefront.",
     "highlight": "",
     "added_on": ""
   },
@@ -193,7 +193,7 @@
     "name": "Delivery quoting and hybrid routing",
     "group": "delivery",
     "audience": "businesses delivering customer orders",
-    "proof": "Quote from validated destinations before payment and switch between in-house and configured provider routing under tenant policy.",
+    "proof": "Quote from validated destinations before payment, batch multiple customer orders onto one in-house rider, require route organisation before pickup, and start stop-aware customer ETA countdowns when pickup makes the rider en route.",
     "highlight": "",
     "added_on": ""
   },
@@ -229,7 +229,7 @@
     "name": "Delivery Rider workspace",
     "group": "delivery",
     "audience": "in-house riders and dispatch teams",
-    "proof": "Riders see only assigned deliveries, allowed status actions and proof-of-delivery; admins control the rider alert tune/repeat policy and riders can enroll their own device for background Web Push.",
+    "proof": "Riders see only assigned deliveries, can organise multi-order pickup routes, start pickup-and-en-route ETA countdowns, exchange delivery-scoped messages with customers that dispatch staff can also see, and complete proof-of-delivery actions.",
     "highlight": "",
     "added_on": ""
   },
@@ -394,5 +394,23 @@
     "proof": "Show a founder-enabled scrolling logo strip above the product demo, automatically limiting tenant logos to paid businesses while the animated platform count includes trials and approved manual logos fill gaps.",
     "highlight": "NEW",
     "added_on": "2026-09-25"
+  },
+  {
+    "id": "online-fulfilment-choice",
+    "name": "Online stock-or-made fulfilment choice",
+    "group": "commerce",
+    "audience": "businesses selling online from both ready stock and production",
+    "proof": "Customers can choose available Physical Store stock or made-to-order fulfilment per Online line while Online pricing stays unchanged; readiness is shown per product and checkout uses the slowest line.",
+    "highlight": "NEW",
+    "added_on": "2026-09-27"
+  },
+  {
+    "id": "routed-delivery-batches",
+    "name": "Routed multi-order rider batches",
+    "group": "delivery",
+    "audience": "dispatch teams and in-house riders",
+    "proof": "Assign multiple customer orders to one rider, organise stop order before pickup, start pickup-and-en-route countdowns together, and keep each customer on a stop-adjusted ETA with active delivery messaging visible to dispatch.",
+    "highlight": "NEW",
+    "added_on": "2026-09-27"
   }
 ]

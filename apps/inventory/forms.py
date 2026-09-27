@@ -26,6 +26,13 @@ from .models import (
 INPUT_CLS = "w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 focus:border-[#8f172d]"
 
 
+def _set_static_model_choices(field, choices):
+    if choices is None:
+        return
+    empty = [] if field.empty_label is None else [("", field.empty_label)]
+    field.choices = [*empty, *choices]
+
+
 class StyledModelForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -220,7 +227,7 @@ class FinishedGoodForm(StyledModelForm):
         model = FinishedGood
         fields = ["source_type", "name", "product_category", "unit", "units_per_batch", "base_material", "stock", "reorder_level", "selling_price"]
 
-    def __init__(self, *args, business=None, **kwargs):
+    def __init__(self, *args, business=None, ingredient_choices=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.business = business
         self.fields["stock"].required = False
@@ -253,6 +260,8 @@ class FinishedGoodForm(StyledModelForm):
             self.fields["base_material"].queryset = RawMaterial.objects.filter(
                 category=RawMaterial.CATEGORY_INGREDIENT
             ).order_by("name")
+            if not self.is_bound:
+                _set_static_model_choices(self.fields["base_material"], ingredient_choices)
             self.fields["base_material"].label = "Base material"
             self.fields["base_material"].help_text = (
                 "Optional. Choose a main recipe material if you sometimes size production by how much of that material you want to use. "
@@ -505,7 +514,7 @@ class ProductCompositionItemForm(StyledModelForm):
         ]
         widgets = {"profile_key": forms.Select()}
 
-    def __init__(self, *args, business=None, parent_good=None, profile_choices=None, **kwargs):
+    def __init__(self, *args, business=None, parent_good=None, profile_choices=None, finished_good_choices=None, raw_material_choices=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.business = business
         self.parent_good = parent_good
@@ -518,6 +527,9 @@ class ProductCompositionItemForm(StyledModelForm):
                 goods = goods.exclude(pk=parent_good.pk)
             self.fields["component_finished_good"].queryset = goods
             self.fields["component_raw_material"].queryset = RawMaterial.raw_objects.filter(business=business).order_by("category", "name")
+            if not self.is_bound:
+                _set_static_model_choices(self.fields["component_finished_good"], finished_good_choices)
+                _set_static_model_choices(self.fields["component_raw_material"], raw_material_choices)
         else:
             self.fields["component_finished_good"].queryset = FinishedGood.objects.none()
             self.fields["component_raw_material"].queryset = RawMaterial.objects.none()
@@ -653,11 +665,13 @@ class RecipeItemForm(StyledModelForm):
         model = RecipeItem
         fields = ["raw_material", "qty_per_batch", "flexible_usage"]
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, raw_material_choices=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["raw_material"].queryset = RawMaterial.objects.filter(
             category=RawMaterial.CATEGORY_INGREDIENT
         )
+        if not self.is_bound:
+            _set_static_model_choices(self.fields["raw_material"], raw_material_choices)
         self.fields["flexible_usage"].widget.attrs["class"] = "h-4 w-4 rounded border-[#D9CFB4] text-[#8f172d]"
 
 
@@ -666,7 +680,7 @@ class ProductionMaterialForm(StyledModelForm):
         model = ProductionMaterial
         fields = ["raw_material", "qty_per_batch"]
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, raw_material_choices=None, **kwargs):
         super().__init__(*args, **kwargs)
         # Operational supplies (gloves, head nets, cleaning products, etc.)
         # are intentionally not attached to individual productions.
@@ -676,6 +690,8 @@ class ProductionMaterialForm(StyledModelForm):
                 RawMaterial.CATEGORY_PRODUCTION_SUPPLY,
             ]
         )
+        if not self.is_bound:
+            _set_static_model_choices(self.fields["raw_material"], raw_material_choices)
 
 
 RecipeItemFormSet = inlineformset_factory(

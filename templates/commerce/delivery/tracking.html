@@ -22,6 +22,15 @@
     </div>
 
     <div id="delivery-complete-note" class="mt-4 hidden rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800"></div>
+
+    <section id="delivery-conversation" class="mt-6 rounded-2xl border border-stone-200 bg-stone-50 p-4">
+      <div class="flex items-center justify-between gap-3"><div><h2 class="text-sm font-semibold text-stone-800">Delivery conversation</h2><p class="mt-0.5 text-xs text-stone-500">Once your order is picked up, you can message your rider here. Authorised dispatch staff can also see the conversation.</p></div></div>
+      <div id="delivery-message-waiting" class="mt-3 hidden rounded-xl border border-stone-200 bg-white px-3 py-3 text-xs leading-5 text-stone-500">Messaging opens when your order is picked up and the rider is en route.</div>
+      <div id="delivery-messages" class="mt-3 max-h-64 space-y-2 overflow-y-auto"></div>
+      <form id="delivery-message-form" class="mt-3 flex gap-2">{% csrf_token %}<input id="delivery-message-input" maxlength="500" class="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm" placeholder="Message your rider"><button class="rounded-xl px-4 py-2 text-sm font-semibold text-white" style="background:var(--brand,#8f172d)">Send</button></form>
+      <form id="delivery-report-form" class="mt-3 border-t border-stone-200 pt-3">{% csrf_token %}<details><summary class="cursor-pointer text-xs font-semibold text-rose-700">Report an active delivery problem</summary><div class="mt-2 grid gap-2 sm:grid-cols-[10rem_1fr_auto]"><select id="delivery-report-category" class="rounded-lg border border-stone-200 bg-white px-2 py-2 text-xs"><option value="delay">Delay / traffic</option><option value="address">Address / location problem</option><option value="package">Package / order problem</option><option value="safety">Safety concern</option><option value="other">Other issue</option></select><input id="delivery-report-details" minlength="5" class="rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs" placeholder="What should dispatch know?"><button class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">Report</button></div></details></form>
+      <p id="delivery-conversation-note" class="mt-2 hidden text-xs text-stone-400">This delivery is closed, so messaging and active-delivery reporting are no longer available.</p>
+    </section>
   </div>
 </main>
 
@@ -58,6 +67,13 @@
   const unreadCount = document.getElementById('customer-status-count');
   const unreadPlural = document.getElementById('customer-status-plural');
   const noticeList = document.getElementById('customer-status-list');
+  const messagesEl = document.getElementById('delivery-messages');
+  const messageForm = document.getElementById('delivery-message-form');
+  const messageWaiting = document.getElementById('delivery-message-waiting');
+  const messageInput = document.getElementById('delivery-message-input');
+  const reportForm = document.getElementById('delivery-report-form');
+  const conversationNote = document.getElementById('delivery-conversation-note');
+  let countdownTimer = null;
   const readAll = document.getElementById('customer-status-read-all');
   const storageKey = `inprofic-customer-delivery-seen:${initial.delivery.id}`;
   let payload = initial;
@@ -79,7 +95,6 @@
       assigned: `<svg viewBox="0 0 24 24" class="${common}" stroke-width="1.9"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.6-3 2.3-5 5.5-5s4.9 2 5.5 5M16 7h5M18.5 4.5v5"/></svg>`,
       ready: `<svg viewBox="0 0 24 24" class="${common}" stroke-width="1.9"><path d="m4 8 8-4 8 4-8 4-8-4Z"/><path d="M4 8v8l8 4 8-4V8M12 12v8"/></svg>`,
       picked_up: `<svg viewBox="0 0 24 24" class="${common}" stroke-width="1.8"><circle cx="6" cy="17" r="2.5"/><circle cx="18" cy="17" r="2.5"/><path d="M8.5 17h5l2-6h-5l-2-4h3M15.5 11h3l2 3M4 12h4"/></svg>`,
-      out_for_delivery: `<svg viewBox="0 0 24 24" class="${common}" stroke-width="1.9"><path d="M5 19c3-7 11-7 14-14"/><path d="m15 5 4 0 0 4"/><circle cx="5" cy="19" r="2"/></svg>`,
       delivered: `<svg viewBox="0 0 24 24" class="${common}" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></svg>`,
       failed: `<svg viewBox="0 0 24 24" class="${common}" stroke-width="1.9"><path d="M12 3 2.8 20h18.4L12 3Z"/><path d="M12 9v5M12 17h.01"/></svg>`,
       returned: `<svg viewBox="0 0 24 24" class="${common}" stroke-width="1.9"><path d="m9 7-5 5 5 5"/><path d="M4 12h10a6 6 0 0 1 6 6"/></svg>`,
@@ -121,13 +136,22 @@
     payload = data;
     const delivery = data.delivery;
     statusEl.textContent = delivery.status_label;
-    if (delivery.picked_up_at && delivery.eta_min_at && delivery.eta_max_at && !['delivered','returned','cancelled'].includes(delivery.status)) {
-      etaEl.textContent = `Picked up ${fmt(delivery.picked_up_at)} · ETA ${fmt(delivery.eta_min_at, false)}–${fmt(delivery.eta_max_at, false)}`;
-    } else if (!delivery.picked_up_at && !['delivered','returned','cancelled'].includes(delivery.status)) {
-      etaEl.textContent = 'ETA starts when your order is picked up.';
-    } else {
-      etaEl.textContent = '';
-    }
+    clearInterval(countdownTimer);
+    const terminal = ['delivered','returned','cancelled'].includes(delivery.status);
+    const renderEta = () => {
+      if (delivery.picked_up_at && delivery.eta_max_at && !terminal) {
+        const remaining = Math.max(0, new Date(delivery.eta_max_at).getTime() - Date.now());
+        const mins = Math.floor(remaining / 60000);
+        const secs = Math.floor((remaining % 60000) / 1000);
+        etaEl.textContent = `Picked up · en route · ${mins}:${String(secs).padStart(2,'0')} to latest ETA`;
+      } else if (!delivery.picked_up_at && !terminal && delivery.eta_from_pickup_max_minutes != null) {
+        const min = delivery.eta_from_pickup_min_minutes;
+        const max = delivery.eta_from_pickup_max_minutes;
+        etaEl.textContent = min === max ? `~ ${max} minutes from pickup time` : `~ ${min}–${max} minutes from pickup time`;
+      } else { etaEl.textContent = ''; }
+    };
+    renderEta();
+    if (delivery.picked_up_at && delivery.eta_max_at && !terminal) countdownTimer = setInterval(renderEta, 1000);
     driverEl.textContent = delivery.driver ? `${delivery.driver}${delivery.driver_vehicle ? ' · ' + delivery.driver_vehicle : ''}` : delivery.provider_label;
     if (delivery.external_tracking_url) {
       providerLink.href = delivery.external_tracking_url;
@@ -137,11 +161,18 @@
       providerLink.classList.add('hidden');
       providerLink.classList.remove('inline-block');
     }
+    const messagingStarted = Boolean(delivery.picked_up_at);
+    messagesEl.innerHTML = messagingStarted ? ((data.messages || []).map(message => `<div class="${message.sender === 'customer' ? 'ml-8 bg-stone-900 text-white' : 'mr-8 border border-stone-200 bg-white text-stone-700'} rounded-xl px-3 py-2"><div class="text-[10px] font-semibold uppercase tracking-wide opacity-60">${esc(message.sender === 'staff' ? 'Dispatch' : message.sender)}</div><div class="mt-0.5 text-sm">${esc(message.body)}</div><div class="mt-1 text-[10px] opacity-50">${esc(fmt(message.created_at))}</div></div>`).join('') || '<p class="text-xs text-stone-400">No delivery messages yet.</p>') : '';
+    messagesEl.classList.toggle('hidden', !messagingStarted);
+    messageWaiting.classList.toggle('hidden', messagingStarted || terminal);
+    messageForm.classList.toggle('hidden', !data.can_message);
+    reportForm.classList.toggle('hidden', !data.can_report);
+    conversationNote.classList.toggle('hidden', data.can_message || data.can_report || !terminal);
 
     timelineEl.innerHTML = data.timeline.map((item, index) => {
       const done = item.status === 'delivered';
       const alert = ['failed','returned','cancelled'].includes(item.status);
-      const iconClass = done ? 'bg-emerald-100 text-emerald-700 ring-emerald-50' : alert ? 'bg-rose-100 text-rose-700 ring-rose-50' : item.status === 'picked_up' || item.status === 'out_for_delivery' ? 'bg-sky-100 text-sky-700 ring-sky-50' : 'bg-stone-100 text-stone-600 ring-stone-50';
+      const iconClass = done ? 'bg-emerald-100 text-emerald-700 ring-emerald-50' : alert ? 'bg-rose-100 text-rose-700 ring-rose-50' : item.status === 'picked_up' ? 'bg-sky-100 text-sky-700 ring-sky-50' : 'bg-stone-100 text-stone-600 ring-stone-50';
       return `<div class="relative flex gap-3 pb-5"><div class="relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ring-4 ${iconClass}">${icon(item.status)}</div>${index < data.timeline.length - 1 ? '<span class="absolute left-[17px] top-9 h-[calc(100%-2rem)] w-px bg-stone-200"></span>' : ''}<div class="min-w-0 pt-0.5"><div class="text-sm font-semibold text-stone-800">${esc(item.status_label)}</div><div class="text-xs text-stone-400">${esc(fmt(item.created_at))}</div>${item.note ? `<p class="mt-1 text-sm leading-5 text-stone-600">${esc(item.note)}</p>` : ''}</div></div>`;
     }).join('');
 
@@ -187,6 +218,21 @@
     try { localStorage.setItem(storageKey, JSON.stringify([...seen].slice(-100))); } catch (_) {}
     renderNotifications(payload, false);
     setExpanded(false);
+  });
+  const csrf = () => document.querySelector('#delivery-message-form input[name="csrfmiddlewaretoken"]')?.value || '';
+  messageForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (!messageInput.value.trim()) return;
+    const bodyData = new FormData(); bodyData.append('body', messageInput.value.trim()); bodyData.append('csrfmiddlewaretoken', csrf());
+    const response = await fetch('{% url "storefront_delivery_message" store_business.slug assignment.public_id %}', {method:'POST', body:bodyData, headers:{'X-CSRFToken':csrf()}});
+    if (response.ok) { messageInput.value=''; render(await response.json(), false); }
+  });
+  reportForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    const details = document.getElementById('delivery-report-details').value.trim(); if (details.length < 5) return;
+    const bodyData = new FormData(); bodyData.append('details', details); bodyData.append('category', document.getElementById('delivery-report-category').value); bodyData.append('csrfmiddlewaretoken', csrf());
+    const response = await fetch('{% url "storefront_delivery_report" store_business.slug assignment.public_id %}', {method:'POST', body:bodyData, headers:{'X-CSRFToken':csrf()}});
+    if (response.ok) { document.getElementById('delivery-report-details').value=''; alert('Dispatch staff have received your report.'); }
   });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(false); });
   window.addEventListener('pagehide', () => { clearTimeout(reconnectTimer); clearTimeout(pollTimer); if (socket) socket.close(); });
