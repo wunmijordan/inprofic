@@ -91,7 +91,7 @@ On the hosted catalogue, a channel filter shows only that channel's price in a t
 
 This prevents an abandoned or unpaid web basket from altering inventory, production, finance or delivery records.
 
-For payment, a tenant can use gateway-backed Paystack/Monnify flows, provider-issued instant bank transfer, or a native no-gateway **Transfer** mode. The native mode shows the tenant's static bank details and requires customer proof on public/headless checkout before authorized staff verifies the real credit. In-premise POS can use the same Transfer setup with an explicit staff confirmation guard, like cash.
+For payment, a tenant can use gateway-backed Paystack/Monnify flows, provider-issued instant bank transfer, or a native no-gateway **Transfer** mode configured as **Manual transfer routes (no gateway)**. The native mode exposes one or more tenant-configured transfer destinations; hosted/headless customers choose a route when several are active, and INPROFIC freezes that account snapshot into the payment before proof is submitted and authorized staff verifies the real credit. In-premise POS uses the first active route with an explicit staff confirmation guard, like cash. Legacy single-account configuration is carried into a primary route during migration.
 
 ## In-Premise POS
 
@@ -198,6 +198,12 @@ INPROFIC combines plan entitlements, roles and optional per-user permissions.
 Examples include Business Admin, operational roles, POS Operator, Delivery Rider and External Auditor. Purpose-specific workspaces keep narrow roles focused: a rider does not need Finance, a POS-only cashier does not need the main dashboard, and an external auditor does not need the business's normal operational forms.
 
 Actions that alter protected business data still require the corresponding effective permission inside a module that the tenant plan has enabled.
+
+### Staff payroll add-on
+
+Staff payroll is supplementary to Users & Access rather than a separate INPROFIC module. A Business Admin can draft an existing tenant user into payroll without recreating the person's profile, or add staff who do not log into INPROFIC. Pay structures can include recurring values plus configurable fixed or percentage calculations for tax, pension, insurance, levies, allowances, employee deductions and employer contributions, with optional thresholds and caps. Issued payslips freeze those calculation details so later setup changes do not rewrite payroll history; a payslip can be shared through its private link by email or WhatsApp.
+
+Payroll is included while an eligible business is in its free trial and for Founder lifetime access. Outside those cases it is a separately priced add-on, with Founder-configured staff-capacity tiers for each plan rather than a normal module entitlement.
 
 ## Subscription and founder controls
 

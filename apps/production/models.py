@@ -613,6 +613,13 @@ class ProductionCostSnapshot(BusinessOwnedModel):
     Each raw-material line uses the latest received procurement cost available
     on the production date. Older procurement prices are never averaged in.
     """
+    COST_SOURCE_LATEST = "latest_procurement"
+    COST_SOURCE_MIXED_FALLBACK = "latest_procurement_with_current_cost_fallback"
+    COST_SOURCE_CHOICES = [
+        (COST_SOURCE_LATEST, "Latest procurement"),
+        (COST_SOURCE_MIXED_FALLBACK, "Latest procurement with current-cost fallback"),
+    ]
+
     order = models.ForeignKey(Order, null=True, blank=True, on_delete=models.SET_NULL, related_name="cost_snapshots")
     order_item = models.ForeignKey(OrderItem, null=True, blank=True, on_delete=models.SET_NULL, related_name="cost_snapshots")
     production_batch = models.ForeignKey("ProductionBatch", null=True, blank=True, on_delete=models.SET_NULL, related_name="cost_snapshots")
@@ -621,7 +628,11 @@ class ProductionCostSnapshot(BusinessOwnedModel):
     produced_units = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total_cost = models.DecimalField(max_digits=16, decimal_places=4, default=0)
     unit_cost = models.DecimalField(max_digits=16, decimal_places=6, default=0)
-    cost_source = models.CharField(max_length=40, default="latest_procurement")
+    cost_source = models.CharField(
+        max_length=64,
+        choices=COST_SOURCE_CHOICES,
+        default=COST_SOURCE_LATEST,
+    )
     batch_number = models.CharField(max_length=40, blank=True, default="")
     expiry_date = models.DateField(null=True, blank=True)
 
@@ -637,12 +648,19 @@ class ProductionCostSnapshot(BusinessOwnedModel):
 
 
 class ProductionCostLine(TimestampedModel):
+    SOURCE_LATEST = "latest_procurement"
+    SOURCE_CURRENT_FALLBACK = "current_cost_fallback"
+    SOURCE_CHOICES = [
+        (SOURCE_LATEST, "Latest procurement"),
+        (SOURCE_CURRENT_FALLBACK, "Current-cost fallback"),
+    ]
+
     snapshot = models.ForeignKey(ProductionCostSnapshot, related_name="lines", on_delete=models.CASCADE)
     raw_material = models.ForeignKey("inventory.RawMaterial", on_delete=models.PROTECT)
     quantity = models.DecimalField(max_digits=14, decimal_places=4, default=0)
     usage_unit_cost = models.DecimalField(max_digits=16, decimal_places=6, default=0)
     total_cost = models.DecimalField(max_digits=16, decimal_places=4, default=0)
-    source = models.CharField(max_length=20, default="latest_procurement")
+    source = models.CharField(max_length=32, choices=SOURCE_CHOICES, default=SOURCE_LATEST)
 
     def __str__(self):
         return f"{self.snapshot.finished_good.name} — {self.raw_material.name}"

@@ -135,6 +135,9 @@ class CommerceApiProductTests(TestCase):
             image_url="https://cdn.example.test/moin-moin.jpg",
             min_quantity=1, preorder_min_quantity=5, allow_stock_order=True, allow_preorder=True,
         )
+        FinishedGoodChannelPrice.objects.create(
+            finished_good=self.good, channel="distribution", price=Decimal("2250.00")
+        )
         DeliverySettings.raw_objects.create(business=self.business, enabled=True)
         DeliveryOrigin.raw_objects.create(
             business=self.business, name="Main kitchen", address="1 Test Road",
@@ -154,7 +157,8 @@ class CommerceApiProductTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         row = payload["products"][0]
-        self.assertEqual(payload["price_display"], {"selected_channel_only": True, "full_menu_strategy": "rotate", "rotation_interval_ms": 2000, "transition_axis": "vertical"})
+        self.assertEqual(payload["price_display"], {"selected_channel_only": True, "full_menu_strategy": "rotate", "rotation_interval_ms": 2000, "transition_axis": "vertical", "checkout_style": "compact_rotate"})
+        self.assertEqual(payload["catalogue_display"], {"fulfilment_badges": False, "fulfilment_options_surface": "checkout_only"})
         category_payload = {"id": self.category.pk, "name": "Meals", "slug": "meals"}
         self.assertEqual(response.json()["categories"], [category_payload])
         self.assertEqual(row["category"], category_payload)
@@ -209,7 +213,48 @@ class CommerceApiProductTests(TestCase):
         self.assertEqual(bulk["id"], str(pack.public_id))
         self.assertEqual(bulk["name"], "2 L Bowl")
         self.assertNotIn("base_quantity", bulk)
+        distribution = next(mode for mode in row["order_modes"] if mode["code"] == "distribution")
+        self.assertTrue(distribution["requires_bulk_pack"])
+        self.assertEqual(distribution["pricing_source"], "bulk_options")
+        self.assertIsNone(distribution["price"])
+        self.assertIsNone(distribution["min_quantity"])
+        self.assertIsNone(row["distribution_price"])
+        self.assertIsNone(row["distribution_min_quantity"])
         self.assertNotIn("physical_store", {mode["code"] for mode in row["order_modes"]})
+
+    def test_distribution_does_not_fall_back_to_standard_selling_price(self):
+        FinishedGoodChannelPrice.objects.filter(finished_good=self.good, channel="distribution").delete()
+        response = self.client.get(f"/api/v1/storefronts/{self.business.slug}/products")
+        self.assertEqual(response.status_code, 200)
+        row = response.json()["products"][0]
+        self.assertNotIn("distribution", {mode["code"] for mode in row["order_modes"]})
+        self.assertIsNone(row["distribution_price"])
+
+    def test_procured_stockout_is_omitted_from_external_catalogue_even_for_distribution(self):
+        self.good.source_type = FinishedGood.SOURCE_PURCHASED_FOR_RESALE
+        self.good.stock = Decimal("0")
+        self.good.save(update_fields=["source_type", "stock", "updated_at"])
+        self.product.allow_online_order = False
+        self.product.allow_distribution_order = True
+        self.product.save(update_fields=["allow_online_order", "allow_distribution_order", "updated_at"])
+        response = self.client.get(f"/api/v1/storefronts/{self.business.slug}/products")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["products"], [])
+        self.assertEqual(response.json()["catalogue_items"], [])
+
+    def test_storefront_form_derives_distribution_minimum_from_bulk_options(self):
+        pack = BulkPackProfile.raw_objects.create(
+            business=self.business, finished_good=self.good, name="Family bowl",
+            customer_quantity=2, customer_unit="litre", base_quantity=4,
+            price=Decimal("8000"), min_order_quantity=Decimal("3"), active=True,
+        )
+        form = StorefrontProductForm(instance=self.product, business=self.business)
+        self.assertTrue(form.fields["distribution_min_quantity"].disabled)
+        self.assertEqual(form["distribution_min_quantity"].value(), Decimal("3"))
+        pack.active = False
+        pack.save(update_fields=["active", "updated_at"])
+        form = StorefrontProductForm(instance=self.product, business=self.business)
+        self.assertFalse(form.fields["distribution_min_quantity"].disabled)
 
     def test_product_api_exposes_uploaded_image_as_absolute_url(self):
         # Minimal valid 1x1 transparent GIF.

@@ -331,12 +331,30 @@ class FinishedGood(BusinessOwnedModel):
         Customer overrides are intentionally kept in the Sales app to avoid
         coupling the inventory master price to customer agreements.
         """
+        configured = self.explicit_selling_price_for(channel, customer=customer)
+        return configured if configured is not None else self.selling_price
+
+    def explicit_selling_price_for(self, channel, customer=None):
+        """Return only an explicitly configured price for ``channel``.
+
+        Normal direct/online selling can intentionally fall back to the product's
+        default selling price. Distribution/Bulk publishing is different: the
+        public bulk contract must come from either a Distribution channel price
+        or a configured bulk option, never implicitly from the standard portion.
+        Keep that distinction reusable without changing legacy callers of
+        :meth:`selling_price_for`.
+        """
         if customer is not None and channel in ("distribution", "online"):
             override = self.customer_prices.filter(customer=customer, channel=channel).first()
             if override is not None:
                 return override.price
-        configured = self.channel_prices.filter(channel=channel).first()
-        return configured.price if configured else self.selling_price
+
+        prefetched = (getattr(self, "_prefetched_objects_cache", {}) or {}).get("channel_prices")
+        if prefetched is not None:
+            configured = next((row for row in prefetched if row.channel == channel), None)
+        else:
+            configured = self.channel_prices.filter(channel=channel).first()
+        return configured.price if configured is not None else None
 
     @property
     def est_cost(self):

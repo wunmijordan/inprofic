@@ -634,9 +634,9 @@ def _latest_material_cost(material, production_date):
         raw_material=material, effective_date__lte=production_date
     ).order_by("-effective_date", "-id").first()
     if snapshot:
-        return snapshot.usage_unit_cost, "latest_procurement"
+        return snapshot.usage_unit_cost, ProductionCostLine.SOURCE_LATEST
     # Fallback for materials that do not have a saved cost snapshot.
-    return material.cost_per_unit, "current_cost_fallback"
+    return material.cost_per_unit, ProductionCostLine.SOURCE_CURRENT_FALLBACK
 
 
 def _create_production_cost_snapshot(order, item, batch):
@@ -670,7 +670,11 @@ def _create_production_cost_snapshot(order, item, batch):
         )
     snapshot.total_cost = total_cost
     snapshot.unit_cost = total_cost / batch.saleable_units if batch.saleable_units else Decimal("0")
-    snapshot.cost_source = "latest_procurement" if sources == {"latest_procurement"} else "latest_procurement_with_current_cost_fallback"
+    snapshot.cost_source = (
+        ProductionCostSnapshot.COST_SOURCE_LATEST
+        if sources == {ProductionCostLine.SOURCE_LATEST}
+        else ProductionCostSnapshot.COST_SOURCE_MIXED_FALLBACK
+    )
     snapshot.save(update_fields=["total_cost", "unit_cost", "cost_source"])
     batch.total_cost = total_cost
     batch.unit_cost = snapshot.unit_cost

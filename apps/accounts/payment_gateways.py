@@ -61,6 +61,26 @@ def _paystack_secret():
     return key
 
 
+def _payment_label(payment: SubscriptionPayment):
+    if payment.purpose == SubscriptionPayment.PURPOSE_PAYROLL_ADDON and payment.payroll_tier_id:
+        return f"INPROFIC Payroll add-on · up to {payment.payroll_tier.staff_limit} staff · {payment.get_billing_cycle_display()}"
+    return f"INPROFIC {payment.plan.name} {payment.get_billing_cycle_display()} subscription"
+
+
+def _payment_metadata(payment: SubscriptionPayment):
+    metadata = {
+        "storetrack_subscription_payment_id": payment.pk,
+        "business": payment.subscription.primary_business.name,
+        "plan": payment.plan.code,
+        "billing_cycle": payment.billing_cycle,
+        "purpose": payment.purpose,
+    }
+    if payment.payroll_tier_id:
+        metadata["payroll_tier_id"] = payment.payroll_tier_id
+        metadata["payroll_staff_limit"] = payment.payroll_tier.staff_limit
+    return metadata
+
+
 def initialize_paystack(payment: SubscriptionPayment, *, email: str, callback_url: str):
     secret = _paystack_secret()
     if not email:
@@ -76,12 +96,7 @@ def initialize_paystack(payment: SubscriptionPayment, *, email: str, callback_ur
             "currency": "NGN",
             "reference": payment.reference,
             "callback_url": callback_url,
-            "metadata": json.dumps({
-                "storetrack_subscription_payment_id": payment.pk,
-                "business": payment.subscription.primary_business.name,
-                "plan": payment.plan.code,
-                "billing_cycle": payment.billing_cycle,
-            }),
+            "metadata": json.dumps(_payment_metadata(payment)),
         },
     )
     if not response.get("status") or not response.get("data", {}).get("authorization_url"):
@@ -159,15 +174,14 @@ def initialize_monnify(payment: SubscriptionPayment, *, email: str, customer_nam
             "customerName": customer_name or payment.subscription.primary_business.name,
             "customerEmail": email,
             "paymentReference": payment.reference,
-            "paymentDescription": f"INPROFIC {payment.plan.name} {payment.get_billing_cycle_display()} subscription",
+            "paymentDescription": _payment_label(payment),
             "currencyCode": "NGN",
             "contractCode": contract_code,
             "redirectUrl": callback_url,
             "paymentMethods": ["CARD", "ACCOUNT_TRANSFER", "USSD"],
             "metadata": {
+                **{str(key): str(value) for key, value in _payment_metadata(payment).items()},
                 "storetrackSubscriptionPaymentId": str(payment.pk),
-                "plan": payment.plan.code,
-                "billingCycle": payment.billing_cycle,
             },
         },
     )

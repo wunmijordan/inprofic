@@ -1,0 +1,22 @@
+{{ payroll_user_data|json_script:"payroll-user-data" }}
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const source = document.getElementById('payroll-user-data');
+    const select = document.querySelector('[data-payroll-user-select]');
+    if (!source || !select) return;
+    let users = {};
+    try { users = JSON.parse(source.textContent || '{}'); } catch (_) { return; }
+    const fields = {
+      full_name: document.getElementById('id_full_name'),
+      email: document.getElementById('id_email'),
+      whatsapp_number: document.getElementById('id_whatsapp_number'),
+    };
+    select.addEventListener('change', function () {
+      const user = users[String(select.value || '')];
+      if (!user) return;
+      Object.entries(fields).forEach(([key, field]) => {
+        if (field && user[key]) field.value = user[key];
+      });
+    });
+  });
+</script>

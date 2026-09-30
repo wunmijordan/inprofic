@@ -450,12 +450,17 @@ def _public_products(business):
 def _public_catalog_data(business):
     from .delivery_services import delivery_available
 
-    products = list(_public_products(business))
-    for product in products:
+    visible_products = []
+    for product in _public_products(business):
         multiplier = standard_multiplier(product.finished_good)
         product.public_stock_available = (
             Decimal(available_physical_stock(product.finished_good)) / multiplier
         ).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+        # Bought-in goods cannot be manufactured for Online or Distribution.
+        # When there is no sellable physical stock, omit the whole public
+        # catalogue item rather than leaving an unusable Bulk/Distribution card.
+        if product.finished_good.is_purchased_for_resale and product.public_stock_available <= 0:
+            continue
         product.public_stock_source_available = bool(product.allow_online_order and product.public_stock_available > 0)
         product.public_made_source_available = bool(
             product.allow_online_order and business.uses_production and product.finished_good.is_made_in_house
@@ -467,6 +472,18 @@ def _public_catalog_data(business):
         product.public_online_available = bool(
             product.allow_online_order and (product.public_stock_source_available or product.public_made_source_available)
         )
+        product.public_bulk_packs = list(product.bulk_pack_options)
+        product.public_distribution_price = product.finished_good.explicit_selling_price_for("distribution")
+        product.public_distribution_uses_bulk_packs = bool(product.public_bulk_packs)
+        product.public_distribution_available = bool(
+            product.allow_distribution_order
+            and (product.public_distribution_uses_bulk_packs or product.public_distribution_price is not None)
+        )
+        product.public_distribution_min_quantity = (
+            min(pack.min_order_quantity for pack in product.public_bulk_packs)
+            if product.public_bulk_packs
+            else product.distribution_min_quantity
+        )
         product.public_individual_options = [
             option for option in product.individual_sale_options
             if option.active and (
@@ -474,6 +491,8 @@ def _public_catalog_data(business):
                 or (option.distribution_enabled and option.distribution_price is not None)
             )
         ]
+        visible_products.append(product)
+    products = visible_products
     category_ids = {p.finished_good.product_category_id for p in products if p.finished_good.product_category_id}
     categories = list(
         ProductCategory.raw_objects.filter(business=business, active=True, pk__in=category_ids)
@@ -534,8 +553,47 @@ def _public_checkout(business, checkout_id):
     return checkout
 
 
+def _checkout_switch_payment_methods(payment_methods, payment):
+    """Return only actionable alternatives for an active checkout payment.
+
+    A pending payment used to leave an empty "Choose another payment method"
+    disclosure whenever it was the only eligible method. Manual Transfer also
+    has route-level choice, so keep the Transfer method available when another
+    active route exists, but exclude the route already snapshotted on the
+    current payment.
+    """
+    if payment is None:
+        return []
+    alternatives = []
+    current_route_id = str(
+        ((payment.gateway_metadata or {}).get("manual_transfer_route") or {}).get("id") or ""
+    )
+    for method in payment_methods:
+        if method.get("code") != payment.method:
+            alternatives.append(method)
+            continue
+        if method.get("code") != CommercePayment.METHOD_TRANSFER:
+            continue
+        other_routes = [
+            route for route in method.get("routes", [])
+            if str(route.get("id") or "") != current_route_id
+        ]
+        if other_routes:
+            alternatives.append({
+                **method,
+                "label": "Transfer to another account",
+                "routes": other_routes,
+            })
+    return alternatives
+
+
 def _checkout_page_context(business, checkout, **extra):
     payment = current_checkout_payment(checkout)
+    payment_methods = (
+        eligible_payment_methods(business)
+        if checkout.status == CommerceCheckoutSession.STATUS_AWAITING_PAYMENT
+        else []
+    )
     context = {
         **_public_storefront_context(business),
         "checkout": checkout,
@@ -546,11 +604,8 @@ def _checkout_page_context(business, checkout, **extra):
         "checkout_channel_label": vertical_config(business)["commerce_channels"].get(
             checkout.sales_channel, checkout.get_sales_channel_display()
         ),
-        "payment_methods": (
-            eligible_payment_methods(business)
-            if checkout.status == CommerceCheckoutSession.STATUS_AWAITING_PAYMENT
-            else []
-        ),
+        "payment_methods": payment_methods,
+        "switch_payment_methods": _checkout_switch_payment_methods(payment_methods, payment),
     }
     context.update(extra)
     return context
@@ -760,6 +815,7 @@ def storefront_checkout_payment(request, business_slug, checkout_id):
             method=method,
             idempotency_key=f"hosted:{checkout.public_id}:{payment_key}",
             return_url=return_url,
+            transfer_route_id=request.POST.get("transfer_route_id"),
         )
         if payment.authorization_url:
             return redirect(payment.authorization_url)
@@ -974,10 +1030,12 @@ def api_privacy_policy(request, business_slug):
     })
 
 
-def api_products(request,business_slug):
-    business,ok=_api_business_and_auth(request,business_slug)
-    if not ok:return JsonResponse({"detail":"Commerce API unavailable."},status=404)
-    rows=[]
+def api_products(request, business_slug):
+    business, ok = _api_business_and_auth(request, business_slug)
+    if not ok:
+        return JsonResponse({"detail": "Commerce API unavailable."}, status=404)
+
+    rows = []
     channel_labels = vertical_config(business)["commerce_channels"]
     products_qs = StorefrontProduct.raw_objects.filter(business=business, published=True).filter(
         Q(allow_online_order=True) | Q(allow_distribution_order=True)
@@ -990,63 +1048,108 @@ def api_products(request,business_slug):
         "finished_good__composition_items__component_finished_good",
         "finished_good__composition_items__component_raw_material",
     )
+
     for p in products_qs:
-        order_modes=[]
-        mode_config = [
-            ("online", p.allow_online_order, p.preorder_min_quantity),
-            ("distribution", p.allow_distribution_order, p.distribution_min_quantity),
-        ]
-        for code, enabled, minimum in mode_config:
-            if not enabled:
-                continue
-            stock_available = (Decimal(available_physical_stock(p.finished_good)) / standard_multiplier(p.finished_good)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
-            if code == "distribution":
-                fulfilment = "preorder"
-                if p.finished_good.is_purchased_for_resale:
-                    fulfilment_options = [{
-                        "code": "stock", "label": "Prepared bulk order", "available": stock_available > 0,
-                        "available_now": str(stock_available), "estimated_ready_minutes": p.estimated_ready_minutes,
-                    }]
-                    if stock_available <= 0:
-                        continue
-                else:
-                    fulfilment_options = [{"code": "made_to_order", "label": "Made to order", "available": True, "estimated_ready_minutes": p.estimated_ready_minutes}]
+        multiplier = standard_multiplier(p.finished_good)
+        stock_available = (
+            Decimal(available_physical_stock(p.finished_good)) / multiplier
+        ).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+
+        # Bought-in/procured-to-sell goods are stock-backed only. They are not
+        # manufacturable, so once physical stock is exhausted they disappear
+        # from every external catalogue channel, including Distribution/Bulk.
+        if p.finished_good.is_purchased_for_resale and stock_available <= 0:
+            continue
+
+        bulk_packs_source = list(p.bulk_pack_options)
+        explicit_distribution_price = p.finished_good.explicit_selling_price_for("distribution")
+        distribution_enabled = bool(
+            p.allow_distribution_order
+            and (bulk_packs_source or explicit_distribution_price is not None)
+        )
+
+        order_modes = []
+        if p.allow_online_order:
+            fulfilment_options = []
+            if stock_available > 0:
+                fulfilment_options.append({
+                    "code": "stock",
+                    "label": "From Physical Store stock",
+                    "available": True,
+                    "available_now": str(stock_available),
+                    "estimated_ready_minutes": 0,
+                })
+            if p.finished_good.is_made_in_house and business.uses_production:
+                fulfilment_options.append({
+                    "code": "made_to_order",
+                    "label": "Made to order",
+                    "available": True,
+                    "estimated_ready_minutes": p.estimated_ready_minutes,
+                })
+            if fulfilment_options:
+                order_modes.append({
+                    "code": "online",
+                    "label": channel_labels["online"],
+                    "price": str(p.finished_good.selling_price_for("online")),
+                    "unit": p.customer_unit,
+                    "min_quantity": str(p.preorder_min_quantity),
+                    "max_quantity": str(p.max_quantity) if p.max_quantity is not None else None,
+                    "pricing_source": "channel_price_or_standard",
+                    "requires_bulk_pack": False,
+                    "fulfilment_mode": "choice",
+                    "available_now": str(stock_available) if stock_available > 0 else None,
+                    "lead_time": "",
+                    # Checkout-selection data. External catalogue cards should
+                    # not render readiness/MTO badges from these values.
+                    "fulfilment_options": fulfilment_options,
+                })
+
+        if distribution_enabled:
+            if p.finished_good.is_purchased_for_resale:
+                distribution_fulfilment = [{
+                    "code": "stock",
+                    "label": "Prepared bulk order",
+                    "available": True,
+                    "available_now": str(stock_available),
+                    "estimated_ready_minutes": p.estimated_ready_minutes,
+                }]
             else:
-                fulfilment = "choice"
-                fulfilment_options = []
-                if stock_available > 0:
-                    fulfilment_options.append({"code": "stock", "label": "From Physical Store stock", "available": True, "available_now": str(stock_available), "estimated_ready_minutes": 0})
-                if p.finished_good.is_made_in_house and business.uses_production:
-                    fulfilment_options.append({"code": "made_to_order", "label": "Made to order", "available": True, "estimated_ready_minutes": p.estimated_ready_minutes})
-                if not fulfilment_options:
-                    # No public online fulfilment source is currently available.
-                    # Keep other channels (notably Bulk Order) independently visible.
-                    continue
+                distribution_fulfilment = [{
+                    "code": "made_to_order",
+                    "label": "Made to order",
+                    "available": True,
+                    "estimated_ready_minutes": p.estimated_ready_minutes,
+                }]
             order_modes.append({
-                "code": code,
-                "label": channel_labels[code],
-                "price": str(p.finished_good.selling_price_for(code)),
-                "min_quantity": str(minimum),
+                "code": "distribution",
+                "label": channel_labels["distribution"],
+                # When bulk packs exist their own prices/minimums are the only
+                # Distribution price contract. Standard portion pricing must
+                # never leak into this mode.
+                "price": None if bulk_packs_source else str(explicit_distribution_price),
+                "unit": None if bulk_packs_source else p.finished_good.unit,
+                "min_quantity": None if bulk_packs_source else str(p.distribution_min_quantity),
                 "max_quantity": str(p.max_quantity) if p.max_quantity is not None else None,
-                "fulfilment_mode": fulfilment,
-                "available_now": str((Decimal(available_physical_stock(p.finished_good)) / standard_multiplier(p.finished_good)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)) if fulfilment == "stock" else None,
-                "lead_time": p.preorder_lead_time if fulfilment == "preorder" else "",
-                "fulfilment_options": fulfilment_options,
+                "pricing_source": "bulk_options" if bulk_packs_source else "channel_price",
+                "requires_bulk_pack": bool(bulk_packs_source),
+                "fulfilment_mode": "preorder",
+                "available_now": None,
+                "lead_time": p.preorder_lead_time,
+                "fulfilment_options": distribution_fulfilment,
             })
+
         # Legacy ordering_modes remains stable for older website clients while
         # order_modes is the authoritative channel-aware contract.
-        submitted_modes=[]
+        submitted_modes = []
         for mode in order_modes:
             legacy_mode = "order" if mode["fulfilment_mode"] == "stock" else "preorder"
             if legacy_mode not in submitted_modes:
                 submitted_modes.append(legacy_mode)
+
         image_url = p.public_image_url
         if image_url and "://" not in image_url:
             image_url = request.build_absolute_uri(f"/{image_url.lstrip('/')}")
-        multiplier = standard_multiplier(p.finished_good)
-        customer_available = (
-            Decimal(available_physical_stock(p.finished_good)) / multiplier
-        ).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+
         bulk_packs = [
             {
                 "id": str(pack.public_id),
@@ -1058,8 +1161,9 @@ def api_products(request,business_slug):
                 "min_order_quantity": str(pack.min_order_quantity),
                 "contents": public_contents(p.finished_good, profile_key=pack.profile_key),
             }
-            for pack in p.bulk_pack_options
+            for pack in bulk_packs_source
         ]
+
         individual_options = []
         for option in p.individual_sale_options:
             option_modes = []
@@ -1067,7 +1171,9 @@ def api_products(request,business_slug):
                 price = option.price_for(code)
                 if not enabled or price is None:
                     continue
-                option_available = (Decimal(available_physical_stock(p.finished_good)) / Decimal(option.base_quantity or 1)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+                option_available = (
+                    Decimal(available_physical_stock(p.finished_good)) / Decimal(option.base_quantity or 1)
+                ).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
                 fulfilment_options = []
                 if code == "distribution":
                     fulfilment = "preorder"
@@ -1101,8 +1207,11 @@ def api_products(request,business_slug):
                     "code": code,
                     "label": channel_labels[code],
                     "price": str(price),
+                    "unit": option.customer_unit or p.finished_good.unit,
                     "min_quantity": str(option.minimum_for(code)),
                     "max_quantity": str(p.max_quantity) if p.max_quantity is not None else None,
+                    "pricing_source": "individual_option",
+                    "requires_bulk_pack": False,
                     "fulfilment_mode": fulfilment,
                     "available_now": str(option_available) if fulfilment == "stock" else None,
                     "lead_time": p.preorder_lead_time if fulfilment == "preorder" else "",
@@ -1123,6 +1232,12 @@ def api_products(request,business_slug):
                     "online_min_quantity": str(option.online_min_quantity),
                     "distribution_min_quantity": str(option.distribution_min_quantity),
                 })
+
+        # Do not return a shell product that has no externally orderable mode or
+        # individual option. This is especially important for procured stockouts.
+        if not order_modes and not individual_options:
+            continue
+
         rows.append({
             "id": str(p.public_id),
             "name": p.display_name,
@@ -1135,7 +1250,7 @@ def api_products(request,business_slug):
             "image": image_url,
             "image_url": image_url,
             "unit": p.customer_unit,
-            "available_now": str(customer_available),
+            "available_now": str(stock_available),
             "contents": p.standard_public_contents,
             "bulk_packs": bulk_packs,
             "individual_options": individual_options,
@@ -1143,31 +1258,31 @@ def api_products(request,business_slug):
             "ordering_modes": submitted_modes,
             "online_min_quantity": str(p.preorder_min_quantity),
             "preorder_min_quantity": str(p.preorder_min_quantity),
-            "distribution_min_quantity": str(p.distribution_min_quantity),
+            "distribution_min_quantity": None if bulk_packs_source else (str(p.distribution_min_quantity) if explicit_distribution_price is not None else None),
+            "distribution_requires_bulk_pack": bool(bulk_packs_source and distribution_enabled),
             "max_quantity": str(p.max_quantity) if p.max_quantity is not None else None,
             "preorder_lead_time": p.preorder_lead_time,
             "estimated_ready_minutes": p.estimated_ready_minutes,
             "online_price": str(p.finished_good.selling_price_for("online")) if p.allow_online_order else None,
             "preorder_price": str(p.finished_good.selling_price_for("online")) if p.allow_online_order else None,
-            "distribution_price": str(p.finished_good.selling_price_for("distribution")) if p.allow_distribution_order else None,
+            "distribution_price": None if bulk_packs_source else (str(explicit_distribution_price) if distribution_enabled else None),
         })
+
+    visible_category_ids = {
+        row["category"]["id"] for row in rows if row.get("category") and row["category"].get("id")
+    }
     categories = [
         {"id": category.pk, "name": category.name, "slug": category.slug}
         for category in ProductCategory.raw_objects.filter(
-            business=business,
-            active=True,
-            products__storefront_product__published=True,
-        ).filter(
-            Q(products__storefront_product__allow_online_order=True)
-            | Q(products__storefront_product__allow_distribution_order=True)
-            | Q(products__individual_sale_options__active=True, products__individual_sale_options__online_enabled=True)
-            | Q(products__individual_sale_options__active=True, products__individual_sale_options__distribution_enabled=True)
-        ).distinct().order_by("sort_order", "name", "id")
-    ]
+            business=business, active=True, pk__in=visible_category_ids
+        ).order_by("sort_order", "name", "id")
+    ] if visible_category_ids else []
+
     from .delivery_services import public_delivery_config
     delivery = public_delivery_config(business)
     delivery["location_url"] = f"/api/v1/storefronts/{business.slug}/delivery/location"
     delivery["quote_url"] = f"/api/v1/storefronts/{business.slug}/delivery/quote"
+
     catalogue_items = []
     for product in rows:
         if product.get("order_modes"):
@@ -1191,7 +1306,28 @@ def api_products(request,business_slug):
                 "online_min_quantity": option.get("online_min_quantity"),
                 "distribution_min_quantity": option.get("distribution_min_quantity"),
             })
-    return JsonResponse({"business":business.name,"business_slug":business.slug,"service":business.get_vertical_display(),"price_display":{"selected_channel_only":True,"full_menu_strategy":"rotate","rotation_interval_ms":2000,"transition_axis":"vertical"},"privacy_policy":{"presentation":"modal","endpoint":f"/api/v1/storefronts/{business.slug}/privacy-policy"},"categories":categories,"delivery":delivery,"products":rows,"catalogue_items":catalogue_items})
+
+    return JsonResponse({
+        "business": business.name,
+        "business_slug": business.slug,
+        "service": business.get_vertical_display(),
+        "price_display": {
+            "selected_channel_only": True,
+            "full_menu_strategy": "rotate",
+            "rotation_interval_ms": 2000,
+            "transition_axis": "vertical",
+            "checkout_style": "compact_rotate",
+        },
+        "catalogue_display": {
+            "fulfilment_badges": False,
+            "fulfilment_options_surface": "checkout_only",
+        },
+        "privacy_policy": {"presentation": "modal", "endpoint": f"/api/v1/storefronts/{business.slug}/privacy-policy"},
+        "categories": categories,
+        "delivery": delivery,
+        "products": rows,
+        "catalogue_items": catalogue_items,
+    })
 
 
 @csrf_exempt
@@ -1641,9 +1777,13 @@ def _staff_pos_products(business):
         product.pos_direct_allowed = _channel_allowed(product, direct_channel)
         product.pos_direct_price = product.finished_good.selling_price_for(direct_channel)
         product.pos_direct_min_quantity = _channel_minimum(product, direct_channel) if product.pos_direct_allowed else Decimal("0")
-        product.pos_distribution_allowed = product.allow_distribution_order
-        product.pos_distribution_price = product.finished_good.selling_price_for(CommerceIntake.CHANNEL_DISTRIBUTION)
-        product.pos_distribution_min_quantity = product.distribution_min_quantity
+        product.pos_distribution_allowed = _channel_allowed(product, CommerceIntake.CHANNEL_DISTRIBUTION)
+        product.pos_distribution_price = product.finished_good.explicit_selling_price_for(CommerceIntake.CHANNEL_DISTRIBUTION)
+        product.pos_distribution_min_quantity = (
+            min(pack.min_order_quantity for pack in product.pos_bulk_packs)
+            if product.pos_bulk_packs
+            else product.distribution_min_quantity
+        )
     return products
 
 
@@ -1666,6 +1806,11 @@ def storefront_pos(request):
         selected_pos_channel = pos_channel
     products = list(_staff_pos_products(request.business))
     methods = eligible_payment_methods(request.business, surface="pos")
+    transfer_method = next(
+        (method for method in methods if method["code"] == CommercePayment.METHOD_TRANSFER),
+        None,
+    )
+    pos_transfer_routes = transfer_method.get("routes", []) if transfer_method else []
     from .delivery_services import delivery_available
     delivery_enabled = delivery_available(request.business)
     delivery_areas = list(
@@ -1763,6 +1908,7 @@ def storefront_pos(request):
                 method=method,
                 idempotency_key=f"staff-pos-payment:{checkout.public_id}:{method}",
                 surface="pos",
+                transfer_route_id=request.POST.get("transfer_route_id"),
             )
             if method in {CommercePayment.METHOD_CASH, CommercePayment.METHOD_TRANSFER}:
                 is_transfer = method == CommercePayment.METHOD_TRANSFER
@@ -1804,6 +1950,7 @@ def storefront_pos(request):
         "products": products,
         "product_categories": pos_categories,
         "payment_methods": methods,
+        "pos_transfer_routes": pos_transfer_routes,
         "pos_key": uuid4().hex,
         "pos_error": error,
         "active_checkout": active_checkout,

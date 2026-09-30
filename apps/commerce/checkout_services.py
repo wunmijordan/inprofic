@@ -13,7 +13,7 @@ from django.utils.dateparse import parse_datetime
 from core.services import audit
 from core.verticals import vertical_config
 from inventory.models import FinishedGood
-from inventory.portioning import find_bulk_pack, find_individual_option, internal_contents_snapshot, selection_for
+from inventory.portioning import active_bulk_packs, find_bulk_pack, find_individual_option, internal_contents_snapshot, selection_for
 
 from .models import (
     CommerceCheckoutItem,
@@ -263,6 +263,16 @@ def create_checkout(
             raise ValidationError("Bulk pack options are available only through the distribution / bulk channel.")
         if individual_option is None and not _channel_allowed(product, sales_channel):
             raise ValidationError(f"{product.display_name} is not available through the selected order mode.")
+        if sales_channel == CommerceIntake.CHANNEL_DISTRIBUTION and individual_option is None:
+            configured_bulk_packs = active_bulk_packs(good)
+            if configured_bulk_packs and bulk_pack is None:
+                raise ValidationError(
+                    f"Choose a Bulk / Distribution option for {product.display_name}."
+                )
+            if not configured_bulk_packs and good.explicit_selling_price_for("distribution") is None:
+                raise ValidationError(
+                    f"{product.display_name} has no Distribution channel price or active bulk option."
+                )
 
         selection = selection_for(good, bulk_pack=bulk_pack, individual_option=individual_option, channel=sales_channel)
         multiplier = Decimal(selection["multiplier"] or 1)
@@ -280,7 +290,10 @@ def create_checkout(
                 f"Quantity for {product.display_name} exceeds the maximum of {product.max_quantity}."
             )
 
-        price = Decimal(selection["unit_price"] if (bulk_pack is not None or individual_option is not None) else good.selling_price_for(sales_channel)).quantize(Decimal("0.01"))
+        selected_unit_price = selection.get("unit_price")
+        if selected_unit_price is None:
+            selected_unit_price = good.selling_price_for(sales_channel)
+        price = Decimal(selected_unit_price).quantize(Decimal("0.01"))
         payable_qty = qty
         reserve_qty = Decimal("0")
         internal_requested = (qty * multiplier).quantize(Decimal("0.01"))

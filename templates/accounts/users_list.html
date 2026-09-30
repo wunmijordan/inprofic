@@ -2,7 +2,7 @@
 {% block content %}
 <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
   <div><h2 class="text-xl font-semibold font-display text-[#8f172d]">Users & Access</h2><p class="text-xs text-stone-500 mt-1">Manage business users, roles and access from one place.</p></div>
-  <div class="flex gap-2"><a href="{% url 'roles_list' %}" class="px-3 py-2 rounded-md border border-[#D9CFB4] text-sm">Manage roles</a><a href="{% url 'user_add' %}" class="px-3 py-2 rounded-md bg-[#8f172d] text-white text-sm">+ Add user</a></div>
+  <div class="flex flex-wrap gap-2"><a href="{% url 'payroll_workspace' %}" class="px-3 py-2 rounded-md border border-[#D9CFB4] text-sm"><span class="mr-1 rounded-full bg-[#050733] px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">Add-on</span> Staff payroll</a><a href="{% url 'roles_list' %}" class="px-3 py-2 rounded-md border border-[#D9CFB4] text-sm">Manage roles</a><a href="{% url 'user_add' %}" class="px-3 py-2 rounded-md bg-[#8f172d] text-white text-sm">+ Add user</a></div>
 </div>
 <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg overflow-hidden shadow-sm">
 <div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-[#F0EAD9] text-xs text-stone-600"><tr><th class="text-left px-4 py-3">Name</th><th class="text-left px-4 py-3">Username</th><th class="text-left px-4 py-3">Role</th><th class="text-left px-4 py-3">Contact</th><th class="text-right px-4 py-3"></th></tr></thead>

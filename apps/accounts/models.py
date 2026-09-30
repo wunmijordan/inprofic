@@ -3,7 +3,8 @@ from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 from django.core.validators import FileExtensionValidator
-from core.models import Business
+import uuid
+from core.models import Business, BusinessOwnedModel
 
 
 class CustomUserManager(BaseUserManager):
@@ -692,6 +693,319 @@ class BusinessFeatureAccess(models.Model):
         ordering = ["feature"]
 
 
+class PayrollAddonTier(models.Model):
+    """Founder-priced payroll capacity tier attached to one commercial plan."""
+    plan = models.ForeignKey(SubscriptionPlan, on_delete=models.CASCADE, related_name="payroll_addon_tiers")
+    staff_limit = models.PositiveIntegerField(help_text="Maximum active payroll staff covered by this tier.")
+    monthly_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["plan__monthly_price", "staff_limit", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["plan", "staff_limit"], name="unique_payroll_tier_plan_staff"),
+        ]
+
+    def __str__(self):
+        return f"{self.plan.name} · up to {self.staff_limit} staff"
+
+
+class BusinessPayrollAddon(models.Model):
+    """Paid payroll add-on state for one tenant business.
+
+    Trial and Founder-lifetime access are derived from BusinessSubscription and
+    do not need a paid row here. This row only represents post-trial paid access.
+    """
+    business = models.OneToOneField(Business, on_delete=models.CASCADE, related_name="payroll_addon")
+    tier = models.ForeignKey(PayrollAddonTier, on_delete=models.PROTECT, related_name="business_addons")
+    active = models.BooleanField(default=True)
+    paid_until = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["business__name"]
+
+    def __str__(self):
+        return f"{self.business} · {self.tier}"
+
+
+class PayrollStaffProfile(BusinessOwnedModel):
+    FREQUENCY_MONTHLY = "monthly"
+    FREQUENCY_WEEKLY = "weekly"
+    FREQUENCY_CHOICES = [(FREQUENCY_MONTHLY, "Monthly"), (FREQUENCY_WEEKLY, "Weekly")]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="payroll_staff_profiles",
+        help_text="Optional existing INPROFIC user linked to this payroll profile.",
+    )
+    full_name = models.CharField(max_length=160)
+    email = models.EmailField(blank=True, default="")
+    whatsapp_number = models.CharField(max_length=30, blank=True, default="")
+    job_title = models.CharField(max_length=120, blank=True, default="")
+    pay_frequency = models.CharField(max_length=12, choices=FREQUENCY_CHOICES, default=FREQUENCY_MONTHLY)
+    base_pay = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    recurring_allowances = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    recurring_deductions = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["full_name", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["business", "user"], condition=models.Q(user__isnull=False),
+                name="unique_payroll_user_per_business",
+            )
+        ]
+
+    def __str__(self):
+        return self.full_name
+
+    @property
+    def recurring_net_pay(self):
+        from decimal import Decimal
+        return max(
+            Decimal("0"),
+            Decimal(self.base_pay or 0) + Decimal(self.recurring_allowances or 0) - Decimal(self.recurring_deductions or 0),
+        )
+
+
+class PayrollRecurringAdjustment(models.Model):
+    """Named recurring allowance or deduction attached to one payroll profile.
+
+    Tenant scope is inherited through ``staff``.  The aggregate legacy fields on
+    PayrollStaffProfile are retained as compatibility caches and synchronized
+    whenever these rows are changed through the payroll workspace.
+    """
+
+    KIND_ALLOWANCE = "allowance"
+    KIND_DEDUCTION = "deduction"
+    KIND_CHOICES = [
+        (KIND_ALLOWANCE, "Allowance / earning"),
+        (KIND_DEDUCTION, "Deduction"),
+    ]
+
+    staff = models.ForeignKey(
+        PayrollStaffProfile, on_delete=models.CASCADE, related_name="recurring_adjustments"
+    )
+    kind = models.CharField(max_length=12, choices=KIND_CHOICES)
+    name = models.CharField(max_length=120)
+    amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["kind", "name", "id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gte=0),
+                name="payroll_recurring_amount_nonnegative",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.staff.full_name} · {self.name}"
+
+
+class PayrollCalculationRule(BusinessOwnedModel):
+    """Tenant-defined payroll calculation applied when a payslip is issued.
+
+    Rules are intentionally jurisdiction-neutral.  Business admins can model
+    tax, pension and other payroll additions/deductions without INPROFIC
+    hard-coding one country's statutory formula.
+    """
+
+    CATEGORY_TAX = "tax"
+    CATEGORY_PENSION = "pension"
+    CATEGORY_INSURANCE = "insurance"
+    CATEGORY_LEVY = "levy"
+    CATEGORY_ALLOWANCE = "allowance"
+    CATEGORY_DEDUCTION = "deduction"
+    CATEGORY_EMPLOYER = "employer_contribution"
+    CATEGORY_OTHER = "other"
+    CATEGORY_CHOICES = [
+        (CATEGORY_TAX, "Tax"),
+        (CATEGORY_PENSION, "Pension"),
+        (CATEGORY_INSURANCE, "Insurance"),
+        (CATEGORY_LEVY, "Levy"),
+        (CATEGORY_ALLOWANCE, "Allowance / earning"),
+        (CATEGORY_DEDUCTION, "Other deduction"),
+        (CATEGORY_EMPLOYER, "Employer contribution"),
+        (CATEGORY_OTHER, "Other"),
+    ]
+
+    EFFECT_EARNING = "earning"
+    EFFECT_EMPLOYEE_DEDUCTION = "employee_deduction"
+    EFFECT_EMPLOYER_CONTRIBUTION = "employer_contribution"
+    EFFECT_CHOICES = [
+        (EFFECT_EARNING, "Add to staff gross pay"),
+        (EFFECT_EMPLOYEE_DEDUCTION, "Deduct from staff pay"),
+        (EFFECT_EMPLOYER_CONTRIBUTION, "Employer contribution only"),
+    ]
+
+    METHOD_FIXED = "fixed"
+    METHOD_PERCENTAGE = "percentage"
+    METHOD_CHOICES = [
+        (METHOD_FIXED, "Fixed amount"),
+        (METHOD_PERCENTAGE, "Percentage"),
+    ]
+
+    BASIS_BASE_PAY = "base_pay"
+    BASIS_GROSS_PAY = "gross_pay"
+    BASIS_CHOICES = [
+        (BASIS_BASE_PAY, "Base pay"),
+        (BASIS_GROSS_PAY, "Gross pay"),
+    ]
+
+    name = models.CharField(max_length=120)
+    category = models.CharField(max_length=24, choices=CATEGORY_CHOICES, default=CATEGORY_OTHER)
+    effect = models.CharField(max_length=24, choices=EFFECT_CHOICES, default=EFFECT_EMPLOYEE_DEDUCTION)
+    method = models.CharField(max_length=12, choices=METHOD_CHOICES, default=METHOD_PERCENTAGE)
+    basis = models.CharField(max_length=12, choices=BASIS_CHOICES, default=BASIS_GROSS_PAY)
+    rate = models.DecimalField(max_digits=7, decimal_places=4, default=0, help_text="Percentage rate, e.g. 8 for 8%.")
+    fixed_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    threshold_amount = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        help_text="Optional exempt threshold. Percentage rules apply only to the basis amount above this value.",
+    )
+    cap_amount = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        help_text="Optional maximum calculated amount. Leave at 0 for no cap.",
+    )
+    statutory = models.BooleanField(default=False, help_text="Mark tax, pension or another rule that is statutory for this business.")
+    active = models.BooleanField(default=True)
+    sort_order = models.PositiveSmallIntegerField(default=50)
+
+    class Meta:
+        ordering = ["sort_order", "name", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["business", "name"], name="unique_payroll_rule_name_per_business"),
+            models.CheckConstraint(condition=models.Q(rate__gte=0) & models.Q(rate__lte=100), name="payroll_rule_rate_0_100"),
+            models.CheckConstraint(condition=models.Q(fixed_amount__gte=0), name="payroll_rule_fixed_nonnegative"),
+            models.CheckConstraint(condition=models.Q(threshold_amount__gte=0), name="payroll_rule_threshold_nonnegative"),
+            models.CheckConstraint(condition=models.Q(cap_amount__gte=0), name="payroll_rule_cap_nonnegative"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class Payslip(BusinessOwnedModel):
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    staff = models.ForeignKey(PayrollStaffProfile, on_delete=models.PROTECT, related_name="payslips")
+    period_start = models.DateField()
+    period_end = models.DateField()
+    base_pay = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    manual_allowances = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    manual_deductions = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    allowances = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    deductions = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    gross_pay = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    employer_contributions = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    employer_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    net_pay = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    notes = models.CharField(max_length=500, blank=True, default="")
+    share_enabled = models.BooleanField(default=True)
+    issued_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-period_end", "-issued_at", "-id"]
+        indexes = [models.Index(fields=["business", "-period_end"], name="payslip_biz_period_idx")]
+
+    def __str__(self):
+        return f"{self.staff.full_name} · {self.period_start}–{self.period_end}"
+
+    @property
+    def recurring_allowance_lines(self):
+        return [
+            line for line in self.adjustment_lines.all()
+            if line.kind == PayslipAdjustmentLine.KIND_ALLOWANCE
+        ]
+
+    @property
+    def recurring_deduction_lines(self):
+        return [
+            line for line in self.adjustment_lines.all()
+            if line.kind == PayslipAdjustmentLine.KIND_DEDUCTION
+        ]
+
+
+class PayslipAdjustmentLine(models.Model):
+    """Frozen named recurring pay item carried into an issued payslip."""
+
+    KIND_ALLOWANCE = PayrollRecurringAdjustment.KIND_ALLOWANCE
+    KIND_DEDUCTION = PayrollRecurringAdjustment.KIND_DEDUCTION
+    KIND_CHOICES = PayrollRecurringAdjustment.KIND_CHOICES
+
+    payslip = models.ForeignKey(Payslip, on_delete=models.CASCADE, related_name="adjustment_lines")
+    recurring_adjustment = models.ForeignKey(
+        PayrollRecurringAdjustment, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="payslip_lines",
+    )
+    kind = models.CharField(max_length=12, choices=KIND_CHOICES)
+    name = models.CharField(max_length=120)
+    amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gte=0),
+                name="payslip_adjustment_amount_nonnegative",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.payslip} · {self.name}"
+
+
+class PayslipCalculationLine(models.Model):
+    """Frozen explanation of one configured calculation on an issued payslip."""
+    payslip = models.ForeignKey(Payslip, on_delete=models.CASCADE, related_name="calculation_lines")
+    rule = models.ForeignKey(PayrollCalculationRule, null=True, blank=True, on_delete=models.SET_NULL, related_name="payslip_lines")
+    name = models.CharField(max_length=120)
+    category = models.CharField(max_length=24, choices=PayrollCalculationRule.CATEGORY_CHOICES)
+    effect = models.CharField(max_length=24, choices=PayrollCalculationRule.EFFECT_CHOICES)
+    method = models.CharField(max_length=12, choices=PayrollCalculationRule.METHOD_CHOICES)
+    basis = models.CharField(max_length=12, choices=PayrollCalculationRule.BASIS_CHOICES)
+    rate = models.DecimalField(max_digits=7, decimal_places=4, default=0)
+    fixed_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    threshold_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    cap_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    calculation_base = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    statutory = models.BooleanField(default=False)
+    sort_order = models.PositiveSmallIntegerField(default=50)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+
+    def __str__(self):
+        return f"{self.payslip} · {self.name}"
+
+
+class PayslipRevision(models.Model):
+    """Audit snapshot captured before an issued payslip is deliberately edited."""
+
+    payslip = models.ForeignKey(Payslip, on_delete=models.CASCADE, related_name="revisions")
+    reason = models.CharField(max_length=500)
+    previous_snapshot = models.JSONField(default=dict)
+    edited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="payroll_payslip_revisions",
+    )
+    edited_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-edited_at", "-id"]
+
+    def __str__(self):
+        return f"Revision of {self.payslip} · {self.edited_at:%Y-%m-%d %H:%M}"
+
+
 class SubscriptionPayment(models.Model):
     STATUS_PENDING = "pending"
     STATUS_PAID = "paid"
@@ -712,8 +1026,18 @@ class SubscriptionPayment(models.Model):
     CYCLE_MONTHLY = "monthly"
     CYCLE_YEARLY = "yearly"
     CYCLE_CHOICES = [(CYCLE_MONTHLY, "Monthly"), (CYCLE_YEARLY, "Yearly")]
+    PURPOSE_SUBSCRIPTION = "subscription"
+    PURPOSE_PAYROLL_ADDON = "payroll_addon"
+    PURPOSE_CHOICES = [
+        (PURPOSE_SUBSCRIPTION, "Plan subscription"),
+        (PURPOSE_PAYROLL_ADDON, "Payroll add-on"),
+    ]
 
     subscription = models.ForeignKey(BusinessSubscription, on_delete=models.CASCADE, related_name="subscription_payments")
+    purpose = models.CharField(max_length=20, choices=PURPOSE_CHOICES, default=PURPOSE_SUBSCRIPTION)
+    payroll_tier = models.ForeignKey(
+        PayrollAddonTier, null=True, blank=True, on_delete=models.PROTECT, related_name="subscription_payments"
+    )
     plan = models.ForeignKey(SubscriptionPlan, on_delete=models.PROTECT)
     amount = models.DecimalField(max_digits=14, decimal_places=2)
     base_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
@@ -1026,6 +1350,7 @@ class PlatformEvent(models.Model):
     tenant authorization or bookkeeping.
     """
 
+    EVENT_MARKETING_VISIT = "marketing_visit"
     EVENT_SIGNUP_VIEW = "signup_view"
     EVENT_REGISTRATION = "registration_completed"
     EVENT_LOGIN = "login"
@@ -1037,6 +1362,7 @@ class PlatformEvent(models.Model):
     EVENT_SUBSCRIPTION_PAID = "subscription_paid"
     EVENT_SUBSCRIPTION_FOUNDER = "subscription_founder_grant"
     EVENT_CHOICES = [
+        (EVENT_MARKETING_VISIT, "Marketing page visit"),
         (EVENT_SIGNUP_VIEW, "Signup viewed"),
         (EVENT_REGISTRATION, "Registration completed"),
         (EVENT_LOGIN, "Login"),

@@ -14,6 +14,7 @@ from core.models import Business, CashAccount, FinancialTransaction
 from inventory.models import FinishedGood, FinishedGoodChannelPrice
 from production.models import Order
 
+from .forms import CommerceManualTransferSettingsForm, CommercePaymentConfigurationForm
 from .models import (
     CommerceCheckoutSession,
     CommerceGatewayEvent,
@@ -23,6 +24,7 @@ from .models import (
     CommercePayment,
     CommercePaymentClaim,
     CommercePaymentConfiguration,
+    CommerceDirectTransferRoute,
     CommercePaymentReceipt,
     CommerceSettings,
     DeliveryArea,
@@ -35,7 +37,7 @@ from .models import (
 from .payment_gateways import GatewayError, monnify_signature_valid, verify_monnify, verify_paystack
 from .checkout_services import create_checkout
 from .delivery_services import create_delivery_quote
-from .payment_services import eligible_payment_methods, initiate_payment, record_verified_payment, reverse_payment_receipt, serialize_payment, submit_bank_claim
+from .payment_services import eligible_payment_methods, initiate_payment, payment_configuration, record_verified_payment, reverse_payment_receipt, serialize_payment, submit_bank_claim
 from .services import create_intake
 
 
@@ -124,12 +126,171 @@ class CommercePaymentTestBase(TestCase):
         return CommercePayment.raw_objects.create(**values)
 
 
+class CommercePaymentConfigurationFormTests(CommercePaymentTestBase):
+    def test_disabled_provider_sections_do_not_make_hidden_configuration_required(self):
+        self.config.paystack_enabled = False
+        self.config.monnify_enabled = False
+        self.config.bank_transfer_enabled = False
+        self.config.paystack_terminal_enabled = False
+        self.config.cash_enabled = False
+        self.config.monnify_base_url = "https://api.monnify.com"
+        self.config.bank_transfer_provider = CommercePaymentConfiguration.BANK_TRANSFER_PROVIDER_PAYSTACK
+        self.config.save()
+
+        form = CommercePaymentConfigurationForm(
+            data={"currency": ""},
+            instance=self.config,
+            business=self.business,
+        )
+
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+        form.save()
+        self.config.refresh_from_db()
+        self.assertEqual(self.config.currency, "NGN")
+        self.assertEqual(self.config.monnify_base_url, "https://api.monnify.com")
+        self.assertEqual(
+            self.config.bank_transfer_provider,
+            CommercePaymentConfiguration.BANK_TRANSFER_PROVIDER_PAYSTACK,
+        )
+
+    def test_blank_currency_renders_ngn_from_form_initial(self):
+        self.config.currency = ""
+        self.config.save(update_fields=["currency", "updated_at"])
+
+        form = CommercePaymentConfigurationForm(
+            instance=self.config,
+            business=self.business,
+        )
+
+        self.assertEqual(form.initial["currency"], "NGN")
+        self.assertEqual(form["currency"].value(), "NGN")
+
+    def test_custom_currency_value_persists_and_renders_after_save(self):
+        self.config.paystack_enabled = False
+        self.config.monnify_enabled = False
+        self.config.bank_transfer_enabled = False
+        self.config.paystack_terminal_enabled = False
+        self.config.cash_enabled = False
+        self.config.save()
+        form = CommercePaymentConfigurationForm(
+            data={"currency": "usd"},
+            instance=self.config,
+            business=self.business,
+        )
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+        form.save()
+        self.config.refresh_from_db()
+        self.assertEqual(self.config.currency, "USD")
+        rerender = CommercePaymentConfigurationForm(instance=self.config, business=self.business)
+        self.assertEqual(rerender["currency"].value(), "USD")
+
+    def test_bound_blank_currency_stays_visibly_normalized(self):
+        self.config.currency = "NGN"
+        self.config.save(update_fields=["currency", "updated_at"])
+        form = CommercePaymentConfigurationForm(
+            data={"currency": ""},
+            instance=self.config,
+            business=self.business,
+        )
+        self.assertEqual(form["currency"].value(), "NGN")
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+        saved = form.save()
+        self.assertEqual(saved.currency, "NGN")
+
+    def test_payment_configuration_persists_safe_defaults_for_old_blank_rows(self):
+        self.config.currency = ""
+        self.config.monnify_base_url = ""
+        self.config.bank_transfer_provider = ""
+        self.config.save(update_fields=["currency", "monnify_base_url", "bank_transfer_provider", "updated_at"])
+
+        resolved = payment_configuration(self.business)
+
+        self.assertEqual(resolved.currency, "NGN")
+        self.assertEqual(resolved.monnify_base_url, "https://api.monnify.com")
+        self.assertEqual(
+            resolved.bank_transfer_provider,
+            CommercePaymentConfiguration.BANK_TRANSFER_PROVIDER_PAYSTACK,
+        )
+        self.config.refresh_from_db()
+        self.assertEqual(self.config.currency, "NGN")
+        self.assertEqual(self.config.monnify_base_url, "https://api.monnify.com")
+        self.assertEqual(
+            self.config.bank_transfer_provider,
+            CommercePaymentConfiguration.BANK_TRANSFER_PROVIDER_PAYSTACK,
+        )
+
+    def test_main_settings_form_does_not_own_legacy_manual_transfer_details(self):
+        self.assertNotIn("transfer_enabled", CommercePaymentConfigurationForm.base_fields)
+        self.assertNotIn("bank_name", CommercePaymentConfigurationForm.base_fields)
+        self.assertNotIn("bank_account_name", CommercePaymentConfigurationForm.base_fields)
+        self.assertNotIn("bank_account_number", CommercePaymentConfigurationForm.base_fields)
+        self.assertNotIn("transfer_account", CommercePaymentConfigurationForm.base_fields)
+
+    def test_manual_transfer_toggle_changes_only_transfer_availability(self):
+        self.config.transfer_enabled = False
+        self.config.bank_name = "Saved Bank"
+        self.config.bank_account_name = "Saved Account"
+        self.config.bank_account_number = "1234567890"
+        self.config.transfer_account = self.settlement_account
+        self.config.save()
+
+        form = CommerceManualTransferSettingsForm(
+            data={"transfer_enabled": "on"},
+            instance=self.config,
+        )
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+        form.save()
+
+        self.config.refresh_from_db()
+        self.assertTrue(self.config.transfer_enabled)
+        self.assertEqual(self.config.bank_name, "Saved Bank")
+        self.assertEqual(self.config.bank_account_name, "Saved Account")
+        self.assertEqual(self.config.bank_account_number, "1234567890")
+        self.assertEqual(self.config.transfer_account_id, self.settlement_account.pk)
+
+
+    def test_checkout_switcher_hides_when_current_method_is_the_only_choice(self):
+        from .views import _checkout_switch_payment_methods
+
+        payment = self.make_payment(method=CommercePayment.METHOD_PAYSTACK)
+        methods = [{"code": CommercePayment.METHOD_PAYSTACK, "label": "Paystack"}]
+
+        self.assertEqual(_checkout_switch_payment_methods(methods, payment), [])
+
+    def test_checkout_switcher_keeps_other_transfer_routes_actionable(self):
+        from .views import _checkout_switch_payment_methods
+
+        payment = self.make_payment(
+            method=CommercePayment.METHOD_TRANSFER,
+            gateway_metadata={"manual_transfer_route": {"id": 10}},
+        )
+        methods = [{
+            "code": CommercePayment.METHOD_TRANSFER,
+            "label": "Transfer",
+            "routes": [
+                {"id": "10", "name": "Primary"},
+                {"id": "20", "name": "Secondary"},
+            ],
+        }]
+
+        alternatives = _checkout_switch_payment_methods(methods, payment)
+
+        self.assertEqual(len(alternatives), 1)
+        self.assertEqual(alternatives[0]["label"], "Transfer to another account")
+        self.assertEqual(alternatives[0]["routes"], [{"id": "20", "name": "Secondary"}])
+
+
 class DirectTransferPaymentTests(CommercePaymentTestBase):
     def setUp(self):
         super().setUp()
         self.config.transfer_enabled = True
         self.config.transfer_account = self.settlement_account
         self.config.save(update_fields=["transfer_enabled", "transfer_account", "updated_at"])
+        self.primary_transfer_route = CommerceDirectTransferRoute.raw_objects.create(
+            business=self.business, name="Primary transfer account", bank_name="Example Bank",
+            account_name="Sample Store", account_number="0000000000",
+            transfer_account=self.settlement_account, sort_order=10,
+        )
 
     def test_public_transfer_is_exposed_separately_from_gateway_transfer(self):
         methods = {row["code"]: row for row in eligible_payment_methods(self.business)}
@@ -137,6 +298,111 @@ class DirectTransferPaymentTests(CommercePaymentTestBase):
         self.assertIn(CommercePayment.METHOD_BANK_TRANSFER, methods)
         self.assertTrue(methods[CommercePayment.METHOD_TRANSFER]["requires_payment_proof"])
         self.assertEqual(methods[CommercePayment.METHOD_TRANSFER]["confirmation"], "staff_review")
+
+    def test_manual_transfer_is_not_exposed_without_an_active_route_even_if_legacy_fields_remain(self):
+        self.primary_transfer_route.delete()
+
+        methods = {row["code"]: row for row in eligible_payment_methods(self.business)}
+
+        self.assertNotIn(CommercePayment.METHOD_TRANSFER, methods)
+
+    def test_multiple_transfer_routes_are_exposed_and_customer_choice_is_frozen(self):
+        self.primary_transfer_route.delete()
+        second_account = CashAccount.raw_objects.create(
+            business=self.business, name="Second Settlement", account_type="bank", active=True
+        )
+        first_route = CommerceDirectTransferRoute.raw_objects.create(
+            business=self.business, name="Main bank", bank_name="Example Bank",
+            account_name="Sample Store", account_number="1111111111",
+            transfer_account=self.settlement_account, sort_order=10,
+        )
+        second_route = CommerceDirectTransferRoute.raw_objects.create(
+            business=self.business, name="Wallet", bank_name="Example Wallet",
+            account_name="Sample Store", account_number="2222222222",
+            transfer_account=second_account, sort_order=20,
+        )
+        methods = {row["code"]: row for row in eligible_payment_methods(self.business)}
+        transfer = methods[CommercePayment.METHOD_TRANSFER]
+        self.assertEqual([row["id"] for row in transfer["routes"]], [str(first_route.pk), str(second_route.pk)])
+
+        with self.assertRaisesMessage(ValidationError, "Choose which transfer account"):
+            initiate_payment(
+                intake=self.intake, method=CommercePayment.METHOD_TRANSFER,
+                idempotency_key="multi-transfer-no-choice",
+            )
+
+        payment = initiate_payment(
+            intake=self.intake, method=CommercePayment.METHOD_TRANSFER,
+            transfer_route_id=second_route.pk,
+            idempotency_key="multi-transfer-wallet",
+        )
+        payload = serialize_payment(payment)
+        self.assertEqual(payload["bank_account"]["route_id"], second_route.pk)
+        self.assertEqual(payload["bank_account"]["route_name"], "Wallet")
+        self.assertEqual(payload["bank_account"]["account_number"], "2222222222")
+        self.assertEqual(payment.gateway_metadata["manual_transfer_route"]["cash_account_id"], second_account.pk)
+
+    def test_pos_transfer_is_exposed_with_new_route_without_legacy_account(self):
+        self.primary_transfer_route.delete()
+        self.config.transfer_account = None
+        self.config.bank_name = ""
+        self.config.bank_account_name = ""
+        self.config.bank_account_number = ""
+        self.config.save(update_fields=[
+            "transfer_account", "bank_name", "bank_account_name", "bank_account_number", "updated_at"
+        ])
+        route = CommerceDirectTransferRoute.raw_objects.create(
+            business=self.business, name="POS settlement", bank_name="Route Bank",
+            account_name="Sample Store", account_number="3333333333",
+            transfer_account=self.settlement_account, sort_order=10,
+        )
+
+        methods = {row["code"]: row for row in eligible_payment_methods(self.business, surface="pos")}
+
+        self.assertIn(CommercePayment.METHOD_TRANSFER, methods)
+        self.assertEqual(
+            methods[CommercePayment.METHOD_TRANSFER]["routes"],
+            [{
+                "id": str(route.pk),
+                "name": "POS settlement",
+                "bank_name": "Route Bank",
+                "account_name": "Sample Store",
+                "account_number": "3333333333",
+                "instructions": "",
+            }],
+        )
+        self.assertEqual(methods[CommercePayment.METHOD_TRANSFER]["confirmation"], "staff_confirmation")
+
+    def test_transfer_routes_require_an_active_same_business_settlement_account(self):
+        self.primary_transfer_route.delete()
+        self.config.transfer_account = None
+        self.config.bank_name = ""
+        self.config.bank_account_name = ""
+        self.config.bank_account_number = ""
+        self.config.save(update_fields=[
+            "transfer_account", "bank_name", "bank_account_name", "bank_account_number", "updated_at"
+        ])
+        inactive_account = CashAccount.raw_objects.create(
+            business=self.business, name="Inactive Settlement", account_type="bank", active=False
+        )
+        CommerceDirectTransferRoute.raw_objects.create(
+            business=self.business, name="Inactive route", bank_name="Inactive Bank",
+            account_name="Sample Store", account_number="4444444444",
+            transfer_account=inactive_account, sort_order=10,
+        )
+        other_business = Business.objects.create(name="Other Store", slug="other-store")
+        other_account = CashAccount.raw_objects.create(
+            business=other_business, name="Other Settlement", account_type="bank", active=True
+        )
+        CommerceDirectTransferRoute.raw_objects.create(
+            business=self.business, name="Cross-tenant route", bank_name="Other Bank",
+            account_name="Other Store", account_number="5555555555",
+            transfer_account=other_account, sort_order=20,
+        )
+
+        methods = {row["code"]: row for row in eligible_payment_methods(self.business)}
+
+        self.assertNotIn(CommercePayment.METHOD_TRANSFER, methods)
 
     def test_direct_transfer_requires_proof_and_keeps_finance_sync_when_finance_is_plan_hidden(self):
         payment = initiate_payment(
@@ -200,6 +466,39 @@ class HeadlessPaymentApiTests(CommercePaymentTestBase):
         self.assertEqual(response.status_code, 200)
         methods = {row["code"] for row in response.json()["methods"]}
         self.assertNotIn(CommercePayment.METHOD_CASH, methods)
+
+    def test_payment_methods_endpoint_exposes_every_active_manual_transfer_route(self):
+        self.config.transfer_enabled = True
+        self.config.save(update_fields=["transfer_enabled", "updated_at"])
+        second_account = CashAccount.raw_objects.create(
+            business=self.business, name="Wallet Settlement", account_type="bank", active=True
+        )
+        first_route = CommerceDirectTransferRoute.raw_objects.create(
+            business=self.business, name="Main bank", bank_name="Example Bank",
+            account_name="Sample Store", account_number="1111111111",
+            transfer_account=self.settlement_account, sort_order=10,
+        )
+        second_route = CommerceDirectTransferRoute.raw_objects.create(
+            business=self.business, name="Wallet", bank_name="Example Wallet",
+            account_name="Sample Store", account_number="2222222222",
+            transfer_account=second_account, sort_order=20,
+        )
+
+        response = self.client.get(
+            f"/api/v1/storefronts/{self.business.slug}/payment-methods",
+            HTTP_X_INPROFIC_KEY=self.integration.api_key,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        transfer = next(row for row in response.json()["methods"] if row["code"] == CommercePayment.METHOD_TRANSFER)
+        self.assertEqual(
+            [route["id"] for route in transfer["routes"]],
+            [str(first_route.pk), str(second_route.pk)],
+        )
+        self.assertEqual(
+            [route["account_number"] for route in transfer["routes"]],
+            ["1111111111", "2222222222"],
+        )
 
     def test_api_delivery_quote_is_included_in_authoritative_checkout_total(self):
         BusinessModuleAccess.objects.update_or_create(
@@ -667,6 +966,11 @@ class StorefrontPosGuardTests(CommercePaymentTestBase):
         self.config.transfer_enabled = True
         self.config.transfer_account = self.settlement_account
         self.config.save(update_fields=["transfer_enabled", "transfer_account", "updated_at"])
+        CommerceDirectTransferRoute.raw_objects.create(
+            business=self.business, name="POS transfer", bank_name="Example Bank",
+            account_name="Sample Store", account_number="0000000000",
+            transfer_account=self.settlement_account, sort_order=10,
+        )
         response = self.client.post("/commerce/storefront-pos/", {
             "method": CommercePayment.METHOD_TRANSFER,
             "manual_payment_received": "on",
@@ -679,6 +983,46 @@ class StorefrontPosGuardTests(CommercePaymentTestBase):
         payment.refresh_from_db()
         self.assertEqual(payment.status, CommercePayment.STATUS_PAID)
         self.assertFalse(payment.claims.exists())
+
+    def test_staff_pos_lists_all_manual_transfer_routes_and_freezes_selected_route(self):
+        self.config.transfer_enabled = True
+        self.config.save(update_fields=["transfer_enabled", "updated_at"])
+        second_account = CashAccount.raw_objects.create(
+            business=self.business, name="Second POS Settlement", account_type="bank", active=True
+        )
+        first_route = CommerceDirectTransferRoute.raw_objects.create(
+            business=self.business, name="Main counter account", bank_name="First Bank",
+            account_name="Sample Store", account_number="1111111111",
+            transfer_account=self.settlement_account, sort_order=10,
+        )
+        second_route = CommerceDirectTransferRoute.raw_objects.create(
+            business=self.business, name="Wallet counter account", bank_name="Wallet Bank",
+            account_name="Sample Store", account_number="2222222222",
+            transfer_account=second_account, sort_order=20,
+        )
+
+        page = self.client.get("/commerce/storefront-pos/")
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "Main counter account")
+        self.assertContains(page, "Wallet counter account")
+        self.assertContains(page, 'name="transfer_route_id"')
+
+        response = self.client.post("/commerce/storefront-pos/", {
+            "method": CommercePayment.METHOD_TRANSFER,
+            "transfer_route_id": str(second_route.pk),
+            "manual_payment_received": "on",
+            f"qty_{self.product.public_id}": "1",
+            "customer_name": "Walk-in Customer",
+            "pos_key": "pos-second-transfer-route",
+        })
+        self.assertEqual(response.status_code, 302)
+        payment = CommercePayment.raw_objects.get(
+            business=self.business,
+            method=CommercePayment.METHOD_TRANSFER,
+        )
+        self.assertEqual(payment.gateway_metadata["manual_transfer_route"]["route_id"], second_route.pk)
+        self.assertEqual(payment.gateway_metadata["manual_transfer_route"]["cash_account_id"], second_account.pk)
+        self.assertNotEqual(payment.gateway_metadata["manual_transfer_route"]["route_id"], first_route.pk)
 
     def test_cash_must_be_confirmed_before_checkout_reserves_stock(self):
         response = self.client.post("/commerce/storefront-pos/", {

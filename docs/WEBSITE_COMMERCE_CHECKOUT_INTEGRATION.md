@@ -90,7 +90,7 @@ Create active settlement accounts in **Finance**, then open **Commerce → Payme
 | --- | --- |
 | Paystack | Enabled, secret key, active tenant settlement account |
 | Monnify | Enabled, API key, secret key, contract code, base URL, active tenant settlement account |
-| Transfer (no gateway) | Enabled, static bank name/account name/account number, instructions if desired, and an active tenant settlement account. Customer proof is required on hosted/headless checkout. |
+| Manual transfer routes (no gateway) / `transfer` | Enabled plus one or more active customer-facing transfer routes. Each route has its own label, bank/account details, optional instructions and active tenant settlement account. Customer proof is required on hosted/headless checkout. Legacy single-account settings are merged into the route list when an equivalent route is not already present, even if other routes already exist. |
 | Instant bank transfer | Enabled, Paystack or Monnify selected as transfer provider, that provider fully configured, active tenant transfer settlement account; Monnify also needs the configured transfer bank code. This is the gateway-backed `bank_transfer` method. |
 | Cash / physical POS | **Not exposed to headless/public checkout.** These are authenticated in-premise staff methods only. Staff-operated POS can also use native `transfer`, with staff confirmation instead of a customer proof upload. |
 
@@ -246,7 +246,7 @@ Use decimal strings for quantity. Do not calculate financial truth with browser 
 
 ### Online fulfilment choice and readiness
 
-Treat `online` as the price channel and `fulfilment_source` as a separate per-line choice. Render only the `fulfilment_options` returned by INPROFIC. `stock` means the customer is choosing currently available Physical Store stock while still paying the Online price; `made_to_order` uses the configured readiness estimate. Do not expose Physical Store prices. If a stock-backed product has no stock and no made-to-order option, the Online mode is absent from that product. Bulk/Distribution does not expose the Physical Store choice.
+Treat `online` as the price channel and `fulfilment_source` as a separate per-line checkout choice. `stock` means the customer is choosing currently available Physical Store stock while still paying the Online price; `made_to_order` uses the configured readiness estimate. The product API deliberately keeps those `fulfilment_options`, but `catalogue_display.fulfilment_options_surface` is `checkout_only`: do not render stock-readiness or made-to-order-time badges on external catalogue cards. Do not expose Physical Store prices. A purchased-for-resale/procured-to-sell product with no sellable physical stock is omitted from the external catalogue entirely, including Distribution/Bulk, because it cannot be produced. Bulk/Distribution does not expose the Physical Store choice.
 
 Checkout responses include line-level and overall `estimated_ready_at`. For delivery, optionally send `requested_delivery_at`; it must not be earlier than the whole-order readiness plus the accepted delivery ETA.
 
@@ -401,7 +401,7 @@ the code. Use:
 
 No image produces empty `image` and `image_url` strings. Use `image` in new code.
 
-External storefront/headless mode codes are `online` and `distribution`. Display the returned vertical-specific `label`. Distribution/bulk remains available on external surfaces whenever the product enables it, with its configured minimum quantity enforced by INPROFIC. The in-premise POS additionally supports the tenant vertical's direct/physical-store channel. Production services normally use `preorder` fulfilment for online/distribution; wholesale and retail remain stock-based and are never forced through production.
+External storefront/headless mode codes are `online` and `distribution`. Display the returned vertical-specific `label`. Distribution/Bulk is exposed only when it has an explicit Distribution channel price or active `bulk_packs[]`; it never falls back to the Standard Portion/default selling price. When bulk packs exist, the client must choose one and submit `bulk_pack_id`, and that pack's own price/minimum are authoritative. When there are no bulk packs, the explicit Distribution channel price and product-level `distribution_min_quantity` apply. The in-premise POS additionally supports the tenant vertical's direct/physical-store channel. Production services normally use `preorder` fulfilment for online/distribution; wholesale and retail remain stock-based and are never forced through production.
 
 The hosted catalogue hides product counts. A headless website may similarly use `available_now` only for validation/UI disabling. INPROFIC always rechecks it during checkout.
 
@@ -414,11 +414,16 @@ The response also includes a top-level presentation hint:
   "selected_channel_only": true,
   "full_menu_strategy": "rotate",
   "rotation_interval_ms": 2000,
-  "transition_axis": "vertical"
+  "transition_axis": "vertical",
+  "checkout_style": "compact_rotate"
+},
+"catalogue_display": {
+  "fulfilment_badges": false,
+  "fulfilment_options_surface": "checkout_only"
 }
 ```
 
-To match the hosted storefront, render one price pill for the selected channel. In a Full menu/all-channels view, rotate vertically through only the item's available `order_modes` every two seconds. Treat this as presentation metadata; always use the current selected `order_modes[].price` only as a display estimate and let checkout return the authoritative amount.
+To match the hosted storefront, render one compact price pill for the selected channel. In a Full menu/all-channels view, rotate vertically through only the item's available prices every two seconds; use the same compact treatment in checkout/basket summaries. Do **not** place `stock` readiness or `made_to_order` time tags on product cards. Keep `order_modes[].fulfilment_options` for the checkout selector only. Treat this as presentation metadata; checkout remains authoritative for price and readiness.
 
 ## 5. Delivery discovery and quote
 
@@ -604,13 +609,38 @@ X-INPROFIC-Key: <tenant API key>
   "methods": [
     {"code": "paystack", "label": "Card / secure checkout (Paystack)"},
     {"code": "monnify", "label": "Secure checkout (Monnify)"},
-    {"code": "transfer", "label": "Transfer", "requires_payment_proof": true, "confirmation": "staff_review"},
+    {
+      "code": "transfer",
+      "label": "Transfer",
+      "requires_payment_proof": true,
+      "confirmation": "staff_review",
+      "routes": [
+        {
+          "id": "12",
+          "name": "Main bank account",
+          "bank_name": "Example Bank",
+          "account_name": "Example Business Ltd",
+          "account_number": "0123456789",
+          "instructions": "Use your order name as narration where possible."
+        },
+        {
+          "id": "14",
+          "name": "Opay account",
+          "bank_name": "OPay",
+          "account_name": "Example Business Ltd",
+          "account_number": "9876543210",
+          "instructions": ""
+        }
+      ]
+    },
     {"code": "bank_transfer", "label": "Instant bank transfer (Monnify)"}
   ]
 }
 ```
 
-Public/headless codes can be `paystack`, `monnify`, `transfer` and `bank_transfer`. `transfer` is the native no-gateway option; `bank_transfer` is the provider-backed temporary-account option. **Cash and `pos_card` are never returned on this surface.** Render only what is returned. INPROFIC revalidates eligibility when payment starts.
+Public/headless codes can be `paystack`, `monnify`, `transfer` and `bank_transfer`. `transfer` is the native no-gateway option configured by the business as **Manual transfer routes (no gateway)**; the route list is part of that same payment method. `bank_transfer` is the provider-backed temporary-account option. **Cash and `pos_card` are never returned on this surface.** Render only what is returned. INPROFIC revalidates eligibility when payment starts.
+
+`transfer.routes` is the complete ordered list of active eligible manual-transfer destinations. When it contains more than one row, render every row as the customer's transfer-account choices and preserve the selected route `id` for payment initialization. With exactly one route, the website may select it automatically. INPROFIC only returns the `transfer` method when at least one active manual route is available, so consumers should not invent a fallback destination when the method is absent. Never invent, cache permanently, or merge transfer account details outside this response because the tenant can change or deactivate a route in INPROFIC.
 
 ## 7. Create checkout
 
@@ -825,13 +855,17 @@ The provider webhook is signature-checked and INPROFIC independently queries the
 
 Gateway-backed new `bank_transfer` payments reject manual claims.
 
-### Transfer (no gateway)
+### Manual transfer routes (no gateway)
+
+If payment discovery returned more than one `routes[]` option, send the selected route ID:
 
 ```json
-{"method": "transfer"}
+{"method": "transfer", "transfer_route_id": "12"}
 ```
 
-This method does not call Paystack, Monnify, or another payment gateway. INPROFIC returns the business's configured static account details and marks `proof_required: true`:
+If there is one active route, `transfer_route_id` is optional. When more than one active route exists, omitting it returns HTTP `400` with `Choose which transfer account you want to use.` If no active route exists, the `transfer` method is not advertised and payment initialization rejects the attempt.
+
+This method does not call Paystack, Monnify, or another payment gateway. INPROFIC snapshots the selected route into the payment and returns those account details with `proof_required: true`:
 
 ```json
 {
@@ -841,6 +875,8 @@ This method does not call Paystack, Monnify, or another payment gateway. INPROFI
   "authorization_url": "",
   "proof_required": true,
   "bank_account": {
+    "route_id": 12,
+    "route_name": "Main bank account",
     "bank_name": "Example Bank",
     "account_name": "Example Business Ltd",
     "account_number": "0123456789",
@@ -851,7 +887,7 @@ This method does not call Paystack, Monnify, or another payment gateway. INPROFI
 }
 ```
 
-Show the exact amount returned by INPROFIC together with those account details. Once the customer has made the transfer, upload the evidence through the website's own backend/serverless route; do not expose the `X-INPROFIC-Key` in browser JavaScript:
+Show the exact amount returned by INPROFIC together with the returned `bank_account`; it is the frozen account snapshot for that payment attempt. Do not replace it with a newly fetched route after the customer has transferred. Once the customer has made the transfer, upload the evidence through the website's own backend/serverless route; do not expose the `X-INPROFIC-Key` in browser JavaScript:
 
 ```http
 POST /api/v1/storefronts/{business_slug}/checkouts/{checkout_id}/payments/current/claim
@@ -867,7 +903,7 @@ Both `payer_name` and `transfer_reference` are required, and `payment_proof` is 
 
 Inside INPROFIC, that pending claim is surfaced to authorized Commerce staff in the shared movable alert tray. If the business enables repeating Commerce sounds, the payment-attention sound repeats at the configured interval while the notification remains unread. This operator alert is deliberately separate from the API payment state: headless clients must continue polling the authoritative payment endpoint and must never treat an alert or sound as proof of verification.
 
-For authenticated in-premise POS, `transfer` uses the same static account configuration but follows the cash-style staff confirmation guard. The staff operator confirms only after verifying the business bank account; no customer proof upload is required on that trusted staff surface.
+For authenticated in-premise POS, `transfer` follows the cash-style staff confirmation guard and uses the first active configured transfer route (or the legacy fallback). The staff operator confirms only after verifying the business bank account; no customer proof upload is required on that trusted staff surface.
 
 Historical non-gateway `bank_transfer` records can still use the claim endpoint for compatibility, but new integrations should use the explicit `transfer` code for manual/no-gateway bank transfer.
 
@@ -1109,7 +1145,7 @@ The browser calls the website’s own API routes; the website server attaches th
 - [ ] Order UUID and display number are stored separately.
 - [ ] Duplicate requests and cross-tenant UUID/key attempts are tested.
 - [ ] Public/headless methods contain no cash/POS option.
-- [ ] Native `transfer`, when enabled, displays only the tenant-configured static account, submits required proof as multipart through the website backend, and remains pending until staff verification.
+- [ ] Native `transfer`, when enabled, renders `routes[]` from payment discovery, requires the customer to choose a route when more than one exists, sends `transfer_route_id`, displays the returned frozen `bank_account`, submits required proof as multipart through the website backend, and remains pending until staff verification.
 - [ ] Instant `bank_transfer` displays the provider-issued temporary account and settles only after webhook + provider verification.
 - [ ] Cash and physical terminal payments are tested only from the authenticated in-premise Storefront POS; POS `transfer` is staff-confirmed like cash and does not require customer proof.
 
@@ -1213,6 +1249,8 @@ INPROFIC can keep a Finished Good in its operational production/stock unit while
 ```
 
 `contents` is intentionally presentation-safe: internal scoop/ladle/ml conversions and private material quantities are not exposed unless the business explicitly supplied a public quantity label. Raw/packaging materials included in a composed product are not published automatically.
+
+For Distribution/Bulk, active `bulk_packs[]` replace the generic product price choice rather than supplementing a Standard Portion. In that case the Distribution entry in `order_modes[]` has `requires_bulk_pack: true`, `pricing_source: "bulk_options"`, and `price`, `unit`, and `min_quantity` are null; render the pack records and submit the selected `bulk_pack_id`. Without bulk packs, Distribution appears only when the Finished Good has an explicit Distribution channel price; then `requires_bulk_pack` is false and `distribution_min_quantity` is the editable Commerce-product minimum. Never substitute `online_price`, the default selling price, or the Standard Portion conversion for a missing Distribution price.
 
 A published Finished Good can also expose `individual_options[]` without duplicating its stock or recipe. This is useful when a composed item (for example a Jollof + Chicken plate) must coexist with plain/add-on choices such as Extra Jollof Rice or Single Chicken. Each individual option returns its own public `id`, `name`, `unit`, `contents` and external `order_modes`. For renderers that want every purchasable choice already flattened, use the top-level `catalogue_items[]`; entries have `kind: "standard_product"` or `kind: "individual_option"`.
 

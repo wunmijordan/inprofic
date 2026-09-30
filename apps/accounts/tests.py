@@ -6,6 +6,7 @@ from django.test import override_settings
 from django.db import connection
 from django.core.management import call_command
 from django.core import mail
+from django.template.loader import get_template
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
@@ -15,7 +16,9 @@ from .models import (
     BusinessFeatureAccess, BusinessModuleAccess, BusinessSubscription, CustomUser,
     RoleModulePermission, SubscriptionPayment, SubscriptionPaymentSettings, SubscriptionPolicySettings, FounderTrialGrant,
     SubscriptionPlanModule, SubscriptionPromotion, MarketingPromoCampaign, SubscriptionService, UserBusiness, UserModulePermission, PlatformEvent, FounderSignupContactState,
+    PayrollCalculationRule, PayrollRecurringAdjustment, PayrollStaffProfile,
 )
+from .payroll import calculate_payslip, recurring_adjustment_totals, sync_staff_recurring_totals
 from .services import business_has_module, can_use_commerce_storefront, is_live_tester, seed_business_roles, user_has_permission
 from .subscription_services import (
     apply_subscription_entitlements,
@@ -30,6 +33,94 @@ from .subscription_services import (
     payment_is_locked,
     start_trial_for_business,
 )
+
+
+class PayrollCalculationTests(TestCase):
+    def test_tax_pension_and_employer_contributions_are_calculated_separately(self):
+        business = Business.objects.create(name="Payroll Business", slug="payroll-business")
+        PayrollCalculationRule.objects.create(
+            business=business, name="Transport allowance",
+            category=PayrollCalculationRule.CATEGORY_ALLOWANCE,
+            effect=PayrollCalculationRule.EFFECT_EARNING,
+            method=PayrollCalculationRule.METHOD_FIXED,
+            basis=PayrollCalculationRule.BASIS_BASE_PAY,
+            fixed_amount=Decimal("5000.00"), sort_order=10,
+        )
+        PayrollCalculationRule.objects.create(
+            business=business, name="PAYE",
+            category=PayrollCalculationRule.CATEGORY_TAX,
+            effect=PayrollCalculationRule.EFFECT_EMPLOYEE_DEDUCTION,
+            method=PayrollCalculationRule.METHOD_PERCENTAGE,
+            basis=PayrollCalculationRule.BASIS_GROSS_PAY,
+            rate=Decimal("10.0000"), threshold_amount=Decimal("50000.00"), sort_order=20,
+            statutory=True,
+        )
+        PayrollCalculationRule.objects.create(
+            business=business, name="Employee pension",
+            category=PayrollCalculationRule.CATEGORY_PENSION,
+            effect=PayrollCalculationRule.EFFECT_EMPLOYEE_DEDUCTION,
+            method=PayrollCalculationRule.METHOD_PERCENTAGE,
+            basis=PayrollCalculationRule.BASIS_BASE_PAY,
+            rate=Decimal("8.0000"), sort_order=30, statutory=True,
+        )
+        PayrollCalculationRule.objects.create(
+            business=business, name="Employer pension",
+            category=PayrollCalculationRule.CATEGORY_PENSION,
+            effect=PayrollCalculationRule.EFFECT_EMPLOYER_CONTRIBUTION,
+            method=PayrollCalculationRule.METHOD_PERCENTAGE,
+            basis=PayrollCalculationRule.BASIS_BASE_PAY,
+            rate=Decimal("10.0000"), sort_order=40, statutory=True,
+        )
+
+        result = calculate_payslip(
+            business=business,
+            base_pay=Decimal("100000.00"),
+            manual_allowances=Decimal("10000.00"),
+            manual_deductions=Decimal("0.00"),
+        )
+
+        self.assertEqual(result["gross_pay"], Decimal("115000.00"))
+        self.assertEqual(result["allowances"], Decimal("15000.00"))
+        self.assertEqual(result["deductions"], Decimal("14500.00"))
+        self.assertEqual(result["net_pay"], Decimal("100500.00"))
+        self.assertEqual(result["employer_contributions"], Decimal("10000.00"))
+        self.assertEqual(result["employer_cost"], Decimal("125000.00"))
+
+    def test_multiple_named_recurring_items_are_totalled_without_losing_detail(self):
+        business = Business.objects.create(name="Recurring Payroll", slug="recurring-payroll")
+        staff = PayrollStaffProfile.objects.create(
+            business=business, full_name="Ada Staff", base_pay=Decimal("100000.00")
+        )
+        PayrollRecurringAdjustment.objects.create(
+            staff=staff, kind=PayrollRecurringAdjustment.KIND_ALLOWANCE,
+            name="Housing", amount=Decimal("10000.00"),
+        )
+        PayrollRecurringAdjustment.objects.create(
+            staff=staff, kind=PayrollRecurringAdjustment.KIND_ALLOWANCE,
+            name="Transport", amount=Decimal("5000.00"),
+        )
+        PayrollRecurringAdjustment.objects.create(
+            staff=staff, kind=PayrollRecurringAdjustment.KIND_DEDUCTION,
+            name="Cooperative", amount=Decimal("2000.00"),
+        )
+
+        allowances, deductions = sync_staff_recurring_totals(staff)
+        staff.refresh_from_db()
+        self.assertEqual(allowances, Decimal("15000.00"))
+        self.assertEqual(deductions, Decimal("2000.00"))
+        self.assertEqual(staff.recurring_allowances, Decimal("15000.00"))
+        self.assertEqual(staff.recurring_deductions, Decimal("2000.00"))
+        self.assertEqual(staff.recurring_adjustments.count(), 3)
+
+        result = calculate_payslip(
+            business=business, base_pay=staff.base_pay,
+            recurring_allowances=allowances, recurring_deductions=deductions,
+            manual_allowances=Decimal("1000.00"), manual_deductions=Decimal("500.00"),
+        )
+        self.assertEqual(result["gross_pay"], Decimal("116000.00"))
+        self.assertEqual(result["allowances"], Decimal("16000.00"))
+        self.assertEqual(result["deductions"], Decimal("2500.00"))
+        self.assertEqual(result["net_pay"], Decimal("113500.00"))
 
 
 class TenantSignupTests(TestCase):
@@ -49,6 +140,17 @@ class TenantSignupTests(TestCase):
 
         self.assertContains(response, "17-day trial")
         self.assertNotContains(response, "30-day trial")
+
+    def test_marketing_shows_one_plan_container_payroll_addon_badge(self):
+        ensure_default_plans()
+        response = self.client.get(reverse("marketing_home"))
+        self.assertContains(response, "Payroll", count=1)
+        self.assertContains(response, "payroll-offer-sticker", count=1)
+        self.assertContains(response, "plans-flow-section", count=1)
+
+    def test_payroll_adjustment_partial_is_packaged_and_resolvable(self):
+        template = get_template("accounts/_payroll_adjustment_formset.html")
+        self.assertEqual(template.template.name, "accounts/_payroll_adjustment_formset.html")
 
     def test_marketing_plan_prices_include_thousands_separators(self):
         plans = ensure_default_plans()

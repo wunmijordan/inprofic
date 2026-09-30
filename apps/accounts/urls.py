@@ -2,6 +2,19 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    path("payroll/", views.payroll_workspace, name="payroll_workspace"),
+    path("payroll/addon/", views.payroll_addon_checkout, name="payroll_addon_checkout"),
+    path("payroll/staff/<int:pk>/edit/", views.payroll_staff_edit, name="payroll_staff_edit"),
+    path("payroll/calculations/<int:pk>/edit/", views.payroll_calculation_rule_edit, name="payroll_calculation_rule_edit"),
+    path("payroll/calculations/<int:pk>/delete/", views.payroll_calculation_rule_delete, name="payroll_calculation_rule_delete"),
+    path("payroll/staff/<int:staff_pk>/payslips/", views.payroll_staff_payslips, name="payroll_staff_payslips"),
+    path("payroll/staff/<int:staff_pk>/payslips/add/", views.payroll_payslip_create, name="payroll_payslip_create"),
+    path("payroll/payslips/<int:pk>/", views.payroll_payslip_detail, name="payroll_payslip_detail"),
+    path("payroll/payslips/<int:pk>/edit/", views.payroll_payslip_edit, name="payroll_payslip_edit"),
+    path("payroll/payslips/<int:pk>/pdf/", views.payroll_payslip_pdf, name="payroll_payslip_pdf"),
+    path("payroll/payslips/<int:pk>/share/", views.payroll_payslip_share, name="payroll_payslip_share"),
+    path("payroll/payslips/shared/<uuid:public_id>/", views.payroll_payslip_public, name="payroll_payslip_public"),
+    path("payroll/payslips/shared/<uuid:public_id>/pdf/", views.payroll_payslip_public_pdf, name="payroll_payslip_public_pdf"),
     path("", views.users_list, name="users_list"),
     path("add/", views.user_form, name="user_add"),
     path("<int:pk>/edit/", views.user_form, name="user_edit"),

@@ -744,7 +744,7 @@ class StorefrontProduct(BusinessOwnedModel):
 
     @property
     def distribution_price(self):
-        return self.finished_good.selling_price_for("distribution")
+        return self.finished_good.explicit_selling_price_for("distribution")
 
     @property
     def customer_unit(self):
@@ -1180,6 +1180,27 @@ class CommercePaymentConfiguration(BusinessOwnedModel):
         constraints = [
             models.UniqueConstraint(fields=["business"], name="one_commerce_payment_config_per_business"),
         ]
+
+
+class CommerceDirectTransferRoute(BusinessOwnedModel):
+    """One customer-selectable manual transfer destination."""
+    name = models.CharField(max_length=80, help_text="Customer-facing route label, e.g. Main account or Opay.")
+    bank_name = models.CharField(max_length=120)
+    account_name = models.CharField(max_length=160)
+    account_number = models.CharField(max_length=40)
+    instructions = models.CharField(max_length=255, blank=True, default="")
+    transfer_account = models.ForeignKey(
+        "core.CashAccount", on_delete=models.PROTECT, related_name="commerce_direct_transfer_routes"
+    )
+    active = models.BooleanField(default=True)
+    sort_order = models.PositiveSmallIntegerField(default=50)
+
+    class Meta:
+        ordering = ["sort_order", "name", "id"]
+        constraints = [models.UniqueConstraint(fields=["business", "name"], name="unique_transfer_route_name_per_business")]
+
+    def __str__(self):
+        return f"{self.name} · {self.bank_name} {self.account_number}"
 
 
 class CommercePayment(BusinessOwnedModel):

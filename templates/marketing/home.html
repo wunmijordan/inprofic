@@ -95,6 +95,11 @@
     @keyframes capability-hub-pulse { 0%,100%{transform:scale(.9);opacity:.38} 50%{transform:scale(1.06);opacity:.82} }
     .ambient-orb { animation:ambient-drift 12s ease-in-out infinite alternate; will-change:transform; }
     .ambient-orb-delayed { animation-delay:-5s; animation-duration:16s; }
+    .payroll-offer-sticker { position:absolute; z-index:20; top:2.25rem; right:clamp(.8rem,3vw,3rem); display:grid; width:clamp(10.5rem,15vw,13.125rem); aspect-ratio:1; place-items:center; border:4px solid rgba(255,255,255,.78); border-radius:999px; padding:1.5rem; overflow:hidden; text-align:center; color:var(--deep); background:radial-gradient(circle at 32% 24%,#fff8df 0,#f4d58e 30%,var(--gold) 54%,#d14900 112%); box-shadow:0 18px 50px rgba(209,73,0,.32),inset 0 0 0 7px rgba(5,7,51,.13); animation:payroll-sticker-float 6s ease-in-out infinite; }
+    .payroll-offer-sticker::after { content:""; position:absolute; inset:.72rem; border:1px dashed rgba(5,7,51,.28); border-radius:inherit; pointer-events:none; }
+    .payroll-offer-sticker strong,.payroll-offer-sticker span { position:relative; z-index:1; display:block; }
+    .payroll-offer-sticker strong { font-family:'Sora',sans-serif; font-size:clamp(1.38rem,2.1vw,1.68rem); font-weight:900; line-height:1.02; letter-spacing:-.03em; }
+    .payroll-offer-sticker span { margin-top:.45rem; font-size:.825rem; font-weight:900; line-height:1.25; letter-spacing:.1em; text-transform:uppercase; }
     .hero-preview { animation:preview-float 7s ease-in-out infinite; }
     .bridge-card > div { animation:bridge-rise .65s both cubic-bezier(.2,.8,.2,1); }
     .bridge-card > div:nth-child(2) { animation-delay:.1s; }
@@ -107,6 +112,7 @@
     .js #faq [data-faq-toggle] { display:inline-flex; }
     .js #faq [data-faq-list][data-expanded="false"] > details:nth-child(n+4) { display:none; }
     @keyframes ambient-drift { from{transform:translate3d(-3%,0,0) scale(.96)} to{transform:translate3d(8%,-7%,0) scale(1.08)} }
+    @keyframes payroll-sticker-float { 0%,100%{transform:translateY(0) rotate(6deg)} 50%{transform:translateY(-7px) rotate(3deg)} }
     @keyframes preview-float { 0%,100%{transform:translateY(0) rotate(-.15deg)} 50%{transform:translateY(-8px) rotate(.15deg)} }
     @keyframes bridge-rise { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
     @keyframes flow-line { 0%,100%{background-position:0 100%} 50%{background-position:0 0} }
@@ -287,7 +293,7 @@
       .feature-mini-row { grid-template-columns:minmax(0,1fr) auto; }
       .feature-mini-row > span:nth-child(2) { display:none; }
     }
-    @media (prefers-reduced-motion:reduce) { html{scroll-behavior:auto}.js [data-reveal]{opacity:1!important;transform:none!important;transition:none!important}.feature-card,.flow-step,.module-preview-overlay,.module-preview-shell{transition:none!important}.ambient-orb,.hero-preview,.bridge-card>div,.process-flow::before,.promo-stage::before,.promo-slide,.promo-copy>*,.promo-media,.promo-animation-marquee::after,.promo-progress span::after,.hero-typed-text,.hero-typecursor,.ip-demo-chart i,.ip-demo-pointer,.ip-demo-pointer-ring,.capability-grid .feature-card.is-flippable,.capability-connector-flow,.capability-stage::after,.capability-hub-mark,.capability-hub::before,.capability-hub::after,.trust-logo-track{animation:none!important;transition:none!important} }
+    @media (prefers-reduced-motion:reduce) { html{scroll-behavior:auto}.js [data-reveal]{opacity:1!important;transform:none!important;transition:none!important}.feature-card,.flow-step,.module-preview-overlay,.module-preview-shell{transition:none!important}.ambient-orb,.payroll-offer-sticker,.hero-preview,.bridge-card>div,.process-flow::before,.promo-stage::before,.promo-slide,.promo-copy>*,.promo-media,.promo-animation-marquee::after,.promo-progress span::after,.hero-typed-text,.hero-typecursor,.ip-demo-chart i,.ip-demo-pointer,.ip-demo-pointer-ring,.capability-grid .feature-card.is-flippable,.capability-connector-flow,.capability-stage::after,.capability-hub-mark,.capability-hub::before,.capability-hub::after,.trust-logo-track{animation:none!important;transition:none!important} }
     .plan-card { transition: transform .24s ease, box-shadow .24s ease; }
     .plan-card:hover { transform: translateY(-4px); }
 
@@ -579,11 +585,14 @@
       <div class="hero-grid absolute inset-0 opacity-60"></div>
       <div class="ambient-orb absolute -left-28 top-24 h-80 w-80 rounded-full bg-[#d14900]/60 blur-3xl"></div>
       <div class="ambient-orb ambient-orb-delayed absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-[#e7bd65]/20 blur-3xl"></div>
+      <div class="payroll-offer-sticker" aria-label="Payroll add-on available with all plans" title="Included during free trial and Founder lifetime access; paid by configured staff tier afterward.">
+        <div><strong>Payroll</strong><span>Add-on · All plans</span></div>
+      </div>
       <div class="relative mx-auto max-w-7xl px-5 sm:px-8">
         <div class="mx-auto max-w-2xl text-center"><p class="text-xs font-bold uppercase tracking-[.22em] text-[#e7bd65]">Plans</p><h2 class="mt-3 font-display text-3xl font-semibold sm:text-5xl">Start with what you need.</h2><p class="mt-4 text-white/60">All Plans with a {{ general_trial_days }}-day Trial · No Setup Fee · Cancel Anytime.</p></div>
         <div class="mt-10 grid items-stretch gap-5 lg:grid-cols-3">
           {% for plan in plans %}
-          <article class="flex h-full flex-col rounded-3xl border {% if plan.code == 'business_pro' %}border-[#e7bd65]/60 ring-1 ring-[#e7bd65]/20{% else %}border-white/15{% endif %} bg-white/[.07] p-6 backdrop-blur-sm transition hover:-translate-y-1 hover:bg-white/[.1]">
+          <article class="relative flex h-full flex-col rounded-3xl border {% if plan.code == 'business_pro' %}border-[#e7bd65]/60 ring-1 ring-[#e7bd65]/20{% else %}border-white/15{% endif %} bg-white/[.07] p-6 backdrop-blur-sm transition hover:-translate-y-1 hover:bg-white/[.1]">
             <div class="flex items-center justify-between gap-2"><h3 class="font-subheading text-2xl text-white">{{ plan.name }}</h3>{% if plan.code == 'business_pro' %}<span class="rounded-full bg-[#e7bd65] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#050733]">Complete</span>{% endif %}</div>
             {% if plan.current_monthly_promotion %}
             <div class="mt-4 flex flex-wrap items-end gap-x-2 gap-y-1"><span class="font-mono text-sm text-white/35 line-through">{{ plan.monthly_price|money:"₦" }}</span><span class="font-mono text-3xl font-semibold text-[#e7bd65]">{{ plan.promo_monthly_price|money:"₦" }}</span><span class="text-xs text-white/50"> / month</span></div>

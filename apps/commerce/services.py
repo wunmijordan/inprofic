@@ -14,6 +14,7 @@ from production.models import Order, OrderItem, ProductionCostSnapshot
 from sales.models import Sale, SaleItem
 from core.services import audit
 from core.verticals import vertical_config
+from inventory.portioning import active_bulk_packs
 from .models import CommerceIntake, CommerceNotification, CommerceSettings
 from .notification_services import queue_commerce_notification
 
@@ -60,10 +61,16 @@ class ChannelMinimumError(ValidationError):
 
 
 def _channel_allowed(product, channel):
+    if channel == CommerceIntake.CHANNEL_DISTRIBUTION:
+        if not product.allow_distribution_order:
+            return False
+        return bool(
+            active_bulk_packs(product.finished_good)
+            or product.finished_good.explicit_selling_price_for(CommerceIntake.CHANNEL_DISTRIBUTION) is not None
+        )
     return {
         CommerceIntake.CHANNEL_PHYSICAL_STORE: product.allow_stock_order,
         CommerceIntake.CHANNEL_ONLINE: product.allow_online_order,
-        CommerceIntake.CHANNEL_DISTRIBUTION: product.allow_distribution_order,
     }.get(channel, False)
 
 
@@ -133,6 +140,14 @@ def create_intake(*, business, source, ordering_mode=None, sales_channel=None, c
             raise ValidationError("One of the selected products is not available for this storefront.")
         if not _channel_allowed(product, sales_channel):
             raise ValidationError(f"{product.display_name} is not available through the selected order mode.")
+        if (
+            sales_channel == CommerceIntake.CHANNEL_DISTRIBUTION
+            and active_bulk_packs(product.finished_good)
+        ):
+            raise ValidationError(
+                f"{product.display_name} uses configured Bulk / Distribution options. "
+                "Create the order through the checkout contract and choose a bulk option."
+            )
         minimum = _channel_minimum(product, sales_channel)
         if sales_channel == CommerceIntake.CHANNEL_DISTRIBUTION and qty < minimum:
             labels = vertical_config(business)["commerce_channels"]
@@ -148,9 +163,16 @@ def create_intake(*, business, source, ordering_mode=None, sales_channel=None, c
             )
         if qty < minimum or (product.max_quantity is not None and qty > product.max_quantity):
             raise ValidationError(f"Quantity for {product.display_name} is outside the permitted range.")
+        unit_price = product.finished_good.selling_price_for(sales_channel)
+        if sales_channel == CommerceIntake.CHANNEL_DISTRIBUTION:
+            unit_price = product.finished_good.explicit_selling_price_for(sales_channel)
+            if unit_price is None:
+                raise ValidationError(
+                    f"{product.display_name} needs a Distribution channel price or an active bulk option."
+                )
         intake.items.create(
             storefront_product=product, finished_good=product.finished_good,
-            requested_quantity=qty, unit_price=product.finished_good.selling_price_for(sales_channel),
+            requested_quantity=qty, unit_price=unit_price,
         )
     audit(
         business,

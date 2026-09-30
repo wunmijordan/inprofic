@@ -78,6 +78,16 @@ def privacy_policy(request):
 
 def marketing_home(request):
     """Public product overview; remembered authenticated sessions continue to the app."""
+    if not request.user.is_authenticated:
+        try:
+            from accounts.analytics import marketing_location_metadata, record_platform_event
+            from accounts.models import PlatformEvent
+            record_platform_event(
+                PlatformEvent.EVENT_MARKETING_VISIT, request=request,
+                metadata=marketing_location_metadata(request),
+            )
+        except Exception:
+            pass
     if request.user.is_authenticated and request.GET.get("view") != "marketing":
         return redirect("dashboard")
 

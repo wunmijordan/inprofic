@@ -3,7 +3,7 @@ from django.contrib.auth import login as auth_login
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count, Q, Window
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -449,18 +449,28 @@ def subscription_payment_callback(request, provider):
     from .payment_gateways import verify_gateway
     from .subscription_services import mark_payment_paid
     reference = (request.GET.get("reference") or request.GET.get("trxref") or request.GET.get("paymentReference") or "").strip()
-    payment = SubscriptionPayment.objects.filter(reference=reference, provider=provider).select_related("subscription", "plan").first()
+    payment = SubscriptionPayment.objects.filter(reference=reference, provider=provider).select_related("subscription", "plan", "payroll_tier").first()
     if not payment:
         return render(request, "accounts/subscription_payment_result.html", {"success": False, "message": "Payment reference was not found."}, status=404)
     if payment.status == SubscriptionPayment.STATUS_PAID:
-        return render(request, "accounts/subscription_payment_result.html", {"success": True, "payment": payment, "message": "This subscription payment is already confirmed."})
+        message = (
+            "This payroll add-on payment is already confirmed."
+            if payment.purpose == SubscriptionPayment.PURPOSE_PAYROLL_ADDON
+            else "This subscription payment is already confirmed."
+        )
+        return render(request, "accounts/subscription_payment_result.html", {"success": True, "payment": payment, "message": message})
     try:
         verified, payload = verify_gateway(payment)
         payment.provider_payload = payload or {}
         payment.save(update_fields=["provider_payload"])
         if verified:
             payment = mark_payment_paid(payment)
-            return render(request, "accounts/subscription_payment_result.html", {"success": True, "payment": payment, "message": "Payment verified. Your subscription access has been updated."})
+            message = (
+                "Payment verified. Your payroll add-on access has been updated."
+                if payment.purpose == SubscriptionPayment.PURPOSE_PAYROLL_ADDON
+                else "Payment verified. Your subscription access has been updated."
+            )
+            return render(request, "accounts/subscription_payment_result.html", {"success": True, "payment": payment, "message": message})
     except Exception as exc:
         return render(request, "accounts/subscription_payment_result.html", {"success": False, "payment": payment, "message": str(exc)}, status=400)
     return render(request, "accounts/subscription_payment_result.html", {"success": False, "payment": payment, "message": "Payment is not yet confirmed. If you completed payment, confirmation from the payment provider may still arrive shortly."}, status=400)
@@ -491,7 +501,7 @@ def subscription_payment_webhook(request, provider):
             reference = str((payload.get("eventData") or {}).get("paymentReference") or "")
         else:
             return HttpResponse(status=404)
-        payment = SubscriptionPayment.objects.filter(reference=reference, provider=provider).select_related("subscription", "plan").first()
+        payment = SubscriptionPayment.objects.filter(reference=reference, provider=provider).select_related("subscription", "plan", "payroll_tier").first()
         if not payment or payment.status == SubscriptionPayment.STATUS_PAID:
             return HttpResponse(status=200)
         verified, verify_payload = verify_gateway(payment)
@@ -853,12 +863,12 @@ def founder_subscriptions(request):
     from .forms import (
         FounderGrantForm, FounderTrialGrantForm, SubscriptionTrialPolicyForm,
         BusinessRestoreForm, SubscriptionPromotionForm, MarketingPromoCampaignForm,
-        MarketingTrustSettingsForm, MarketingTrustLogoForm, PlatformPrivacyPolicyForm,
+        MarketingTrustSettingsForm, MarketingTrustLogoForm, PlatformPrivacyPolicyForm, PayrollAddonTierForm,
     )
     from .models import (
         BusinessSubscription, FounderTrialGrant, SubscriptionPlan, SubscriptionPayment,
         SubscriptionPaymentSettings, SubscriptionPolicySettings, PlatformIntegrationSettings,
-        SubscriptionPromotion, MarketingPromoCampaign, MarketingTrustSettings, MarketingTrustLogo, PlatformPrivacyPolicy,
+        SubscriptionPromotion, MarketingPromoCampaign, MarketingTrustSettings, MarketingTrustLogo, PlatformPrivacyPolicy, PayrollAddonTier,
     )
     from .subscription_services import (
         ensure_default_plans, grant_founder_lifetime, grant_founder_trial_extension,
@@ -922,6 +932,10 @@ def founder_subscriptions(request):
     trust_logo_form = MarketingTrustLogoForm(
         request.POST if action == "add_trust_logo" else None,
         request.FILES if action == "add_trust_logo" else None,
+    )
+    payroll_tier_form = PayrollAddonTierForm(
+        request.POST if action == "add_payroll_tier" else None,
+        plan_choices=plan_choices,
     )
     privacy_policy_form = PlatformPrivacyPolicyForm(
         request.POST if action == "save_privacy_policy" else None,
@@ -1060,6 +1074,28 @@ def founder_subscriptions(request):
             logo.save(update_fields=["active", "updated_at"])
             messages.success(request, f"{logo.name} is now {'visible' if logo.active else 'hidden'} on the marketing page.")
             return redirect(f"{reverse('founder_subscriptions')}#marketing-trust-strip")
+        if action == "delete_trust_logo":
+            logo = get_object_or_404(MarketingTrustLogo, pk=request.POST.get("trust_logo_id"))
+            name = logo.name
+            if logo.logo:
+                logo.logo.delete(save=False)
+            logo.delete()
+            messages.success(request, f"{name} was deleted from the trusted-business strip.")
+            return redirect(f"{reverse('founder_subscriptions')}#marketing-trust-strip")
+        if action == "add_payroll_tier" and payroll_tier_form.is_valid():
+            tier = payroll_tier_form.save()
+            messages.success(request, f"Payroll add-on tier saved for {tier.plan.name}: up to {tier.staff_limit} staff.")
+            return redirect(f"{reverse('founder_subscriptions')}#payroll-addon-pricing")
+        if action == "delete_payroll_tier":
+            tier = get_object_or_404(PayrollAddonTier, pk=request.POST.get("payroll_tier_id"))
+            if tier.business_addons.exists() or tier.subscription_payments.exists():
+                tier.active = False
+                tier.save(update_fields=["active", "updated_at"])
+                messages.success(request, "That payroll tier has payment history, so it was retired instead of deleted.")
+            else:
+                tier.delete()
+                messages.success(request, "Payroll tier deleted.")
+            return redirect(f"{reverse('founder_subscriptions')}#payroll-addon-pricing")
         if action == "create_promotion" and promotion_form.is_valid():
             promotion = promotion_form.save(commit=False)
             promotion.created_by = request.user
@@ -1325,6 +1361,7 @@ def founder_subscriptions(request):
             "subscription__primary_business", "plan", "granted_by"
         )[:12])
         trust_logos = list(MarketingTrustLogo.objects.select_related("created_by").all())
+        payroll_tiers = list(PayrollAddonTier.objects.select_related("plan").order_by("plan__monthly_price", "staff_limit", "id"))
         promotions = list(
             SubscriptionPromotion.objects.select_related("plan", "created_by")
             .order_by("-active", "-starts_at", "-id")[:50]
@@ -1352,6 +1389,8 @@ def founder_subscriptions(request):
         "trust_settings_form": trust_settings_form,
         "trust_logo_form": trust_logo_form,
         "trust_logos": trust_logos,
+        "payroll_tier_form": payroll_tier_form,
+        "payroll_tiers": payroll_tiers,
         "promotions": promotions,
         "campaign_form": campaign_form,
         "campaign_instance": campaign_instance,
@@ -1671,3 +1710,486 @@ def founder_platform_user_add(request):
         "form": form, "title": "Create project-level user", "eyebrow": "Founder platform management · User",
         "object_kind": "user", "managed_user": None, "memberships": [],
     })
+
+
+def _payroll_user_autofill_data(form):
+    """Return only tenant-selectable user details for client-side drafting."""
+    return {
+        str(user.pk): {
+            "full_name": (user.fullname or user.username or "").strip(),
+            "email": (user.email or "").strip(),
+            "whatsapp_number": (user.phone or "").strip(),
+        }
+        for user in form.fields["user"].queryset
+    }
+
+
+@login_required
+def payroll_workspace(request):
+    """Supplementary payroll add-on workspace; intentionally not a normal module entitlement."""
+    if not can_manage(request):
+        return render(request, "403.html", status=403)
+    from .forms import PayrollStaffProfileForm, PayrollRecurringAdjustmentFormSet, PayrollCalculationRuleForm
+    from .models import PayrollStaffProfile, PayrollCalculationRule
+    from .payroll import payroll_access_state, assert_payroll_capacity, sync_staff_recurring_totals
+
+    state = payroll_access_state(request.business)
+    staff = list(
+        PayrollStaffProfile.objects.filter(business=request.business)
+        .select_related("user")
+        .annotate(payslip_count=Count("payslips", distinct=True))
+        .prefetch_related("recurring_adjustments")
+        .order_by("full_name", "id")
+    )
+    rules = list(
+        PayrollCalculationRule.objects.filter(business=request.business)
+        .order_by("sort_order", "name", "id")
+    )
+    action = request.POST.get("action") if request.method == "POST" else ""
+    adding_staff = action == "add_staff"
+    profile_draft = PayrollStaffProfile(business=request.business)
+    form = PayrollStaffProfileForm(
+        request.POST if adding_staff else None,
+        business=request.business,
+        instance=profile_draft,
+    )
+    adjustment_formset = PayrollRecurringAdjustmentFormSet(
+        request.POST if adding_staff else None,
+        instance=profile_draft,
+        prefix="recurring_adjustments",
+    )
+    rule_form = PayrollCalculationRuleForm(request.POST if action == "add_rule" else None)
+    if adding_staff and form.is_valid() and adjustment_formset.is_valid():
+        try:
+            assert_payroll_capacity(request.business)
+            with transaction.atomic():
+                profile = form.save(commit=False)
+                profile.business = request.business
+                profile.created_by = request.user
+                profile.save()
+                adjustment_formset.instance = profile
+                adjustment_formset.save()
+                sync_staff_recurring_totals(profile)
+        except ValidationError as exc:
+            form.add_error(None, "; ".join(exc.messages))
+        else:
+            messages.success(request, f"{profile.full_name} was added to payroll.")
+            return redirect("payroll_workspace")
+    if action == "add_rule" and rule_form.is_valid():
+        if not state["enabled"]:
+            rule_form.add_error(None, "Payroll access must be active before calculation rules can be changed.")
+        else:
+            rule = rule_form.save(commit=False)
+            rule.business = request.business
+            rule.created_by = request.user
+            try:
+                rule.save()
+            except IntegrityError:
+                # Preserve the normal ModelForm UX for the tenant-scoped unique
+                # name constraint without exposing a database exception page.
+                rule_form.add_error("name", "A payroll calculation with this name already exists.")
+            else:
+                messages.success(request, f"Payroll calculation rule '{rule.name}' was added.")
+                return redirect("payroll_workspace")
+    return render(request, "accounts/payroll_workspace.html", {
+        "payroll_state": state,
+        "payroll_staff": staff,
+        "payroll_form": form,
+        "payroll_adjustment_formset": adjustment_formset,
+        "payroll_rules": rules,
+        "payroll_rule_form": rule_form,
+        "payroll_user_data": _payroll_user_autofill_data(form),
+    })
+
+
+@login_required
+def payroll_staff_edit(request, pk):
+    if not can_manage(request):
+        return render(request, "403.html", status=403)
+    from .forms import PayrollStaffProfileForm, PayrollRecurringAdjustmentFormSet
+    from .models import PayrollStaffProfile
+    from .payroll import payroll_access_state, sync_staff_recurring_totals
+    profile = get_object_or_404(PayrollStaffProfile.objects, pk=pk, business=request.business)
+    was_active = profile.active
+    if request.method == "POST":
+        form = PayrollStaffProfileForm(request.POST, instance=profile, business=request.business)
+        adjustment_formset = PayrollRecurringAdjustmentFormSet(
+            request.POST, instance=profile, prefix="recurring_adjustments"
+        )
+        if form.is_valid() and adjustment_formset.is_valid():
+            if form.cleaned_data.get("active") and not was_active:
+                from .payroll import assert_payroll_capacity
+                try:
+                    assert_payroll_capacity(request.business, excluding_profile=profile)
+                except ValidationError as exc:
+                    form.add_error("active", "; ".join(exc.messages))
+            if not form.errors:
+                with transaction.atomic():
+                    profile = form.save()
+                    adjustment_formset.instance = profile
+                    adjustment_formset.save()
+                    sync_staff_recurring_totals(profile)
+                messages.success(request, f"{profile.full_name}'s payroll profile was updated.")
+                return redirect("payroll_workspace")
+    else:
+        form = PayrollStaffProfileForm(instance=profile, business=request.business)
+        adjustment_formset = PayrollRecurringAdjustmentFormSet(
+            instance=profile, prefix="recurring_adjustments"
+        )
+    return render(request, "accounts/payroll_staff_form.html", {
+        "form": form,
+        "adjustment_formset": adjustment_formset,
+        "profile": profile,
+        "payroll_state": payroll_access_state(request.business),
+        "payroll_user_data": _payroll_user_autofill_data(form),
+    })
+
+
+@login_required
+def payroll_staff_payslips(request, staff_pk):
+    if not can_manage(request):
+        return render(request, "403.html", status=403)
+    from .models import PayrollStaffProfile, Payslip
+    from .payroll import payroll_access_state
+    staff = get_object_or_404(PayrollStaffProfile.objects, pk=staff_pk, business=request.business)
+    payslips = list(
+        Payslip.objects.filter(business=request.business, staff=staff)
+        .prefetch_related("adjustment_lines", "calculation_lines", "revisions__edited_by")
+        .order_by("-period_end", "-issued_at", "-id")
+    )
+    return render(request, "accounts/payroll_staff_payslips.html", {
+        "staff": staff,
+        "payslips": payslips,
+        "payroll_state": payroll_access_state(request.business),
+    })
+
+
+@login_required
+def payroll_calculation_rule_edit(request, pk):
+    if not can_manage(request):
+        return render(request, "403.html", status=403)
+    from .forms import PayrollCalculationRuleForm
+    from .models import PayrollCalculationRule
+    from .payroll import payroll_access_state
+    rule = get_object_or_404(PayrollCalculationRule.objects, pk=pk, business=request.business)
+    state = payroll_access_state(request.business)
+    if request.method == "POST":
+        form = PayrollCalculationRuleForm(request.POST, instance=rule)
+        if form.is_valid():
+            if not state["enabled"]:
+                form.add_error(None, "Payroll access must be active before calculation rules can be changed.")
+            else:
+                try:
+                    form.save()
+                except IntegrityError:
+                    form.add_error("name", "A payroll calculation with this name already exists.")
+                else:
+                    messages.success(request, f"Payroll calculation rule '{rule.name}' was updated.")
+                    return redirect("payroll_workspace")
+    else:
+        form = PayrollCalculationRuleForm(instance=rule)
+    return render(request, "accounts/payroll_calculation_rule_form.html", {
+        "form": form,
+        "rule": rule,
+        "payroll_state": state,
+    })
+
+
+@login_required
+@require_POST
+def payroll_calculation_rule_delete(request, pk):
+    if not can_manage(request):
+        return render(request, "403.html", status=403)
+    from .models import PayrollCalculationRule
+    from .payroll import payroll_access_state
+    state = payroll_access_state(request.business)
+    if not state["enabled"]:
+        messages.error(request, "Payroll access must be active before calculation rules can be changed.")
+        return redirect("payroll_workspace")
+    rule = get_object_or_404(PayrollCalculationRule.objects, pk=pk, business=request.business)
+    name = rule.name
+    rule.delete()
+    messages.success(request, f"Payroll calculation rule '{name}' was deleted. Existing payslips keep their frozen calculation details.")
+    return redirect("payroll_workspace")
+
+
+@login_required
+def payroll_payslip_create(request, staff_pk):
+    if not can_manage(request):
+        return render(request, "403.html", status=403)
+    from .forms import PayslipForm
+    from .models import PayrollStaffProfile
+    from .payroll import (
+        payroll_access_state, calculate_payslip, persist_payslip_calculation_lines,
+        recurring_adjustments_for_staff, recurring_adjustment_totals,
+        persist_payslip_adjustment_lines,
+    )
+    state = payroll_access_state(request.business)
+    if not state["enabled"]:
+        messages.error(request, "Payroll access is not active for this business.")
+        return redirect("payroll_workspace")
+    staff = get_object_or_404(
+        PayrollStaffProfile.objects.prefetch_related("recurring_adjustments"),
+        pk=staff_pk, business=request.business, active=True,
+    )
+    if request.method == "POST":
+        form = PayslipForm(request.POST, staff=staff)
+        if form.is_valid():
+            with transaction.atomic():
+                payslip = form.save(commit=False)
+                payslip.business = request.business
+                payslip.created_by = request.user
+                payslip.staff = staff
+                adjustments = recurring_adjustments_for_staff(staff)
+                recurring_allowances, recurring_deductions = recurring_adjustment_totals(adjustments)
+                calculation = calculate_payslip(
+                    business=request.business,
+                    base_pay=payslip.base_pay,
+                    recurring_allowances=recurring_allowances,
+                    recurring_deductions=recurring_deductions,
+                    manual_allowances=payslip.manual_allowances,
+                    manual_deductions=payslip.manual_deductions,
+                )
+                payslip.allowances = calculation["allowances"]
+                payslip.deductions = calculation["deductions"]
+                payslip.gross_pay = calculation["gross_pay"]
+                payslip.net_pay = calculation["net_pay"]
+                payslip.employer_contributions = calculation["employer_contributions"]
+                payslip.employer_cost = calculation["employer_cost"]
+                payslip.save()
+                persist_payslip_adjustment_lines(payslip, adjustments)
+                persist_payslip_calculation_lines(payslip, calculation["lines"])
+            messages.success(request, f"Payslip created for {staff.full_name}.")
+            return redirect("payroll_payslip_detail", pk=payslip.pk)
+    else:
+        form = PayslipForm(staff=staff)
+    return render(request, "accounts/payroll_payslip_form.html", {
+        "form": form,
+        "staff": staff,
+        "recurring_adjustments": recurring_adjustments_for_staff(staff),
+    })
+
+
+@login_required
+def payroll_payslip_detail(request, pk):
+    if not can_manage(request):
+        return render(request, "403.html", status=403)
+    from .models import Payslip
+    from .payroll import (
+        payslip_public_url, payslip_whatsapp_url, payslip_filename,
+    )
+    payslip = get_object_or_404(
+        Payslip.objects.select_related("staff", "business")
+        .prefetch_related("calculation_lines", "adjustment_lines", "revisions__edited_by"),
+        pk=pk, business=request.business,
+    )
+    whatsapp_url = ""
+    if payslip.staff.whatsapp_number:
+        try:
+            whatsapp_url = payslip_whatsapp_url(request=request, payslip=payslip)
+        except ValidationError:
+            whatsapp_url = ""
+    return render(request, "accounts/payroll_payslip_detail.html", {
+        "payslip": payslip,
+        "share_url": payslip_public_url(request, payslip),
+        "pdf_url": reverse("payroll_payslip_pdf", args=[payslip.pk]),
+        "pdf_filename": payslip_filename(payslip),
+        "whatsapp_url": whatsapp_url,
+    })
+
+
+@login_required
+def payroll_payslip_edit(request, pk):
+    if not can_manage(request):
+        return render(request, "403.html", status=403)
+    from .forms import PayslipEditForm, PayslipAdjustmentLineFormSet
+    from .models import Payslip, PayslipRevision
+    from .payroll import payroll_access_state, payslip_revision_snapshot, recalculate_issued_payslip
+
+    state = payroll_access_state(request.business)
+    payslip = get_object_or_404(
+        Payslip.objects.select_related("staff", "business")
+        .prefetch_related("calculation_lines", "adjustment_lines"),
+        pk=pk, business=request.business,
+    )
+    if not state["enabled"]:
+        messages.error(request, "Payroll access must be active before an issued payslip can be edited.")
+        return redirect("payroll_payslip_detail", pk=payslip.pk)
+
+    if request.method == "POST":
+        form = PayslipEditForm(request.POST, instance=payslip)
+        adjustment_formset = PayslipAdjustmentLineFormSet(
+            request.POST, instance=payslip, prefix="adjustments"
+        )
+        if form.is_valid() and adjustment_formset.is_valid():
+            with transaction.atomic():
+                # ModelForm validation mutates its instance with posted values.
+                # Re-fetch and lock a clean database copy before snapshotting so
+                # the audit history always preserves the actual previously
+                # issued version, not the just-submitted correction.
+                previous_payslip = (
+                    Payslip.objects.select_for_update()
+                    .select_related("staff", "business")
+                    .prefetch_related("calculation_lines", "adjustment_lines")
+                    .get(pk=payslip.pk, business=request.business)
+                )
+                previous = payslip_revision_snapshot(previous_payslip)
+                PayslipRevision.objects.create(
+                    payslip=previous_payslip,
+                    reason=form.cleaned_data["edit_reason"],
+                    previous_snapshot=previous,
+                    edited_by=request.user,
+                )
+                payslip = form.save()
+                adjustment_formset.instance = payslip
+                adjustment_formset.save()
+                recalculate_issued_payslip(payslip)
+            messages.success(
+                request,
+                "Payslip updated. The previous issued values and your reason were retained in its edit history.",
+            )
+            return redirect("payroll_payslip_detail", pk=payslip.pk)
+    else:
+        form = PayslipEditForm(instance=payslip)
+        adjustment_formset = PayslipAdjustmentLineFormSet(
+            instance=payslip, prefix="adjustments"
+        )
+    return render(request, "accounts/payroll_payslip_edit.html", {
+        "form": form,
+        "adjustment_formset": adjustment_formset,
+        "payslip": payslip,
+    })
+
+
+@login_required
+def payroll_payslip_pdf(request, pk):
+    if not can_manage(request):
+        return render(request, "403.html", status=403)
+    from .models import Payslip
+    from .payroll import payslip_pdf_bytes, payslip_filename
+    payslip = get_object_or_404(
+        Payslip.objects.select_related("staff", "business")
+        .prefetch_related("calculation_lines", "adjustment_lines"),
+        pk=pk, business=request.business,
+    )
+    response = HttpResponse(payslip_pdf_bytes(payslip), content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="{payslip_filename(payslip)}"'
+    return response
+
+
+@login_required
+@require_POST
+def payroll_payslip_share(request, pk):
+    if not can_manage(request):
+        return render(request, "403.html", status=403)
+    from .models import Payslip
+    from .payroll import send_payslip_email, payslip_whatsapp_url
+    payslip = get_object_or_404(
+        Payslip.objects.select_related("staff", "business")
+        .prefetch_related("calculation_lines", "adjustment_lines"),
+        pk=pk, business=request.business,
+    )
+    channel = (request.POST.get("channel") or "").strip().lower()
+    try:
+        if channel == "email":
+            send_payslip_email(request=request, payslip=payslip)
+            messages.success(request, f"Payslip PDF sent to {payslip.staff.email}.")
+            return redirect("payroll_payslip_detail", pk=payslip.pk)
+        if channel == "whatsapp":
+            # Fallback for browsers without file-sharing support. The primary
+            # payslip-detail action uses the Web Share API to pass the actual
+            # PDF file to WhatsApp/the device share sheet when supported.
+            return redirect(payslip_whatsapp_url(request=request, payslip=payslip))
+        raise ValidationError("Choose email or WhatsApp sharing.")
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
+    except Exception as exc:
+        messages.error(request, f"Payslip could not be sent: {exc}")
+    return redirect("payroll_payslip_detail", pk=payslip.pk)
+
+
+def payroll_payslip_public(request, public_id):
+    from .models import Payslip
+    payslip = get_object_or_404(
+        Payslip.raw_objects.select_related("staff", "business")
+        .prefetch_related("calculation_lines", "adjustment_lines"),
+        public_id=public_id, share_enabled=True,
+    )
+    return render(request, "accounts/payroll_payslip_public.html", {"payslip": payslip})
+
+
+def payroll_payslip_public_pdf(request, public_id):
+    from .models import Payslip
+    from .payroll import payslip_pdf_bytes, payslip_filename
+    payslip = get_object_or_404(
+        Payslip.raw_objects.select_related("staff", "business")
+        .prefetch_related("calculation_lines", "adjustment_lines"),
+        public_id=public_id, share_enabled=True,
+    )
+    response = HttpResponse(payslip_pdf_bytes(payslip), content_type="application/pdf")
+    response["Content-Disposition"] = f'inline; filename="{payslip_filename(payslip)}"'
+    return response
+
+
+@login_required
+def payroll_addon_checkout(request):
+    if not can_manage(request):
+        return render(request, "403.html", status=403)
+    from .models import PayrollAddonTier, SubscriptionPayment, SubscriptionPaymentSettings
+    from .payroll import payroll_access_state
+    from .subscription_services import create_payment_request
+    from .payment_gateways import initialize_gateway
+    state = payroll_access_state(request.business)
+    subscription = state["subscription"]
+    if not subscription:
+        messages.error(request, "Choose a business plan before purchasing the payroll add-on.")
+        return redirect("subscription_plans")
+    if state["included"]:
+        messages.info(request, "Payroll is already included with the current free-trial or Founder lifetime access.")
+        return redirect("payroll_workspace")
+    tiers = list(PayrollAddonTier.objects.filter(plan=subscription.plan, active=True).order_by("staff_limit"))
+    payment_settings = SubscriptionPaymentSettings.load()
+    providers = [
+        (code, label) for code, label in (
+            (SubscriptionPayment.PROVIDER_PAYSTACK, "Paystack"),
+            (SubscriptionPayment.PROVIDER_MONNIFY, "Monnify"),
+        ) if payment_settings.provider_enabled(code)
+    ]
+    if request.method == "POST":
+        tier = get_object_or_404(PayrollAddonTier, pk=request.POST.get("tier_id"), plan=subscription.plan, active=True)
+        billing_cycle = request.POST.get("billing_cycle") or SubscriptionPayment.CYCLE_MONTHLY
+        if billing_cycle not in {SubscriptionPayment.CYCLE_MONTHLY, SubscriptionPayment.CYCLE_YEARLY}:
+            billing_cycle = SubscriptionPayment.CYCLE_MONTHLY
+        provider = request.POST.get("provider") or ""
+        if not payment_settings.provider_enabled(provider):
+            messages.error(request, "That payment provider is currently unavailable.")
+            return redirect("payroll_addon_checkout")
+        try:
+            payment = create_payment_request(
+                subscription, subscription.plan,
+                months=12 if billing_cycle == SubscriptionPayment.CYCLE_YEARLY else 1,
+                billing_cycle=billing_cycle,
+                provider=provider,
+                purpose=SubscriptionPayment.PURPOSE_PAYROLL_ADDON,
+                payroll_tier=tier,
+            )
+            callback = request.build_absolute_uri(reverse("subscription_payment_callback", args=[provider]))
+            callback = f"{callback}?reference={payment.reference}"
+            result = initialize_gateway(
+                payment,
+                email=request.user.email,
+                customer_name=request.user.fullname or request.user.username,
+                callback_url=callback,
+            )
+            payment.checkout_url = result["checkout_url"]
+            payment.provider_reference = result.get("provider_reference", "")
+            payment.provider_payload = result.get("payload") or {}
+            payment.save(update_fields=["checkout_url", "provider_reference", "provider_payload"])
+            return redirect(payment.checkout_url)
+        except Exception as exc:
+            if 'payment' in locals():
+                payment.status = SubscriptionPayment.STATUS_FAILED
+                payment.notes = str(exc)[:255]
+                payment.save(update_fields=["status", "notes"])
+            messages.error(request, str(exc))
+    return render(request, "accounts/payroll_addon_checkout.html", {"payroll_state": state, "tiers": tiers, "providers": providers, "subscription": subscription})

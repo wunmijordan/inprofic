@@ -1,0 +1,38 @@
+{% load core_extras %}
+<div class="rounded-2xl border border-[#E7DFCC] bg-white p-6 shadow-sm">
+  <div class="flex items-start justify-between gap-4">
+    <div>
+      <div class="text-[10px] font-bold uppercase tracking-[.2em] text-stone-400">{{ payslip.business.name }} · Payslip</div>
+      <h1 class="mt-1 font-display text-2xl font-semibold">{{ payslip.staff.full_name }}</h1>
+      <p class="mt-1 text-sm text-stone-500">{{ payslip.period_start|date:"j M Y" }} – {{ payslip.period_end|date:"j M Y" }}</p>
+    </div>
+    <div class="rounded-xl bg-[#050733] px-4 py-3 text-right text-white">
+      <div class="text-[10px] uppercase tracking-wider text-white/60">Net pay</div>
+      <strong class="font-mono text-lg">{{ payslip.business.currency_symbol }}{{ payslip.net_pay|num }}</strong>
+    </div>
+  </div>
+
+  <div class="mt-6 divide-y divide-stone-100 rounded-xl border border-stone-200">
+    <div class="flex justify-between gap-4 p-3"><span>Base pay</span><strong>{{ payslip.business.currency_symbol }}{{ payslip.base_pay|num }}</strong></div>
+    {% for line in payslip.recurring_allowance_lines %}<div class="flex justify-between gap-4 p-3"><span>{{ line.name }}<span class="ml-1 text-[10px] text-stone-400">recurring allowance</span></span><strong>+ {{ payslip.business.currency_symbol }}{{ line.amount|num }}</strong></div>{% endfor %}
+    {% if payslip.manual_allowances %}<div class="flex justify-between gap-4 p-3"><span>Other allowance / earning <span class="text-[10px] text-stone-400">this period</span></span><strong>+ {{ payslip.business.currency_symbol }}{{ payslip.manual_allowances|num }}</strong></div>{% endif %}
+
+    {% for line in payslip.calculation_lines.all %}
+    <div class="flex items-start justify-between gap-4 p-3">
+      <div>
+        <span>{{ line.name }}</span>
+        <div class="mt-0.5 text-[11px] leading-5 text-stone-500">{{ line.get_category_display }}{% if line.statutory %} · statutory{% endif %} · {% if line.method == 'percentage' %}{{ line.rate|num }}% of {{ line.get_basis_display }}{% else %}fixed {{ payslip.business.currency_symbol }}{{ line.fixed_amount|num }}{% endif %}{% if line.threshold_amount %} · exempt threshold {{ payslip.business.currency_symbol }}{{ line.threshold_amount|num }}{% endif %}{% if line.cap_amount %} · cap {{ payslip.business.currency_symbol }}{{ line.cap_amount|num }}{% endif %}{% if line.effect == 'employer_contribution' %} · employer-funded{% endif %}</div>
+      </div>
+      <strong class="whitespace-nowrap">{% if line.effect == 'employee_deduction' %}− {% elif line.effect == 'earning' %}+ {% endif %}{{ payslip.business.currency_symbol }}{{ line.amount|num }}</strong>
+    </div>
+    {% endfor %}
+
+    {% for line in payslip.recurring_deduction_lines %}<div class="flex justify-between gap-4 p-3"><span>{{ line.name }}<span class="ml-1 text-[10px] text-stone-400">recurring deduction</span></span><strong>− {{ payslip.business.currency_symbol }}{{ line.amount|num }}</strong></div>{% endfor %}
+    {% if payslip.manual_deductions %}<div class="flex justify-between gap-4 p-3"><span>Other deduction <span class="text-[10px] text-stone-400">this period</span></span><strong>− {{ payslip.business.currency_symbol }}{{ payslip.manual_deductions|num }}</strong></div>{% endif %}
+    <div class="flex justify-between gap-4 bg-stone-50 p-3"><span>Gross pay</span><strong>{{ payslip.business.currency_symbol }}{{ payslip.gross_pay|num }}</strong></div>
+    <div class="flex justify-between gap-4 p-3"><span>Total staff deductions</span><strong>− {{ payslip.business.currency_symbol }}{{ payslip.deductions|num }}</strong></div>
+    {% if payslip.employer_contributions %}<div class="flex justify-between gap-4 p-3"><span>Employer contributions</span><strong>{{ payslip.business.currency_symbol }}{{ payslip.employer_contributions|num }}</strong></div><div class="flex justify-between gap-4 bg-[#FFF8E8] p-3"><span>Total employer cost</span><strong>{{ payslip.business.currency_symbol }}{{ payslip.employer_cost|num }}</strong></div>{% endif %}
+  </div>
+
+  {% if payslip.notes %}<p class="mt-4 rounded-xl bg-stone-50 p-3 text-sm leading-6 text-stone-600"><strong>Note:</strong> {{ payslip.notes }}</p>{% endif %}
+</div>

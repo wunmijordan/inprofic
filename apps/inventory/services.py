@@ -304,6 +304,12 @@ def release_market_stock(*, business, good, customer, quantity, date, payment_st
     if quantity > available:
         raise ValidationError(f"Only {available:.2f} {good.unit} is available in sellable Market Stock.")
 
+    price = good.explicit_selling_price_for("distribution", customer)
+    if price is None:
+        raise ValidationError(
+            "Set a Distribution channel/customer price before releasing Distribution Market Stock; "
+            "the standard selling price is not used for Distribution."
+        )
     sale = Sale.raw_objects.create(
         business=business,
         created_by=user,
@@ -316,7 +322,6 @@ def release_market_stock(*, business, good, customer, quantity, date, payment_st
         payment_method=payment_method or "Transfer",
         source="distribution_order",
     )
-    price = good.selling_price_for("distribution", customer)
     remaining = quantity
     for lot in lots:
         if remaining <= 0:

@@ -8,11 +8,30 @@ from django.db.models import Count, Max, Q
 from django.utils import timezone
 
 
-_FOUNDER_ANALYTICS_CACHE_KEY = "founder-analytics-summary:v2"
+_FOUNDER_ANALYTICS_CACHE_KEY = "founder-analytics-summary:v3"
 
 
 def invalidate_founder_analytics_cache():
     cache.delete(_FOUNDER_ANALYTICS_CACHE_KEY)
+
+
+def marketing_location_metadata(request):
+    """Best-effort coarse visit location from trusted edge/proxy headers.
+
+    No external geolocation request is made and no raw IP address is stored.
+    Deployments that provide country/region/city headers automatically enrich
+    Founder analytics; otherwise the location remains Unknown.
+    """
+    headers = request.headers
+    country = (headers.get("CF-IPCountry") or headers.get("X-Vercel-IP-Country") or headers.get("X-Country-Code") or "").strip()
+    region = (headers.get("X-Vercel-IP-Country-Region") or headers.get("X-Region") or "").strip()
+    city = (headers.get("X-Vercel-IP-City") or headers.get("X-City") or "").strip()
+    return {
+        "country": country[:80],
+        "region": region[:120],
+        "city": city[:120],
+        "location": ", ".join(part for part in (city, region, country) if part) or "Unknown",
+    }
 
 
 def _default_business_for_user(user):
@@ -236,6 +255,23 @@ def founder_analytics_summary(*, now=None):
         now = now or timezone.now()
         since_7 = now - timedelta(days=7)
         since_30 = now - timedelta(days=30)
+        marketing_visit_qs = PlatformEvent.objects.filter(
+            event_type=PlatformEvent.EVENT_MARKETING_VISIT, occurred_at__gte=since_30
+        )
+        marketing_visits_30d = marketing_visit_qs.count()
+        visits_7d = marketing_visit_qs.filter(occurred_at__gte=since_7).count()
+        marketing_visits = list(
+            marketing_visit_qs.only("id", "session_key", "metadata", "occurred_at")
+            .order_by("-occurred_at", "-id")[:1000]
+        )
+        location_counts = {}
+        for event in marketing_visits:
+            location = ((event.metadata or {}).get("location") or "Unknown").strip() or "Unknown"
+            location_counts[location] = location_counts.get(location, 0) + 1
+        top_marketing_locations = [
+            {"location": location, "total": total}
+            for location, total in sorted(location_counts.items(), key=lambda item: (-item[1], item[0]))[:10]
+        ]
         event_summary = PlatformEvent.objects.aggregate(
             lead_sessions_30d=Count(
                 "session_key", distinct=True,
@@ -287,6 +323,13 @@ def founder_analytics_summary(*, now=None):
         all_signup_contacts = founder_signup_contacts(include_deleted=True)
         active_signup_contacts = [contact for contact in all_signup_contacts if not contact["deleted"]]
         cached = {
+            "marketing_visits_7d": visits_7d,
+            "marketing_visits_30d": marketing_visits_30d,
+            "top_marketing_locations": top_marketing_locations,
+            "recent_marketing_visits": [
+                {"location": ((event.metadata or {}).get("location") or "Unknown"), "occurred_at": event.occurred_at}
+                for event in marketing_visits[:30]
+            ],
             "lead_sessions_30d": lead_sessions,
             "registrations_7d": event_summary["registrations_7d"] or 0,
             "registrations_30d": registrations,

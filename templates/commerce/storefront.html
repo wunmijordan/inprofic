@@ -87,14 +87,14 @@
 
       <div id="catalogue-grid" class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {% for p in products %}
-        {% if p.public_online_available or p.allow_distribution_order %}<article class="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white" data-product-card data-basket-key="{{ p.public_id }}" data-product-id="{{ p.public_id }}" data-individual-option-id="" data-product-name="{{ p.display_name }}" data-category="{% if p.finished_good.product_category_id %}{{ p.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-unit="{{ p.customer_unit }}" data-search="{{ p.display_name|lower }} {{ p.description|lower }}" data-modes="{% if p.public_online_available %} online{% endif %}{% if p.allow_distribution_order %} distribution{% endif %}" data-min-online="{{ p.preorder_min_quantity }}" data-min-distribution="{{ p.distribution_min_quantity }}" data-price-online="{{ p.preorder_price }}" data-price-distribution="{{ p.distribution_price }}" data-max="{% if p.max_quantity %}{{ p.max_quantity }}{% endif %}" data-stock-available="{{ p.public_stock_available }}" data-stock-source="{% if p.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if p.public_made_source_available %}1{% else %}0{% endif %}" data-procured-source="{% if p.public_procured_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ p.estimated_ready_minutes }}">
+        {% if p.public_online_available or p.public_distribution_available %}<article class="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white" data-product-card data-basket-key="{{ p.public_id }}" data-product-id="{{ p.public_id }}" data-individual-option-id="" data-product-name="{{ p.display_name }}" data-category="{% if p.finished_good.product_category_id %}{{ p.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-unit="{{ p.customer_unit }}" data-search="{{ p.display_name|lower }} {{ p.description|lower }}" data-modes="{% if p.public_online_available %} online{% endif %}{% if p.public_distribution_available %} distribution{% endif %}" data-min-online="{{ p.preorder_min_quantity }}" data-min-distribution="{{ p.public_distribution_min_quantity }}" data-price-online="{{ p.preorder_price }}" data-price-distribution="{% if p.public_distribution_price != None %}{{ p.public_distribution_price }}{% endif %}" data-unit-online="{{ p.customer_unit }}" data-unit-distribution="{{ p.finished_good.unit }}" data-max="{% if p.max_quantity %}{{ p.max_quantity }}{% endif %}" data-stock-available="{{ p.public_stock_available }}" data-stock-source="{% if p.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if p.public_made_source_available %}1{% else %}0{% endif %}" data-procured-source="{% if p.public_procured_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ p.estimated_ready_minutes }}">
           <div class="relative aspect-[16/10] overflow-hidden bg-stone-100">
             {% if p.public_image_url %}<img src="{{ p.public_image_url }}" alt="{{ p.display_name }}" class="h-full w-full object-cover" loading="lazy">
             {% else %}<div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-stone-100 via-[#efe8dc] to-stone-200"><div class="flex h-20 w-20 items-center justify-center rounded-full border border-white/80 bg-white/55 shadow-inner backdrop-blur"><svg viewBox="0 0 24 24" class="h-8 w-8 fill-none stroke-stone-400" stroke-width="1.35"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg></div></div>{% endif %}
             <div class="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/45 to-transparent"></div>
             <div class="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
-              {% if p.allow_online_order %}<span class="rounded-full border border-white/25 bg-black/35 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">{{ commerce_channels.online }}</span>{% endif %}
-              {% if p.allow_distribution_order %}<span class="rounded-full border border-white/25 bg-black/35 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">{{ commerce_channels.distribution }}</span>{% endif %}
+              {% if p.public_online_available %}<span class="rounded-full border border-white/25 bg-black/35 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">{{ commerce_channels.online }}</span>{% endif %}
+              {% if p.public_distribution_available %}<span class="rounded-full border border-white/25 bg-black/35 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">{{ commerce_channels.distribution }}</span>{% endif %}
             </div>
           </div>
           <div class="flex flex-1 flex-col p-4">
@@ -120,15 +120,13 @@
               </div>
             </details>
             {% endif %}
-            {% if p.public_online_available %}<div class="mt-2 flex flex-wrap gap-1.5 text-[10px] font-semibold">{% if p.public_stock_source_available %}<span class="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">Store stock · ready now</span>{% endif %}{% if p.public_made_source_available %}<span class="rounded-full bg-sky-50 px-2 py-1 text-sky-700">Made to order · ~{{ p.estimated_ready_minutes }} min</span>{% elif p.public_procured_source_available and not p.public_stock_source_available %}<span class="rounded-full bg-amber-50 px-2 py-1 text-amber-700">Procured to sell · ~{{ p.estimated_ready_minutes }} min</span>{% endif %}</div>{% endif %}
             <div class="mt-3 border-y border-stone-100 py-2.5 text-[11px]">
               <span class="channel-price-pill rounded-full px-3 py-1.5" data-channel-price-pill><span class="channel-price-pill__inner"><span data-price-channel class="font-semibold"></span><strong data-price-value></strong><span data-price-unit class="text-stone-500"></span></span></span>
             </div>
-            {% if p.allow_distribution_order and p.bulk_pack_options %}
+            {% if p.public_distribution_available and p.public_bulk_packs %}
             <label class="mt-3 block text-[10px] font-bold uppercase tracking-[.14em] text-stone-400">{{ commerce_channels.distribution }} option
               <select data-bulk-pack-select class="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold normal-case tracking-normal text-stone-700 outline-none focus:border-stone-400">
-                <option value="">Standard {{ p.customer_unit }} · {{ p.distribution_price|money:store_business.currency_symbol }}</option>
-                {% for pack in p.bulk_pack_options %}<option value="{{ pack.public_id }}" data-name="{{ pack.name }}" data-unit="{{ pack.name }}" data-price="{{ pack.price }}" data-min="{{ pack.min_order_quantity }}">{{ pack.name }} · {{ pack.price|money:store_business.currency_symbol }}{% if pack.min_order_quantity > 1 %} · min {{ pack.min_order_quantity }}{% endif %}</option>{% endfor %}
+                {% for pack in p.public_bulk_packs %}<option value="{{ pack.public_id }}" data-name="{{ pack.name }}" data-unit="{{ pack.name }}" data-price="{{ pack.price }}" data-min="{{ pack.min_order_quantity }}">{{ pack.name }} · {{ pack.price|money:store_business.currency_symbol }}{% if pack.min_order_quantity > 1 %} · min {{ pack.min_order_quantity }}{% endif %}</option>{% endfor %}
               </select>
             </label>
             {% endif %}
@@ -136,7 +134,7 @@
           </div>
         </article>{% endif %}
         {% for option in p.public_individual_options %}
-        <article class="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white" data-product-card data-basket-key="individual:{{ option.public_id }}" data-product-id="{{ p.public_id }}" data-individual-option-id="{{ option.public_id }}" data-product-name="{{ option.name }}" data-category="{% if p.finished_good.product_category_id %}{{ p.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-unit="{{ option.customer_unit|default:p.finished_good.unit }}" data-search="{{ option.name|lower }} {{ option.public_note|lower }} {{ p.finished_good.name|lower }}" data-modes="{% if option.online_enabled and option.online_price != None and p.public_online_available %} online{% endif %}{% if option.distribution_enabled and option.distribution_price != None %} distribution{% endif %}" data-min-online="{{ option.online_min_quantity }}" data-min-distribution="{{ option.distribution_min_quantity }}" data-price-online="{% if option.online_price != None %}{{ option.online_price }}{% endif %}" data-price-distribution="{% if option.distribution_price != None %}{{ option.distribution_price }}{% endif %}" data-max="{% if p.max_quantity %}{{ p.max_quantity }}{% endif %}" data-stock-available="{{ p.public_stock_available }}" data-stock-source="{% if p.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if p.public_made_source_available %}1{% else %}0{% endif %}" data-procured-source="{% if p.public_procured_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ p.estimated_ready_minutes }}">
+        <article class="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white" data-product-card data-basket-key="individual:{{ option.public_id }}" data-product-id="{{ p.public_id }}" data-individual-option-id="{{ option.public_id }}" data-product-name="{{ option.name }}" data-category="{% if p.finished_good.product_category_id %}{{ p.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-unit="{{ option.customer_unit|default:p.finished_good.unit }}" data-unit-online="{{ option.customer_unit|default:p.finished_good.unit }}" data-unit-distribution="{{ option.customer_unit|default:p.finished_good.unit }}" data-search="{{ option.name|lower }} {{ option.public_note|lower }} {{ p.finished_good.name|lower }}" data-modes="{% if option.online_enabled and option.online_price != None and p.public_online_available %} online{% endif %}{% if option.distribution_enabled and option.distribution_price != None %} distribution{% endif %}" data-min-online="{{ option.online_min_quantity }}" data-min-distribution="{{ option.distribution_min_quantity }}" data-price-online="{% if option.online_price != None %}{{ option.online_price }}{% endif %}" data-price-distribution="{% if option.distribution_price != None %}{{ option.distribution_price }}{% endif %}" data-max="{% if p.max_quantity %}{{ p.max_quantity }}{% endif %}" data-stock-available="{{ p.public_stock_available }}" data-stock-source="{% if p.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if p.public_made_source_available %}1{% else %}0{% endif %}" data-procured-source="{% if p.public_procured_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ p.estimated_ready_minutes }}">
           <div class="relative aspect-[16/10] overflow-hidden bg-stone-100">
             {% if p.public_image_url %}<img src="{{ p.public_image_url }}" alt="{{ option.name }}" class="h-full w-full object-cover" loading="lazy">{% else %}<div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-stone-100 via-[#efe8dc] to-stone-200"><div class="flex h-20 w-20 items-center justify-center rounded-full border border-white/80 bg-white/55 shadow-inner backdrop-blur"><svg viewBox="0 0 24 24" class="h-8 w-8 fill-none stroke-stone-400" stroke-width="1.35"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg></div></div>{% endif %}
             <div class="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/45 to-transparent"></div>
@@ -146,7 +144,6 @@
             <div class="mb-2 flex items-center justify-between gap-2"><span class="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-500">{% if p.finished_good.product_category %}{{ p.finished_good.product_category.name }}{% else %}Uncategorised{% endif %}</span><span class="rounded-full bg-amber-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-amber-700">Individual</span></div>
             <h3 class="font-display text-lg font-semibold leading-tight text-stone-900">{{ option.name }}</h3>
             <p class="line-clamp-2 mt-1.5 min-h-[2rem] text-xs leading-4 text-stone-500">{{ option.public_note|default:p.finished_good.name }}</p>
-            {% if p.public_online_available %}<div class="mt-2 flex flex-wrap gap-1.5 text-[10px] font-semibold">{% if p.public_stock_source_available %}<span class="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">Store stock · ready now</span>{% endif %}{% if p.public_made_source_available %}<span class="rounded-full bg-sky-50 px-2 py-1 text-sky-700">Made to order · ~{{ p.estimated_ready_minutes }} min</span>{% endif %}</div>{% endif %}
             <details class="relative mt-2" data-contents-popover><summary class="inline-flex cursor-pointer list-none items-center gap-1 text-[11px] font-semibold underline decoration-stone-300 underline-offset-4" style="color:var(--brand)">What's included? <span aria-hidden="true">ⓘ</span></summary><div class="absolute left-0 top-7 z-20 w-[min(18rem,78vw)] rounded-2xl border border-stone-200 bg-white p-3.5 text-left shadow-xl"><p class="text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">Plain individual option</p><ul class="mt-2 space-y-1.5 text-xs text-stone-700"><li>{{ p.finished_good.name }}{% if option.public_note %}<span class="ml-1 text-stone-400">· {{ option.public_note }}</span>{% endif %}</li></ul></div></details>
             <div class="mt-3 border-y border-stone-100 py-2.5 text-[11px]"><span class="channel-price-pill rounded-full px-3 py-1.5" data-channel-price-pill><span class="channel-price-pill__inner"><span data-price-channel class="font-semibold"></span><strong data-price-value></strong><span data-price-unit class="text-stone-500"></span></span></span></div>
             <button type="button" class="add-product mt-auto flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-semibold text-white transition hover:brightness-90 focus:outline-none focus:ring-4 focus:ring-stone-200" style="background:var(--brand)"><span class="add-product-label">Add to basket</span><span aria-hidden="true">+</span></button>
@@ -273,13 +270,14 @@
         });
       }
       let priceCycleIndex = 0;
+      let basketPriceCycleIndex = 0;
       function renderCardPrice(card, animate = false) {
         const modes = card.dataset.modes.trim().split(/\s+/).filter(Boolean);
         const mode = activeChannel === 'all' ? modes[priceCycleIndex % Math.max(modes.length, 1)] : activeChannel;
         const pill = card.querySelector('[data-channel-price-pill]');
         if (!pill || !mode || !modes.includes(mode)) return;
         let price = Number(card.dataset[`price${mode[0].toUpperCase()}${mode.slice(1)}`] || 0);
-        let unit = card.dataset.unit;
+        let unit = card.dataset[`unit${mode[0].toUpperCase()}${mode.slice(1)}`] || card.dataset.unit;
         if (mode === 'distribution') {
           const option = card.querySelector('[data-bulk-pack-select]')?.selectedOptions?.[0];
           if (option?.value) { price = Number(option.dataset.price || price); unit = option.dataset.unit || option.dataset.name || unit; }
@@ -293,8 +291,10 @@
       }
       function refreshCardPrices(animate = false) { cards.forEach(card => renderCardPrice(card, animate)); }
       window.setInterval(() => {
-        if (activeChannel !== 'all' || document.hidden) return;
-        priceCycleIndex += 1; refreshCardPrices(true);
+        if (document.hidden) return;
+        if (activeChannel === 'all') { priceCycleIndex += 1; refreshCardPrices(true); }
+        basketPriceCycleIndex += 1;
+        updateBasketPricePills(true);
       }, 2000);
 
       function applyFilters() {
@@ -327,8 +327,12 @@
       });
       function productFromCard(card) {
         const modes = card.dataset.modes.trim().split(/\s+/).filter(Boolean);
-        const minimums = {}; const prices = {};
-        modes.forEach(mode => { minimums[mode] = Number(card.dataset[`min${mode[0].toUpperCase()}${mode.slice(1)}`] || 0); prices[mode] = Number(card.dataset[`price${mode[0].toUpperCase()}${mode.slice(1)}`] || 0); });
+        const minimums = {}; const prices = {}; const units = {};
+        modes.forEach(mode => {
+          minimums[mode] = Number(card.dataset[`min${mode[0].toUpperCase()}${mode.slice(1)}`] || 0);
+          prices[mode] = Number(card.dataset[`price${mode[0].toUpperCase()}${mode.slice(1)}`] || 0);
+          units[mode] = card.dataset[`unit${mode[0].toUpperCase()}${mode.slice(1)}`] || card.dataset.unit;
+        });
         const packSelect = card.querySelector('[data-bulk-pack-select]');
         const packOption = packSelect?.selectedOptions?.[0];
         const bulkPack = packOption?.value ? {
@@ -341,7 +345,7 @@
         const preferred = modes.includes('online') ? 'online' : modes[0];
         const stockSource = card.dataset.stockSource === '1'; const madeSource = card.dataset.madeSource === '1'; const procuredSource = card.dataset.procuredSource === '1';
         const defaultFulfilment = stockSource ? 'stock' : (madeSource ? 'made_to_order' : (procuredSource ? 'procured' : 'made_to_order'));
-        const product = { id: card.dataset.basketKey || card.dataset.productId, productId: card.dataset.productId, individualOptionId: card.dataset.individualOptionId || '', name: card.dataset.productName, unit: card.dataset.unit, modes, minimums, prices, bulkPack, max: Number(card.dataset.max || 0), quantity: minimums[preferred] || 1, card, stockSource, madeSource, procuredSource, fulfilmentSource: defaultFulfilment, readyMinutes: Number(card.dataset.readyMinutes || 0) };
+        const product = { id: card.dataset.basketKey || card.dataset.productId, productId: card.dataset.productId, individualOptionId: card.dataset.individualOptionId || '', name: card.dataset.productName, unit: card.dataset.unit, units, modes, minimums, prices, bulkPack, max: Number(card.dataset.max || 0), quantity: minimums[preferred] || 1, card, stockSource, madeSource, procuredSource, fulfilmentSource: defaultFulfilment, readyMinutes: Number(card.dataset.readyMinutes || 0) };
         if (preferred === 'distribution' && bulkPack) product.quantity = bulkPack.minimum || 1;
         return product;
       }
@@ -349,7 +353,7 @@
         if (mode === 'distribution' && product.bulkPack) {
           return {price: product.bulkPack.price, minimum: product.bulkPack.minimum, unit: product.bulkPack.unit};
         }
-        return {price: Number(product.prices[mode] || 0), minimum: Number(product.minimums[mode] || 0), unit: product.unit};
+        return {price: Number(product.prices[mode] || 0), minimum: Number(product.minimums[mode] || 0), unit: product.units?.[mode] || product.unit};
       }
       function setAddedState(product, added) {
         const label = product.card.querySelector('.add-product-label');
@@ -408,6 +412,19 @@
       deliveryLatitude?.addEventListener('change', () => invalidateDeliveryQuote());
       deliveryLongitude?.addEventListener('change', () => invalidateDeliveryQuote());
       document.querySelector('[data-location-picker]')?.addEventListener('locationpicker:resolved', event => { if(event.detail?.error){invalidateDeliveryQuote(event.detail.detail||'Location could not be validated.', true);return;} deliveryLocationSource=event.detail?.location_source||event.detail?.validated_by||''; invalidateDeliveryQuote(); });
+      function updateBasketPricePills(animate = false) {
+        basketItems.querySelectorAll('[data-basket-price-key]').forEach(pill => {
+          const product = basket.get(pill.dataset.basketPriceKey);
+          if (!product || !product.modes.length) return;
+          const mode = product.modes[basketPriceCycleIndex % product.modes.length];
+          const pricing = modePricing(product, mode);
+          pill.querySelector('[data-basket-price-channel]').textContent = channelLabels[mode] || mode;
+          pill.querySelector('[data-basket-price-value]').textContent = `{{ store_business.currency_symbol }}${Number(pricing.price || 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+          pill.querySelector('[data-basket-price-unit]').textContent = `/ ${pricing.unit}`;
+          pill.classList.remove('is-changing');
+          if (animate && product.modes.length > 1) { void pill.offsetWidth; pill.classList.add('is-changing'); }
+        });
+      }
       function renderBasket() {
         basketItems.replaceChildren();
         basket.forEach(product => {
@@ -415,8 +432,12 @@
           const copy = document.createElement('div'); copy.className = 'min-w-0 flex-1';
           const name = document.createElement('strong'); name.className = 'block truncate text-sm text-stone-900'; name.textContent = product.name;
           const unit = document.createElement('span'); unit.className = 'mt-0.5 block text-xs text-stone-400'; unit.textContent = product.bulkPack ? `Bulk option: ${product.bulkPack.name}` : `Measured in ${product.unit}`;
-          const priceLine = document.createElement('span'); priceLine.className = 'mt-1 block text-[11px] font-semibold text-stone-600';
-          priceLine.textContent=product.modes.map(mode=>{ const pricing=modePricing(product,mode); return `${channelLabels[mode]||mode}: {{ store_business.currency_symbol }}${Number(pricing.price||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} / ${pricing.unit}`; }).join(' · ');
+          const priceLine = document.createElement('span'); priceLine.className = 'channel-price-pill mt-1 rounded-full px-2.5 py-1 text-[10px]'; priceLine.dataset.basketPriceKey = product.id;
+          const priceInner = document.createElement('span'); priceInner.className = 'channel-price-pill__inner';
+          const priceChannel = document.createElement('span'); priceChannel.dataset.basketPriceChannel = ''; priceChannel.className = 'font-semibold';
+          const priceValue = document.createElement('strong'); priceValue.dataset.basketPriceValue = '';
+          const priceUnit = document.createElement('span'); priceUnit.dataset.basketPriceUnit = ''; priceUnit.className = 'text-stone-500';
+          priceInner.append(priceChannel, priceValue, priceUnit); priceLine.append(priceInner);
           copy.append(name, unit, priceLine);
           if (product.modes.includes('online') && [product.stockSource, product.madeSource, product.procuredSource].filter(Boolean).length > 1) {
             const fulfilWrap=document.createElement('label'); fulfilWrap.className='mt-2 block text-[10px] font-bold uppercase tracking-wide text-stone-400'; fulfilWrap.textContent='Fulfilment';
@@ -432,6 +453,7 @@
           remove.addEventListener('click', () => { basket.delete(product.id); invalidateDeliveryQuote(); setAddedState(product, false); renderBasket(); if (!basket.size) dialog.close(); });
           row.append(copy, input, remove); basketItems.append(row);
         });
+        updateBasketPricePills(false);
         basketCount.textContent = basket.size; basketDock.classList.toggle('hidden', basket.size === 0); saveBasket(); refreshModes();
       }
       document.querySelectorAll('[data-bulk-pack-select]').forEach(select => select.addEventListener('change', function () {

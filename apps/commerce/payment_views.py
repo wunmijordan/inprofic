@@ -15,7 +15,11 @@ from django.views.decorators.http import require_http_methods, require_POST
 from accounts.services import is_business_admin, user_has_permission
 from core.models import Business
 
-from .forms import CommercePaymentConfigurationForm
+from .forms import (
+    CommerceDirectTransferRouteForm,
+    CommerceManualTransferSettingsForm,
+    CommercePaymentConfigurationForm,
+)
 from .models import (
     CommerceCheckoutSession,
     CommerceGatewayEvent,
@@ -24,6 +28,7 @@ from .models import (
     CommercePayment,
     CommercePaymentClaim,
     CommercePaymentConfiguration,
+    CommerceDirectTransferRoute,
     CommercePaymentReceipt,
 )
 from .payment_gateways import (
@@ -121,6 +126,7 @@ def api_checkout_payment_initiate(request, business_slug, checkout_id):
             method=method,
             idempotency_key=request.headers.get("Idempotency-Key", ""),
             return_url=data.get("return_url", ""),
+            transfer_route_id=data.get("transfer_route_id"),
         )
         payload = _headless_payment_payload(payment)
         payload["checkout"] = serialize_checkout(checkout)
@@ -191,6 +197,7 @@ def api_payment_initiate(request, business_slug, public_id):
             method=data.get("method"),
             idempotency_key=request.headers.get("Idempotency-Key", ""),
             return_url=data.get("return_url", ""),
+            transfer_route_id=data.get("transfer_route_id"),
         )
         return JsonResponse(_headless_payment_payload(payment), status=200)
     except (json.JSONDecodeError, ValidationError, GatewayError, TypeError, ValueError) as exc:
@@ -402,17 +409,112 @@ def payment_settings(request):
     if not is_business_admin(request.user, request.business):
         return render(request, "403.html", status=403)
     config = payment_configuration(request.business)
-    form = CommercePaymentConfigurationForm(
-        request.POST or None, instance=config, business=request.business
+    action = request.POST.get("action") if request.method == "POST" else ""
+
+    routes_qs = CommerceDirectTransferRoute.objects.filter(
+        business=request.business
+    ).select_related("transfer_account")
+    routes = list(routes_qs)
+    legacy_transfer_account = config.transfer_account if config.transfer_account_id else None
+    legacy_transfer_available = bool(
+        legacy_transfer_account
+        and legacy_transfer_account.active
+        and legacy_transfer_account.business_id == request.business.pk
+        and (config.bank_name or "").strip()
+        and (config.bank_account_name or "").strip()
+        and (config.bank_account_number or "").strip()
     )
-    if request.method == "POST" and form.is_valid():
-        saved = form.save(commit=False)
-        saved.business = request.business
-        saved.created_by = saved.created_by or request.user
-        saved.save()
-        messages.success(request, "Commerce payment settings saved. Payment credentials remain securely stored.")
-        return redirect("commerce_payment_settings")
-    return render(request, "commerce/payment_settings.html", {"form": form, "config": config})
+    legacy_route_present = bool(
+        legacy_transfer_available
+        and any(
+            route.transfer_account_id == config.transfer_account_id
+            and (route.bank_name or "").strip() == (config.bank_name or "").strip()
+            and (route.account_name or "").strip() == (config.bank_account_name or "").strip()
+            and (route.account_number or "").strip() == (config.bank_account_number or "").strip()
+            for route in routes
+        )
+    )
+    legacy_transfer_pending = legacy_transfer_available and not legacy_route_present
+    route_initial = None
+    if legacy_transfer_pending:
+        existing_names = {route.name for route in routes}
+        route_name = "Primary transfer account"
+        if route_name in existing_names:
+            last_four = (config.bank_account_number or "")[-4:]
+            route_name = f"Legacy transfer {last_four}"
+            suffix = 2
+            while route_name in existing_names:
+                route_name = f"Legacy transfer {last_four} {suffix}"
+                suffix += 1
+        route_initial = {
+            "name": route_name,
+            "bank_name": config.bank_name,
+            "account_name": config.bank_account_name,
+            "account_number": config.bank_account_number,
+            "transfer_account": config.transfer_account_id,
+            "instructions": config.bank_instructions,
+            "sort_order": 10,
+            "active": True,
+        }
+
+    form = CommercePaymentConfigurationForm(
+        request.POST if action in {"", "save_payment_settings"} else None,
+        instance=config,
+        business=request.business,
+    )
+    manual_transfer_form = CommerceManualTransferSettingsForm(
+        request.POST if action == "save_manual_transfer" else None,
+        instance=config,
+    )
+    route_form = CommerceDirectTransferRouteForm(
+        request.POST if action == "add_transfer_route" else None,
+        business=request.business,
+        initial=route_initial,
+    )
+
+    if request.method == "POST":
+        if action == "save_manual_transfer" and manual_transfer_form.is_valid():
+            manual_saved = manual_transfer_form.save(commit=False)
+            manual_saved.save(update_fields=["transfer_enabled", "updated_at"])
+            messages.success(request, "Manual transfer availability saved.")
+            return redirect("commerce_payment_settings")
+        if action == "add_transfer_route" and route_form.is_valid():
+            route = route_form.save(commit=False)
+            route.business = request.business
+            route.created_by = request.user
+            route.save()
+            messages.success(request, f"Transfer route '{route.name}' added.")
+            return redirect("commerce_payment_settings")
+        if action == "delete_transfer_route":
+            route = get_object_or_404(
+                CommerceDirectTransferRoute.objects,
+                pk=request.POST.get("route_id"),
+                business=request.business,
+            )
+            name = route.name
+            route.delete()
+            messages.success(
+                request,
+                f"Transfer route '{name}' deleted. Existing payments keep their saved account snapshot.",
+            )
+            return redirect("commerce_payment_settings")
+        if action in {"", "save_payment_settings"} and form.is_valid():
+            saved = form.save(commit=False)
+            saved.business = request.business
+            saved.created_by = saved.created_by or request.user
+            saved.save()
+            messages.success(request, "Commerce payment settings saved. Payment credentials remain securely stored.")
+            return redirect("commerce_payment_settings")
+
+    return render(request, "commerce/payment_settings.html", {
+        "form": form,
+        "config": config,
+        "manual_transfer_form": manual_transfer_form,
+        "transfer_route_form": route_form,
+        "transfer_routes": routes,
+        "legacy_transfer_available": legacy_transfer_available,
+        "legacy_transfer_pending": legacy_transfer_pending,
+    })
 
 
 @login_required

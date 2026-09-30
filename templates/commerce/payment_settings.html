@@ -1,50 +1,164 @@
 {% extends "base.html" %}{% block content %}
 <div class="max-w-4xl">
   <div class="flex flex-wrap items-end justify-between gap-3 mb-5">
-    <div><h1 class="text-2xl font-semibold font-display text-[#8f172d]">Commerce payment settings</h1><p class="text-sm text-stone-500">Configure payment methods and providers for this business, and choose the Finance account that receives each confirmed payment.</p></div>
-    <a href="{% url 'commerce_dashboard' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">Back to Commerce</a>
+    <div>
+      <h1 class="text-2xl font-semibold font-display text-[#8f172d]">Commerce payment settings</h1>
+      <p class="text-sm text-stone-500">Configure payment methods and providers for this business, and choose the
+        Finance account that receives each confirmed payment.</p>
+    </div>
+    <a href="{% url 'commerce_dashboard' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">Back to
+      Commerce</a>
   </div>
-  <div class="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><strong>Your payment credentials stay protected.</strong> Saved secret values are never shown back on this page or shared with customers. Leave an existing secret field blank to keep its current value.</div>
+  <div class="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><strong>Your payment
+      credentials stay protected.</strong> Saved secret values are never shown back on this page or shared with
+    customers. Leave an existing secret field blank to keep its current value. Provider-specific fields only become
+    mandatory when that provider or payment method is enabled.</div>
+
   <form method="post" class="space-y-5">{% csrf_token %}
-    {% if form.non_field_errors %}<div class="rounded-lg bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">{{ form.non_field_errors }}</div>{% endif %}
+    <input type="hidden" name="action" value="save_payment_settings">
+    {% if form.non_field_errors %}<div class="rounded-lg bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">{{
+      form.non_field_errors }}</div>{% endif %}
     <section class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-5">
-      <h2 class="font-semibold mb-3">Settlement currency</h2>{% include '_field.html' with field=form.currency %}
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 class="font-semibold">Settlement currency</h2><span
+          class="rounded-full bg-stone-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-600">Saved:
+          {{ config.currency|default:"NGN" }}</span>
+      </div>{% include '_field.html' with field=form.currency %}
     </section>
     <section class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-5">
       {% include "commerce/_settings_toggle.html" with field=form.paystack_enabled description="Use Paystack for hosted/card checkout and, when selected below, automated bank transfer. Paystack Terminal can also power the in-premise card POS." emphasis=True %}
-      <div class="grid md:grid-cols-2 gap-3">{% include '_field.html' with field=form.paystack_secret_key %}{% include '_field.html' with field=form.paystack_account %}</div>
+      <div class="grid md:grid-cols-2 mt-3 gap-3">
+      {% include '_field.html' with field=form.paystack_secret_key %}
+      {% include '_field.html' with field=form.paystack_account %}
+      </div>
     </section>
     <section class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-5">
       {% include "commerce/_settings_toggle.html" with field=form.monnify_enabled description="Use Monnify for hosted checkout and, when selected below, one-time bank-transfer accounts that Monnify confirms automatically." %}
-      <div class="grid md:grid-cols-2 gap-3">{% include '_field.html' with field=form.monnify_api_key %}{% include '_field.html' with field=form.monnify_secret_key %}{% include '_field.html' with field=form.monnify_contract_code %}{% include '_field.html' with field=form.monnify_base_url %}{% include '_field.html' with field=form.monnify_account %}</div>
-    </section>
-    <section class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-5">
-      {% include "commerce/_settings_toggle.html" with field=form.transfer_enabled description="Offer Transfer without any payment gateway. Storefront/API customers see these account details and must upload payment proof; staff using the in-premise POS confirm receipt directly." emphasis=True %}
-      <div class="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs leading-5 text-sky-900">This is separate from gateway-backed instant bank transfer. Customer proofs stay pending until an authorised staff member verifies the actual bank credit.</div>
-      <div class="mt-3 grid md:grid-cols-2 gap-3">{% include '_field.html' with field=form.bank_name %}{% include '_field.html' with field=form.bank_account_name %}{% include '_field.html' with field=form.bank_account_number %}{% include '_field.html' with field=form.transfer_account %}<div class="md:col-span-2">{% include '_field.html' with field=form.bank_instructions %}</div></div>
+      <div class="grid md:grid-cols-2 mt-3 gap-3">
+      {% include '_field.html' with field=form.monnify_api_key %}
+      {% include '_field.html' with field=form.monnify_secret_key %}
+      {% include '_field.html' with field=form.monnify_contract_code %}
+      {% include '_field.html' with field=form.monnify_base_url %}
+      {% include '_field.html' with field=form.monnify_account %}
+      </div>
     </section>
     <section class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-5">
       {% include "commerce/_settings_toggle.html" with field=form.bank_transfer_enabled description="Offer gateway-backed instant bank transfer. The selected provider issues a temporary account and confirms payment automatically; customers do not upload proof." %}
-      <div class="grid md:grid-cols-2 gap-3">{% include '_field.html' with field=form.bank_transfer_provider %}<div id="monnify-transfer-bank">{% include '_field.html' with field=form.monnify_transfer_bank_code %}</div>{% include '_field.html' with field=form.bank_cash_account %}</div>
+      <div class="grid md:grid-cols-2 mt-3 gap-3">
+      {% include '_field.html' with field=form.bank_transfer_provider %}
+      <div id="monnify-transfer-bank">
+      {% include '_field.html' with field=form.monnify_transfer_bank_code %}
+      </div>
+      {% include '_field.html' with field=form.bank_cash_account %}
+      </div>
     </section>
     <section class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-5">
       {% include "commerce/_settings_toggle.html" with field=form.paystack_terminal_enabled description="For staff-operated walk-in sales. INPROFIC sends the amount to the selected Paystack Terminal and records the confirmed payment in the chosen Finance account." %}
-      <div class="grid md:grid-cols-2 gap-3">{% include '_field.html' with field=form.paystack_terminal_id %}{% include '_field.html' with field=form.paystack_terminal_customer_email %}{% include '_field.html' with field=form.paystack_terminal_account %}</div>
+      <div class="grid md:grid-cols-2 mt-3 gap-3">
+      {% include '_field.html' with field=form.paystack_terminal_id %}
+      {% include '_field.html' with field=form.paystack_terminal_customer_email %}
+      {% include '_field.html' with field=form.paystack_terminal_account %}
+      </div>
     </section>
     <section class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-5">
       {% include "commerce/_settings_toggle.html" with field=form.cash_enabled description="Offer cash only to authorised staff using the in-premise POS. Cash is never offered to customers on the public storefront." %}
-      <div class="grid md:grid-cols-2 gap-3">{% include '_field.html' with field=form.cash_account %}{% include '_field.html' with field=form.cash_instructions %}</div>
+      <div class="grid md:grid-cols-2 mt-3 gap-3">
+      {% include '_field.html' with field=form.cash_account %}
+      {% include '_field.html' with field=form.cash_instructions %}
+      </div>
     </section>
-    <button class="px-4 py-2.5 bg-[#8f172d] text-white rounded-md text-sm">Save payment settings</button>
+    <button name="action" value="save_payment_settings" class="px-4 py-2.5 bg-[#8f172d] text-white rounded-md text-sm">
+      Save payment settings
+    </button>
   </form>
+
+  <section class="mt-6 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h2 class="font-semibold">Manual transfer routes <span class="font-normal text-stone-400">(no gateway)</span>
+        </h2>
+        <p class="mt-1 text-xs leading-5 text-stone-500">This is the no-gateway Transfer method. Customers choose an
+          active route, transfer to that destination, and upload payment proof for authorised staff verification.
+          Staff-operated POS Transfer is confirmed directly by staff.</p>
+      </div>
+      <span
+        class="rounded-full bg-[#050733] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white">Customer
+        choice</span>
+    </div>
+
+    <form method="post" class="mt-4 rounded-xl border border-[#E7DFCC] bg-white p-3.5">{% csrf_token %}
+      <input type="hidden" name="action" value="save_manual_transfer">
+      {% include "commerce/_settings_toggle.html" with field=manual_transfer_form.transfer_enabled description="Enable or disable all manual transfer routes without deleting the saved destinations." emphasis=True %}
+      <div class="mt-3 flex justify-end">
+        <button name="action" value="save_manual_transfer" class="rounded-md border border-[#D9CFB4] bg-[#FFFDF8] px-3 py-2 text-xs font-semibold text-stone-700">
+          Save manual transfer availability
+        </button>
+      </div>
+    </form>
+
+    {% if legacy_transfer_pending and transfer_routes %}
+    <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-xs leading-5 text-amber-900">
+      A previously saved manual-transfer destination is not yet represented in the route list. Its details are prefilled
+      in the Add transfer route form below so it can remain customer-selectable alongside the existing routes.
+    </div>
+    {% endif %}
+
+    <div class="mt-4 grid gap-3 md:grid-cols-2">
+      {% for route in transfer_routes %}
+      <div class="rounded-xl border border-[#E7DFCC] bg-white p-4">
+        <div class="flex items-start justify-between gap-3">
+          <div><strong class="text-sm">{{ route.name }}</strong>
+            <div class="mt-1 text-xs text-stone-500">
+              {{ route.bank_name }} · {{ route.account_number }} · {{ route.account_name }}
+            </div>
+            <div class="mt-1 text-[11px] text-stone-400">
+              Settles to 
+              {{ route.transfer_account.name }} · {% if route.active %}Visible{% else %}Hidden{% endif %}
+            </div>
+          </div>
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="route_id" value="{{ route.pk }}">
+            <button
+              name="action" value="delete_transfer_route"
+              class="text-xs font-semibold text-rose-700 underline">
+              Delete
+            </button>
+          </form>
+        </div>
+      </div>
+      {% empty %}
+      <div
+        class="md:col-span-2 rounded-lg border border-dashed border-[#D9CFB4] bg-[#FFFCF5] px-3 py-3 text-sm text-stone-600">
+        {% if legacy_transfer_pending %}Your previously saved manual-transfer details are loaded into the form below.
+        Add the route once to move that existing destination into the customer-selectable route list.{% else %}No manual
+        transfer routes yet. Add the first customer-facing destination below.{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <form method="post" class="mt-4 grid gap-3 rounded-xl border border-[#D9CFB4] bg-white p-4 md:grid-cols-2">
+    {% csrf_token %}
+      <input type="hidden" name="action" value="add_transfer_route">
+      {% for error in transfer_route_form.non_field_errors %}<div
+        class="md:col-span-2 rounded-lg bg-rose-50 p-2 text-xs text-rose-700">{{ error }}</div>{% endfor %}
+      {% for field in transfer_route_form %}
+      <div {% if field.name == 'instructions' %}class="md:col-span-2" {% endif %}>
+        {% include '_field.html' with field=field %}
+      </div>
+      {% endfor %}
+      <div class="md:col-span-2"><button name="action" value="add_transfer_route"
+          class="rounded-md bg-[#050733] px-4 py-2 text-sm font-semibold text-white">Add transfer route</button></div>
+    </form>
+  </section>
 </div>
 <script>
-(function(){
-  const provider = document.getElementById('{{ form.bank_transfer_provider.id_for_label }}');
-  const bank = document.getElementById('monnify-transfer-bank');
-  if (!provider || !bank) return;
-  function sync(){ bank.classList.toggle('hidden', provider.value !== 'monnify'); }
-  provider.addEventListener('change', sync); sync();
-})();
+  (function () {
+    const provider = document.getElementById('{{ form.bank_transfer_provider.id_for_label }}');
+    const bank = document.getElementById('monnify-transfer-bank');
+    if (!provider || !bank) return;
+    function sync() { bank.classList.toggle('hidden', provider.value !== 'monnify'); }
+    provider.addEventListener('change', sync); sync();
+  })();
 </script>
 {% endblock %}

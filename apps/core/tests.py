@@ -2,8 +2,10 @@ from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from django.apps import apps
+from django.db import models
 from django.http import HttpResponse
-from django.test import RequestFactory, TestCase, override_settings
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -18,6 +20,29 @@ from .jobs import (
 from .models import Business, ScheduledJobLease
 from .performance import PerformanceDiagnosticMiddleware, performance_section
 from .audit_views import _EXTERNAL_BUSINESS_ACTIVITY_MODELS, _public_audit_details
+
+
+class CharFieldContractTests(SimpleTestCase):
+    """Guard declared CharField values from exceeding their database column."""
+
+    def test_string_defaults_and_choices_fit_declared_max_length(self):
+        problems = []
+        for model in apps.get_models():
+            for field in model._meta.fields:
+                if not isinstance(field, models.CharField) or not field.max_length:
+                    continue
+                if field.has_default() and isinstance(field.default, str) and len(field.default) > field.max_length:
+                    problems.append(
+                        f"{model._meta.label}.{field.name} default {field.default!r} "
+                        f"is {len(field.default)} chars but max_length={field.max_length}"
+                    )
+                for value, _label in field.flatchoices:
+                    if isinstance(value, str) and len(value) > field.max_length:
+                        problems.append(
+                            f"{model._meta.label}.{field.name} choice {value!r} "
+                            f"is {len(value)} chars but max_length={field.max_length}"
+                        )
+        self.assertFalse(problems, "\n".join(problems))
 
 
 class AuditPresentationTests(TestCase):

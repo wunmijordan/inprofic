@@ -1,8 +1,10 @@
+from decimal import Decimal
 from django import forms
+from django.forms import inlineformset_factory
 import re
 from django.contrib.auth import password_validation
 from core.models import Business
-from .models import CustomUser, Role, RoleModulePermission, UserBusiness, UserModulePermission, SubscriptionPlan, SubscriptionPromotion, MarketingPromoCampaign, SubscriptionPolicySettings, PlatformMailTemplate, BusinessTrialIdentity, MarketingTrustSettings, MarketingTrustLogo, PlatformPrivacyPolicy
+from .models import CustomUser, Role, RoleModulePermission, UserBusiness, UserModulePermission, SubscriptionPlan, SubscriptionPromotion, MarketingPromoCampaign, SubscriptionPolicySettings, PlatformMailTemplate, BusinessTrialIdentity, MarketingTrustSettings, MarketingTrustLogo, PlatformPrivacyPolicy, PayrollAddonTier, PayrollStaffProfile, PayrollRecurringAdjustment, PayrollCalculationRule, Payslip, PayslipAdjustmentLine
 from .services import ensure_permissions, is_business_admin, seed_business_roles
 
 CLS = "w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 focus:border-[#8f172d]"
@@ -679,3 +681,219 @@ class PlatformMailComposeForm(PlatformMailContentFormMixin, forms.Form):
         if len(values) > 10000 or any(not value.isdigit() for value in values):
             raise forms.ValidationError("The selected recipient list is invalid. Refresh and try again.")
         return tuple(dict.fromkeys(int(value) for value in values))
+
+
+class PayrollAddonTierForm(forms.ModelForm):
+    class Meta:
+        model = PayrollAddonTier
+        fields = ["plan", "staff_limit", "monthly_price", "active"]
+
+    def __init__(self, *args, plan_choices=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["plan"].queryset = SubscriptionPlan.objects.filter(active=True).order_by("monthly_price", "id")
+        if not self.is_bound:
+            _set_static_model_choices(self.fields["plan"], plan_choices)
+        self.fields["staff_limit"].help_text = "Number of active staff this add-on price covers for the selected plan."
+        self.fields["monthly_price"].help_text = "Monthly payroll add-on charge for this staff capacity."
+        for field in self.fields.values():
+            if isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs["class"] = "h-4 w-4 accent-[#8f172d]"
+            else:
+                field.widget.attrs["class"] = CLS
+
+
+class PayrollStaffProfileForm(forms.ModelForm):
+    class Meta:
+        model = PayrollStaffProfile
+        fields = ["user", "full_name", "email", "whatsapp_number", "job_title", "pay_frequency", "base_pay", "active"]
+
+    def __init__(self, *args, business, **kwargs):
+        super().__init__(*args, **kwargs)
+        memberships = UserBusiness.objects.filter(
+            business=business, active=True, user__is_active=True
+        ).select_related("user").order_by("user__fullname")
+        self.fields["user"].queryset = CustomUser.objects.filter(
+            pk__in=memberships.values_list("user_id", flat=True)
+        ).order_by("fullname", "username")
+        self.fields["user"].required = False
+        self.fields["user"].label = "Draft from existing user (optional)"
+        self.fields["user"].help_text = (
+            "Choose an existing business user to reuse their available name, email and phone details. "
+            "Staff who are not platform users can be entered directly."
+        )
+        self.fields["user"].widget.attrs["data-payroll-user-select"] = "1"
+        self.fields["whatsapp_number"].label = "WhatsApp number"
+        for field in self.fields.values():
+            if isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs["class"] = "h-4 w-4 accent-[#8f172d]"
+            else:
+                field.widget.attrs["class"] = CLS
+
+    def clean(self):
+        cleaned = super().clean()
+        user = cleaned.get("user")
+        if user:
+            cleaned["full_name"] = (cleaned.get("full_name") or user.fullname or user.username).strip()
+            cleaned["email"] = (cleaned.get("email") or user.email or "").strip()
+            cleaned["whatsapp_number"] = (cleaned.get("whatsapp_number") or user.phone or "").strip()
+        if cleaned.get("base_pay") is not None and cleaned["base_pay"] < 0:
+            self.add_error("base_pay", "Enter zero or a positive amount.")
+        return cleaned
+
+
+class PayrollRecurringAdjustmentForm(forms.ModelForm):
+    class Meta:
+        model = PayrollRecurringAdjustment
+        fields = ["kind", "name", "amount", "active"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["kind"].label = "Type"
+        self.fields["name"].widget.attrs["placeholder"] = "e.g. Transport allowance"
+        self.fields["amount"].widget.attrs.update({"min": "0", "step": "0.01", "data-formset-default": "0"})
+        self.fields["active"].widget.attrs["data-payroll-adjustment-active"] = "1"
+        for field in self.fields.values():
+            if isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs["class"] = "h-4 w-4 accent-[#8f172d]"
+            else:
+                field.widget.attrs["class"] = CLS
+
+    def clean_amount(self):
+        amount = self.cleaned_data.get("amount")
+        if amount is not None and amount < 0:
+            raise forms.ValidationError("Enter zero or a positive amount.")
+        return amount
+
+
+PayrollRecurringAdjustmentFormSet = inlineformset_factory(
+    PayrollStaffProfile, PayrollRecurringAdjustment,
+    form=PayrollRecurringAdjustmentForm, extra=1, can_delete=True,
+)
+
+
+class PayrollCalculationRuleForm(forms.ModelForm):
+    class Meta:
+        model = PayrollCalculationRule
+        fields = [
+            "name", "category", "effect", "method", "basis", "rate",
+            "fixed_amount", "threshold_amount", "cap_amount", "statutory",
+            "active", "sort_order",
+        ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["rate"].label = "Percentage rate (%)"
+        self.fields["rate"].help_text = "Used only for percentage rules. Enter 8 for 8%."
+        self.fields["fixed_amount"].help_text = "Used only for fixed-amount rules."
+        self.fields["threshold_amount"].label = "Exempt threshold"
+        self.fields["cap_amount"].label = "Maximum amount / cap"
+        self.fields["sort_order"].help_text = "Lower numbers run first. This mainly affects earning rules that use Gross pay as their basis."
+        for field in self.fields.values():
+            if isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs["class"] = "h-4 w-4 accent-[#8f172d]"
+            else:
+                field.widget.attrs["class"] = CLS
+
+    def clean(self):
+        cleaned = super().clean()
+        method = cleaned.get("method")
+        rate = cleaned.get("rate")
+        fixed_amount = cleaned.get("fixed_amount")
+        threshold = cleaned.get("threshold_amount")
+        cap = cleaned.get("cap_amount")
+        if rate is not None and (rate < 0 or rate > 100):
+            self.add_error("rate", "Enter a percentage from 0 to 100.")
+        for field_name, value in (("fixed_amount", fixed_amount), ("threshold_amount", threshold), ("cap_amount", cap)):
+            if value is not None and value < 0:
+                self.add_error(field_name, "Enter zero or a positive amount.")
+        if method == PayrollCalculationRule.METHOD_PERCENTAGE:
+            if not rate:
+                self.add_error("rate", "Enter a percentage greater than zero for a percentage rule.")
+            cleaned["fixed_amount"] = Decimal("0")
+        elif method == PayrollCalculationRule.METHOD_FIXED:
+            if not fixed_amount:
+                self.add_error("fixed_amount", "Enter a fixed amount greater than zero for a fixed rule.")
+            cleaned["rate"] = Decimal("0")
+        return cleaned
+
+
+class PayslipForm(forms.ModelForm):
+    class Meta:
+        model = Payslip
+        fields = ["period_start", "period_end", "base_pay", "manual_allowances", "manual_deductions", "notes"]
+        widgets = {
+            "period_start": forms.DateInput(attrs={"type": "date"}),
+            "period_end": forms.DateInput(attrs={"type": "date"}),
+            "notes": forms.Textarea(attrs={"rows": 3}),
+        }
+
+    def __init__(self, *args, staff=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if staff and not self.is_bound and not getattr(self.instance, "pk", None):
+            self.fields["base_pay"].initial = staff.base_pay
+            self.fields["manual_allowances"].initial = Decimal("0")
+            self.fields["manual_deductions"].initial = Decimal("0")
+        self.fields["manual_allowances"].label = "Additional allowance / earning for this period"
+        self.fields["manual_allowances"].help_text = (
+            "Optional one-off amount. Named recurring allowances from the staff profile are included separately."
+        )
+        self.fields["manual_deductions"].label = "Additional deduction for this period"
+        self.fields["manual_deductions"].help_text = (
+            "Optional one-off amount. Named recurring deductions plus configured tax/pension rules are included separately."
+        )
+        for field in self.fields.values():
+            field.widget.attrs["class"] = CLS
+
+    def clean(self):
+        cleaned = super().clean()
+        start, end = cleaned.get("period_start"), cleaned.get("period_end")
+        if start and end and end < start:
+            self.add_error("period_end", "Pay period end cannot be before the start date.")
+        for name in ("base_pay", "manual_allowances", "manual_deductions"):
+            if cleaned.get(name) is not None and cleaned[name] < 0:
+                self.add_error(name, "Enter zero or a positive amount.")
+        return cleaned
+
+
+class PayslipEditForm(PayslipForm):
+    edit_reason = forms.CharField(
+        max_length=500,
+        label="Reason for editing issued payslip",
+        widget=forms.Textarea(attrs={"rows": 3}),
+        help_text="Required. This reason and the previous payslip values are retained in the edit history.",
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["edit_reason"].widget.attrs["class"] = CLS
+
+    def clean_edit_reason(self):
+        reason = (self.cleaned_data.get("edit_reason") or "").strip()
+        if not reason:
+            raise forms.ValidationError("Enter why this issued payslip needs to be changed.")
+        return reason
+
+
+class PayslipAdjustmentLineForm(forms.ModelForm):
+    class Meta:
+        model = PayslipAdjustmentLine
+        fields = ["kind", "name", "amount"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["kind"].label = "Type"
+        self.fields["amount"].widget.attrs.update({"min": "0", "step": "0.01", "data-formset-default": "0"})
+        for field in self.fields.values():
+            field.widget.attrs["class"] = CLS
+
+    def clean_amount(self):
+        amount = self.cleaned_data.get("amount")
+        if amount is not None and amount < 0:
+            raise forms.ValidationError("Enter zero or a positive amount.")
+        return amount
+
+
+PayslipAdjustmentLineFormSet = inlineformset_factory(
+    Payslip, PayslipAdjustmentLine,
+    form=PayslipAdjustmentLineForm, extra=1, can_delete=True,
+)

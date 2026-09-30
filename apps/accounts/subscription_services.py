@@ -111,6 +111,11 @@ def build_plan_feature_matrix(plans):
                 for plan in plans
             ],
         },
+        {
+            "label": "Staff payroll add-on",
+            "detail": "Supplementary payroll is included during free trial and Founder lifetime access; after that, Founder-configured staff tiers are purchased separately.",
+            "values": [capacity_value("Available as add-on") for plan in plans],
+        },
     ]
 
     feature_modules = list(PLAN_ENTITLEMENT_MODULES) + [
@@ -724,14 +729,39 @@ def payment_is_locked(subscription, plan):
 
 
 @transaction.atomic
-def create_payment_request(subscription, plan, *, months=1, billing_cycle="monthly", provider="manual"):
+def create_payment_request(subscription, plan, *, months=1, billing_cycle="monthly", provider="manual", purpose=None, payroll_tier=None):
+    purpose = purpose or SubscriptionPayment.PURPOSE_SUBSCRIPTION
+    if billing_cycle == SubscriptionPayment.CYCLE_YEARLY:
+        months = 12
+    service_count = max(1, subscription.services.count())
+    if purpose == SubscriptionPayment.PURPOSE_PAYROLL_ADDON:
+        if subscription.founder_lifetime or (subscription.status == BusinessSubscription.STATUS_TRIAL and subscription.is_effectively_active):
+            raise ValidationError("Payroll is already included with the current Founder lifetime or free-trial access.")
+        if not subscription.is_effectively_active:
+            raise ValidationError("Renew the business plan before purchasing the payroll add-on.")
+        if not payroll_tier or not payroll_tier.active or payroll_tier.plan_id != subscription.plan_id:
+            raise ValidationError("Choose an active payroll add-on tier configured for the current plan.")
+        period_count = Decimal("12") if billing_cycle == SubscriptionPayment.CYCLE_YEARLY else Decimal(max(1, int(months or 1)))
+        amount = (Decimal(payroll_tier.monthly_price or 0) * period_count).quantize(Decimal("0.01"))
+        if amount <= 0:
+            raise ValidationError("This payroll add-on tier does not yet have a payable price configured.")
+        return SubscriptionPayment.objects.create(
+            subscription=subscription,
+            plan=subscription.plan,
+            purpose=purpose,
+            payroll_tier=payroll_tier,
+            amount=amount,
+            base_amount=amount,
+            service_count=service_count,
+            months=months,
+            billing_cycle=billing_cycle,
+            provider=provider,
+            reference=f"PAYROLL-{subscription.pk}-{uuid4().hex[:12].upper()}",
+        )
     if payment_is_locked(subscription, plan):
         if subscription.founder_lifetime:
             raise ValidationError("Your current plan has founder lifetime access and does not require payment.")
         raise ValidationError("Renewal for your current plan opens within 7 days of its expiry date.")
-    if billing_cycle == SubscriptionPayment.CYCLE_YEARLY:
-        months = 12
-    service_count = max(1, subscription.services.count())
     promotion = active_promotion_for_plan(plan, billing_cycle=billing_cycle)
     base_amount = payment_amount(plan, service_count, months, billing_cycle=billing_cycle, promotion=False)
     amount = payment_amount(plan, service_count, months, billing_cycle=billing_cycle, promotion=promotion)
@@ -740,6 +770,7 @@ def create_payment_request(subscription, plan, *, months=1, billing_cycle="month
     return SubscriptionPayment.objects.create(
         subscription=subscription,
         plan=plan,
+        purpose=purpose,
         amount=amount,
         base_amount=base_amount,
         promotion=promotion,
@@ -774,6 +805,11 @@ def mark_payment_paid(payment):
     payment.status = SubscriptionPayment.STATUS_PAID
     payment.paid_at = now
     payment.save(update_fields=["status", "paid_at"])
+
+    if payment.purpose == SubscriptionPayment.PURPOSE_PAYROLL_ADDON:
+        from .payroll import activate_paid_payroll_addon
+        activate_paid_payroll_addon(payment)
+        return payment
 
     # A stale payment request must not revoke a newer founder lifetime grant.
     # A payment created after that grant is still allowed to represent an

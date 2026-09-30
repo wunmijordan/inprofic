@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% load core_extras %}
+{% block content %}
+<div class="flex flex-col gap-3 mb-5 md:flex-row md:items-center md:justify-between">
+  <div>
+    <div class="text-[10px] font-bold uppercase tracking-[.18em] text-stone-400">Users & Access · Add-on</div>
+    <h2 class="mt-1 text-xl font-semibold font-display text-[#8f172d]">Staff payroll</h2>
+    <p class="mt-1 text-xs text-stone-500">Keep staff pay structures, configure payroll calculations and issue shareable payslips without making payroll a separate INPROFIC module.</p>
+  </div>
+  <div class="flex flex-wrap gap-2">
+    <a href="{% url 'users_list' %}" class="rounded-md border border-[#D9CFB4] px-3 py-2 text-sm">Users & Access</a>
+    {% if not payroll_state.included %}<a href="{% url 'payroll_addon_checkout' %}" class="rounded-md bg-[#050733] px-3 py-2 text-sm font-semibold text-white">Payroll add-on pricing</a>{% endif %}
+  </div>
+</div>
+
+<div class="mb-5 rounded-xl border {% if payroll_state.enabled %}border-emerald-200 bg-emerald-50{% else %}border-amber-200 bg-amber-50{% endif %} p-4 text-sm">
+  <div class="flex flex-wrap items-center justify-between gap-2">
+    <strong>{{ payroll_state.reason }}</strong>
+    {% if payroll_state.staff_limit %}<span class="rounded-full bg-white px-2.5 py-1 text-xs font-semibold">Up to {{ payroll_state.staff_limit }} active staff</span>{% endif %}
+  </div>
+  {% if not payroll_state.enabled %}<p class="mt-2 text-xs leading-5">Your normal plan can remain active while payroll is purchased separately. Choose a Founder-configured staff tier to restore payroll access.</p>{% endif %}
+</div>
+
+<div class="grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(19rem,.8fr)]">
+  <section class="overflow-hidden rounded-xl border border-[#E7DFCC] bg-white">
+    <div class="border-b border-[#E7DFCC] bg-[#FFFDF8] px-4 py-3"><h3 class="font-semibold">Payroll staff</h3></div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-[#F5EFE0] text-xs text-stone-600"><tr><th class="px-4 py-3 text-left">Staff</th><th class="px-4 py-3 text-left">Pay structure</th><th class="px-4 py-3 text-left">Contact</th><th class="px-4 py-3"></th></tr></thead>
+        <tbody>
+          {% for staff in payroll_staff %}
+          <tr class="border-t border-[#E7DFCC] align-top">
+            <td class="px-4 py-3"><strong>{{ staff.full_name }}</strong><div class="text-xs text-stone-500">{{ staff.job_title|default:"Staff" }}{% if staff.user_id %} · linked user{% endif %}{% if not staff.active %} · inactive{% endif %}</div></td>
+            <td class="px-4 py-3">
+              <span class="font-mono">{{ biz.currency_symbol }}{{ staff.base_pay|num }}</span>
+              <div class="text-xs text-stone-500">{{ staff.get_pay_frequency_display }} · {{ biz.currency_symbol }}{{ staff.recurring_net_pay|num }} before configured payroll rules</div>
+              {% for item in staff.recurring_adjustments.all %}{% if item.active %}<div class="mt-1 text-[11px] text-stone-500">{% if item.kind == 'allowance' %}+{% else %}−{% endif %} {{ item.name }} · {{ biz.currency_symbol }}{{ item.amount|num }}</div>{% endif %}{% endfor %}
+            </td>
+            <td class="px-4 py-3 text-xs text-stone-500">{{ staff.email|default:"—" }}<br>{{ staff.whatsapp_number|default:"—" }}</td>
+            <td class="px-4 py-3 text-right whitespace-nowrap">
+              <a href="{% url 'payroll_staff_edit' staff.pk %}" class="text-[#8f172d]">Edit</a>
+              {% if staff.payslip_count %}<a href="{% url 'payroll_staff_payslips' staff.pk %}" class="ml-3 text-[#8f172d]">Payslips ({{ staff.payslip_count }})</a>{% endif %}
+              {% if payroll_state.enabled and staff.active %}<a href="{% url 'payroll_payslip_create' staff.pk %}" class="ml-3 text-[#8f172d]">New payslip</a>{% endif %}
+            </td>
+          </tr>
+          {% empty %}<tr><td colspan="4" class="px-4 py-8 text-center text-stone-500">No payroll staff profiles yet.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4">
+    <h3 class="font-semibold">Add staff profile</h3>
+    <p class="mt-1 text-xs leading-5 text-stone-500">Draft from an existing platform user or enter a staff member who does not use INPROFIC.</p>
+    <form method="post" class="mt-4 space-y-3">
+      {% csrf_token %}
+      {% for error in payroll_form.non_field_errors %}<div class="rounded-lg bg-rose-50 p-2 text-xs text-rose-700">{{ error }}</div>{% endfor %}
+      {% for field in payroll_form %}{% include '_field.html' with field=field %}{% endfor %}
+      {% include 'accounts/_payroll_adjustment_formset.html' with adjustment_formset=payroll_adjustment_formset %}
+      <button name="action" value="add_staff" {% if not payroll_state.enabled %}disabled{% endif %} class="w-full rounded-md bg-[#8f172d] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">Add to payroll</button>
+    </form>
+  </section>
+</div>
+
+<div class="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(20rem,.9fr)]">
+  <section class="overflow-hidden rounded-xl border border-[#E7DFCC] bg-white">
+    <div class="border-b border-[#E7DFCC] bg-[#FFFDF8] px-4 py-3">
+      <h3 class="font-semibold">Pay calculations</h3>
+      <p class="mt-1 text-xs leading-5 text-stone-500">Configure tax, pension, insurance, allowances, deductions and employer contributions. Rules apply automatically when a new payslip is created; old payslips keep their original frozen calculations.</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-[#F5EFE0] text-xs text-stone-600"><tr><th class="px-4 py-3 text-left">Rule</th><th class="px-4 py-3 text-left">Calculation</th><th class="px-4 py-3 text-left">Effect</th><th class="px-4 py-3"></th></tr></thead>
+        <tbody>
+          {% for rule in payroll_rules %}
+          <tr class="border-t border-[#E7DFCC] {% if not rule.active %}opacity-55{% endif %}">
+            <td class="px-4 py-3"><strong>{{ rule.name }}</strong><div class="text-xs text-stone-500">{{ rule.get_category_display }}{% if rule.statutory %} · statutory{% endif %}{% if not rule.active %} · inactive{% endif %}</div></td>
+            <td class="px-4 py-3 text-xs"><strong>{% if rule.method == 'percentage' %}{{ rule.rate|num }}% of {{ rule.get_basis_display }}{% else %}{{ biz.currency_symbol }}{{ rule.fixed_amount|num }} fixed{% endif %}</strong><div class="mt-1 text-stone-500">{% if rule.threshold_amount %}Threshold {{ biz.currency_symbol }}{{ rule.threshold_amount|num }}{% endif %}{% if rule.cap_amount %}{% if rule.threshold_amount %} · {% endif %}Cap {{ biz.currency_symbol }}{{ rule.cap_amount|num }}{% endif %}{% if not rule.threshold_amount and not rule.cap_amount %}No threshold or cap{% endif %}</div></td>
+            <td class="px-4 py-3 text-xs">{{ rule.get_effect_display }}</td>
+            <td class="px-4 py-3 text-right whitespace-nowrap">
+              <a href="{% url 'payroll_calculation_rule_edit' rule.pk %}" class="text-[#8f172d]">Edit</a>
+              <form method="post" action="{% url 'payroll_calculation_rule_delete' rule.pk %}" class="inline" onsubmit="return confirm('Delete this payroll calculation rule? Existing payslips will keep their frozen calculation details.');">
+                {% csrf_token %}<button class="ml-3 text-xs text-rose-700">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% empty %}<tr><td colspan="4" class="px-4 py-8 text-center text-stone-500">No automatic pay calculations configured yet.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4">
+    <h3 class="font-semibold">Add calculation rule</h3>
+    <div class="mt-2 rounded-lg border border-[#E7DFCC] bg-white p-3 text-[11px] leading-5 text-stone-600">
+      <strong class="text-stone-700">Pension with both portions:</strong> create two separate rules with category <em>Pension</em>. For the staff portion choose <strong>Deduct from staff pay</strong>; for the business portion choose <strong>Employer contribution only</strong>. They may use different rates, thresholds or caps.
+    </div>
+    <form method="post" class="mt-4 space-y-3">
+      {% csrf_token %}
+      {% for error in payroll_rule_form.non_field_errors %}<div class="rounded-lg bg-rose-50 p-2 text-xs text-rose-700">{{ error }}</div>{% endfor %}
+      {% for field in payroll_rule_form %}{% include '_field.html' with field=field %}{% endfor %}
+      <button name="action" value="add_rule" {% if not payroll_state.enabled %}disabled{% endif %} class="w-full rounded-md bg-[#050733] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">Add calculation rule</button>
+    </form>
+  </section>
+</div>
+{% include 'accounts/_payroll_user_autofill.html' %}
+{% endblock %}

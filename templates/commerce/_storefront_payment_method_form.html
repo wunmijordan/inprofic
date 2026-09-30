@@ -2,6 +2,13 @@
   {% csrf_token %}
   <input type="hidden" name="method" value="{{ method.code }}">
   <input type="hidden" name="payment_key" value="{{ payment_key }}">
+  {% if method.code == 'transfer' and method.routes %}
+    <label class="mb-3 block text-xs font-semibold text-stone-600">Transfer to
+      <select name="transfer_route_id" required class="mt-1.5 h-10 w-full rounded-lg border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100">
+        {% for route in method.routes %}<option value="{{ route.id }}">{{ route.name }} · {{ route.bank_name }} · {{ route.account_number }}</option>{% endfor %}
+      </select>
+    </label>
+  {% endif %}
   {% if not checkout.customer_email %}
     {% if method.code == 'paystack' or method.code == 'monnify' %}
     <label class="mb-3 block text-xs font-semibold text-stone-600">

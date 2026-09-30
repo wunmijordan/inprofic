@@ -24,6 +24,7 @@ from .models import (
     CommercePaymentAllocation,
     CommercePaymentClaim,
     CommercePaymentConfiguration,
+    CommerceDirectTransferRoute,
     CommercePaymentReceipt,
 )
 from .payment_gateways import initialize_gateway, verify_gateway
@@ -45,6 +46,29 @@ def payment_configuration(business):
     config, _ = CommercePaymentConfiguration.raw_objects.get_or_create(
         business=business, defaults={"created_by": None}
     )
+    # Historical rows may predate these defaults or may have been cleared by an
+    # older settings form. Normalize the canonical values and persist the repair
+    # once, so every caller (settings UI, hosted checkout and headless API) sees
+    # the same durable configuration instead of an in-memory-only fallback.
+    normalized_currency = (config.currency or "").strip().upper() or "NGN"
+    normalized_monnify_url = (config.monnify_base_url or "").strip() or "https://api.monnify.com"
+    normalized_transfer_provider = (config.bank_transfer_provider or "").strip() or (
+        CommercePaymentConfiguration.BANK_TRANSFER_PROVIDER_PAYSTACK
+    )
+    updates = {}
+    if config.currency != normalized_currency:
+        config.currency = normalized_currency
+        updates["currency"] = normalized_currency
+    if config.monnify_base_url != normalized_monnify_url:
+        config.monnify_base_url = normalized_monnify_url
+        updates["monnify_base_url"] = normalized_monnify_url
+    if config.bank_transfer_provider != normalized_transfer_provider:
+        config.bank_transfer_provider = normalized_transfer_provider
+        updates["bank_transfer_provider"] = normalized_transfer_provider
+    if updates:
+        updates["updated_at"] = timezone.now()
+        CommercePaymentConfiguration.raw_objects.filter(pk=config.pk).update(**updates)
+        config.updated_at = updates["updated_at"]
     return config
 
 
@@ -74,6 +98,31 @@ def _configured_active_account(account, business):
     return bool(account and account.active and account.business_id == business.pk)
 
 
+def _manual_transfer_route_queryset(business):
+    """Return every customer/staff-selectable manual transfer route in display order."""
+    return (
+        CommerceDirectTransferRoute.raw_objects.filter(
+            business=business,
+            active=True,
+            transfer_account__business=business,
+            transfer_account__active=True,
+        )
+        .select_related("transfer_account")
+        .order_by("sort_order", "name", "id")
+    )
+
+
+def _serialize_manual_transfer_route(route):
+    return {
+        "id": str(route.pk),
+        "name": route.name,
+        "bank_name": route.bank_name,
+        "account_name": route.account_name,
+        "account_number": route.account_number,
+        "instructions": route.instructions,
+    }
+
+
 def eligible_payment_methods(business, *, surface="public"):
     """Return configured methods for the requested trust surface.
 
@@ -83,18 +132,18 @@ def eligible_payment_methods(business, *, surface="public"):
     """
     config = payment_configuration(business)
     methods = []
+    transfer_routes = list(_manual_transfer_route_queryset(business)) if config.transfer_enabled else []
+    serialized_transfer_routes = [_serialize_manual_transfer_route(route) for route in transfer_routes]
+
     if surface == "pos":
         if config.cash_enabled and _configured_active_account(config.cash_account, business):
             methods.append({"code": CommercePayment.METHOD_CASH, "label": "Cash"})
-        if config.transfer_enabled and _configured_active_account(config.transfer_account, business):
+        if config.transfer_enabled and transfer_routes:
             methods.append({
                 "code": CommercePayment.METHOD_TRANSFER,
                 "label": "Transfer",
                 "confirmation": "staff_confirmation",
-                "bank_name": (config.bank_name or "").strip(),
-                "account_name": (config.bank_account_name or "").strip(),
-                "account_number": (config.bank_account_number or "").strip(),
-                "instructions": (config.bank_instructions or "").strip(),
+                "routes": serialized_transfer_routes,
             })
         if (
             config.paystack_terminal_enabled
@@ -117,18 +166,13 @@ def eligible_payment_methods(business, *, surface="public"):
         and _configured_active_account(config.monnify_account, business)
     ):
         methods.append({"code": CommercePayment.METHOD_MONNIFY, "label": "Secure checkout (Monnify)"})
-    if (
-        config.transfer_enabled
-        and _configured_active_account(config.transfer_account, business)
-        and (config.bank_name or "").strip()
-        and (config.bank_account_name or "").strip()
-        and (config.bank_account_number or "").strip()
-    ):
+    if config.transfer_enabled and transfer_routes:
         methods.append({
             "code": CommercePayment.METHOD_TRANSFER,
             "label": "Transfer",
             "requires_payment_proof": True,
             "confirmation": "staff_review",
+            "routes": serialized_transfer_routes,
         })
     if config.bank_transfer_enabled and _configured_active_account(config.bank_cash_account, business):
         provider = config.bank_transfer_provider
@@ -201,12 +245,15 @@ def serialize_payment(payment, config=None):
     config = config or payment_configuration(payment.business)
     bank_account = None
     if payment.method == CommercePayment.METHOD_TRANSFER:
+        snapshot = (payment.gateway_metadata or {}).get("manual_transfer_route") or {}
         bank_account = {
-            "bank_name": config.bank_name,
-            "account_name": config.bank_account_name,
-            "account_number": config.bank_account_number,
+            "route_id": snapshot.get("id"),
+            "route_name": snapshot.get("name", ""),
+            "bank_name": snapshot.get("bank_name") or config.bank_name,
+            "account_name": snapshot.get("account_name") or config.bank_account_name,
+            "account_number": snapshot.get("account_number") or config.bank_account_number,
             "account_expires_at": None,
-            "display_text": config.bank_instructions or "",
+            "display_text": snapshot.get("instructions") or config.bank_instructions or "",
         }
     elif payment.method == CommercePayment.METHOD_BANK_TRANSFER:
         meta = payment.gateway_metadata or {}
@@ -259,7 +306,13 @@ def serialize_payment(payment, config=None):
     }
 
 
-def _account_for(config, method, business, actor):
+def _account_for(config, method, business, actor, payment=None):
+    if method == CommercePayment.METHOD_TRANSFER and payment is not None:
+        account_id = ((payment.gateway_metadata or {}).get("manual_transfer_route") or {}).get("cash_account_id")
+        if account_id:
+            route_account = CashAccount.raw_objects.filter(pk=account_id, business=business, active=True).first()
+            if route_account:
+                return route_account
     configured = {
         CommercePayment.METHOD_PAYSTACK: config.paystack_account,
         CommercePayment.METHOD_MONNIFY: config.monnify_account,
@@ -311,7 +364,7 @@ def _target_amount(target):
     return Decimal(target.total).quantize(Decimal("0.01"))
 
 
-def initiate_payment(*, intake=None, checkout=None, method, idempotency_key, return_url="", surface="public"):
+def initiate_payment(*, intake=None, checkout=None, method, idempotency_key, return_url="", surface="public", transfer_route_id=None):
     """Initialize payment for either an existing intake or a checkout."""
     if (intake is None) == (checkout is None):
         raise ValidationError("Choose exactly one payment target.")
@@ -326,6 +379,21 @@ def initiate_payment(*, intake=None, checkout=None, method, idempotency_key, ret
         raise ValidationError("Choose a supported payment method.")
     return_url = _validate_return_url(return_url)
     config = payment_configuration(target.business)
+    selected_transfer_route = None
+    if method == CommercePayment.METHOD_TRANSFER:
+        routes = _manual_transfer_route_queryset(target.business)
+        if transfer_route_id not in (None, ""):
+            try:
+                selected_transfer_route = routes.get(pk=int(transfer_route_id))
+            except (TypeError, ValueError, CommerceDirectTransferRoute.DoesNotExist) as exc:
+                raise ValidationError("Choose a valid transfer route for this business.") from exc
+        else:
+            route_choices = list(routes[:2])
+            if not route_choices:
+                raise ValidationError("No active manual transfer route is configured for this business.")
+            if len(route_choices) > 1 and surface == "public":
+                raise ValidationError("Choose which transfer account you want to use.")
+            selected_transfer_route = route_choices[0]
     if checkout is not None:
         _assert_method_eligible(target.business, method, surface=surface)
     elif surface == "public":
@@ -375,6 +443,14 @@ def initiate_payment(*, intake=None, checkout=None, method, idempotency_key, ret
                 business=locked.business, method=method,
                 status__in=CommercePayment.ACTIVE_STATUSES, amount=amount, **target_filter
             ).order_by("-created_at", "-id").first()
+            if compatible and method == CommercePayment.METHOD_TRANSFER and selected_transfer_route:
+                existing_route_id = ((compatible.gateway_metadata or {}).get("manual_transfer_route") or {}).get("id")
+                if str(existing_route_id or "") != str(selected_transfer_route.pk):
+                    if compatible.status in {CommercePayment.STATUS_AWAITING_VERIFICATION, CommercePayment.STATUS_PARTIALLY_PAID}:
+                        raise ValidationError("Resolve the current transfer claim before selecting another transfer account.")
+                    compatible.status = CommercePayment.STATUS_CANCELLED
+                    compatible.save(update_fields=["status", "updated_at"])
+                    compatible = None
             if compatible:
                 payment = compatible
             else:
@@ -402,7 +478,18 @@ def initiate_payment(*, intake=None, checkout=None, method, idempotency_key, ret
                     idempotency_key=idempotency_key,
                     return_url=return_url,
                     expires_at=(locked.reservation_expires_at if checkout is not None else None),
-                    instructions=_manual_instructions(config, method),
+                    instructions=(selected_transfer_route.instructions if selected_transfer_route else _manual_instructions(config, method)),
+                    gateway_metadata=({
+                        "manual_transfer_route": {
+                            "id": selected_transfer_route.pk,
+                            "name": selected_transfer_route.name,
+                            "bank_name": selected_transfer_route.bank_name,
+                            "account_name": selected_transfer_route.account_name,
+                            "account_number": selected_transfer_route.account_number,
+                            "instructions": selected_transfer_route.instructions,
+                            "cash_account_id": selected_transfer_route.transfer_account_id,
+                        }
+                    } if selected_transfer_route else {}),
                     status=(CommercePayment.STATUS_PENDING if method == CommercePayment.METHOD_CASH else CommercePayment.STATUS_AWAITING_CUSTOMER),
                 )
                 payment_created = True
@@ -651,7 +738,7 @@ def record_verified_payment(
     ).exists():
         raise ValidationError("That external payment reference has already been settled.")
     config = payment_configuration(payment.business)
-    account = _account_for(config, payment.method, payment.business, actor)
+    account = _account_for(config, payment.method, payment.business, actor, payment=payment)
     verified_at = verified_at or timezone.now()
     ledger = record_cash(
         payment.business,

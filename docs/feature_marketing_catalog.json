@@ -144,6 +144,15 @@
     "added_on": ""
   },
   {
+    "id": "payroll-addon",
+    "name": "Staff payroll add-on with shareable payslips",
+    "group": "people",
+    "audience": "business owners and Business Admins",
+    "proof": "Link existing INPROFIC users or add non-user staff, configure pay structures plus tax, pension and other calculation rules, then issue frozen-detail payslips that can be shared by email or WhatsApp.",
+    "highlight": "NEW",
+    "added_on": "2026-09-29"
+  },
+  {
     "id": "commerce-storefront",
     "name": "Hosted storefront and Order Now",
     "group": "commerce",
@@ -172,10 +181,10 @@
   },
   {
     "id": "direct-transfer",
-    "name": "Transfer without a payment gateway",
+    "name": "Manual transfer routes (no gateway)",
     "group": "commerce",
     "audience": "businesses that prefer direct bank transfer",
-    "proof": "Show the business bank account, require customer payment proof externally, and keep payment pending until staff verifies the actual credit.",
+    "proof": "Offer one or more business transfer accounts, let hosted/headless customers choose the destination, require payment proof externally, and keep payment pending until staff verifies the actual credit.",
     "highlight": "NEW",
     "added_on": "2026-09-20"
   },

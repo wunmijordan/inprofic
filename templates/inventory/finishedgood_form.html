@@ -156,7 +156,7 @@
 
     <section class="cf-form-section mb-4">
     <span class="cf-form-section-title block mb-1">Channel selling prices</span>
-    <p class="text-[11px] text-stone-400 mb-2">Optional channel-specific prices. If a channel is left blank, the default Selling Price above is used.</p>
+    <p class="text-[11px] text-stone-400 mb-2">Optional channel-specific prices. Physical Store and Online can fall back to the default Selling Price above. {{ bulk_channel_label }} is isolated from the standard portion: set an explicit channel price when selling the base product there, or use the Bulk / distribution options above; if neither is set, that product is unavailable for {{ bulk_channel_label }}.</p>
     {{ channel_price_formset.management_form }}
     {% if channel_price_formset.non_form_errors %}
       <div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-2">{{ channel_price_formset.non_form_errors }}</div>

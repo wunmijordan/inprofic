@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% load core_extras %}
+{% block content %}
+<div class="mx-auto max-w-xl">
+  <a href="{% url 'payroll_staff_payslips' staff.pk %}" class="text-sm text-[#8f172d] underline">← {{ staff.full_name }} payslips</a>
+  <div class="mt-4 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
+    <div class="text-[10px] font-bold uppercase tracking-[.18em] text-stone-400">Prepare payslip</div>
+    <h1 class="mt-1 font-display text-xl font-semibold text-[#8f172d]">{{ staff.full_name }}</h1>
+    <p class="mt-1 text-xs leading-5 text-stone-500">Base values start from the saved pay structure. Recurring staff items and configured tax, pension or other rules are calculated automatically and frozen into this payslip when it is created.</p>
+
+    {% if recurring_adjustments %}
+    <div class="mt-4 rounded-xl border border-[#E7DFCC] bg-white p-3">
+      <div class="text-xs font-semibold text-stone-700">Recurring items to be included</div>
+      <div class="mt-2 space-y-1 text-xs text-stone-600">
+        {% for item in recurring_adjustments %}<div class="flex justify-between gap-3"><span>{% if item.kind == 'allowance' %}+{% else %}−{% endif %} {{ item.name }}</span><strong>{{ biz.currency_symbol }}{{ item.amount|num }}</strong></div>{% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <form method="post" class="mt-5 space-y-3">
+      {% csrf_token %}
+      {% for error in form.non_field_errors %}<div class="rounded-lg bg-rose-50 p-2 text-xs text-rose-700">{{ error }}</div>{% endfor %}
+      {% for field in form %}{% include '_field.html' with field=field %}{% endfor %}
+      <button class="w-full rounded-md bg-[#8f172d] px-4 py-2.5 text-sm font-semibold text-white">Create payslip</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
