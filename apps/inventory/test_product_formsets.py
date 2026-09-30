@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from core.models import Business
@@ -49,3 +50,22 @@ class ExistingAwareProductFormSetTests(TestCase):
         self.assertEqual(option.finished_good_id, self.good.pk)
         self.assertEqual(option.base_quantity, Decimal("2"))
         self.assertEqual(FinishedGood.raw_objects.filter(business=self.business).count(), 1)
+
+    def test_individual_option_missing_enabled_channel_price_is_validation_error(self):
+        option = IndividualSaleOption(
+            business=self.business,
+            finished_good=self.good,
+            name="Unpriced Extra",
+            customer_quantity=Decimal("1"),
+            customer_unit="serving",
+            base_quantity=Decimal("1"),
+            physical_store_enabled=True,
+            physical_store_price=None,
+            online_enabled=False,
+            distribution_enabled=False,
+        )
+
+        with self.assertRaises(ValidationError) as captured:
+            option.full_clean()
+
+        self.assertIn("physical_store_price", captured.exception.message_dict)

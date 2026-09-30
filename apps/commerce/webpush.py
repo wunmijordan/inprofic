@@ -474,6 +474,26 @@ def dispatch_pending_pushes(*, notice_limit=30, delivery_limit=40):
         close_old_connections()
 
 
+def _run_push_dispatcher():
+    """Drain a small Web Push burst without leaking a thread-local DB connection."""
+    close_old_connections()
+    try:
+        # Drain small bursts without spawning one thread per notification.
+        # A hard loop cap preserves the free Render instance for web traffic.
+        for _ in range(4):
+            dispatch_pending_pushes(notice_limit=50, delivery_limit=80)
+            if not CommerceNotification.raw_objects.filter(
+                push_processed_at__isnull=True
+            ).exists():
+                break
+    finally:
+        # The final ``exists()`` above can open a connection after
+        # ``dispatch_pending_pushes()`` has already closed its own. Background
+        # threads don't receive Django's request-finished connection cleanup,
+        # so return that connection to the Psycopg pool explicitly.
+        close_old_connections()
+
+
 def kick_push_dispatcher():
     """Start one best-effort in-process dispatcher without delaying the response.
 
@@ -485,18 +505,17 @@ def kick_push_dispatcher():
 
     def runner():
         try:
-            # Drain small bursts without spawning one thread per notification.
-            # A hard loop cap preserves the free Render instance for web traffic.
-            for _ in range(4):
-                dispatch_pending_pushes(notice_limit=50, delivery_limit=80)
-                if not CommerceNotification.raw_objects.filter(push_processed_at__isnull=True).exists():
-                    break
+            _run_push_dispatcher()
         except Exception:
             logger.exception("Background commerce Web Push dispatch failed")
         finally:
             _dispatch_lock.release()
 
-    threading.Thread(target=runner, name="commerce-web-push", daemon=True).start()
+    threading.Thread(
+        target=runner,
+        name="commerce-web-push",
+        daemon=True,
+    ).start()
 
 
 def schedule_push_dispatch():

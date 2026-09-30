@@ -29,6 +29,7 @@ from .notification_services import notify_commerce
 from .realtime import business_notification_group, user_notification_group
 from .payment_services import record_verified_payment
 from .services import create_intake
+from .webpush import _run_push_dispatcher
 
 
 class CommerceNotificationTests(TestCase):
@@ -424,6 +425,24 @@ class CommerceNotificationTests(TestCase):
                 business=self.business, idempotency_key="hosted-without-phone"
             ).exists()
         )
+
+
+class CommercePushDispatcherConnectionTests(TestCase):
+    def test_background_dispatcher_closes_thread_database_connections(self):
+        with (
+            patch("commerce.webpush.close_old_connections") as close_connections,
+            patch("commerce.webpush.dispatch_pending_pushes") as dispatch_pending,
+            patch("commerce.webpush.CommerceNotification") as notification_model,
+        ):
+            notification_model.raw_objects.filter.return_value.exists.return_value = False
+
+            _run_push_dispatcher()
+
+        dispatch_pending.assert_called_once_with(
+            notice_limit=50,
+            delivery_limit=80,
+        )
+        self.assertEqual(close_connections.call_count, 2)
 
 
 class CommerceNotificationSocketTests(TransactionTestCase):

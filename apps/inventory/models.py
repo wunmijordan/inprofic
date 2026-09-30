@@ -1,6 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal
 import uuid
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 from core.alert_tunes import ALERT_TUNE_CHOICES
