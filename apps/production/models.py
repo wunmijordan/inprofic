@@ -13,6 +13,13 @@ class Order(BusinessOwnedModel):
     Approved and completed as a whole — all its line items together, not
     item-by-item. See docs/ARCHITECTURE.md for the full flow."""
 
+    BASIS_PRODUCT_QUANTITY = "product_quantity"
+    BASIS_BASE_MATERIAL = "base_material"
+    PRODUCTION_BASIS_CHOICES = [
+        (BASIS_PRODUCT_QUANTITY, "Product quantity"),
+        (BASIS_BASE_MATERIAL, "Base material"),
+    ]
+
     TYPE_CHOICES = [("distribution", "Distribution Order"), ("online", "Online Order"), ("physical_store", "Physical Store Order")]
     STATUS_CHOICES = [
         ("pending", "Pending"), ("approved", "Approved"),
@@ -43,6 +50,14 @@ class Order(BusinessOwnedModel):
     non_stock_purpose = models.CharField(
         max_length=255, blank=True, default="",
         help_text="Specific purpose when production is not going to Physical Store stock (e.g. Staff Welfare, Gift, Charity).",
+    )
+    production_basis = models.CharField(
+        max_length=24, choices=PRODUCTION_BASIS_CHOICES, default=BASIS_PRODUCT_QUANTITY,
+        help_text="Choose whether this production order is sized by product quantities or a shared base-material allocation.",
+    )
+    base_material_quantity = models.DecimalField(
+        max_digits=14, decimal_places=4, default=0, blank=True,
+        help_text="Total quantity of the shared base material allocated across all products in this production order.",
     )
     customer = models.ForeignKey("sales.Customer", null=True, blank=True, on_delete=models.SET_NULL, related_name="production_orders")
     customer_name = models.CharField(max_length=120, blank=True,
@@ -128,6 +143,50 @@ class Order(BusinessOwnedModel):
             who = "Physical store"
         return f"Order #{self.display_number} — {who}"
 
+    def _basis_items(self):
+        prefetched = getattr(self, "_prefetched_objects_cache", {}).get("items")
+        return list(prefetched) if prefetched is not None else list(
+            self.items.select_related("finished_good__base_material").all()
+        )
+
+    @property
+    def shared_base_material(self):
+        if self.production_basis != self.BASIS_BASE_MATERIAL:
+            return None
+        materials = []
+        material_ids = set()
+        for item in self._basis_items():
+            material = getattr(item.finished_good, "base_material", None)
+            # A shared basis is only meaningful when every active product has
+            # a configured base material. The formset enforces this for new
+            # edits; this guard keeps the derived display safe for imported or
+            # otherwise inconsistent historical data too.
+            if material is None:
+                return None
+            materials.append(material)
+            material_ids.add(material.pk)
+        if len(material_ids) != 1 or not materials:
+            return None
+        return materials[0]
+
+    @property
+    def base_material_used_quantity(self):
+        if self.production_basis != self.BASIS_BASE_MATERIAL:
+            return Decimal("0")
+        return sum(
+            (item.base_material_quantity or Decimal("0") for item in self._basis_items()),
+            Decimal("0"),
+        )
+
+    @property
+    def base_material_remaining_quantity(self):
+        if self.production_basis != self.BASIS_BASE_MATERIAL:
+            return Decimal("0")
+        return max(
+            Decimal("0"),
+            (self.base_material_quantity or Decimal("0")) - self.base_material_used_quantity,
+        )
+
     @property
     def total(self):
         return sum((i.line_total for i in self.items.all()), Decimal("0"))
@@ -206,12 +265,11 @@ class OrderNumberSequence(BusinessOwnedModel):
 
 
 class OrderItem(TimestampedModel):
-    BASIS_PRODUCT_QUANTITY = "product_quantity"
-    BASIS_BASE_MATERIAL = "base_material"
-    PRODUCTION_BASIS_CHOICES = [
-        (BASIS_PRODUCT_QUANTITY, "Product quantity"),
-        (BASIS_BASE_MATERIAL, "Base material"),
-    ]
+    # Retained on line items for historical compatibility and as an audit
+    # snapshot of how much of the shared base-material pool each product used.
+    BASIS_PRODUCT_QUANTITY = Order.BASIS_PRODUCT_QUANTITY
+    BASIS_BASE_MATERIAL = Order.BASIS_BASE_MATERIAL
+    PRODUCTION_BASIS_CHOICES = Order.PRODUCTION_BASIS_CHOICES
 
     order = models.ForeignKey(Order, related_name="items", on_delete=models.CASCADE)
     finished_good = models.ForeignKey("inventory.FinishedGood", on_delete=models.PROTECT)
@@ -254,6 +312,12 @@ class OrderItem(TimestampedModel):
 
     @property
     def base_material_batch_factor(self):
+        # New base-material production is order-scoped: the entered product
+        # quantities are authoritative and this line field is only the amount
+        # consumed from the shared pool. Legacy rows (whose Order still uses
+        # product_quantity) retain the old input-driven calculation.
+        if self.order.production_basis == Order.BASIS_BASE_MATERIAL:
+            return None
         if self.production_basis != self.BASIS_BASE_MATERIAL or not self.finished_good_id:
             return None
         if not self.finished_good.base_material_id:

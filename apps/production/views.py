@@ -115,6 +115,8 @@ def order_form(request, pk=None):
             store_replenishment=store_replenishment,
             market_stock=request.POST.get("order_type") == "distribution" and request.POST.get("is_market_stock") in ("1", "true", "True", "on", "yes"),
             order_type=request.POST.get("order_type"),
+            production_basis=request.POST.get("production_basis"),
+            base_material_quantity=request.POST.get("base_material_quantity"),
         )
         has_items = formset.is_valid() and any(
             f.cleaned_data and not f.cleaned_data.get("DELETE") for f in formset.forms
@@ -169,10 +171,19 @@ def order_form(request, pk=None):
                 order.unpaid_description = "Customer receivable — payment to be recorded through Finance."
             order.save()
             formset.instance = order
-            items = formset.save(commit=False)
-            for item in items:
+            # Populate Django's deletion list, then save every active row. The
+            # order-wide production basis can change a line's internal
+            # base-material usage snapshot even when the visible row fields did
+            # not otherwise change.
+            formset.save(commit=False)
+            for item_form in formset.forms:
+                data = getattr(item_form, "cleaned_data", None) or {}
+                if data.get("DELETE") or not data.get("finished_good"):
+                    continue
+                item = item_form.instance
+                item.order = order
                 item.price = item.finished_good.selling_price_for(order.order_type, order.customer)
-                if order.order_type == "physical_store":
+                if order.order_type == "physical_store" or order.production_basis == Order.BASIS_BASE_MATERIAL:
                     item.production_batch_qty = Decimal("0")
                     item.production_piece_qty = Decimal("0")
                 item.save()
@@ -202,6 +213,8 @@ def order_form(request, pk=None):
             instance=obj, store_replenishment=store_replenishment,
             market_stock=bool(obj and obj.is_market_stock_order),
             order_type=(obj.order_type if obj else "distribution"),
+            production_basis=(obj.production_basis if obj else Order.BASIS_PRODUCT_QUANTITY),
+            base_material_quantity=(obj.base_material_quantity if obj else Decimal("0")),
         )
     prices = _price_map()
     return render(request, "production/order_form.html", {"form": form, "formset": formset, "prices": prices, "obj": obj, "target_run": target_run})
@@ -223,6 +236,8 @@ def order_recreate(request, pk):
             is_market_stock=source.is_market_stock,
             production_destination=source.production_destination,
             non_stock_purpose=source.non_stock_purpose,
+            production_basis=source.production_basis,
+            base_material_quantity=source.base_material_quantity,
             customer=source.customer, customer_name=source.customer_name,
             customer_region=source.customer_region, customer_group=source.customer_group,
             transaction_type=source.transaction_type,
@@ -545,7 +560,7 @@ def order_detail(request, pk):
         Order.objects.select_related("customer").prefetch_related(
             Prefetch(
                 "items",
-                queryset=OrderItem.objects.select_related("finished_good").prefetch_related(
+                queryset=OrderItem.objects.select_related("finished_good__base_material").prefetch_related(
                     "finished_good__recipe_items__raw_material",
                     "finished_good__production_materials__raw_material",
                 ),

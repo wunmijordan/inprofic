@@ -21,7 +21,7 @@ class StyledModelForm(forms.ModelForm):
 class OrderForm(StyledModelForm):
     class Meta:
         model = Order
-        fields = ["date", "order_type", "is_market_stock", "production_destination", "non_stock_purpose", "customer", "customer_name", "customer_region", "customer_group", "customer_payment_status", "customer_payment_method", "customer_payment_account",
+        fields = ["date", "order_type", "is_market_stock", "production_destination", "non_stock_purpose", "production_basis", "base_material_quantity", "customer", "customer_name", "customer_region", "customer_group", "customer_payment_status", "customer_payment_method", "customer_payment_account",
                   "transaction_type", "unpaid_description", "payment_method", "account", "notes"]
         widgets = {
             "date": forms.DateInput(attrs={"type": "date"}),
@@ -55,6 +55,11 @@ class OrderForm(StyledModelForm):
         self.fields["customer_region"].label = "Region (optional)"
         self.fields["customer_group"].required = False
         self.fields["customer_group"].label = "Group (optional)"
+        self.fields["production_basis"].required = False
+        self.fields["production_basis"].label = "Production basis"
+        self.fields["base_material_quantity"].required = False
+        self.fields["base_material_quantity"].label = "Base material quantity"
+        self.fields["base_material_quantity"].widget.attrs.update({"min": "0", "step": "0.0001", "placeholder": "0"})
         self.fields["payment_method"].required = False
         self.fields["transaction_type"].required = False
         accounts = CashAccount.objects.filter(active=True).order_by("name")
@@ -87,6 +92,19 @@ class OrderForm(StyledModelForm):
         customer = cleaned.get("customer")
         market_stock = order_type == "distribution" and bool(cleaned.get("is_market_stock"))
         cleaned["is_market_stock"] = market_stock
+        basis = cleaned.get("production_basis") or Order.BASIS_PRODUCT_QUANTITY
+        base_allowed = order_type == "physical_store" or market_stock
+        if basis == Order.BASIS_BASE_MATERIAL:
+            if not base_allowed:
+                self.add_error(
+                    "production_basis",
+                    "Base material sizing is available for stock production that is not assigned to a customer.",
+                )
+            if (cleaned.get("base_material_quantity") or Decimal("0")) <= 0:
+                self.add_error("base_material_quantity", "Enter the total base material available for this production order.")
+        else:
+            cleaned["production_basis"] = Order.BASIS_PRODUCT_QUANTITY
+            cleaned["base_material_quantity"] = Decimal("0")
         # Assigned Distribution demand retains the customer-master requirement.
         # Market-stock Distribution demand is deliberately unassigned and only
         # becomes a sale later through the normal Sales workflow.
@@ -137,44 +155,50 @@ class OrderForm(StyledModelForm):
 class OrderItemForm(StyledModelForm):
     class Meta:
         model = OrderItem
-        fields = ["finished_good", "production_basis", "base_material_quantity", "batch_qty", "piece_qty", "production_batch_qty", "production_piece_qty", "discount"]
+        fields = ["finished_good", "batch_qty", "piece_qty", "production_batch_qty", "production_piece_qty", "discount"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for name in ("batch_qty", "piece_qty", "production_batch_qty", "production_piece_qty", "discount"):
             self.fields[name].required = False
             self.fields[name].widget.attrs.update({"min": "0", "step": "0.01"})
-        self.fields["production_basis"].required = False
-        self.fields["production_basis"].label = "Production basis"
-        self.fields["base_material_quantity"].required = False
-        self.fields["base_material_quantity"].label = "Base material quantity"
-        self.fields["base_material_quantity"].widget.attrs.update({"min": "0", "step": "0.0001", "placeholder": "0"})
         self.fields["production_batch_qty"].label = "Produce batches"
         self.fields["production_piece_qty"].label = "Produce pieces"
 
     def clean(self):
         cleaned = super().clean()
-        for name in ("batch_qty", "piece_qty", "production_batch_qty", "production_piece_qty", "discount", "base_material_quantity"):
+        for name in ("batch_qty", "piece_qty", "production_batch_qty", "production_piece_qty", "discount"):
             if cleaned.get(name) is None:
                 cleaned[name] = Decimal("0")
-        basis = cleaned.get("production_basis") or OrderItem.BASIS_PRODUCT_QUANTITY
-        if cleaned.get("finished_good") and basis != OrderItem.BASIS_BASE_MATERIAL and cleaned["batch_qty"] <= 0 and cleaned["piece_qty"] <= 0:
+        if cleaned.get("finished_good") and cleaned["batch_qty"] <= 0 and cleaned["piece_qty"] <= 0:
             self.add_error("piece_qty", "Enter at least one batch or piece.")
-        if basis == OrderItem.BASIS_BASE_MATERIAL and cleaned.get("finished_good") and cleaned["base_material_quantity"] <= 0:
-            self.add_error("base_material_quantity", "Enter how much base material you want to use.")
         return cleaned
 
 
 class OrderItemFormSetBase(BaseInlineFormSet):
-    """Apply the Physical Store product restriction only to store replenishment.
+    """Apply product restrictions and the order-wide production basis.
 
-    Non-stock Physical Store production is intentionally allowed to use any
-    finished good, including products with reorder_level=0. Distribution and
-    Online orders also retain the full finished-good catalogue.
+    A Base material production order owns one shared material allocation. Each
+    selected product keeps its normal batch/piece quantity, and its configured
+    recipe converts that quantity into consumption from the shared pool.
     """
-    def __init__(self, *args, store_replenishment=False, market_stock=False, order_type=None, **kwargs):
-        self.order_type = order_type or getattr(kwargs.get("instance"), "order_type", None)
+
+    def __init__(
+        self, *args, store_replenishment=False, market_stock=False, order_type=None,
+        production_basis=None, base_material_quantity=None, **kwargs
+    ):
+        instance = kwargs.get("instance")
+        self.order_type = order_type or getattr(instance, "order_type", None)
         self.market_stock = bool(market_stock)
+        self.production_basis = production_basis or getattr(
+            instance, "production_basis", Order.BASIS_PRODUCT_QUANTITY
+        )
+        try:
+            self.base_material_quantity = Decimal(
+                str(base_material_quantity if base_material_quantity not in (None, "") else getattr(instance, "base_material_quantity", 0) or 0)
+            )
+        except Exception:
+            self.base_material_quantity = Decimal("0")
         super().__init__(*args, **kwargs)
         if not self.is_bound and getattr(self.instance, "pk", None):
             self.extra = 0 if self.get_queryset().exists() else 1
@@ -199,59 +223,103 @@ class OrderItemFormSetBase(BaseInlineFormSet):
         super().clean()
         if any(self.errors):
             return
+
+        basis = self.production_basis or Order.BASIS_PRODUCT_QUANTITY
+        base_allowed = self.order_type == "physical_store" or (
+            self.order_type == "distribution" and self.market_stock
+        )
+        if basis == Order.BASIS_BASE_MATERIAL and not base_allowed:
+            raise forms.ValidationError(
+                "Base material sizing is available for stock production that is not assigned to a customer."
+            )
+        if basis == Order.BASIS_BASE_MATERIAL and self.base_material_quantity <= 0:
+            raise forms.ValidationError("Enter the total base material available for this production order.")
+
+        shared_material = None
+        total_base_used = Decimal("0")
+
         for form in self.forms:
             data = getattr(form, "cleaned_data", None) or {}
             if data.get("DELETE") or not data.get("finished_good"):
                 continue
+
             good = data["finished_good"]
             upb = good.units_per_batch or Decimal("1")
-            basis = data.get("production_basis") or OrderItem.BASIS_PRODUCT_QUANTITY
-            base_allowed = self.order_type == "physical_store" or (self.order_type == "distribution" and self.market_stock)
-            if basis == OrderItem.BASIS_BASE_MATERIAL:
-                if not base_allowed:
-                    form.add_error("production_basis", "Base material sizing is available for stock production that is not assigned to a customer.")
-                    continue
-                if not good.base_material_id:
-                    form.add_error("production_basis", "Choose a base material on this product before using Base material production.")
-                    continue
-                recipe_row = good.recipe_items.filter(raw_material_id=good.base_material_id).first()
-                if recipe_row is None or recipe_row.qty_per_batch <= 0:
-                    form.add_error("production_basis", "The product's base material must have a positive quantity in its recipe.")
-                    continue
-                base_qty = data.get("base_material_quantity") or Decimal("0")
-                if base_qty <= 0:
-                    form.add_error("base_material_quantity", "Enter how much base material you want to use.")
-                    continue
-                multiplier = base_qty / recipe_row.qty_per_batch
-                data["batch_qty"] = multiplier
-                data["piece_qty"] = Decimal("0")
-                data["production_batch_qty"] = Decimal("0")
-                data["production_piece_qty"] = Decimal("0")
-                form.instance.batch_qty = multiplier
-                form.instance.piece_qty = Decimal("0")
-                form.instance.production_batch_qty = Decimal("0")
-                form.instance.production_piece_qty = Decimal("0")
-                form.instance.production_basis = OrderItem.BASIS_BASE_MATERIAL
-                form.instance.base_material_quantity = base_qty
-            else:
-                data["production_basis"] = OrderItem.BASIS_PRODUCT_QUANTITY
-                data["base_material_quantity"] = Decimal("0")
-                form.instance.production_basis = OrderItem.BASIS_PRODUCT_QUANTITY
-                form.instance.base_material_quantity = Decimal("0")
-            ordered = (data.get("batch_qty") or Decimal("0")) * upb + (data.get("piece_qty") or Decimal("0"))
+            batch_qty = data.get("batch_qty") or Decimal("0")
+            piece_qty = data.get("piece_qty") or Decimal("0")
+            ordered = batch_qty * upb + piece_qty
             plan_batches = data.get("production_batch_qty") or Decimal("0")
             plan_pieces = data.get("production_piece_qty") or Decimal("0")
             production_plan = plan_batches * upb + plan_pieces
+
+            if basis == Order.BASIS_BASE_MATERIAL:
+                if not good.base_material_id:
+                    form.add_error(
+                        "finished_good",
+                        "This product needs a configured base material before it can share this production's base-material allocation.",
+                    )
+                    continue
+                recipe_row = good.recipe_items.filter(raw_material_id=good.base_material_id).first()
+                if recipe_row is None or recipe_row.qty_per_batch <= 0:
+                    form.add_error(
+                        "finished_good",
+                        "This product's base material must have a positive quantity in its recipe.",
+                    )
+                    continue
+
+                material = good.base_material
+                if shared_material is None:
+                    shared_material = material
+                elif material.pk != shared_material.pk:
+                    form.add_error(
+                        "finished_good",
+                        f"Choose a product that uses {shared_material.name} as its base material. "
+                        "A single production order can only draw from one shared base-material allocation.",
+                    )
+                    continue
+
+                production_equivalent = batch_qty + (piece_qty / upb)
+                row_base_used = recipe_row.qty_per_batch * production_equivalent
+                total_base_used += row_base_used
+
+                # Keep the existing line fields as an audit snapshot only. The
+                # product quantity is now authoritative; base material no longer
+                # determines each product's output independently.
+                form.instance.production_basis = OrderItem.BASIS_BASE_MATERIAL
+                form.instance.base_material_quantity = row_base_used
+                data["production_batch_qty"] = Decimal("0")
+                data["production_piece_qty"] = Decimal("0")
+                form.instance.production_batch_qty = Decimal("0")
+                form.instance.production_piece_qty = Decimal("0")
+            else:
+                form.instance.production_basis = OrderItem.BASIS_PRODUCT_QUANTITY
+                form.instance.base_material_quantity = Decimal("0")
+
             if self.order_type == "physical_store":
                 # A physical-store order already is a production request; the
                 # separate plan is only meaningful for customer-order offcuts.
                 data["production_batch_qty"] = Decimal("0")
                 data["production_piece_qty"] = Decimal("0")
-            elif production_plan > 0 and production_plan < ordered:
+                form.instance.production_batch_qty = Decimal("0")
+                form.instance.production_piece_qty = Decimal("0")
+            elif basis != Order.BASIS_BASE_MATERIAL and production_plan > 0 and production_plan < ordered:
                 form.add_error(
                     "production_batch_qty",
                     f"Production plan ({production_plan:.2f}) cannot be below the customer order ({ordered:.2f}). Leave both production-plan fields at 0 to produce exactly the order quantity.",
                 )
+
+        if (
+            basis == Order.BASIS_BASE_MATERIAL
+            and shared_material is not None
+            and total_base_used > self.base_material_quantity
+        ):
+            excess = total_base_used - self.base_material_quantity
+            raise forms.ValidationError(
+                f"The selected product quantities require {total_base_used:.4f} {shared_material.usage_unit} "
+                f"of {shared_material.name}, but this production has {self.base_material_quantity:.4f} "
+                f"{shared_material.usage_unit} available. Reduce product quantities by an equivalent "
+                f"{excess:.4f} {shared_material.usage_unit} before saving."
+            )
 
 
 OrderItemFormSet = inlineformset_factory(

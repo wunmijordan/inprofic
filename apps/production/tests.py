@@ -222,7 +222,20 @@ class BaseMaterialProductionTests(TestCase):
             reorder_level=Decimal("10"),
             cost_per_unit=Decimal("1000"),
         )
-        self.good = FinishedGood.raw_objects.create(
+        self.flour = RawMaterial.raw_objects.create(
+            business=self.business,
+            name="Flour",
+            category=RawMaterial.CATEGORY_INGREDIENT,
+            purchase_unit="bag",
+            package_qty=Decimal("50"),
+            package_unit="kg",
+            usage_unit="kg",
+            usage_conversion_factor=Decimal("1"),
+            stock=Decimal("100"),
+            reorder_level=Decimal("10"),
+            cost_per_unit=Decimal("900"),
+        )
+        self.jollof = FinishedGood.raw_objects.create(
             business=self.business,
             name="Jollof Rice",
             unit="portion",
@@ -232,80 +245,180 @@ class BaseMaterialProductionTests(TestCase):
             reorder_level=Decimal("0"),
             selling_price=Decimal("2500"),
         )
+        self.fried = FinishedGood.raw_objects.create(
+            business=self.business,
+            name="Fried Rice",
+            unit="portion",
+            units_per_batch=Decimal("40"),
+            base_material=self.rice,
+            stock=Decimal("0"),
+            reorder_level=Decimal("0"),
+            selling_price=Decimal("2600"),
+        )
+        self.bread = FinishedGood.raw_objects.create(
+            business=self.business,
+            name="Bread",
+            unit="loaf",
+            units_per_batch=Decimal("20"),
+            base_material=self.flour,
+            stock=Decimal("0"),
+            reorder_level=Decimal("0"),
+            selling_price=Decimal("1500"),
+        )
         RecipeItem.objects.create(
-            finished_good=self.good,
+            finished_good=self.jollof,
             raw_material=self.rice,
             qty_per_batch=Decimal("5"),
         )
+        RecipeItem.objects.create(
+            finished_good=self.fried,
+            raw_material=self.rice,
+            qty_per_batch=Decimal("4"),
+        )
+        RecipeItem.objects.create(
+            finished_good=self.bread,
+            raw_material=self.flour,
+            qty_per_batch=Decimal("6"),
+        )
 
-    def formset_data(self, *, base_qty="15"):
-        return {
-            "items-TOTAL_FORMS": "1",
+    def formset_data(self, rows):
+        data = {
+            "items-TOTAL_FORMS": str(len(rows)),
             "items-INITIAL_FORMS": "0",
             "items-MIN_NUM_FORMS": "0",
             "items-MAX_NUM_FORMS": "1000",
-            "items-0-finished_good": str(self.good.pk),
-            "items-0-production_basis": OrderItem.BASIS_BASE_MATERIAL,
-            "items-0-base_material_quantity": base_qty,
-            "items-0-batch_qty": "0",
-            "items-0-piece_qty": "0",
-            "items-0-production_batch_qty": "0",
-            "items-0-production_piece_qty": "0",
-            "items-0-discount": "0",
         }
+        for index, row in enumerate(rows):
+            data.update({
+                f"items-{index}-finished_good": str(row["good"].pk),
+                f"items-{index}-batch_qty": str(row.get("batches", "0")),
+                f"items-{index}-piece_qty": str(row.get("pieces", "0")),
+                f"items-{index}-production_batch_qty": "0",
+                f"items-{index}-production_piece_qty": "0",
+                f"items-{index}-discount": "0",
+            })
+        return data
 
-    def test_market_stock_order_can_be_sized_by_base_material(self):
+    def base_formset(self, rows, *, allocated="15", market_stock=True):
+        order = Order(
+            business=self.business,
+            order_type="distribution",
+            is_market_stock=market_stock,
+            production_basis=Order.BASIS_BASE_MATERIAL,
+            base_material_quantity=Decimal(allocated),
+        )
+        return order, OrderItemFormSet(
+            self.formset_data(rows),
+            instance=order,
+            market_stock=market_stock,
+            order_type="distribution",
+            production_basis=Order.BASIS_BASE_MATERIAL,
+            base_material_quantity=allocated,
+        )
+
+    def test_shared_base_material_is_consumed_by_all_product_quantities(self):
+        order, formset = self.base_formset([
+            {"good": self.jollof, "batches": "1", "pieces": "25"},
+            {"good": self.fried, "batches": "1", "pieces": "20"},
+        ])
+
+        self.assertTrue(formset.is_valid(), formset.errors)
+        jollof_item = formset.forms[0].instance
+        fried_item = formset.forms[1].instance
+        self.assertEqual(jollof_item.base_material_quantity, Decimal("7.5"))
+        self.assertEqual(fried_item.base_material_quantity, Decimal("6.0"))
+        self.assertEqual(jollof_item.total_units, Decimal("75"))
+        self.assertEqual(fried_item.total_units, Decimal("60"))
+        self.assertEqual(jollof_item.production_basis, OrderItem.BASIS_BASE_MATERIAL)
+        self.assertEqual(fried_item.production_basis, OrderItem.BASIS_BASE_MATERIAL)
+
+        order.save()
+        for form in formset.forms:
+            form.instance.order = order
+            form.instance.price = form.instance.finished_good.selling_price
+            form.instance.save()
+        self.assertEqual(order.base_material_used_quantity, Decimal("13.5000"))
+        self.assertEqual(order.base_material_remaining_quantity, Decimal("1.5000"))
+        self.assertEqual(order.material_requirements()[self.rice.pk][1], Decimal("13.5"))
+
+        # Approval must use the same recipe-proportional requirement and must
+        # not deduct the order-level allocation a second time.
+        from .views import _material_release_plan
+
+        _, usage_entries, aggregated, errors = _material_release_plan(order)
+        self.assertEqual(errors, [])
+        self.assertEqual(aggregated[self.rice.pk][1], Decimal("13.5"))
+        self.assertEqual(
+            sum(
+                (entry["actual_quantity"] for entry in usage_entries if entry["raw_material"].pk == self.rice.pk),
+                Decimal("0"),
+            ),
+            Decimal("13.5"),
+        )
+
+    def test_shared_base_material_cannot_be_overallocated(self):
+        _, formset = self.base_formset([
+            {"good": self.jollof, "batches": "3"},
+            {"good": self.fried, "batches": "1"},
+        ], allocated="15")
+
+        self.assertFalse(formset.is_valid())
+        self.assertIn("require 19.0000 kg of Rice", str(formset.non_form_errors()))
+
+    def test_all_products_must_use_the_same_shared_base_material(self):
+        _, formset = self.base_formset([
+            {"good": self.jollof, "batches": "1"},
+            {"good": self.bread, "batches": "1"},
+        ], allocated="20")
+
+        self.assertFalse(formset.is_valid())
+        self.assertIn("finished_good", formset.forms[1].errors)
+        self.assertIn("uses Rice as its base material", str(formset.forms[1].errors["finished_good"]))
+
+    def test_customer_assigned_order_cannot_use_shared_base_material(self):
+        _, formset = self.base_formset(
+            [{"good": self.jollof, "batches": "1"}],
+            allocated="15",
+            market_stock=False,
+        )
+
+        self.assertFalse(formset.is_valid())
+        self.assertIn("stock production", str(formset.non_form_errors()))
+
+    def test_order_form_owns_the_base_material_allocation(self):
+        form = OrderForm(
+            data={
+                "date": "2026-10-01",
+                "order_type": "distribution",
+                "is_market_stock": "on",
+                "production_basis": Order.BASIS_BASE_MATERIAL,
+                "base_material_quantity": "25",
+            },
+            business=self.business,
+        )
+
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+        order = form.save(commit=False)
+        self.assertEqual(order.production_basis, Order.BASIS_BASE_MATERIAL)
+        self.assertEqual(order.base_material_quantity, Decimal("25"))
+
+    def test_legacy_line_level_base_sizing_remains_readable(self):
         order = Order(
             business=self.business,
             order_type="distribution",
             is_market_stock=True,
+            production_basis=Order.BASIS_PRODUCT_QUANTITY,
         )
-        formset = OrderItemFormSet(
-            self.formset_data(base_qty="15"),
-            instance=order,
-            market_stock=True,
-            order_type="distribution",
-        )
-
-        self.assertTrue(formset.is_valid(), formset.errors)
-        form = formset.forms[0]
-        self.assertEqual(form.cleaned_data["batch_qty"], Decimal("3"))
-        self.assertEqual(form.instance.production_basis, OrderItem.BASIS_BASE_MATERIAL)
-        self.assertEqual(form.instance.base_material_quantity, Decimal("15"))
-        self.assertEqual(form.instance.total_units, Decimal("150"))
-        self.assertEqual(form.instance.effective_production_batch_qty, Decimal("3"))
-
-    def test_base_material_keeps_fractional_run_precision(self):
-        order = Order(
-            business=self.business,
-            order_type="distribution",
-            is_market_stock=True,
-        )
-        formset = OrderItemFormSet(
-            self.formset_data(base_qty="7"),
-            instance=order,
-            market_stock=True,
-            order_type="distribution",
+        item = OrderItem(
+            order=order,
+            finished_good=self.jollof,
+            production_basis=OrderItem.BASIS_BASE_MATERIAL,
+            base_material_quantity=Decimal("7"),
+            batch_qty=Decimal("0"),
+            piece_qty=Decimal("0"),
         )
 
-        self.assertTrue(formset.is_valid(), formset.errors)
-        item = formset.forms[0].instance
         expected_factor = Decimal("7") / Decimal("5")
         self.assertEqual(item.effective_production_batch_qty, expected_factor)
         self.assertEqual(item.total_units, expected_factor * Decimal("50"))
 
-    def test_customer_assigned_order_cannot_use_base_material_sizing(self):
-        order = Order(
-            business=self.business,
-            order_type="distribution",
-            is_market_stock=False,
-        )
-        formset = OrderItemFormSet(
-            self.formset_data(base_qty="15"),
-            instance=order,
-            market_stock=False,
-            order_type="distribution",
-        )
-
-        self.assertFalse(formset.is_valid())
-        self.assertIn("production_basis", formset.forms[0].errors)

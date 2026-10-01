@@ -9,9 +9,16 @@ from django.utils import timezone
 
 from accounts.models import BusinessModuleAccess
 from core.models import AuditLog, Business, CashAccount
-from inventory.models import BulkPackProfile, FinishedGood, IndividualSaleOption, ProductPortionProfile
+from inventory.models import (
+    BulkPackProfile,
+    FinishedGood,
+    FinishedGoodChannelPrice,
+    IndividualSaleOption,
+    ProductPortionProfile,
+)
 
 from .checkout_services import (
+    CheckoutAvailabilityError,
     create_checkout,
     expire_checkout_if_needed,
     attempt_materialize_paid_checkout,
@@ -189,6 +196,26 @@ class CheckoutBoundaryTests(TestCase):
                     "individual_option_id": str(option.public_id),
                 }],
                 idempotency_key="individual-bulk-min",
+            )
+
+    def test_staff_pos_distribution_rejects_out_of_stock_procured_product(self):
+        self.good.source_type = FinishedGood.SOURCE_PURCHASED_FOR_RESALE
+        self.good.stock = Decimal("0")
+        self.good.save(update_fields=["source_type", "stock", "updated_at"])
+        FinishedGoodChannelPrice.objects.create(
+            finished_good=self.good,
+            channel=FinishedGoodChannelPrice.CHANNEL_DISTRIBUTION,
+            price=Decimal("900"),
+        )
+
+        with self.assertRaises(CheckoutAvailabilityError):
+            create_checkout(
+                business=self.business,
+                source=CommerceIntake.SOURCE_STAFF_POS,
+                order_mode=CommerceIntake.CHANNEL_DISTRIBUTION,
+                customer={"name": "Counter customer"},
+                items=[{"storefront_product": self.product, "quantity": "10"}],
+                idempotency_key="staff-pos-procured-out-of-stock",
             )
 
     def test_payment_discovery_filters_enabled_but_incomplete_methods(self):
