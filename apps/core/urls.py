@@ -18,6 +18,7 @@ urlpatterns = [
     path("ops/run-jobs/", operations.run_jobs, name="run_jobs"),
     path("ops/dispatch-web-push/", operations.dispatch_web_push, name="dispatch_web_push"),
     path("privacy-policy/", views.privacy_policy, name="privacy_policy"),
+    path("marketing/location-enrich/", views.marketing_location_enrich, name="marketing_location_enrich"),
     path("", views.marketing_home, name="marketing_home"),
     path("dashboard/", views.dashboard, name="dashboard"),
     path("dashboard/tour/complete/", views.onboarding_tour_complete, name="onboarding_tour_complete"),

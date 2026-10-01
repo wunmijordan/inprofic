@@ -1,7 +1,8 @@
+import json
 import time
 from decimal import Decimal
 
-from django.test import TestCase
+from django.test import RequestFactory, TestCase
 from django.test import override_settings
 from django.db import connection
 from django.core.management import call_command
@@ -1254,6 +1255,148 @@ class FounderPaymentSettingsTests(TestCase):
         )
 
         self.assertFalse(can_use_commerce_storefront(staff, self.business))
+
+
+class FounderMarketingVisitAnalyticsTests(TestCase):
+    def setUp(self):
+        from .analytics import invalidate_founder_analytics_cache
+
+        invalidate_founder_analytics_cache()
+        self.factory = RequestFactory()
+
+    def tearDown(self):
+        from .analytics import invalidate_founder_analytics_cache
+
+        invalidate_founder_analytics_cache()
+
+    def test_country_code_is_normalized_to_name_and_centroid(self):
+        from .analytics import marketing_location_metadata
+
+        request = self.factory.get("/", HTTP_CF_IPCOUNTRY="NG")
+        metadata = marketing_location_metadata(request)
+
+        self.assertEqual(metadata["country_code"], "NG")
+        self.assertEqual(metadata["country_name"], "Nigeria")
+        self.assertEqual(metadata["location"], "Nigeria")
+        self.assertEqual(metadata["location_precision"], "country")
+        self.assertAlmostEqual(metadata["latitude"], 10.0)
+        self.assertAlmostEqual(metadata["longitude"], 8.0)
+
+    def test_edge_city_coordinates_override_country_centroid(self):
+        from .analytics import marketing_location_metadata
+
+        request = self.factory.get(
+            "/",
+            HTTP_X_VERCEL_IP_COUNTRY="NG",
+            HTTP_X_VERCEL_IP_COUNTRY_REGION="LA",
+            HTTP_X_VERCEL_IP_CITY="Lagos",
+            HTTP_X_VERCEL_IP_LATITUDE="6.5244",
+            HTTP_X_VERCEL_IP_LONGITUDE="3.3792",
+        )
+        metadata = marketing_location_metadata(request)
+
+        self.assertEqual(metadata["location"], "Lagos, LA, Nigeria")
+        self.assertEqual(metadata["location_precision"], "edge")
+        self.assertAlmostEqual(metadata["latitude"], 6.5244)
+        self.assertAlmostEqual(metadata["longitude"], 3.3792)
+
+    def test_browser_timezone_enriches_unknown_visit_without_precise_geolocation(self):
+        from .analytics import browser_marketing_location_metadata
+
+        metadata = browser_marketing_location_metadata(
+            timezone_name="Africa/Lagos",
+            language="en-NG",
+            current={
+                "country": "",
+                "country_code": "",
+                "country_name": "",
+                "location_precision": "unknown",
+                "location": "Unknown",
+            },
+        )
+
+        self.assertEqual(metadata["country_code"], "NG")
+        self.assertEqual(metadata["country_name"], "Nigeria")
+        self.assertEqual(metadata["city"], "Lagos")
+        self.assertEqual(metadata["location_precision"], "timezone")
+        self.assertEqual(metadata["browser_timezone"], "Africa/Lagos")
+        self.assertIsNotNone(metadata["latitude"])
+        self.assertIsNotNone(metadata["longitude"])
+
+    def test_browser_timezone_does_not_override_edge_coordinates(self):
+        from .analytics import browser_marketing_location_metadata
+
+        current = {
+            "country": "NG",
+            "country_code": "NG",
+            "country_name": "Nigeria",
+            "city": "Ikeja",
+            "latitude": 6.6018,
+            "longitude": 3.3515,
+            "location_precision": "edge",
+            "location": "Ikeja, Nigeria",
+        }
+        metadata = browser_marketing_location_metadata(
+            timezone_name="Africa/Lagos",
+            language="en-NG",
+            current=current,
+        )
+
+        self.assertEqual(metadata["location_precision"], "edge")
+        self.assertEqual(metadata["latitude"], 6.6018)
+        self.assertEqual(metadata["longitude"], 3.3515)
+
+    def test_browser_location_endpoint_enriches_current_session_visit(self):
+        session = self.client.session
+        session["marketing_test"] = True
+        session.save()
+        event = PlatformEvent.objects.create(
+            event_type=PlatformEvent.EVENT_MARKETING_VISIT,
+            session_key=session.session_key,
+            metadata={
+                "country": "",
+                "country_code": "",
+                "location": "Unknown",
+                "location_precision": "unknown",
+            },
+        )
+
+        response = self.client.post(
+            reverse("marketing_location_enrich"),
+            data=json.dumps({"timezone": "Africa/Lagos", "language": "en-NG"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["updated"])
+        event.refresh_from_db()
+        self.assertEqual(event.metadata["country_code"], "NG")
+        self.assertEqual(event.metadata["location_precision"], "timezone")
+        self.assertEqual(event.metadata["city"], "Lagos")
+
+    def test_founder_summary_enriches_legacy_country_code_visits_for_map(self):
+        from .analytics import founder_analytics_summary, invalidate_founder_analytics_cache
+
+        PlatformEvent.objects.create(
+            event_type=PlatformEvent.EVENT_MARKETING_VISIT,
+            session_key="visitor-a",
+            metadata={"country": "NG", "location": "NG"},
+        )
+        PlatformEvent.objects.create(
+            event_type=PlatformEvent.EVENT_MARKETING_VISIT,
+            session_key="visitor-a",
+            metadata={"country": "NG", "location": "NG"},
+        )
+        invalidate_founder_analytics_cache()
+
+        summary = founder_analytics_summary()
+
+        self.assertEqual(summary["marketing_unique_sessions_30d"], 1)
+        self.assertEqual(summary["marketing_countries_30d"], 1)
+        self.assertEqual(summary["marketing_map_points"][0]["location"], "Nigeria")
+        self.assertEqual(summary["marketing_map_points"][0]["total"], 2)
+        self.assertEqual(summary["recent_marketing_visits"][0]["location"], "Nigeria")
+        self.assertEqual(len(summary["marketing_daily_visits"]), 14)
 
 
 class FounderPlatformDeletionTests(TestCase):

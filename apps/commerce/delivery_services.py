@@ -825,6 +825,30 @@ def _notify_dispatch(assignment, event_type, title, message, dedupe_suffix):
     )
 
 
+def _notify_delivery_ready(assignment):
+    """Persist the completed-order handoff for Delivery workspace staff.
+
+    The notification uses the normal durable Commerce/Web Push outbox, so it
+    remains unread in-app until acknowledged and can reach subscribed devices
+    while INPROFIC is closed. Recipient filtering is handled by the dedicated
+    dispatch notification category in notification/web-push access rules.
+    """
+    destination = (
+        assignment.intake.customer_address
+        or (assignment.quote.destination_address if assignment.quote_id else "")
+    )
+    details = f"{assignment.intake.customer_name} · ready to organise delivery"
+    if destination:
+        details = f"{details} · {destination}"
+    _notify_dispatch(
+        assignment,
+        CommerceNotification.EVENT_DELIVERY_READY,
+        f"Order complete · ready for delivery · {assignment.intake.public_number}",
+        details,
+        "ready-for-dispatch",
+    )
+
+
 @transaction.atomic
 def ensure_delivery_assignment(intake, *, actor=None):
     if not intake.delivery_quote_id:
@@ -867,13 +891,19 @@ def ensure_delivery_assignment(intake, *, actor=None):
         f"Delivery created for {intake.public_number}",
         {"order": intake.public_number, "fee": str(intake.delivery_fee), "provider": assignment.provider, "provider_account": assignment.provider_account_id},
     )
-    _notify_dispatch(
-        assignment,
-        CommerceNotification.EVENT_DELIVERY_CREATED,
-        f"Delivery ready for dispatch · {intake.public_number}",
-        f"{intake.customer_name} · paid delivery fee {intake.business.currency_symbol}{intake.delivery_fee:,.2f}",
-        "created",
-    )
+    if assignment.status == DeliveryAssignment.STATUS_READY:
+        _notify_delivery_ready(assignment)
+    else:
+        _notify_dispatch(
+            assignment,
+            CommerceNotification.EVENT_DELIVERY_CREATED,
+            f"Delivery queued · {intake.public_number}",
+            (
+                f"{intake.customer_name} · waiting for order readiness · "
+                f"paid delivery fee {intake.business.currency_symbol}{intake.delivery_fee:,.2f}"
+            ),
+            "created",
+        )
     if assignment.provider_account_id and assignment.provider_account.auto_dispatch:
         from .delivery_providers import ProviderDispatchError, dispatch_assignment_to_provider
         try:
@@ -941,6 +971,7 @@ def mark_delivery_ready_if_fulfilled(intake, *, actor=None):
         f"Delivery {assignment.public_id} is ready for pickup",
         {"previous_status": previous, "status": DeliveryAssignment.STATUS_READY},
     )
+    _notify_delivery_ready(assignment)
     rider_user_id = assignment.driver.user_id if assignment.driver_id and assignment.driver else None
     transaction.on_commit(
         lambda business_id=assignment.business_id, delivery_id=assignment.public_id, rider_id=rider_user_id: publish_delivery_changed(
@@ -1001,12 +1032,16 @@ def update_delivery_status(*, assignment, status, actor=None, note="", driver=No
         (proof_note or assignment.proof_note).strip() or (proof_reference or assignment.proof_reference).strip()
     ):
         raise ValidationError("Proof of delivery is required before marking this delivery as delivered.")
+    now = timezone.now()
     assignment.status = status
     assignment.status_note = (note or "")[:255]
     if clear_driver:
         assignment.driver = None
+        assignment.driver_assigned_at = None
     elif driver is not None:
         assignment.driver = driver
+        if driver.pk != previous_driver_id or assignment.driver_assigned_at is None:
+            assignment.driver_assigned_at = now
     if external_reference:
         assignment.external_reference = external_reference[:160]
     if external_tracking_url:
@@ -1017,7 +1052,6 @@ def update_delivery_status(*, assignment, status, actor=None, note="", driver=No
         assignment.proof_note = proof_note[:255]
     if proof_reference:
         assignment.proof_reference = proof_reference[:255]
-    now = timezone.now()
     if status == DeliveryAssignment.STATUS_PICKED_UP and not assignment.picked_up_at:
         if assignment.batch_id and assignment.batch.status != DeliveryBatch.STATUS_ROUTED:
             raise ValidationError("Organise and save the batch route before marking these orders as picked up.")
@@ -1146,6 +1180,7 @@ def switch_delivery_method(*, assignment, target_provider, actor=None, manager_a
         current.provider = target_provider
         current.provider_account = target_quote.provider_account if target_provider == DeliverySettings.PROVIDER_THIRD_PARTY else None
         current.driver = None
+        current.driver_assigned_at = None
         current.status = DeliveryAssignment.STATUS_PENDING
         current.status_note = "Delivery method switched before pickup."
         current.provider_order_id = ""
@@ -1273,13 +1308,21 @@ def create_delivery_batch(*, business, driver, assignments, actor=None):
         assignment.batch_stop_sequence = sequence
         assignment.batch_stop_minutes = 0
         assignment.driver = driver
+        assignment.driver_assigned_at = batch.created_at or timezone.now()
         if assignment.status == DeliveryAssignment.STATUS_PENDING:
             assignment.status = DeliveryAssignment.STATUS_ASSIGNED
-        assignment.save(update_fields=["batch", "batch_stop_sequence", "batch_stop_minutes", "driver", "status", "updated_at"])
+        assignment.save(update_fields=[
+            "batch", "batch_stop_sequence", "batch_stop_minutes", "driver",
+            "driver_assigned_at", "status", "updated_at",
+        ])
         DeliveryEvent.raw_objects.create(
             business=business, created_by=actor, assignment=assignment, status=assignment.status,
             note="Rider assigned; delivery is being prepared for pickup.",
-            metadata={"batch_id": str(batch.public_id), "sequence": sequence},
+            metadata={
+                "batch_id": str(batch.public_id),
+                "sequence": sequence,
+                "driver_id": driver.pk,
+            },
         )
         transaction.on_commit(
             lambda business_id=business.pk, delivery_id=assignment.public_id, rider_id=driver.user_id: publish_delivery_changed(

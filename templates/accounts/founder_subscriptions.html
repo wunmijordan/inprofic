@@ -54,9 +54,9 @@
         <div>
           <div class="font-semibold">Marketing audience map</div>
           <div class="mt-0.5 max-w-3xl text-[11px] leading-5 text-stone-500">
-            First-party visit geography from trusted edge headers. City/region coordinates are used when supplied;
-            country-only visits use a bundled country centroid. Raw visitor IP addresses are not stored and no
-            external geolocation lookup is performed.
+            First-party visit geography uses trusted edge coordinates when available, then a privacy-conscious browser
+            timezone fallback, and finally a country centroid. Raw visitor IP addresses are not stored, precise browser
+            geolocation is not requested, and no external geolocation lookup is performed.
           </div>
         </div>
         <span class="rounded-full bg-[#050733] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white">30 days</span>
@@ -109,7 +109,7 @@
           </div>
           <div class="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] text-stone-500">
             <span>Pointer size reflects visit volume.</span>
-            <span><strong class="text-stone-700">Edge</strong> = city/region coordinates · <strong class="text-stone-700">Country</strong> = centroid</span>
+            <span><strong class="text-stone-700">Edge</strong> = provider coordinate · <strong class="text-stone-700">Timezone</strong> = approximate browser timezone · <strong class="text-stone-700">Country</strong> = centroid</span>
           </div>
         </div>
 
@@ -730,7 +730,11 @@
   const detailLast = map.querySelector('[data-map-detail-last]');
   let pinnedIndex = null;
 
-  const precisionLabel = value => value === 'edge' ? 'City / region coordinate' : 'Country-level centroid';
+  const precisionLabel = value => {
+    if (value === 'edge') return 'City / region coordinate';
+    if (value === 'timezone') return 'Approximate browser timezone';
+    return 'Country-level centroid';
+  };
   const lastVisitLabel = value => {
     if (!value) return '';
     const parsed = new Date(value);

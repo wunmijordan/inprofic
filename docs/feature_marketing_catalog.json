@@ -229,7 +229,7 @@
     "name": "Shared realtime Commerce, Inventory and Finance alert tray",
     "group": "delivery",
     "audience": "dispatchers, managers and riders",
-    "proof": "Commerce, payment, Delivery, Inventory and Finance attention share one movable access-aware tray without merging their underlying record state; Commerce/Delivery can use durable Web Push in the background, while Finance surfaces unpaid invoices, receivables, payables and balancing anomalies from the same finance records.",
+    "proof": "Commerce, payment, Delivery, Inventory and Finance attention share one movable access-aware tray without merging their underlying record state; completed orders raise a persistent delivery-ready handoff for dispatch staff and can use durable Web Push even while INPROFIC is closed, while Finance surfaces unpaid invoices, receivables, payables and balancing anomalies from the same finance records.",
     "highlight": "NEW",
     "added_on": "2026-09-24"
   },

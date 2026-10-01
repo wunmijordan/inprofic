@@ -223,9 +223,17 @@ def _enqueue_notifications(limit=30):
             if notice.event_type in CommerceNotification.INVENTORY_EVENTS:
                 category_ids = access["inventory"]
             else:
-                if commerce_settings and (not commerce_settings.notifications_enabled or not commerce_settings.notification_desktop_enabled):
+                if commerce_settings and (
+                    not commerce_settings.notifications_enabled
+                    or not commerce_settings.notification_desktop_enabled
+                ):
                     continue
-                category_ids = access["delivery_staff"] if notice.event_type in CommerceNotification.DELIVERY_EVENTS else access["commerce"]
+                if notice.event_type in CommerceNotification.DISPATCH_EVENTS:
+                    category_ids = access["delivery"]
+                elif notice.event_type in CommerceNotification.DELIVERY_EVENTS:
+                    category_ids = access["delivery_staff"]
+                else:
+                    category_ids = access["commerce"]
             if notice.recipient_user_id:
                 allowed_ids = {
                     subscription.pk for subscription in subscriptions
@@ -302,7 +310,12 @@ def _requeue_due_repeats(inventory_visible=None, *, limit=800):
         access = cache["access"]
         notice = delivery.notification
         if notice.recipient_user_id:
-            eligible = notice.recipient_user_id == subscription.user_id and subscription.pk in access["activity"]
+            eligible = (
+                notice.recipient_user_id == subscription.user_id
+                and subscription.pk in access["activity"]
+            )
+        elif notice.event_type in CommerceNotification.DISPATCH_EVENTS:
+            eligible = subscription.pk in access["delivery"]
         elif notice.event_type in CommerceNotification.DELIVERY_EVENTS:
             eligible = subscription.pk in access["delivery_staff"]
         else:

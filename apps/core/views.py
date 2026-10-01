@@ -8,6 +8,7 @@ from django.conf import settings
 from django.core.files.storage import default_storage
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django.core import serializers
 from django.core.cache import cache
@@ -74,6 +75,36 @@ def privacy_policy(request):
     if request.GET.get("embedded") == "1":
         return render(request, "marketing/_privacy_policy_embedded.html", context)
     return render(request, "marketing/privacy_policy.html", context)
+
+
+@csrf_exempt
+@require_POST
+def marketing_location_enrich(request):
+    """Privacy-conscious browser fallback for anonymous marketing geography.
+
+    The endpoint can only enrich the most recent marketing event attached to
+    the caller's own session. It accepts an IANA timezone and browser language;
+    it does not request or store precise browser geolocation or an IP address.
+    """
+    if getattr(request.user, "is_authenticated", False):
+        return JsonResponse({"ok": True, "updated": False})
+    try:
+        payload = json.loads((request.body or b"{}").decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        payload = {}
+    timezone_name = str(payload.get("timezone") or "").strip()[:80]
+    language = str(payload.get("language") or "").strip()[:40]
+    if not timezone_name and not language:
+        return JsonResponse({"ok": True, "updated": False})
+
+    from accounts.analytics import enrich_latest_marketing_visit_from_browser
+
+    event = enrich_latest_marketing_visit_from_browser(
+        request,
+        timezone_name=timezone_name,
+        language=language,
+    )
+    return JsonResponse({"ok": True, "updated": bool(event)})
 
 
 def marketing_home(request):

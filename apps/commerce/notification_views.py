@@ -47,11 +47,18 @@ def _unread(request):
         return CommerceNotification.raw_objects.none()
     visible = Q(recipient_user=request.user)
     if access["commerce"]:
-        # Commerce staff see ordinary commerce activity plus delivery activity so
-        # paid-order handoffs are not lost between teams.
-        visible |= Q(recipient_user__isnull=True)
-    elif access["delivery"]:
-        visible |= Q(recipient_user__isnull=True, event_type__in=CommerceNotification.DELIVERY_EVENTS)
+        # Commerce staff see ordinary commerce activity plus general Delivery
+        # activity, but dispatch-ready handoffs are reserved for users who
+        # actually have Delivery workspace access.
+        visible |= (
+            Q(recipient_user__isnull=True)
+            & ~Q(event_type__in=CommerceNotification.DISPATCH_EVENTS)
+        )
+    if access["delivery"]:
+        visible |= Q(
+            recipient_user__isnull=True,
+            event_type__in=CommerceNotification.DELIVERY_EVENTS,
+        )
     # Rider-only users intentionally see only direct alerts addressed to them.
     return CommerceNotification.raw_objects.filter(
         business=request.business

@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
-from django.db.models import Count
+from django.db.models import Count, Prefetch
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -41,6 +41,29 @@ from .models import (
     DeliveryRateBand,
     DeliverySettings,
 )
+
+
+
+
+def _annotate_rider_readiness(assignments):
+    """Attach compact fulfilment context used by the rider workspace only."""
+    for assignment in assignments:
+        items = list(assignment.intake.items.all())
+        made_to_order = [
+            item for item in items
+            if item.fulfilment_source == item.FULFILMENT_MADE_TO_ORDER
+        ]
+        production_order = assignment.intake.accepted_order or assignment.intake.split_order
+        assignment.has_made_to_order = bool(made_to_order)
+        assignment.made_to_order_pending = bool(
+            made_to_order
+            and assignment.intake.fulfilment_state != assignment.intake.FULFIL_COMPLETE
+        )
+        assignment.production_order = production_order
+        assignment.production_status_label = (
+            production_order.get_status_display() if production_order else "Awaiting production"
+        )
+    return assignments
 
 
 def _detail(exc):
@@ -508,6 +531,31 @@ def _rider_profile(request):
     ).first()
 
 
+
+
+def _rider_active_batches(business, driver):
+    if not driver:
+        return []
+    assignment_qs = (
+        DeliveryAssignment.raw_objects.filter(business=business)
+        .select_related("intake__accepted_order", "intake__split_order", "quote")
+        .prefetch_related("intake__items__finished_good")
+        .order_by("batch_stop_sequence", "created_at", "id")
+    )
+    batches = list(
+        DeliveryBatch.raw_objects.filter(business=business, driver=driver)
+        .exclude(status__in=[DeliveryBatch.STATUS_COMPLETED, DeliveryBatch.STATUS_CANCELLED])
+        .prefetch_related(Prefetch("assignments", queryset=assignment_qs))
+    )
+    for batch in batches:
+        batch_assignments = list(batch.assignments.all())
+        _annotate_rider_readiness(batch_assignments)
+        batch.waiting_made_to_order_count = sum(
+            1 for assignment in batch_assignments if assignment.made_to_order_pending
+        )
+    return batches
+
+
 @login_required
 def delivery_rider_dashboard(request):
     driver = _rider_profile(request)
@@ -515,10 +563,14 @@ def delivery_rider_dashboard(request):
     if driver:
         assignments = list(
             DeliveryAssignment.raw_objects.filter(business=request.business, driver=driver)
-            .select_related("intake", "quote", "origin", "business")
+            .select_related(
+                "intake", "intake__accepted_order", "intake__split_order",
+                "quote", "origin", "business",
+            )
             .prefetch_related("events", "issues", "messages", "intake__items__finished_good")
             .order_by("status", "-created_at")[:60]
         )
+        _annotate_rider_readiness(assignments)
     active_statuses = {
         DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_READY,
         DeliveryAssignment.STATUS_PICKED_UP,
@@ -541,12 +593,7 @@ def delivery_rider_dashboard(request):
         "recent_assignments": [row for row in assignments if row.status not in active_statuses][:20],
         "issue_categories": DeliveryIssue.CATEGORY_CHOICES,
         "delivery_settings": DeliverySettings.raw_objects.filter(business=request.business).first(),
-        "active_batches": list(
-            DeliveryBatch.raw_objects.filter(business=request.business, driver=driver)
-            .exclude(status__in=[DeliveryBatch.STATUS_COMPLETED, DeliveryBatch.STATUS_CANCELLED])
-            .prefetch_related("assignments__intake", "assignments__quote")
-            if driver else []
-        ),
+        "active_batches": _rider_active_batches(request.business, driver),
     })
 
 

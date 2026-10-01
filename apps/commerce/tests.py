@@ -15,15 +15,16 @@ from inventory.models import (
 )
 from .forms import StorefrontProductForm
 from .models import (
-    CommerceIntegration, CommerceIntake, CommerceSettings, DeliveryArea, DeliveryAssignment,
+    CommerceIntegration, CommerceIntake, CommerceIntakeItem, CommerceNotification, CommerceSettings, DeliveryArea, DeliveryAssignment,
     DeliveryDriver, DeliveryEvent, DeliveryOrigin, DeliveryQuote, DeliveryRateBand, DeliverySettings,
     StorefrontProduct,
 )
 from .services import accept_intake, create_intake
 from .checkout_services import create_checkout
 from .delivery_services import (
-    _destination, _haversine_km, delivery_area_coverage_polygon, resolve_delivery_location,
-    serialize_delivery_tracking, update_delivery_status,
+    _destination, _haversine_km, delivery_area_coverage_polygon, ensure_delivery_assignment,
+    mark_delivery_ready_if_fulfilled, resolve_delivery_location, serialize_delivery_tracking,
+    update_delivery_status,
 )
 
 
@@ -398,6 +399,7 @@ class DeliveryRealtimeTrackingTests(TestCase):
             business=self.business, ordering_mode=CommerceIntake.MODE_STOCK,
             sales_channel=CommerceIntake.CHANNEL_ONLINE, customer_name="Ada Customer",
             customer_address="12 Customer Road", payment_state=CommerceIntake.PAYMENT_CONFIRMED,
+            fulfilment_state=CommerceIntake.FULFIL_COMPLETE,
             delivery_quote=self.quote, delivery_fee="500.00",
         )
         self.driver = DeliveryDriver.raw_objects.create(
@@ -413,6 +415,128 @@ class DeliveryRealtimeTrackingTests(TestCase):
             business=self.business, assignment=self.assignment,
             status=DeliveryAssignment.STATUS_PENDING, note="Delivery created.",
         )
+
+    def test_driver_assignment_timestamp_is_recorded_when_rider_is_set(self):
+        self.assertIsNone(self.assignment.driver_assigned_at)
+
+        updated = update_delivery_status(
+            assignment=self.assignment,
+            status=DeliveryAssignment.STATUS_ASSIGNED,
+            driver=self.driver,
+            note="Rider confirmed for this job.",
+        )
+
+        self.assertIsNotNone(updated.driver_assigned_at)
+
+    def test_already_ready_stock_delivery_creates_ready_handoff_without_duplicate_created_notice(self):
+        quote = DeliveryQuote.raw_objects.create(
+            business=self.business,
+            origin=self.origin,
+            area=self.area,
+            destination_address="44 Ready Road",
+            destination_latitude="6.4502000",
+            destination_longitude="3.4211000",
+            distance_km="3.20",
+            subtotal="3200.00",
+            fee="500.00",
+            total="3700.00",
+            eta_min_minutes=15,
+            eta_max_minutes=35,
+            expires_at=timezone.now() + timezone.timedelta(hours=1),
+        )
+        intake = CommerceIntake.raw_objects.create(
+            business=self.business,
+            ordering_mode=CommerceIntake.MODE_STOCK,
+            sales_channel=CommerceIntake.CHANNEL_ONLINE,
+            customer_name="Ready Customer",
+            customer_address="44 Ready Road",
+            payment_state=CommerceIntake.PAYMENT_CONFIRMED,
+            fulfilment_state=CommerceIntake.FULFIL_COMPLETE,
+            delivery_quote=quote,
+            delivery_fee="500.00",
+        )
+
+        with self.captureOnCommitCallbacks(execute=True):
+            assignment = ensure_delivery_assignment(intake)
+
+        self.assertEqual(assignment.status, DeliveryAssignment.STATUS_READY)
+        self.assertEqual(
+            CommerceNotification.raw_objects.filter(
+                business=self.business,
+                event_type=CommerceNotification.EVENT_DELIVERY_READY,
+            ).count(),
+            1,
+        )
+        self.assertFalse(CommerceNotification.raw_objects.filter(
+            business=self.business,
+            event_type=CommerceNotification.EVENT_DELIVERY_CREATED,
+        ).exists())
+
+    def test_fulfilment_completion_creates_one_persistent_dispatch_ready_notification(self):
+        self.assignment.status = DeliveryAssignment.STATUS_PENDING
+        self.assignment.save(update_fields=["status", "updated_at"])
+
+        with self.captureOnCommitCallbacks(execute=True):
+            mark_delivery_ready_if_fulfilled(self.intake)
+
+        self.assignment.refresh_from_db()
+        self.assertEqual(self.assignment.status, DeliveryAssignment.STATUS_READY)
+        notices = CommerceNotification.raw_objects.filter(
+            business=self.business,
+            event_type=CommerceNotification.EVENT_DELIVERY_READY,
+            dedupe_key=f"delivery:{self.assignment.pk}:ready-for-dispatch",
+        )
+        self.assertEqual(notices.count(), 1)
+        notice = notices.get()
+        self.assertEqual(notice.target_url, "/delivery/")
+        self.assertIn(self.intake.public_number, notice.title)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            mark_delivery_ready_if_fulfilled(self.intake)
+
+        self.assertEqual(notices.count(), 1)
+
+    def test_rider_readiness_marks_incomplete_made_to_order_job(self):
+        from commerce.delivery_views import _annotate_rider_readiness
+
+        good = FinishedGood.raw_objects.create(
+            business=self.business,
+            name="Fresh Meal",
+            unit="portion",
+            units_per_batch=1,
+            stock=0,
+            reorder_level=0,
+            selling_price=Decimal("2500"),
+        )
+        product = StorefrontProduct.raw_objects.create(
+            business=self.business,
+            finished_good=good,
+            published=True,
+            allow_preorder=True,
+        )
+        CommerceIntakeItem.objects.create(
+            intake=self.intake,
+            storefront_product=product,
+            finished_good=good,
+            requested_quantity=Decimal("1"),
+            unit_price=Decimal("2500"),
+            fulfilment_source=CommerceIntakeItem.FULFILMENT_MADE_TO_ORDER,
+        )
+        self.intake.fulfilment_state = CommerceIntake.FULFIL_PENDING
+        self.intake.save(update_fields=["fulfilment_state", "updated_at"])
+
+        assignment = (
+            DeliveryAssignment.raw_objects.select_related(
+                "intake__accepted_order", "intake__split_order"
+            )
+            .prefetch_related("intake__items")
+            .get(pk=self.assignment.pk)
+        )
+        _annotate_rider_readiness([assignment])
+
+        self.assertTrue(assignment.has_made_to_order)
+        self.assertTrue(assignment.made_to_order_pending)
+        self.assertEqual(assignment.production_status_label, "Awaiting production")
 
     @patch("commerce.delivery_services.publish_delivery_changed")
     def test_pickup_starts_eta_window_and_emits_realtime_signal(self, publish):

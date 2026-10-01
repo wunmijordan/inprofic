@@ -5,32 +5,238 @@ from datetime import timedelta
 from django.core.cache import cache
 from django.db import DatabaseError
 from django.db.models import Count, Max, Q
+from django.db.models.functions import TruncDate
 from django.utils import timezone
+from urllib.parse import unquote
+
+from .geo import country_metadata
+from .timezone_geo import timezone_metadata
 
 
-_FOUNDER_ANALYTICS_CACHE_KEY = "founder-analytics-summary:v3"
+_FOUNDER_ANALYTICS_CACHE_KEY = "founder-analytics-summary:v4"
 
 
 def invalidate_founder_analytics_cache():
     cache.delete(_FOUNDER_ANALYTICS_CACHE_KEY)
 
 
-def marketing_location_metadata(request):
-    """Best-effort coarse visit location from trusted edge/proxy headers.
+def _clean_location_header(value, *, limit=120):
+    value = unquote(str(value or "")).strip()
+    return value[:limit]
 
-    No external geolocation request is made and no raw IP address is stored.
-    Deployments that provide country/region/city headers automatically enrich
-    Founder analytics; otherwise the location remains Unknown.
+
+def _coordinate_header(headers, *names):
+    for name in names:
+        raw = (headers.get(name) or "").strip()
+        if not raw:
+            continue
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if name.lower().endswith("latitude") and not -90 <= value <= 90:
+            continue
+        if name.lower().endswith("longitude") and not -180 <= value <= 180:
+            continue
+        return round(value, 6)
+    return None
+
+
+def marketing_location_metadata(request):
+    """Return coarse, first-party visit geography without storing visitor IPs.
+
+    Prefer trusted edge-provider city/region/coordinate headers when present.
+    If only an ISO country code is available, use a bundled country centroid so
+    Founder analytics can still map the visit without any external lookup.
     """
     headers = request.headers
-    country = (headers.get("CF-IPCountry") or headers.get("X-Vercel-IP-Country") or headers.get("X-Country-Code") or "").strip()
-    region = (headers.get("X-Vercel-IP-Country-Region") or headers.get("X-Region") or "").strip()
-    city = (headers.get("X-Vercel-IP-City") or headers.get("X-City") or "").strip()
+    country_code = _clean_location_header(
+        headers.get("CF-IPCountry")
+        or headers.get("X-Vercel-IP-Country")
+        or headers.get("CloudFront-Viewer-Country")
+        or headers.get("X-Country-Code"),
+        limit=2,
+    ).upper()
+    country_info = country_metadata(country_code)
+    country_name = _clean_location_header(
+        headers.get("CloudFront-Viewer-Country-Name")
+        or headers.get("X-Country-Name")
+        or country_info.get("name")
+        or country_code,
+        limit=80,
+    )
+    region = _clean_location_header(
+        headers.get("X-Vercel-IP-Country-Region")
+        or headers.get("CloudFront-Viewer-Country-Region-Name")
+        or headers.get("CloudFront-Viewer-Country-Region")
+        or headers.get("X-Region"),
+    )
+    city = _clean_location_header(
+        headers.get("X-Vercel-IP-City")
+        or headers.get("CloudFront-Viewer-City")
+        or headers.get("X-City"),
+    )
+    latitude = _coordinate_header(
+        headers,
+        "X-Vercel-IP-Latitude",
+        "CloudFront-Viewer-Latitude",
+        "X-Latitude",
+    )
+    longitude = _coordinate_header(
+        headers,
+        "X-Vercel-IP-Longitude",
+        "CloudFront-Viewer-Longitude",
+        "X-Longitude",
+    )
+    precision = "edge" if latitude is not None and longitude is not None else "country"
+    if latitude is None or longitude is None:
+        latitude = country_info.get("latitude")
+        longitude = country_info.get("longitude")
+    location = ", ".join(part for part in (city, region, country_name) if part) or "Unknown"
     return {
-        "country": country[:80],
-        "region": region[:120],
-        "city": city[:120],
-        "location": ", ".join(part for part in (city, region, country) if part) or "Unknown",
+        "country": country_code,
+        "country_code": country_code,
+        "country_name": country_name,
+        "region": region,
+        "city": city,
+        "latitude": latitude,
+        "longitude": longitude,
+        "location_precision": precision if latitude is not None and longitude is not None else "unknown",
+        "location": location,
+    }
+
+
+
+
+def browser_marketing_location_metadata(*, timezone_name="", language="", current=None):
+    """Improve coarse marketing geography using browser timezone metadata.
+
+    This fallback is intentionally permissionless and privacy-conscious: it uses
+    only the browser's IANA timezone and language, never precise device
+    geolocation. Edge-provided coordinates remain authoritative when available.
+    """
+    current = dict(current or {})
+    timezone_name = str(timezone_name or "").strip()[:80]
+    language = str(language or "").strip()[:40]
+    zone_info = timezone_metadata(timezone_name)
+    if not zone_info:
+        if timezone_name:
+            current["browser_timezone"] = timezone_name
+        if language:
+            current["browser_language"] = language
+        return current
+
+    zone_country = str(zone_info.get("country_code") or "").upper()
+    existing_country = str(
+        current.get("country_code") or current.get("country") or ""
+    ).strip().upper()
+    existing_precision = str(current.get("location_precision") or "").strip()
+
+    current["browser_timezone"] = timezone_name
+    if language:
+        current["browser_language"] = language
+
+    # Never replace edge coordinates. If an edge country exists and disagrees
+    # with the device timezone, retain the edge country centroid rather than
+    # inventing a more precise-looking but contradictory location.
+    if existing_precision == "edge":
+        return current
+    if existing_country and zone_country and existing_country != zone_country:
+        return current
+
+    country_code = existing_country or zone_country
+    country_info = country_metadata(country_code)
+    city = str(zone_info.get("city") or "").strip()
+    country_name = str(current.get("country_name") or country_info.get("name") or country_code).strip()
+    latitude = zone_info.get("latitude")
+    longitude = zone_info.get("longitude")
+    if latitude is None or longitude is None:
+        return current
+
+    current.update({
+        "country": country_code,
+        "country_code": country_code,
+        "country_name": country_name,
+        "city": current.get("city") or city,
+        "latitude": latitude,
+        "longitude": longitude,
+        "location_precision": "timezone",
+        "location": ", ".join(part for part in (current.get("city") or city, country_name) if part) or "Unknown",
+    })
+    return current
+
+
+def enrich_latest_marketing_visit_from_browser(request, *, timezone_name="", language=""):
+    """Enrich the current anonymous session's latest marketing visit in place."""
+    try:
+        from .models import PlatformEvent
+
+        session_key = request.session.session_key or ""
+        if not session_key:
+            return None
+        event = (
+            PlatformEvent.objects.filter(
+                event_type=PlatformEvent.EVENT_MARKETING_VISIT,
+                session_key=session_key[:64],
+            )
+            .order_by("-occurred_at", "-id")
+            .first()
+        )
+        if not event:
+            return None
+        updated = browser_marketing_location_metadata(
+            timezone_name=timezone_name,
+            language=language,
+            current=event.metadata,
+        )
+        if updated != (event.metadata or {}):
+            event.metadata = updated
+            event.save(update_fields=["metadata"])
+            invalidate_founder_analytics_cache()
+        return event
+    except Exception:
+        # Browser enrichment is analytics-only and must never affect the public page.
+        return None
+
+
+def _marketing_visit_location(metadata):
+    metadata = metadata or {}
+    location_hint = str(metadata.get("location") or "").strip()
+    raw_country = str(
+        metadata.get("country_code")
+        or metadata.get("country")
+        or (location_hint if len(location_hint) == 2 else "")
+    ).strip()
+    country_code = raw_country.upper() if len(raw_country) == 2 else ""
+    country_info = country_metadata(country_code)
+    country_name = str(metadata.get("country_name") or "").strip()
+    if not country_name:
+        country_name = country_info.get("name") or (raw_country if len(raw_country) != 2 else country_code)
+    city = str(metadata.get("city") or "").strip()
+    region = str(metadata.get("region") or "").strip()
+    label = ", ".join(part for part in (city, region, country_name) if part) or str(metadata.get("location") or "Unknown").strip() or "Unknown"
+    try:
+        latitude = float(metadata.get("latitude")) if metadata.get("latitude") not in (None, "") else None
+        longitude = float(metadata.get("longitude")) if metadata.get("longitude") not in (None, "") else None
+    except (TypeError, ValueError):
+        latitude = longitude = None
+    precision = str(metadata.get("location_precision") or "").strip()
+    if latitude is None or longitude is None:
+        latitude = country_info.get("latitude")
+        longitude = country_info.get("longitude")
+        if latitude is not None and longitude is not None:
+            precision = "country"
+    if not precision:
+        precision = "unknown" if latitude is None or longitude is None else "country"
+    return {
+        "label": label,
+        "country_code": country_code,
+        "country_name": country_name or country_code or "Unknown",
+        "city": city,
+        "region": region,
+        "latitude": latitude,
+        "longitude": longitude,
+        "precision": precision,
     }
 
 
@@ -78,6 +284,8 @@ def record_platform_event(event_type, *, request=None, user=None, business=None,
             path=(path or "")[:255],
             metadata=metadata or {},
         )
+        if event_type == PlatformEvent.EVENT_MARKETING_VISIT:
+            invalidate_founder_analytics_cache()
         return event
     except (DatabaseError, Exception):
         # Analytics must never make an operational flow fail.  This also keeps
@@ -260,18 +468,80 @@ def founder_analytics_summary(*, now=None):
         )
         marketing_visits_30d = marketing_visit_qs.count()
         visits_7d = marketing_visit_qs.filter(occurred_at__gte=since_7).count()
+        marketing_unique_sessions_30d = (
+            marketing_visit_qs.exclude(session_key="")
+            .values("session_key")
+            .distinct()
+            .count()
+        )
         marketing_visits = list(
             marketing_visit_qs.only("id", "session_key", "metadata", "occurred_at")
             .order_by("-occurred_at", "-id")[:1000]
         )
         location_counts = {}
+        country_codes = set()
+        known_location_visits = 0
+        map_points = {}
         for event in marketing_visits:
-            location = ((event.metadata or {}).get("location") or "Unknown").strip() or "Unknown"
-            location_counts[location] = location_counts.get(location, 0) + 1
+            location = _marketing_visit_location(event.metadata)
+            label = location["label"]
+            location_counts[label] = location_counts.get(label, 0) + 1
+            if location["country_code"]:
+                country_codes.add(location["country_code"])
+            if location["latitude"] is not None and location["longitude"] is not None:
+                known_location_visits += 1
+                if location["precision"] in {"edge", "timezone"}:
+                    map_key = (round(location["latitude"], 3), round(location["longitude"], 3), label)
+                    point_label = label
+                else:
+                    map_key = (round(location["latitude"], 3), round(location["longitude"], 3), location["country_name"])
+                    point_label = location["country_name"] or label
+                point = map_points.setdefault(map_key, {
+                    "location": point_label,
+                    "country_code": location["country_code"],
+                    "latitude": location["latitude"],
+                    "longitude": location["longitude"],
+                    "precision": location["precision"],
+                    "total": 0,
+                    "unique_sessions": set(),
+                    "last_visit": event.occurred_at,
+                })
+                point["total"] += 1
+                if event.session_key:
+                    point["unique_sessions"].add(event.session_key)
+                if event.occurred_at > point["last_visit"]:
+                    point["last_visit"] = event.occurred_at
         top_marketing_locations = [
             {"location": location, "total": total}
             for location, total in sorted(location_counts.items(), key=lambda item: (-item[1], item[0]))[:10]
         ]
+        marketing_map_points = []
+        for point in sorted(map_points.values(), key=lambda row: (-row["total"], row["location"])):
+            marketing_map_points.append({
+                "location": point["location"],
+                "country_code": point["country_code"],
+                "latitude": point["latitude"],
+                "longitude": point["longitude"],
+                "precision": point["precision"],
+                "total": point["total"],
+                "unique_sessions": len(point["unique_sessions"]),
+                "last_visit_iso": point["last_visit"].isoformat(),
+                "x_percent": round(((point["longitude"] + 180) / 360) * 100, 4),
+                "y_percent": round(((90 - point["latitude"]) / 180) * 100, 4),
+            })
+        daily_rows = list(
+            marketing_visit_qs
+            .filter(occurred_at__gte=now - timedelta(days=13))
+            .annotate(day=TruncDate("occurred_at"))
+            .values("day")
+            .annotate(total=Count("id"))
+            .order_by("day")
+        )
+        daily_map = {row["day"]: row["total"] for row in daily_rows}
+        marketing_daily_visits = []
+        for offset in range(13, -1, -1):
+            day = (now - timedelta(days=offset)).date()
+            marketing_daily_visits.append({"day": day.isoformat(), "label": day.strftime("%d %b"), "total": daily_map.get(day, 0)})
         event_summary = PlatformEvent.objects.aggregate(
             lead_sessions_30d=Count(
                 "session_key", distinct=True,
@@ -325,9 +595,18 @@ def founder_analytics_summary(*, now=None):
         cached = {
             "marketing_visits_7d": visits_7d,
             "marketing_visits_30d": marketing_visits_30d,
+            "marketing_unique_sessions_30d": marketing_unique_sessions_30d,
+            "marketing_countries_30d": len(country_codes),
+            "marketing_location_coverage_30d": round((known_location_visits / marketing_visits_30d * 100), 1) if marketing_visits_30d else 0,
+            "marketing_map_points": marketing_map_points,
+            "marketing_daily_visits": marketing_daily_visits,
             "top_marketing_locations": top_marketing_locations,
             "recent_marketing_visits": [
-                {"location": ((event.metadata or {}).get("location") or "Unknown"), "occurred_at": event.occurred_at}
+                {
+                    "location": _marketing_visit_location(event.metadata)["label"],
+                    "precision": _marketing_visit_location(event.metadata)["precision"],
+                    "occurred_at": event.occurred_at,
+                }
                 for event in marketing_visits[:30]
             ],
             "lead_sessions_30d": lead_sessions,

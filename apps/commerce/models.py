@@ -492,6 +492,7 @@ class DeliveryAssignment(BusinessOwnedModel):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
     status_note = models.CharField(max_length=255, blank=True, default="")
     eta_at = models.DateTimeField(null=True, blank=True)
+    driver_assigned_at = models.DateTimeField(null=True, blank=True)
     picked_up_at = models.DateTimeField(null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)
     proof_note = models.CharField(max_length=255, blank=True, default="")
@@ -1446,6 +1447,7 @@ class CommerceNotification(BusinessOwnedModel):
     EVENT_PAYMENT_CONFIRMED = "payment_confirmed"
     EVENT_PAYMENT_REVIEW = "payment_review"
     EVENT_DELIVERY_CREATED = "delivery_created"
+    EVENT_DELIVERY_READY = "delivery_ready"
     EVENT_DELIVERY_ASSIGNED = "delivery_assigned"
     EVENT_DELIVERY_STATUS = "delivery_status"
     EVENT_DELIVERY_SWITCH = "delivery_switch"
@@ -1460,6 +1462,7 @@ class CommerceNotification(BusinessOwnedModel):
         (EVENT_PAYMENT_CONFIRMED, "Payment confirmed"),
         (EVENT_PAYMENT_REVIEW, "Payment needs review"),
         (EVENT_DELIVERY_CREATED, "Delivery created"),
+        (EVENT_DELIVERY_READY, "Delivery ready"),
         (EVENT_DELIVERY_ASSIGNED, "Delivery assigned"),
         (EVENT_DELIVERY_STATUS, "Delivery status changed"),
         (EVENT_DELIVERY_SWITCH, "Delivery method switched"),
@@ -1475,9 +1478,10 @@ class CommerceNotification(BusinessOwnedModel):
         EVENT_PAYMENT_REVIEW,
     }
     DELIVERY_EVENTS = {
-        EVENT_DELIVERY_CREATED, EVENT_DELIVERY_ASSIGNED, EVENT_DELIVERY_STATUS,
+        EVENT_DELIVERY_CREATED, EVENT_DELIVERY_READY, EVENT_DELIVERY_ASSIGNED, EVENT_DELIVERY_STATUS,
         EVENT_DELIVERY_SWITCH, EVENT_DELIVERY_ISSUE, EVENT_DELIVERY_PROVIDER,
     }
+    DISPATCH_EVENTS = {EVENT_DELIVERY_READY}
     INVENTORY_EVENTS = {EVENT_INVENTORY_ALERT}
 
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)

@@ -6,7 +6,13 @@ from asgiref.sync import async_to_sync
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 
-from accounts.models import BusinessModuleAccess, CustomUser, UserBusiness
+from accounts.models import (
+    BusinessModuleAccess,
+    CustomUser,
+    Role,
+    RoleModulePermission,
+    UserBusiness,
+)
 from accounts.services import seed_business_roles
 from core.models import AuditLog, Business, CashAccount
 from inventory.models import FinishedGood
@@ -29,7 +35,7 @@ from .notification_services import notify_commerce
 from .realtime import business_notification_group, user_notification_group
 from .payment_services import record_verified_payment
 from .services import create_intake
-from .webpush import _run_push_dispatcher
+from .webpush import _enqueue_notifications, _run_push_dispatcher
 
 
 class CommerceNotificationTests(TestCase):
@@ -206,6 +212,165 @@ class CommerceNotificationTests(TestCase):
         self.assertEqual(response.json()["unread_count"], 2)
         self.assertFalse(CommerceNotificationRead.objects.filter(notification=own_payment, user=self.user).exists())
 
+
+    def test_delivery_ready_feed_is_reserved_for_delivery_workspace_users(self):
+        BusinessModuleAccess.objects.update_or_create(
+            business=self.business,
+            module="delivery",
+            defaults={"enabled": True},
+        )
+        delivery_role = Role.objects.create(
+            business=self.business,
+            key="dispatch-only",
+            name="Dispatch only",
+        )
+        RoleModulePermission.objects.create(
+            role=delivery_role,
+            module="delivery",
+            can_view=True,
+            can_edit=True,
+        )
+        commerce_role = Role.objects.create(
+            business=self.business,
+            key="commerce-only",
+            name="Commerce only",
+        )
+        RoleModulePermission.objects.create(
+            role=commerce_role,
+            module="commerce",
+            can_view=True,
+            can_edit=True,
+        )
+        delivery_user = CustomUser.objects.create_user(
+            username="dispatch-user",
+            password="password",
+            fullname="Dispatch User",
+        )
+        commerce_user = CustomUser.objects.create_user(
+            username="commerce-user",
+            password="password",
+            fullname="Commerce User",
+        )
+        UserBusiness.objects.create(
+            user=delivery_user,
+            business=self.business,
+            role=delivery_role,
+        )
+        UserBusiness.objects.create(
+            user=commerce_user,
+            business=self.business,
+            role=commerce_role,
+        )
+        notice = CommerceNotification.raw_objects.create(
+            business=self.business,
+            event_type=CommerceNotification.EVENT_DELIVERY_READY,
+            title="Order complete · ready for delivery",
+            target_url="/delivery/",
+        )
+
+        self.client.force_login(delivery_user)
+        response = self.client.get(reverse("commerce_notification_feed"))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            str(notice.public_id),
+            {row["id"] for row in response.json()["notifications"]},
+        )
+
+        self.client.force_login(commerce_user)
+        response = self.client.get(reverse("commerce_notification_feed"))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(
+            str(notice.public_id),
+            {row["id"] for row in response.json()["notifications"]},
+        )
+
+    @override_settings(
+        WEB_PUSH_VAPID_PUBLIC_KEY="BNmV-test-public-key",
+        WEB_PUSH_VAPID_PRIVATE_KEY="test-private-key",
+        WEB_PUSH_VAPID_SUBJECT="mailto:founder@example.com",
+    )
+    def test_delivery_ready_webpush_targets_delivery_permission_only(self):
+        BusinessModuleAccess.objects.update_or_create(
+            business=self.business,
+            module="delivery",
+            defaults={"enabled": True},
+        )
+        delivery_role = Role.objects.create(
+            business=self.business,
+            key="push-dispatch",
+            name="Push dispatch",
+        )
+        RoleModulePermission.objects.create(
+            role=delivery_role,
+            module="delivery",
+            can_view=True,
+            can_edit=True,
+        )
+        commerce_role = Role.objects.create(
+            business=self.business,
+            key="push-commerce",
+            name="Push commerce",
+        )
+        RoleModulePermission.objects.create(
+            role=commerce_role,
+            module="commerce",
+            can_view=True,
+            can_edit=True,
+        )
+        delivery_user = CustomUser.objects.create_user(
+            username="push-dispatch-user",
+            password="password",
+            fullname="Push Dispatch",
+        )
+        commerce_user = CustomUser.objects.create_user(
+            username="push-commerce-user",
+            password="password",
+            fullname="Push Commerce",
+        )
+        UserBusiness.objects.create(
+            user=delivery_user,
+            business=self.business,
+            role=delivery_role,
+        )
+        UserBusiness.objects.create(
+            user=commerce_user,
+            business=self.business,
+            role=commerce_role,
+        )
+        delivery_subscription = CommercePushSubscription.objects.create(
+            business=self.business,
+            user=delivery_user,
+            endpoint="https://push.example.test/delivery-ready",
+            endpoint_hash="delivery-ready-hash",
+            p256dh="p256dh-delivery",
+            auth="auth-delivery",
+        )
+        commerce_subscription = CommercePushSubscription.objects.create(
+            business=self.business,
+            user=commerce_user,
+            endpoint="https://push.example.test/commerce-only",
+            endpoint_hash="commerce-only-hash",
+            p256dh="p256dh-commerce",
+            auth="auth-commerce",
+        )
+        notice = CommerceNotification.raw_objects.create(
+            business=self.business,
+            event_type=CommerceNotification.EVENT_DELIVERY_READY,
+            title="Order complete · ready for delivery",
+            target_url="/delivery/",
+        )
+
+        created = _enqueue_notifications()
+
+        self.assertEqual(created, 1)
+        self.assertTrue(CommercePushDelivery.objects.filter(
+            notification=notice,
+            subscription=delivery_subscription,
+        ).exists())
+        self.assertFalse(CommercePushDelivery.objects.filter(
+            notification=notice,
+            subscription=commerce_subscription,
+        ).exists())
 
     @override_settings(
         WEB_PUSH_VAPID_PUBLIC_KEY="BNmV-test-public-key",
