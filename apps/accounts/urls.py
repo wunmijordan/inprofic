@@ -4,6 +4,8 @@ from . import views
 urlpatterns = [
     path("payroll/", views.payroll_workspace, name="payroll_workspace"),
     path("payroll/addon/", views.payroll_addon_checkout, name="payroll_addon_checkout"),
+    path("payroll/runs/add/", views.payroll_run_create, name="payroll_run_create"),
+    path("payroll/runs/<int:pk>/", views.payroll_run_detail, name="payroll_run_detail"),
     path("payroll/staff/<int:pk>/edit/", views.payroll_staff_edit, name="payroll_staff_edit"),
     path("payroll/calculations/<int:pk>/edit/", views.payroll_calculation_rule_edit, name="payroll_calculation_rule_edit"),
     path("payroll/calculations/<int:pk>/delete/", views.payroll_calculation_rule_delete, name="payroll_calculation_rule_delete"),

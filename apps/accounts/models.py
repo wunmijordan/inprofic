@@ -893,9 +893,86 @@ class PayrollCalculationRule(BusinessOwnedModel):
         return self.name
 
 
+class PayrollRun(BusinessOwnedModel):
+    """One posted wage run that groups issued payslips and Finance outflows."""
+
+    KIND_BULK = "bulk"
+    KIND_SINGLE = "single"
+    KIND_CHOICES = [
+        (KIND_BULK, "Bulk payroll"),
+        (KIND_SINGLE, "Single payslip"),
+    ]
+
+    kind = models.CharField(max_length=12, choices=KIND_CHOICES, default=KIND_BULK)
+    period_start = models.DateField()
+    period_end = models.DateField()
+    pay_date = models.DateField()
+    staff_count = models.PositiveIntegerField(default=0)
+    total_gross_pay = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    total_net_pay = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    total_employer_cost = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    notes = models.CharField(max_length=500, blank=True, default="")
+    posted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-pay_date", "-id"]
+        indexes = [
+            models.Index(fields=["business", "-pay_date"], name="payrun_biz_paydate_idx"),
+        ]
+
+    def __str__(self):
+        return f"Payroll {self.period_start}–{self.period_end}"
+
+
+class PayrollRunFunding(models.Model):
+    """Finance-account split used to pay one posted payroll run."""
+
+    payroll_run = models.ForeignKey(
+        PayrollRun,
+        on_delete=models.PROTECT,
+        related_name="funding_lines",
+    )
+    account = models.ForeignKey(
+        "core.CashAccount",
+        on_delete=models.PROTECT,
+        related_name="payroll_funding_lines",
+    )
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
+    finance_transaction = models.OneToOneField(
+        "core.FinancialTransaction",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="payroll_funding_line",
+    )
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["payroll_run", "account"],
+                name="unique_payrun_account",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="payrun_funding_positive",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.payroll_run} · {self.account} · {self.amount}"
+
+
 class Payslip(BusinessOwnedModel):
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     staff = models.ForeignKey(PayrollStaffProfile, on_delete=models.PROTECT, related_name="payslips")
+    payroll_run = models.ForeignKey(
+        PayrollRun,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="payslips",
+    )
     period_start = models.DateField()
     period_end = models.DateField()
     base_pay = models.DecimalField(max_digits=14, decimal_places=2, default=0)
@@ -993,6 +1070,14 @@ class PayslipRevision(models.Model):
     payslip = models.ForeignKey(Payslip, on_delete=models.CASCADE, related_name="revisions")
     reason = models.CharField(max_length=500)
     previous_snapshot = models.JSONField(default=dict)
+    finance_delta = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    finance_transaction = models.ForeignKey(
+        "core.FinancialTransaction",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="payroll_payslip_revisions",
+    )
     edited_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
         related_name="payroll_payslip_revisions",

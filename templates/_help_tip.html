@@ -1,0 +1,31 @@
+{% if help_text %}
+<span
+  class="form-help-tip normal-case tracking-normal"
+  data-form-help-tip
+>
+  <button
+    type="button"
+    class="form-help-tip__trigger"
+    data-form-help-trigger
+    aria-label="{% if label %}Help for {{ label }}{% else %}More information{% endif %}"
+    aria-expanded="false"
+    {% if help_id %}aria-controls="{{ help_id }}"{% endif %}
+  >
+    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+      <circle cx="10" cy="10" r="8"></circle>
+      <path d="M10 9v5"></path>
+      <path d="M10 6.25h.01"></path>
+    </svg>
+  </button>
+
+  <span
+    {% if help_id %}id="{{ help_id }}"{% endif %}
+    class="form-help-tip__bubble normal-case tracking-normal"
+    data-form-help-bubble
+    role="tooltip"
+    hidden
+  >
+    {{ help_text }}
+  </span>
+</span>
+{% endif %}

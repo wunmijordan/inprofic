@@ -6,8 +6,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Create your INPROFIC Workspace</title>
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
-  <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}">
-  <link rel="stylesheet" href="{% static 'core/css/workspace.css' %}">
+  <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}?v={{ static_asset_version }}">
+  <link rel="stylesheet" href="{% static 'core/css/workspace.css' %}?v={{ static_asset_version }}">
   <script src="{% static 'core/js/workspace.js' %}"></script>
   {% include "pwa/head.html" %}
   <style>
@@ -15,7 +15,7 @@
     @font-face { font-family:'Fraunces'; src:url('{% static "core/fonts/Fraunces-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
     body{font-family:Sora,sans-serif;background:#FAF6EF;color:#211D1A}.font-display{font-family:Fraunces,serif}input:focus,select:focus,textarea:focus{border-color:#d14900!important;box-shadow:0 0 0 2px rgba(209,73,0,.3)!important}.auth-logo-dark{display:none}html[data-theme="dark"] .auth-logo-light{display:none}html[data-theme="dark"] .auth-logo-dark{display:block}
   </style>
-  <script src="{% static 'core/js/form-experience.js' %}" defer></script>
+  <script src="{% static 'core/js/form-experience.js' %}?v={{ static_asset_version }}" defer></script>
 </head>
 <body>
   <main class="min-h-screen flex items-center justify-center p-4">

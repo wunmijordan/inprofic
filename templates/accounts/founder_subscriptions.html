@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load core_extras %}{% block content %}
+{% load core_extras static %}{% block content %}
 <div class="max-w-6xl" data-founder-console data-founder-default="{% if request.GET.workspace == 'management' %}management{% elif backup_restore_report or restore_form.errors %}recovery{% elif privacy_policy_form.errors %}management{% elif campaign_instance or promotion_form.errors or campaign_form.errors or trust_settings_form.errors or trust_logo_form.errors %}promotions{% else %}plans{% endif %}" data-founder-live-url="{% url 'founder_signup_live_snapshot' %}" data-founder-socket-path="/ws/founder/signups/" data-latest-signup-id="{{ founder_analytics.latest_registration_id|default:0 }}" data-platform-query="{{ platform_query|escape }}">
   <h1 class="text-2xl font-semibold font-display text-[#8f172d]">Founder Console</h1>
   <p class="text-sm text-stone-500 mb-4">Superuser-only subscription operations. Manage plans, promotions, subscribers and business recovery from focused workspaces.</p>
@@ -49,10 +49,123 @@
         {% if founder_analytics.signup_contacts_count > 50 %}<div class="border-t border-[#E7DFCC] px-4 py-2 text-[11px] text-stone-500">Showing the 50 most recent unique contacts here. CSV export includes the full list.</div>{% endif %}
       </div>
     </div>
-    <div class="grid gap-5 xl:grid-cols-2">
-      <div class="overflow-hidden rounded-xl border border-[#E7DFCC] bg-white"><div class="border-b bg-[#F5EFE0] px-4 py-3"><div class="font-semibold">Marketing visit locations</div><div class="text-[11px] text-stone-500">Coarse location supplied by the hosting/edge layer; no external geolocation lookup or raw IP storage.</div></div><table class="w-full text-sm"><thead><tr><th class="px-4 py-2 text-left">Location</th><th class="px-4 py-2 text-right">Visits · 30d</th></tr></thead><tbody>{% for row in founder_analytics.top_marketing_locations %}<tr class="border-t"><td class="px-4 py-2">{{ row.location }}</td><td class="px-4 py-2 text-right font-mono">{{ row.total }}</td></tr>{% empty %}<tr><td colspan="2" class="px-4 py-5 text-center text-stone-500">No marketing visits recorded yet.</td></tr>{% endfor %}</tbody></table></div>
-      <div class="overflow-hidden rounded-xl border border-[#E7DFCC] bg-white"><div class="border-b bg-[#F5EFE0] px-4 py-3"><div class="font-semibold">Recent marketing visits</div><div class="text-[11px] text-stone-500">Recent public marketing-page traffic alongside signup analytics.</div></div><div class="max-h-72 overflow-auto"><table class="w-full text-sm"><thead><tr><th class="px-4 py-2 text-left">Location</th><th class="px-4 py-2 text-right">When</th></tr></thead><tbody>{% for row in founder_analytics.recent_marketing_visits %}<tr class="border-t"><td class="px-4 py-2">{{ row.location }}</td><td class="px-4 py-2 text-right text-xs text-stone-500">{{ row.occurred_at|date:"j M Y H:i" }}</td></tr>{% empty %}<tr><td colspan="2" class="px-4 py-5 text-center text-stone-500">No marketing visits recorded yet.</td></tr>{% endfor %}</tbody></table></div></div>
-    </div>
+    <section class="marketing-geo-analytics overflow-hidden rounded-xl border border-[#E7DFCC] bg-white">
+      <div class="flex flex-wrap items-start justify-between gap-3 border-b border-[#E7DFCC] bg-[#F5EFE0] px-4 py-3">
+        <div>
+          <div class="font-semibold">Marketing audience map</div>
+          <div class="mt-0.5 max-w-3xl text-[11px] leading-5 text-stone-500">
+            First-party visit geography from trusted edge headers. City/region coordinates are used when supplied;
+            country-only visits use a bundled country centroid. Raw visitor IP addresses are not stored and no
+            external geolocation lookup is performed.
+          </div>
+        </div>
+        <span class="rounded-full bg-[#050733] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white">30 days</span>
+      </div>
+
+      <div class="grid gap-3 border-b border-[#E7DFCC] p-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="rounded-lg border border-[#E7DFCC] bg-[#FFFDF8] p-3">
+          <div class="text-[10px] font-bold uppercase tracking-wider text-stone-400">Mapped visits</div>
+          <div class="mt-1 font-mono text-lg font-semibold">{{ founder_analytics.marketing_location_coverage_30d }}%</div>
+        </div>
+        <div class="rounded-lg border border-[#E7DFCC] bg-[#FFFDF8] p-3">
+          <div class="text-[10px] font-bold uppercase tracking-wider text-stone-400">Unique sessions</div>
+          <div class="mt-1 font-mono text-lg font-semibold">{{ founder_analytics.marketing_unique_sessions_30d }}</div>
+        </div>
+        <div class="rounded-lg border border-[#E7DFCC] bg-[#FFFDF8] p-3">
+          <div class="text-[10px] font-bold uppercase tracking-wider text-stone-400">Countries reached</div>
+          <div class="mt-1 font-mono text-lg font-semibold">{{ founder_analytics.marketing_countries_30d }}</div>
+        </div>
+        <div class="rounded-lg border border-[#E7DFCC] bg-[#FFFDF8] p-3">
+          <div class="text-[10px] font-bold uppercase tracking-wider text-stone-400">Visits · 30d</div>
+          <div class="mt-1 font-mono text-lg font-semibold">{{ founder_analytics.marketing_visits_30d }}</div>
+        </div>
+      </div>
+
+      <div class="grid gap-4 p-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(18rem,.7fr)]">
+        <div>
+          <div
+            class="marketing-visit-map"
+            data-marketing-map
+            data-world-map="{% static 'core/maps/world-outline.svg' %}"
+            role="group"
+            aria-label="Marketing visits world map"
+          >
+            <img
+              src="{% static 'core/maps/world-outline.svg' %}"
+              alt="World map"
+              class="marketing-visit-map__image"
+            >
+            <div class="marketing-visit-map__markers" data-marketing-map-markers></div>
+            <div class="marketing-visit-map__detail" data-marketing-map-detail hidden>
+              <div class="text-[10px] font-bold uppercase tracking-[.14em] text-stone-400" data-map-detail-precision></div>
+              <div class="mt-1 text-sm font-semibold text-stone-800" data-map-detail-location></div>
+              <div class="mt-2 grid grid-cols-2 gap-2 text-xs">
+                <div><span class="block text-stone-400">Visits</span><strong class="font-mono" data-map-detail-visits></strong></div>
+                <div><span class="block text-stone-400">Sessions</span><strong class="font-mono" data-map-detail-sessions></strong></div>
+              </div>
+              <div class="mt-2 text-[11px] text-stone-500" data-map-detail-last></div>
+            </div>
+            <div class="marketing-visit-map__empty" data-marketing-map-empty hidden>No mapped visits yet.</div>
+          </div>
+          <div class="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] text-stone-500">
+            <span>Pointer size reflects visit volume.</span>
+            <span><strong class="text-stone-700">Edge</strong> = city/region coordinates · <strong class="text-stone-700">Country</strong> = centroid</span>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-3">
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-xs font-semibold">Top mapped locations</div>
+            <span class="text-[10px] text-stone-400">Click to inspect</span>
+          </div>
+          <div class="mt-2 max-h-[20rem] space-y-1 overflow-y-auto" data-marketing-location-list></div>
+        </div>
+      </div>
+
+      <div class="border-t border-[#E7DFCC] px-4 py-4">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <div class="text-xs font-semibold">Visit pulse · last 14 days</div>
+            <div class="mt-0.5 text-[10px] text-stone-400">Daily marketing-page traffic</div>
+          </div>
+        </div>
+        <div class="marketing-visit-trend mt-3" data-marketing-visit-trend></div>
+      </div>
+
+      <div class="border-t border-[#E7DFCC]">
+        <div class="border-b border-[#E7DFCC] px-4 py-3">
+          <div class="text-xs font-semibold">Recent marketing visits</div>
+          <div class="mt-0.5 text-[11px] text-stone-500">Most recent public marketing-page traffic and the available location precision.</div>
+        </div>
+        <div class="max-h-72 overflow-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr>
+                <th class="px-4 py-2 text-left">Location</th>
+                <th class="px-4 py-2 text-left">Precision</th>
+                <th class="px-4 py-2 text-right">When</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in founder_analytics.recent_marketing_visits %}
+              <tr class="border-t">
+                <td class="px-4 py-2">{{ row.location }}</td>
+                <td class="px-4 py-2 text-xs capitalize text-stone-500">{{ row.precision }}</td>
+                <td class="px-4 py-2 text-right text-xs text-stone-500">{{ row.occurred_at|date:"j M Y H:i" }}</td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="3" class="px-4 py-5 text-center text-stone-500">No marketing visits recorded yet.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    {{ founder_analytics.marketing_map_points|json_script:"founder-marketing-map-points" }}
+    {{ founder_analytics.marketing_daily_visits|json_script:"founder-marketing-daily-visits" }}
     <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
       <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="font-semibold">Native platform management</h2><p class="mt-1 text-xs text-stone-500">Manage businesses and global accounts here without leaving the Founder Console. Django administration remains available as a separate technical tool.</p></div><div class="flex flex-wrap gap-2"><a href="{% url 'platform_mailing_workspace' %}" class="rounded-md border border-[#8f172d] bg-white px-4 py-2 text-sm font-semibold text-[#8f172d]">Mailing workspace</a><a href="{% url 'founder_platform_user_add' %}" class="rounded-md bg-[#050733] px-4 py-2 text-sm font-semibold text-white">Add project user</a><a href="{% url 'admin:index' %}" target="_blank" rel="noopener" class="rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-medium">Open Django admin ↗</a></div></div>
       <form method="get" action="{% url 'founder_subscriptions' %}" class="mt-4 flex flex-col gap-2 sm:flex-row"><input type="hidden" name="workspace" value="management"><input name="platform_q" value="{{ platform_query }}" class="min-w-0 flex-1" placeholder="Search businesses, usernames, email or phone"><button class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Search platform</button>{% if platform_query %}<a href="{% url 'founder_subscriptions' %}?workspace=management#platform-management" class="rounded-md border border-stone-300 bg-white px-4 py-2 text-center text-sm font-medium">Clear</a>{% endif %}</form>
@@ -63,7 +176,10 @@
         <button name="action" value="save_platform_integrations" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Save integrations</button>
       </div>
       <label class="mt-4 flex items-start justify-between gap-4 rounded-xl border border-[#D9CFB4] bg-white p-4 cursor-pointer">
-        <span><span class="block text-sm font-semibold">Glovo delivery provider</span><span class="mt-1 block text-xs leading-5 text-stone-500">When off, Glovo is not shown or callable anywhere outside this Founder control. Existing business configuration stays dormant and is restored if you enable it later. When on, each business must still configure and activate its own approved Glovo account.</span></span>
+        <span class="inline-flex items-center gap-1.5">
+          <span class="text-sm font-semibold">Glovo delivery provider</span>
+          {% include "_help_tip.html" with help_text="When off, Glovo is not shown or callable anywhere outside this Founder control. Existing business configuration stays dormant and is restored if you enable it later. When on, each business must still configure and activate its own approved Glovo account." label="Glovo delivery provider" %}
+        </span>
         <span class="relative inline-flex h-6 w-11 shrink-0"><input type="checkbox" name="glovo_enabled" class="peer sr-only" {% if integration_settings.glovo_enabled %}checked{% endif %}><span class="absolute inset-0 rounded-full bg-stone-300 transition peer-checked:bg-[#8f172d]"></span><span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span></span>
       </label>
     </form>
@@ -145,11 +261,17 @@
     </div>
     <div class="grid sm:grid-cols-2 gap-3 mt-4">
       <label class="flex items-center justify-between gap-4 rounded-lg border border-[#D9CFB4] bg-white p-4 cursor-pointer">
-        <span><span class="block text-sm font-medium">Paystack</span><span class="block text-xs text-stone-500 mt-0.5">Allow new subscription checkouts through Paystack.</span></span>
+        <span class="inline-flex items-center gap-1.5">
+          <span class="text-sm font-medium">Paystack</span>
+          {% include "_help_tip.html" with help_text="Allow new subscription checkouts through Paystack." label="Paystack" %}
+        </span>
         <span class="relative inline-flex h-6 w-11 shrink-0"><input type="checkbox" name="paystack_enabled" class="peer sr-only" {% if payment_settings.paystack_enabled %}checked{% endif %}><span class="absolute inset-0 rounded-full bg-stone-300 transition peer-checked:bg-[#8f172d]"></span><span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span></span>
       </label>
       <label class="flex items-center justify-between gap-4 rounded-lg border border-[#D9CFB4] bg-white p-4 cursor-pointer">
-        <span><span class="block text-sm font-medium">Monnify</span><span class="block text-xs text-stone-500 mt-0.5">Allow new subscription checkouts through Monnify.</span></span>
+        <span class="inline-flex items-center gap-1.5">
+          <span class="text-sm font-medium">Monnify</span>
+          {% include "_help_tip.html" with help_text="Allow new subscription checkouts through Monnify." label="Monnify" %}
+        </span>
         <span class="relative inline-flex h-6 w-11 shrink-0"><input type="checkbox" name="monnify_enabled" class="peer sr-only" {% if payment_settings.monnify_enabled %}checked{% endif %}><span class="absolute inset-0 rounded-full bg-stone-300 transition peer-checked:bg-[#8f172d]"></span><span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span></span>
       </label>
     </div>
@@ -160,7 +282,10 @@
     <div class="grid md:grid-cols-3 gap-3">
       {% for plan in plans %}<div class="bg-white border border-[#E7DFCC] rounded-lg p-4">
         <div class="font-semibold text-sm">{{ plan.name }}</div>
-        {% if plan.code == 'starter' %}<label class="mt-3 flex items-center justify-between gap-3 rounded-lg border border-[#E7DFCC] bg-[#FFFDF8] px-3 py-2 text-xs"><span><strong class="block text-stone-700">Free forever</strong><span class="text-[10px] leading-4 text-stone-500">Turn off to make Starter payable. Existing free Starter tenants receive the Founder-configured trial transition window; turning it back on restores non-expiring access.</span></span><span class="relative inline-flex h-6 w-11 shrink-0"><input type="checkbox" name="free_forever_{{ plan.pk }}" data-starter-free-toggle class="peer sr-only" {% if plan.is_free_forever %}checked{% endif %}><span class="absolute inset-0 rounded-full bg-stone-300 transition peer-checked:bg-[#8f172d]"></span><span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span></span></label>{% endif %}
+        {% if plan.code == 'starter' %}<label class="mt-3 flex items-center justify-between gap-3 rounded-lg border border-[#E7DFCC] bg-[#FFFDF8] px-3 py-2 text-xs"><span class="inline-flex items-center gap-1.5">
+          <strong class="text-stone-700">Free forever</strong>
+          {% include "_help_tip.html" with help_text="Turn off to make Starter payable. Existing free Starter tenants receive the Founder-configured trial transition window; turning it back on restores non-expiring access." label="Free forever" %}
+        </span><span class="relative inline-flex h-6 w-11 shrink-0"><input type="checkbox" name="free_forever_{{ plan.pk }}" data-starter-free-toggle class="peer sr-only" {% if plan.is_free_forever %}checked{% endif %}><span class="absolute inset-0 rounded-full bg-stone-300 transition peer-checked:bg-[#8f172d]"></span><span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span></span></label>{% endif %}
         <label class="block text-xs text-stone-500 mt-3">Monthly price</label><input name="monthly_price_{{ plan.pk }}" value="{{ plan.monthly_price }}" type="number" step="0.01" min="0" data-plan-monthly-price {% if plan.code == 'starter' and plan.is_free_forever %}readonly{% endif %} class="w-full border rounded px-2 py-1.5 text-sm font-mono {% if plan.code == 'starter' and plan.is_free_forever %}bg-stone-100{% endif %}"><div class="text-[11px] text-stone-500 mt-1">{% if plan.is_free_forever %}Free forever · no renewal{% else %}Current monthly: <span class="font-mono">{{ plan.monthly_price|money:"₦" }}</span>{% if plan.code == 'starter' %} · paid Starter{% endif %}{% endif %}</div>
         <label class="block text-xs text-stone-500 mt-2">Yearly discount %</label><input name="yearly_discount_{{ plan.pk }}" value="{{ plan.yearly_discount_percent }}" type="number" step="0.01" min="0" max="100" class="w-full border rounded px-2 py-1.5 text-sm font-mono">
         <div class="text-[11px] text-emerald-700 mt-1">Base yearly price after discount: <span class="font-mono">{{ plan.yearly_price|money:"₦" }}</span></div>
@@ -237,7 +362,7 @@
     </div>
     <form method="post" class="mt-4 grid gap-3 md:grid-cols-2">{% csrf_token %}
       {% for error in promotion_form.non_field_errors %}<div class="md:col-span-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{{ error }}</div>{% endfor %}
-      <div class="md:col-span-2 rounded-xl border border-orange-200 bg-orange-50 p-3">{% include '_field.html' with field=promotion_form.applies_to_all_plans %}<p class="mt-1 text-[11px] text-stone-600">When enabled, the same discount rule is evaluated against each plan's own base price.</p></div>
+      <div class="md:col-span-2 rounded-xl border border-orange-200 bg-orange-50 p-3">{% include '_field.html' with field=promotion_form.applies_to_all_plans %}<p data-form-help-text data-form-help-for="{{ promotion_form.applies_to_all_plans.id_for_label }}" class="mt-1 text-[11px] text-stone-600">When enabled, the same discount rule is evaluated against each plan's own base price.</p></div>
       <div data-promo-plan-field>{% include '_field.html' with field=promotion_form.plan %}</div>
       {% include '_field.html' with field=promotion_form.reason %}
       {% include '_field.html' with field=promotion_form.discount_type %}
@@ -581,5 +706,132 @@
     if (planSelect) { planSelect.disabled = all; if (all) planSelect.value = ''; }
   };
   allPlans.addEventListener('change', sync); sync();
+})();
+</script>
+<script>
+(() => {
+  const map = document.querySelector('[data-marketing-map]');
+  const markerLayer = map?.querySelector('[data-marketing-map-markers]');
+  const locationList = document.querySelector('[data-marketing-location-list]');
+  const trend = document.querySelector('[data-marketing-visit-trend]');
+  const pointsNode = document.getElementById('founder-marketing-map-points');
+  const dailyNode = document.getElementById('founder-marketing-daily-visits');
+
+  if (!map || !markerLayer || !pointsNode) return;
+
+  const points = JSON.parse(pointsNode.textContent || '[]');
+  const daily = dailyNode ? JSON.parse(dailyNode.textContent || '[]') : [];
+  const empty = map.querySelector('[data-marketing-map-empty]');
+  const detail = map.querySelector('[data-marketing-map-detail]');
+  const detailLocation = map.querySelector('[data-map-detail-location]');
+  const detailPrecision = map.querySelector('[data-map-detail-precision]');
+  const detailVisits = map.querySelector('[data-map-detail-visits]');
+  const detailSessions = map.querySelector('[data-map-detail-sessions]');
+  const detailLast = map.querySelector('[data-map-detail-last]');
+  let pinnedIndex = null;
+
+  const precisionLabel = value => value === 'edge' ? 'City / region coordinate' : 'Country-level centroid';
+  const lastVisitLabel = value => {
+    if (!value) return '';
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? '' : `Last visit ${parsed.toLocaleString()}`;
+  };
+
+  function activatePoint(index, { pin = false } = {}) {
+    const point = points[index];
+    if (!point) return;
+    if (pin) pinnedIndex = index;
+
+    markerLayer.querySelectorAll('[data-map-point]').forEach((node, markerIndex) => {
+      node.dataset.active = markerIndex === index ? 'true' : 'false';
+    });
+    locationList?.querySelectorAll('[data-location-row]').forEach((node, rowIndex) => {
+      node.dataset.active = rowIndex === index ? 'true' : 'false';
+    });
+
+    if (detail) detail.hidden = false;
+    if (detailLocation) detailLocation.textContent = point.location || 'Unknown';
+    if (detailPrecision) detailPrecision.textContent = precisionLabel(point.precision);
+    if (detailVisits) detailVisits.textContent = String(point.total || 0);
+    if (detailSessions) detailSessions.textContent = String(point.unique_sessions || 0);
+    if (detailLast) detailLast.textContent = lastVisitLabel(point.last_visit_iso);
+  }
+
+  if (!points.length) {
+    if (empty) empty.hidden = false;
+  } else {
+    const maximum = Math.max(...points.map(point => Number(point.total || 0)), 1);
+    points.forEach((point, index) => {
+      const marker = document.createElement('button');
+      const volume = Math.max(0, Number(point.total || 0));
+      const size = 12 + Math.round(Math.sqrt(volume / maximum) * 18);
+      marker.type = 'button';
+      marker.className = 'marketing-visit-marker';
+      marker.dataset.mapPoint = String(index);
+      marker.dataset.precision = point.precision || 'country';
+      marker.style.left = `${point.x_percent}%`;
+      marker.style.top = `${point.y_percent}%`;
+      marker.style.width = `${size}px`;
+      marker.style.height = `${size}px`;
+      marker.setAttribute('aria-label', `${point.location}: ${point.total} marketing visits`);
+      marker.title = `${point.location} · ${point.total} visit${Number(point.total) === 1 ? '' : 's'}`;
+      marker.addEventListener('mouseenter', () => activatePoint(index));
+      marker.addEventListener('focus', () => activatePoint(index));
+      marker.addEventListener('mouseleave', () => { if (pinnedIndex !== null) activatePoint(pinnedIndex); });
+      marker.addEventListener('click', () => activatePoint(index, { pin: true }));
+      markerLayer.appendChild(marker);
+
+      if (locationList) {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'marketing-location-row';
+        row.dataset.locationRow = String(index);
+
+        const label = document.createElement('span');
+        label.className = 'min-w-0 truncate text-left text-xs font-medium';
+        label.textContent = point.location || 'Unknown';
+
+        const count = document.createElement('span');
+        count.className = 'shrink-0 font-mono text-xs font-semibold';
+        count.textContent = String(point.total || 0);
+
+        row.append(label, count);
+        row.addEventListener('click', () => {
+          activatePoint(index, { pin: true });
+          map.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        });
+        locationList.appendChild(row);
+      }
+    });
+    activatePoint(0);
+  }
+
+  if (trend && daily.length) {
+    const maximum = Math.max(...daily.map(row => Number(row.total || 0)), 1);
+    daily.forEach(row => {
+      const item = document.createElement('div');
+      item.className = 'marketing-visit-trend__item';
+      item.title = `${row.label}: ${row.total} visit${Number(row.total) === 1 ? '' : 's'}`;
+
+      const value = document.createElement('span');
+      value.className = 'marketing-visit-trend__value';
+      value.textContent = String(row.total || 0);
+
+      const track = document.createElement('span');
+      track.className = 'marketing-visit-trend__track';
+
+      const bar = document.createElement('span');
+      bar.className = 'marketing-visit-trend__bar';
+      bar.style.height = `${Math.max(4, Math.round((Number(row.total || 0) / maximum) * 100))}%`;
+      track.appendChild(bar);
+
+      const label = document.createElement('span');
+      label.className = 'marketing-visit-trend__label';
+      label.textContent = row.label;
+
+      item.append(value, track, label);
+      trend.appendChild(item);
+    });
+  }
 })();
 </script>{% endblock %}

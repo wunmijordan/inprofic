@@ -6,14 +6,38 @@
     <div class="flex flex-wrap gap-2"><a href="{{ pdf_url }}" class="rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-xs font-semibold">Download PDF</a><a href="{% url 'payroll_payslip_edit' payslip.pk %}" class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">Edit issued payslip</a></div>
   </div>
 
-  <div class="mt-4">{% include 'accounts/_payroll_payslip_sheet.html' %}</div>
+  {% if payslip.payroll_run_id %}
+  <div class="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs">
+    <div>
+      <strong class="text-emerald-900">Recorded in Finance</strong>
+      <span class="ml-1 text-emerald-800">as Payroll / Wages on {{ payslip.payroll_run.pay_date|date:"j M Y" }}.</span>
+    </div>
+    <a href="{% url 'payroll_run_detail' payslip.payroll_run_id %}" class="font-semibold text-emerald-900 underline">
+      View pay run
+    </a>
+  </div>
+{% endif %}
+
+<div class="mt-4">{% include 'accounts/_payroll_payslip_sheet.html' %}</div>
 
   {% if payslip.revisions.all %}
   <section class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
     <div class="text-xs font-semibold text-amber-900">Issued-payslip edit history</div>
     <p class="mt-1 text-[11px] leading-5 text-amber-800">The original values before each correction are retained in the audit snapshot.</p>
     <div class="mt-2 divide-y divide-amber-200/70">
-      {% for revision in payslip.revisions.all %}<div class="py-2 text-xs"><strong>{{ revision.edited_at|date:"j M Y, H:i" }}</strong>{% if revision.edited_by %} · {{ revision.edited_by.fullname|default:revision.edited_by.username }}{% endif %}<div class="mt-0.5 text-amber-900">{{ revision.reason }}</div></div>{% endfor %}
+      {% for revision in payslip.revisions.all %}
+        <div class="py-2 text-xs">
+          <strong>{{ revision.edited_at|date:"j M Y, H:i" }}</strong>
+          {% if revision.edited_by %} · {{ revision.edited_by.fullname|default:revision.edited_by.username }}{% endif %}
+          <div class="mt-0.5 text-amber-900">{{ revision.reason }}</div>
+          {% if revision.finance_delta %}
+            <div class="mt-1 text-[11px] text-amber-800">
+              Finance adjustment: {{ biz.currency_symbol }}{{ revision.finance_delta|num }}
+              {% if revision.finance_transaction and revision.finance_transaction.account %} · {{ revision.finance_transaction.account.name }}{% endif %}
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
     </div>
   </section>
   {% endif %}

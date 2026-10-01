@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+{% load core_extras %}
+{% block content %}
+<div class="mx-auto max-w-6xl">
+  <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+    <div>
+      <a href="{% url 'payroll_workspace' %}" class="text-sm text-[#8f172d] underline">
+        ← Staff payroll
+      </a>
+      <div class="mt-4 text-[10px] font-bold uppercase tracking-[.18em] text-stone-400">
+        Bulk payroll
+      </div>
+      <h1 class="mt-1 font-display text-2xl font-semibold text-[#8f172d]">
+        Run payroll
+      </h1>
+      <p class="mt-1 max-w-3xl text-sm text-stone-500">
+        Select staff, confirm the pay period, then split the net wages across one or more Finance accounts.
+        One submission generates every payslip and records the matching wage spend.
+      </p>
+    </div>
+  </div>
+
+  <form method="post" class="mt-5 space-y-5">
+    {% csrf_token %}
+
+    {% for error in form.non_field_errors %}
+      <div class="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+        {{ error }}
+      </div>
+    {% endfor %}
+
+    <section class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4">
+      <div class="grid gap-3 md:grid-cols-3">
+        {% include "_field.html" with field=form.period_start %}
+        {% include "_field.html" with field=form.period_end %}
+        {% include "_field.html" with field=form.pay_date %}
+      </div>
+      {% include "_field.html" with field=form.notes %}
+    </section>
+
+    <section class="overflow-hidden rounded-xl border border-[#E7DFCC] bg-white">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7DFCC] bg-[#FFFDF8] px-4 py-3">
+        <div>
+          <h2 class="font-semibold">Staff to pay</h2>
+          <p class="mt-0.5 text-xs text-stone-500">
+            Current recurring items and configured payroll rules are calculated automatically.
+          </p>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="flex rounded-md border border-[#D9CFB4] bg-white p-0.5 text-[11px]">
+            <button
+              type="button"
+              data-payroll-select="all"
+              class="rounded px-2 py-1 font-semibold text-[#8f172d]"
+            >
+              All
+            </button>
+            <button
+              type="button"
+              data-payroll-select="none"
+              class="rounded px-2 py-1 font-semibold text-stone-500"
+            >
+              Clear
+            </button>
+          </div>
+          <div class="text-right">
+            <div class="text-[10px] font-bold uppercase tracking-[.14em] text-stone-400">
+              Selected net wages
+            </div>
+            <div
+              id="payroll-selected-total"
+              class="font-mono text-lg font-semibold text-[#8f172d]"
+            >
+              {{ biz.currency_symbol }}{{ projected_total|num }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {% if form.staff.errors %}
+        <div class="border-b border-rose-200 bg-rose-50 px-4 py-2 text-xs text-rose-700">
+          {{ form.staff.errors|join:", " }}
+        </div>
+      {% endif %}
+
+      <div class="max-h-[28rem] overflow-auto">
+        <table class="w-full min-w-[720px] text-sm">
+          <thead class="sticky top-0 bg-[#F5EFE0] text-xs text-stone-600">
+            <tr>
+              <th class="w-12 px-4 py-3"></th>
+              <th class="px-4 py-3 text-left">Staff</th>
+              <th class="px-4 py-3 text-left">Pay structure</th>
+              <th class="px-4 py-3 text-right">Projected net</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in staff_previews %}
+              <tr class="border-t border-[#E7DFCC]">
+                <td class="px-4 py-3 text-center">
+                  <input
+                    type="checkbox"
+                    name="staff"
+                    value="{{ row.staff.pk }}"
+                    data-payroll-staff
+                    data-net="{{ row.calculation.net_pay }}"
+                    {% if row.selected %}checked{% endif %}
+                    class="h-4 w-4 accent-[#8f172d]"
+                  >
+                </td>
+                <td class="px-4 py-3">
+                  <strong>{{ row.staff.full_name }}</strong>
+                  <div class="text-xs text-stone-500">
+                    {{ row.staff.job_title|default:"Staff" }} · {{ row.staff.get_pay_frequency_display }}
+                  </div>
+                </td>
+                <td class="px-4 py-3 text-xs text-stone-500">
+                  Base {{ biz.currency_symbol }}{{ row.staff.base_pay|num }}
+                  {% if row.adjustments %}
+                    · {{ row.adjustments|length }} recurring item{{ row.adjustments|length|pluralize }}
+                  {% endif %}
+                </td>
+                <td class="px-4 py-3 text-right font-mono font-semibold">
+                  {{ biz.currency_symbol }}{{ row.calculation.net_pay|num }}
+                </td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="4" class="px-4 py-10 text-center text-stone-500">
+                  No active payroll staff are available.
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 class="font-semibold">Paid from Finance</h2>
+          <p class="mt-0.5 text-xs text-stone-500">
+            Use one account or split wages across several accounts. Allocations must equal the selected staff net pay exactly.
+          </p>
+        </div>
+        <div class="rounded-lg border border-[#D9CFB4] bg-white px-3 py-2 text-right">
+          <div class="text-[10px] font-bold uppercase tracking-[.12em] text-stone-400">Remaining</div>
+          <div id="payroll-funding-remaining" class="font-mono text-sm font-semibold">{{ biz.currency_symbol }}0.00</div>
+        </div>
+      </div>
+
+      {{ funding_formset.management_form }}
+      {% for error in funding_formset.non_form_errors %}
+        <div class="mt-3 rounded-lg bg-rose-50 p-2 text-xs text-rose-700">{{ error }}</div>
+      {% endfor %}
+
+      <div class="mt-3 overflow-hidden rounded-xl border border-[#E7DFCC] bg-white">
+        <table class="w-full min-w-[560px] text-sm">
+          <thead class="bg-[#F5EFE0] text-xs text-stone-600">
+            <tr>
+              <th class="px-3 py-2 text-left">Finance account</th>
+              <th class="px-3 py-2 text-right">
+                <span class="inline-flex items-center justify-end gap-1.5">
+                  Amount
+                  {% include "_help_tip.html" with help_text=funding_formset.empty_form.amount.help_text %}
+                </span>
+              </th>
+              <th class="w-20"></th>
+            </tr>
+          </thead>
+          <tbody id="funding-rows">
+            {% for funding_form in funding_formset %}
+              <tr
+                {% if forloop.first %}data-formset-row{% endif %}
+                class="border-t border-[#E7DFCC]"
+              >
+                <td class="px-3 py-2">
+                  {{ funding_form.account }}
+                  {% for error in funding_form.account.errors %}
+                    <div class="mt-1 text-[11px] text-rose-600">{{ error }}</div>
+                  {% endfor %}
+                </td>
+                <td class="px-3 py-2">
+                  {{ funding_form.amount }}
+                  {% for error in funding_form.amount.errors %}
+                    <div class="mt-1 text-[11px] text-rose-600">{{ error }}</div>
+                  {% endfor %}
+                </td>
+                <td class="px-3 py-2 text-right">
+                  <span class="hidden">{{ funding_form.DELETE }}</span>
+                  {% if not forloop.first %}
+                    <button
+                      type="button"
+                      data-existing-formset-remove
+                      onclick="markExistingFormsetRowDeleted(this)"
+                      class="text-xs font-semibold text-rose-700"
+                    >
+                      Remove
+                    </button>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <button
+          type="button"
+          id="add-payroll-funding"
+          class="w-full border-t border-[#E7DFCC] px-3 py-2 text-xs font-semibold text-[#8f172d] hover:bg-[#F5EFE0]"
+        >
+          + Add another Finance account
+        </button>
+      </div>
+    </section>
+
+    <div class="flex flex-wrap justify-end gap-2">
+      <a href="{% url 'payroll_workspace' %}" class="rounded-md border border-[#D9CFB4] px-4 py-2.5 text-sm">
+        Cancel
+      </a>
+      <button
+        type="submit"
+        class="rounded-md bg-[#8f172d] px-4 py-2.5 text-sm font-semibold text-white"
+        onclick="return confirm('Generate the selected payslips and record the wage spend in Finance?');"
+      >
+        Generate payslips &amp; post wages
+      </button>
+    </div>
+  </form>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const symbol = '{{ biz.currency_symbol|escapejs }}';
+    const totalNode = document.getElementById('payroll-selected-total');
+    const remainingNode = document.getElementById('payroll-funding-remaining');
+    const fundingRows = document.getElementById('funding-rows');
+
+    function selectedTotal() {
+      return Array.from(document.querySelectorAll('[data-payroll-staff]:checked'))
+        .reduce((total, input) => total + Number(input.dataset.net || 0), 0);
+    }
+
+    function activeFundingInputs() {
+      return Array.from(fundingRows?.querySelectorAll('tr') || [])
+        .filter((row) => !row.classList.contains('hidden'))
+        .map((row) => row.querySelector('input[name$="-amount"]'))
+        .filter(Boolean);
+    }
+
+    function money(value) {
+      return `${symbol}${Number(value || 0).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
+    }
+
+    function refreshTotals({ syncSingle = false } = {}) {
+      const total = selectedTotal();
+      const amountInputs = activeFundingInputs();
+      if (syncSingle && amountInputs.length === 1) {
+        amountInputs[0].value = total.toFixed(2);
+      }
+      const allocated = amountInputs.reduce(
+        (sum, input) => sum + Number(input.value || 0),
+        0,
+      );
+      const remaining = total - allocated;
+      if (totalNode) totalNode.textContent = money(total);
+      if (remainingNode) {
+        remainingNode.textContent = money(remaining);
+        remainingNode.classList.toggle('text-rose-700', Math.abs(remaining) > 0.009);
+        remainingNode.classList.toggle('text-emerald-700', Math.abs(remaining) <= 0.009);
+      }
+    }
+
+    const staffCheckboxes = Array.from(
+      document.querySelectorAll('[data-payroll-staff]'),
+    );
+
+    staffCheckboxes.forEach((input) => {
+      input.addEventListener('change', () => refreshTotals({ syncSingle: true }));
+    });
+
+    document.querySelectorAll('[data-payroll-select]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const checked = button.dataset.payrollSelect === 'all';
+        staffCheckboxes.forEach((input) => {
+          input.checked = checked;
+        });
+        refreshTotals({ syncSingle: true });
+      });
+    });
+
+    fundingRows?.addEventListener('input', () => refreshTotals());
+    fundingRows?.addEventListener('change', () => refreshTotals());
+    fundingRows?.addEventListener('click', (event) => {
+      const removeButton = event.target.closest(
+        '[data-existing-formset-remove], [data-remove-new-formset-row]',
+      );
+      if (!removeButton) return;
+      window.setTimeout(() => refreshTotals({ syncSingle: true }), 0);
+    });
+
+    document.getElementById('add-payroll-funding')?.addEventListener('click', function () {
+      const row = addFormsetRow('funding', 'funding-rows');
+      if (row) refreshTotals();
+    });
+
+    refreshTotals();
+  });
+</script>
+{% endblock %}

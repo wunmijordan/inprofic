@@ -2,36 +2,113 @@
 {% load core_extras %}
 {% block content %}
 <div class="mx-auto max-w-3xl">
-  <a href="{% url 'payroll_payslip_detail' payslip.pk %}" class="text-sm text-[#8f172d] underline">← Issued payslip</a>
+  <a
+    href="{% url 'payroll_payslip_detail' payslip.pk %}"
+    class="text-sm text-[#8f172d] underline"
+  >
+    ← Issued payslip
+  </a>
+
   <div class="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4">
-    <div class="text-xs font-bold uppercase tracking-[.12em] text-amber-800">Issued payslip correction</div>
-    <p class="mt-1 text-sm leading-6 text-amber-950">Changing an issued payslip can affect records already shared with the staff member. A reason is required, the previous values are preserved in edit history, and the corrected totals are recalculated using the calculation rules frozen on this payslip—not newer payroll rules.</p>
+    <div class="text-xs font-bold uppercase tracking-[.12em] text-amber-800">
+      Issued payslip correction
+    </div>
+    <p class="mt-1 text-sm leading-6 text-amber-950">
+      Changing an issued payslip can affect records already shared with the staff member.
+      A reason is required and the previous values are preserved. If the correction changes
+      net pay on a Finance-posted payslip, choose the account only when the additional
+      payment or recovery is actually being settled now.
+    </p>
   </div>
 
-  <form method="post" class="mt-5 space-y-5 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
+  <form
+    method="post"
+    class="mt-5 space-y-5 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5"
+  >
     {% csrf_token %}
+
     <div>
-      <div class="text-[10px] font-bold uppercase tracking-[.18em] text-stone-400">Correct payslip</div>
-      <h1 class="mt-1 font-display text-xl font-semibold text-[#8f172d]">{{ payslip.staff.full_name }} · {{ payslip.period_start|date:"j M Y" }} – {{ payslip.period_end|date:"j M Y" }}</h1>
+      <div class="text-[10px] font-bold uppercase tracking-[.18em] text-stone-400">
+        Correct payslip
+      </div>
+      <h1 class="mt-1 font-display text-xl font-semibold text-[#8f172d]">
+        {{ payslip.staff.full_name }} ·
+        {{ payslip.period_start|date:"j M Y" }} –
+        {{ payslip.period_end|date:"j M Y" }}
+      </h1>
     </div>
-    {% for error in form.non_field_errors %}<div class="rounded-lg bg-rose-50 p-2 text-xs text-rose-700">{{ error }}</div>{% endfor %}
+
+    {% for error in form.non_field_errors %}
+      <div class="rounded-lg bg-rose-50 p-2 text-xs text-rose-700">
+        {{ error }}
+      </div>
+    {% endfor %}
+
     <div class="grid gap-x-4 md:grid-cols-2">
-      {% for field in form %}<div {% if field.name == 'notes' or field.name == 'edit_reason' %}class="md:col-span-2"{% endif %}>{% include '_field.html' with field=field %}</div>{% endfor %}
-    </div>
+      <div>{% include "_field.html" with field=form.period_start %}</div>
+      <div>{% include "_field.html" with field=form.period_end %}</div>
+      <div>{% include "_field.html" with field=form.base_pay %}</div>
+      <div>{% include "_field.html" with field=form.manual_allowances %}</div>
+      <div>{% include "_field.html" with field=form.manual_deductions %}</div>
 
-    {% include 'accounts/_payroll_adjustment_formset.html' with adjustment_formset=adjustment_formset title='Frozen recurring pay items' help_text='These are the recurring items that were frozen into this issued payslip. Correcting them here does not change the staff profile.' show_active=False %}
+      {% if form.finance_adjustment_account %}
+        <div class="md:col-span-2">
+          {% include "_field.html" with field=form.finance_adjustment_account %}
+        </div>
+      {% endif %}
 
-    {% if payslip.calculation_lines.all %}
-    <div class="rounded-xl border border-[#E7DFCC] bg-white p-3">
-      <div class="text-xs font-semibold text-stone-700">Frozen calculation rules</div>
-      <p class="mt-1 text-[11px] leading-5 text-stone-500">Tax, pension and other configured rules are intentionally read-only here. They will be recalculated from their original frozen rate, basis, threshold and cap.</p>
-      <div class="mt-2 divide-y divide-stone-100 text-xs">
-        {% for line in payslip.calculation_lines.all %}<div class="flex justify-between gap-4 py-2"><span><strong>{{ line.name }}</strong> · {{ line.get_effect_display }}</span><span class="text-stone-500">{% if line.method == 'percentage' %}{{ line.rate|num }}% of {{ line.get_basis_display }}{% else %}{{ biz.currency_symbol }}{{ line.fixed_amount|num }} fixed{% endif %}</span></div>{% endfor %}
+      <div class="md:col-span-2">
+        {% include "_field.html" with field=form.notes %}
+      </div>
+      <div class="md:col-span-2">
+        {% include "_field.html" with field=form.edit_reason %}
       </div>
     </div>
+
+    {% include "accounts/_payroll_adjustment_formset.html" with adjustment_formset=adjustment_formset title="Frozen recurring pay items" help_text="These are the recurring items frozen into this issued payslip. Correcting them here does not change the staff profile." show_active=False %}
+
+    {% if payslip.calculation_lines.all %}
+      <div class="rounded-xl border border-[#E7DFCC] bg-white p-3">
+        <div class="text-xs font-semibold text-stone-700">
+          Frozen calculation rules
+        </div>
+        <p class="mt-1 text-[11px] leading-5 text-stone-500">
+          Tax, pension and other configured rules are read-only here. They are recalculated
+          from the rate, basis, threshold and cap frozen when this payslip was issued.
+        </p>
+        <div class="mt-2 divide-y divide-stone-100 text-xs">
+          {% for line in payslip.calculation_lines.all %}
+            <div class="flex justify-between gap-4 py-2">
+              <span>
+                <strong>{{ line.name }}</strong> · {{ line.get_effect_display }}
+              </span>
+              <span class="text-stone-500">
+                {% if line.method == 'percentage' %}
+                  {{ line.rate|num }}% of {{ line.get_basis_display }}
+                {% else %}
+                  {{ biz.currency_symbol }}{{ line.fixed_amount|num }} fixed
+                {% endif %}
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
     {% endif %}
 
-    <div class="flex flex-wrap gap-2"><button class="rounded-md bg-[#8f172d] px-4 py-2.5 text-sm font-semibold text-white" onclick="return confirm('Save this correction to an already-issued payslip? The prior version and your reason will remain in its edit history.');">Save corrected payslip</button><a href="{% url 'payroll_payslip_detail' payslip.pk %}" class="rounded-md border border-[#D9CFB4] px-4 py-2.5 text-sm">Cancel</a></div>
+    <div class="flex flex-wrap gap-2">
+      <button
+        class="rounded-md bg-[#8f172d] px-4 py-2.5 text-sm font-semibold text-white"
+        onclick="return confirm('Save this correction to an already-issued payslip? The prior version and your reason will remain in its edit history.');"
+      >
+        Save corrected payslip
+      </button>
+      <a
+        href="{% url 'payroll_payslip_detail' payslip.pk %}"
+        class="rounded-md border border-[#D9CFB4] px-4 py-2.5 text-sm"
+      >
+        Cancel
+      </a>
+    </div>
   </form>
 </div>
 {% endblock %}

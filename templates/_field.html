@@ -1,17 +1,45 @@
 {% if field.field.widget.input_type == "checkbox" %}
-<label class="cf-toggle-field mb-3 flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-[#E7DFCC] bg-white px-3.5 py-3 transition hover:border-[#D9CFB4] hover:bg-[#FFFCF5] {% if field.errors %}field-has-error{% endif %}">
-  <span class="min-w-0">
-    <span class="block text-sm font-semibold text-stone-700">{{ field.label }}</span>
-    {% if field.help_text %}<span class="mt-0.5 block text-[11px] leading-5 text-stone-500">{{ field.help_text }}</span>{% endif %}
-    {% for error in field.errors %}<span class="mt-1 block text-[11px] text-rose-600">{{ error }}</span>{% endfor %}
-  </span>
-  <span class="cf-switch shrink-0">{{ field }}<span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span>
-</label>
+<div
+  class="cf-toggle-field mb-3 flex items-center justify-between gap-4 rounded-xl border border-[#E7DFCC] bg-white px-3.5 py-3 transition hover:border-[#D9CFB4] hover:bg-[#FFFCF5] {% if field.errors %}field-has-error{% endif %}"
+>
+  <div class="min-w-0">
+    <div class="flex items-center gap-1.5 text-sm font-semibold text-stone-700">
+      <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+      {% include "_help_tip.html" with help_text=field.help_text help_id=field.auto_id|add:"_helptext" label=field.label %}
+    </div>
+
+    {% for error in field.errors %}
+      <span class="mt-1 block text-[11px] text-rose-600">
+        {{ error }}
+      </span>
+    {% endfor %}
+  </div>
+
+  <label class="cf-switch shrink-0" for="{{ field.id_for_label }}">
+    {{ field }}
+    <span class="cf-switch-track">
+      <span class="cf-switch-thumb"></span>
+    </span>
+  </label>
+</div>
 {% else %}
-<label class="cf-field block mb-3 {% if field.errors %}field-has-error{% endif %}">
-  <span class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500">{{ field.label }}</span>
+<div class="cf-field mb-3 block {% if field.errors %}field-has-error{% endif %}">
+  <div class="mb-1.5 flex items-center gap-1.5">
+    <label
+      for="{{ field.id_for_label }}"
+      class="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500"
+    >
+      {{ field.label }}
+    </label>
+    {% include "_help_tip.html" with help_text=field.help_text help_id=field.auto_id|add:"_helptext" label=field.label %}
+  </div>
+
   {{ field }}
-  {% if field.help_text %}<span class="mt-1 block text-[11px] leading-5 text-stone-500">{{ field.help_text }}</span>{% endif %}
-  {% for error in field.errors %}<span class="mt-1 block text-[11px] text-rose-600">{{ error }}</span>{% endfor %}
-</label>
+
+  {% for error in field.errors %}
+    <span class="mt-1 block text-[11px] text-rose-600">
+      {{ error }}
+    </span>
+  {% endfor %}
+</div>
 {% endif %}

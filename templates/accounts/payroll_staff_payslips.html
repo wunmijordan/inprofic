@@ -15,7 +15,7 @@
   <section class="mt-5 overflow-hidden rounded-xl border border-[#E7DFCC] bg-white">
     <div class="overflow-x-auto">
       <table class="w-full min-w-[720px] text-sm">
-        <thead class="bg-[#F5EFE0] text-xs text-stone-600"><tr><th class="px-4 py-3 text-left">Pay period</th><th class="px-4 py-3 text-left">Issued</th><th class="px-4 py-3 text-right">Gross</th><th class="px-4 py-3 text-right">Net pay</th><th class="px-4 py-3 text-left">History</th><th class="px-4 py-3"></th></tr></thead>
+        <thead class="bg-[#F5EFE0] text-xs text-stone-600"><tr><th class="px-4 py-3 text-left">Pay period</th><th class="px-4 py-3 text-left">Issued</th><th class="px-4 py-3 text-right">Gross</th><th class="px-4 py-3 text-right">Net pay</th><th class="px-4 py-3 text-left">History</th><th class="px-4 py-3 text-left">Finance</th><th class="px-4 py-3"></th></tr></thead>
         <tbody>
           {% for payslip in payslips %}
           <tr class="border-t border-[#E7DFCC]">
@@ -24,9 +24,10 @@
             <td class="px-4 py-3 text-right font-mono">{{ biz.currency_symbol }}{{ payslip.gross_pay|num }}</td>
             <td class="px-4 py-3 text-right font-mono font-semibold">{{ biz.currency_symbol }}{{ payslip.net_pay|num }}</td>
             <td class="px-4 py-3 text-xs text-stone-500">{% if payslip.revisions.all %}Corrected {{ payslip.revisions.all|length }} time{{ payslip.revisions.all|length|pluralize }}{% else %}Original issue{% endif %}</td>
+            <td class="px-4 py-3 text-xs text-stone-500">{% if payslip.payroll_run_id %}Posted{% else %}Legacy / not linked{% endif %}</td>
             <td class="px-4 py-3 text-right whitespace-nowrap"><a href="{% url 'payroll_payslip_detail' payslip.pk %}" class="text-[#8f172d]">View / resend</a><a href="{% url 'payroll_payslip_edit' payslip.pk %}" class="ml-3 text-[#8f172d]">Edit</a></td>
           </tr>
-          {% empty %}<tr><td colspan="6" class="px-4 py-10 text-center text-stone-500">No payslips have been generated for this staff member yet.</td></tr>{% endfor %}
+          {% empty %}<tr><td colspan="7" class="px-4 py-10 text-center text-stone-500">No payslips have been generated for this staff member yet.</td></tr>{% endfor %}
         </tbody>
       </table>
     </div>

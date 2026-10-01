@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from core.models import Business
-from .forms import BulkPackProfileFormSet, IndividualSaleOptionFormSet, ProductCompositionItemFormSet
+from .forms import BulkPackProfileFormSet, IndividualSaleOptionFormSet, ProductCompositionItemFormSet, RawMaterialForm
 from .models import BulkPackProfile, FinishedGood, IndividualSaleOption, ProductCompositionItem
 
 
@@ -38,6 +38,68 @@ class ExistingAwareProductFormSetTests(TestCase):
         )
         self.assertEqual(option_formset.total_form_count(), 1)
         self.assertEqual(composition_formset.total_form_count(), 1)
+
+
+    def test_optional_blank_bulk_row_does_not_block_or_create_pack(self):
+        data = {
+            "bulk_packs-TOTAL_FORMS": "1",
+            "bulk_packs-INITIAL_FORMS": "0",
+            "bulk_packs-MIN_NUM_FORMS": "0",
+            "bulk_packs-MAX_NUM_FORMS": "1000",
+            "bulk_packs-0-profile_key": "bulk:temporary-client-key",
+            "bulk_packs-0-name": "",
+            "bulk_packs-0-package_type": "",
+            "bulk_packs-0-customer_quantity": "1",
+            "bulk_packs-0-customer_unit": "",
+            "bulk_packs-0-base_quantity": "1",
+            "bulk_packs-0-price": "",
+            "bulk_packs-0-min_order_quantity": "1",
+            "bulk_packs-0-active": "on",
+            "bulk_packs-0-sort_order": "0",
+        }
+        formset = BulkPackProfileFormSet(
+            data,
+            instance=self.good,
+            prefix="bulk_packs",
+            form_kwargs={"business": self.business},
+        )
+
+        self.assertTrue(formset.is_valid(), formset.errors)
+        self.assertFalse(formset.forms[0].has_changed())
+        formset.save()
+        self.assertFalse(BulkPackProfile.raw_objects.filter(finished_good=self.good).exists())
+
+    def test_started_bulk_row_requires_its_own_bulk_fields(self):
+        data = {
+            "bulk_packs-TOTAL_FORMS": "1",
+            "bulk_packs-INITIAL_FORMS": "0",
+            "bulk_packs-MIN_NUM_FORMS": "0",
+            "bulk_packs-MAX_NUM_FORMS": "1000",
+            "bulk_packs-0-name": "Family bowl",
+            "bulk_packs-0-customer_quantity": "1",
+            "bulk_packs-0-customer_unit": "",
+            "bulk_packs-0-base_quantity": "1",
+            "bulk_packs-0-price": "",
+            "bulk_packs-0-min_order_quantity": "1",
+            "bulk_packs-0-active": "on",
+            "bulk_packs-0-sort_order": "0",
+        }
+        formset = BulkPackProfileFormSet(
+            data,
+            instance=self.good,
+            prefix="bulk_packs",
+            form_kwargs={"business": self.business},
+        )
+
+        self.assertFalse(formset.is_valid())
+        self.assertIn("price", formset.forms[0].errors)
+        self.assertIn("customer_unit", formset.forms[0].errors)
+
+    def test_raw_material_unit_fields_use_searchable_shared_datalist(self):
+        form = RawMaterialForm(business=self.business)
+        for field_name in ("purchase_unit", "package_unit", "usage_unit"):
+            self.assertEqual(form.fields[field_name].widget.attrs.get("list"), "raw-material-unit-options")
+            self.assertEqual(form.fields[field_name].widget.attrs.get("autocomplete"), "off")
 
     def test_individual_option_is_backed_by_same_finished_good(self):
         option = IndividualSaleOption.raw_objects.create(

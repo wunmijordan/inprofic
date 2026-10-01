@@ -1,12 +1,37 @@
+from pathlib import Path
+
 from accounts.models import RoleModulePermission, UserBusiness
 from accounts.services import business_subscription_for, can_use_commerce_storefront, is_business_admin, is_live_tester, user_has_permission
 from accounts.subscription_services import business_has_feature
 from accounts.platform_integrations import glovo_platform_enabled
+from django.conf import settings
 from django.utils.functional import SimpleLazyObject
 from .context import get_request_cache
 from .models import Business
 from .onboarding import CURRENT_TOUR_VERSION
 from .verticals import vertical_config
+
+
+def _static_asset_version():
+    configured = str(getattr(settings, "PWA_BUILD_VERSION", "") or "").strip()
+    if configured and configured not in {"dev", "current"}:
+        return configured[:20]
+
+    asset_paths = [
+        Path(settings.BASE_DIR) / "apps/core/static/core/css/form-experience.css",
+        Path(settings.BASE_DIR) / "apps/core/static/core/js/form-experience.js",
+        Path(settings.BASE_DIR) / "apps/core/static/core/css/workspace.css",
+    ]
+    mtimes = []
+    for path in asset_paths:
+        try:
+            mtimes.append(path.stat().st_mtime_ns)
+        except OSError:
+            continue
+    return str(max(mtimes)) if mtimes else "dev"
+
+
+STATIC_ASSET_VERSION = _static_asset_version()
 
 def business(request):
     biz = getattr(request, "business", None)
@@ -70,6 +95,9 @@ def business(request):
         "show_onboarding_tour": show_onboarding_tour,
         "force_onboarding_tour": explicit_tour,
         "onboarding_tour_version": CURRENT_TOUR_VERSION,
+        "static_asset_version": (
+            _static_asset_version() if settings.DEBUG else STATIC_ASSET_VERSION
+        ),
         "glovo_platform_enabled": SimpleLazyObject(glovo_platform_enabled),
         # Only the reports page consumes this flag. Keep it lazy so ordinary
         # navigation doesn't query feature entitlements that won't be rendered.

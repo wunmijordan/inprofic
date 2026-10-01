@@ -89,7 +89,176 @@
     el.addEventListener('blur',()=>{el.dataset.inproficDirty='1';stateFor(el,false);});
     if(el.closest('.field-has-error')){el.dataset.inproficDirty='1';wrap.classList.add('is-invalid');}
   }
+  function closeHelpTip(tip){
+    if(!tip)return;
+    const trigger=tip.querySelector('[data-form-help-trigger]');
+    const bubble=tip.querySelector('[data-form-help-bubble]');
+    tip.classList.remove('is-open');
+    if(trigger)trigger.setAttribute('aria-expanded','false');
+    if(bubble)bubble.hidden=true;
+  }
+  function openHelpTip(tip){
+    if(!tip)return;
+    document.querySelectorAll('[data-form-help-tip].is-open').forEach(other=>{
+      if(other!==tip)closeHelpTip(other);
+    });
+    const trigger=tip.querySelector('[data-form-help-trigger]');
+    const bubble=tip.querySelector('[data-form-help-bubble]');
+    tip.classList.add('is-open');
+    if(trigger)trigger.setAttribute('aria-expanded','true');
+    if(bubble)bubble.hidden=false;
+  }
+  function enhanceHelpTip(tip){
+    if(!tip||tip.dataset.formHelpBound==='1')return;
+    const trigger=tip.querySelector('[data-form-help-trigger]');
+    const bubble=tip.querySelector('[data-form-help-bubble]');
+    if(!trigger||!bubble)return;
+    tip.dataset.formHelpBound='1';
+    bubble.hidden=true;
+    trigger.setAttribute('aria-expanded','false');
+    trigger.addEventListener('click',event=>{
+      event.preventDefault();
+      event.stopPropagation();
+      if(tip.classList.contains('is-open'))closeHelpTip(tip);
+      else openHelpTip(tip);
+    });
+    trigger.addEventListener('keydown',event=>{
+      if(event.key==='Escape'){
+        event.preventDefault();
+        closeHelpTip(tip);
+        trigger.blur();
+      }
+    });
+  }
+  function createHelpTip(labelText='More information'){
+    const tip=document.createElement('span');
+    tip.className='form-help-tip normal-case tracking-normal';
+    tip.dataset.formHelpTip='';
+
+    const trigger=document.createElement('button');
+    trigger.type='button';
+    trigger.className='form-help-tip__trigger';
+    trigger.dataset.formHelpTrigger='';
+    trigger.setAttribute('aria-label',labelText ? `Help for ${labelText}` : 'More information');
+    trigger.setAttribute('aria-expanded','false');
+    trigger.innerHTML='<svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="8"></circle><path d="M10 9v5"></path><path d="M10 6.25h.01"></path></svg>';
+
+    const bubble=document.createElement('span');
+    bubble.className='form-help-tip__bubble normal-case tracking-normal';
+    bubble.dataset.formHelpBubble='';
+    bubble.setAttribute('role','tooltip');
+    bubble.hidden=true;
+
+    tip.append(trigger,bubble);
+    return tip;
+  }
+  function labelTextForControl(control){
+    if(!control)return '';
+    const explicit=control.id ? document.querySelector(`label[for="${CSS.escape(control.id)}"]`) : null;
+    const label=explicit||control.closest('label');
+    if(!label)return '';
+    return (label.cloneNode(true).textContent||'').replace(/\s+/g,' ').trim();
+  }
+  function fieldContainerForControl(control){
+    if(!control)return null;
+    return control.closest('.cf-field,.cf-toggle-field')||control.closest('label')||control.parentElement;
+  }
+  function findControlForHelp(help){
+    const requested=(help.dataset.formHelpFor||'').replace(/^#/,'').trim();
+    if(requested){
+      const direct=document.getElementById(requested);
+      if(direct)return direct;
+    }
+    const describedBy=help.id||'';
+    if(describedBy.endsWith('_helptext')){
+      const inputId=describedBy.slice(0,-9);
+      const related=document.getElementById(inputId);
+      if(related)return related;
+    }
+    const previousField=help.previousElementSibling;
+    if(previousField?.matches?.('.cf-field,.cf-toggle-field')){
+      return previousField.querySelector('input,select,textarea');
+    }
+    const parentField=help.parentElement?.querySelector?.(':scope > .cf-field input,:scope > .cf-field select,:scope > .cf-field textarea,:scope > .cf-toggle-field input');
+    return parentField||null;
+  }
+  function helpAnchorFor(control,container){
+    if(container?.matches?.('.cf-field')){
+      return container.querySelector(':scope > div:first-child')||container.querySelector('label')?.parentElement||container;
+    }
+    if(container?.matches?.('.cf-toggle-field')){
+      return container.querySelector(':scope > div:first-child > div:first-child')||container.querySelector('label')?.parentElement||container;
+    }
+    const explicit=control?.id ? document.querySelector(`label[for="${CSS.escape(control.id)}"]`) : null;
+    if(explicit){
+      const title=explicit.querySelector('[data-form-label-title]');
+      return title||explicit;
+    }
+    return control?.closest('label')||container;
+  }
+  function appendHelpContent(tip,help){
+    const bubble=tip?.querySelector('[data-form-help-bubble]');
+    if(!bubble||!help)return;
+    const hasContent=[...bubble.childNodes].some(node=>
+      node.nodeType!==Node.TEXT_NODE || (node.textContent||'').trim()
+    );
+    const detail=document.createElement('span');
+    detail.className=hasContent?'form-help-tip__detail form-help-tip__detail--continued':'form-help-tip__detail';
+    while(help.firstChild)detail.appendChild(help.firstChild);
+    bubble.appendChild(detail);
+    const originalId=help.id||'';
+    if(originalId){
+      if(!bubble.id){
+        bubble.id=originalId;
+        tip.querySelector('[data-form-help-trigger]')?.setAttribute('aria-controls',originalId);
+      }else{
+        detail.id=originalId;
+      }
+    }
+  }
+  function buildNativeHelpTip(help){
+    if(!help||help.dataset.inproficHelpEnhanced==='1'||help.closest('[data-form-help-tip]'))return;
+    help.dataset.inproficHelpEnhanced='1';
+
+    const requestedAnchor=(help.dataset.formHelpAnchor||'').replace(/^#/,'').trim();
+    const customAnchor=requestedAnchor ? document.getElementById(requestedAnchor) : null;
+    const control=findControlForHelp(help);
+    const container=fieldContainerForControl(control);
+    let tip=customAnchor?.querySelector?.('[data-form-help-tip]')||container?.querySelector?.('[data-form-help-tip]')||null;
+
+    if(!tip&&customAnchor){
+      tip=createHelpTip((customAnchor.textContent||'').replace(/\s+/g,' ').trim());
+      customAnchor.appendChild(tip);
+    }
+
+    if(!tip&&control){
+      tip=createHelpTip(labelTextForControl(control));
+      const anchor=helpAnchorFor(control,container);
+      if(anchor)anchor.appendChild(tip);
+    }
+
+    if(tip){
+      appendHelpContent(tip,help);
+      help.remove();
+      enhanceHelpTip(tip);
+      return;
+    }
+
+    // Last-resort fallback for custom form markup with no discoverable control.
+    // It is still a compact icon/popover instead of visible helper copy.
+    tip=createHelpTip();
+    appendHelpContent(tip,help);
+    help.replaceWith(tip);
+    enhanceHelpTip(tip);
+  }
+  function enhanceHelpTips(root=document){
+    if(root.matches?.('[data-form-help-tip]'))enhanceHelpTip(root);
+    root.querySelectorAll?.('[data-form-help-tip]').forEach(enhanceHelpTip);
+    if(root.matches?.('form .helptext, form .help-text, form [data-form-help-text]'))buildNativeHelpTip(root);
+    root.querySelectorAll?.('form .helptext, form .help-text, form [data-form-help-text]').forEach(buildNativeHelpTip);
+  }
   function enhanceForms(root=document){
+    enhanceHelpTips(root);
     root.querySelectorAll('form input,form select,form textarea').forEach(enhance);
     root.querySelectorAll('form').forEach(form=>{
       if(form.dataset.inproficValidationBound==='1')return; form.dataset.inproficValidationBound='1';
@@ -99,7 +268,18 @@
       },true);
     });
   }
-  document.addEventListener('DOMContentLoaded',()=>enhanceForms());
+  document.addEventListener('DOMContentLoaded',()=>{
+    enhanceForms();
+    document.addEventListener('click',event=>{
+      if(event.target.closest?.('[data-form-help-tip]'))return;
+      document.querySelectorAll('[data-form-help-tip].is-open').forEach(closeHelpTip);
+    });
+    document.addEventListener('keydown',event=>{
+      if(event.key==='Escape')document.querySelectorAll('[data-form-help-tip].is-open').forEach(closeHelpTip);
+    });
+  });
   window.INPROFICEnhanceForms=enhanceForms;
-  new MutationObserver(entries=>entries.forEach(entry=>entry.addedNodes.forEach(node=>{if(node.nodeType===1)enhanceForms(node.matches?.('form')?node:node);}))).observe(document.documentElement,{subtree:true,childList:true});
+  new MutationObserver(entries=>entries.forEach(entry=>entry.addedNodes.forEach(node=>{
+    if(node.nodeType===1)enhanceForms(node);
+  }))).observe(document.documentElement,{subtree:true,childList:true});
 })();

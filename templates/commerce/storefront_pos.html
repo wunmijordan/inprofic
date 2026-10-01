@@ -7,8 +7,8 @@
   <title>{{ pos_ui.title }} · {{ biz.name }} · INPROFIC</title>
   {% include "_brand_icons.html" %}
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
-  <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}">
-  <link rel="stylesheet" href="{% static 'core/css/workspace.css' %}">
+  <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}?v={{ static_asset_version }}">
+  <link rel="stylesheet" href="{% static 'core/css/workspace.css' %}?v={{ static_asset_version }}">
   <script src="{% static 'core/js/workspace.js' %}"></script>
   <style>
     @font-face{font-family:Sora;src:url('{% static "core/fonts/Sora-Variable.ttf" %}') format('truetype');font-weight:100 800;font-display:swap}
@@ -24,7 +24,7 @@
     @media(min-width:1024px){html,body{height:100%;overflow:hidden}body{display:flex;flex-direction:column}.pos-header{flex:0 0 auto}.pos-main{display:flex;min-height:0;flex:1;flex-direction:column;height:auto;overflow:hidden;width:100%}#pos-form{min-height:0;flex:1;height:auto}.pos-fill{height:auto;min-height:0}}
     @media print{body.printing-pos-receipt>*:not(#pos-receipt-dialog){display:none!important}body.printing-pos-receipt{display:block!important;height:auto!important;overflow:visible!important;background:#fff!important}body.printing-pos-receipt #pos-receipt-dialog{display:block!important;position:static!important;width:100%!important;max-width:none!important;height:auto!important;max-height:none!important;margin:0!important;box-shadow:none!important;border:0!important}body.printing-pos-receipt #pos-receipt-print-area{max-height:none!important;overflow:visible!important}body.printing-pos-receipt #pos-receipt-dialog .pos-receipt-actions,body.printing-pos-receipt #pos-receipt-close{display:none!important}}
   </style>
-  <script src="{% static 'core/js/form-experience.js' %}" defer></script>
+  <script src="{% static 'core/js/form-experience.js' %}?v={{ static_asset_version }}" defer></script>
 </head>
 <body class="min-h-screen">
   <div class="page-progress" aria-hidden="true"></div>
@@ -114,10 +114,34 @@
             <label class="text-xs font-semibold text-stone-600">{{ pos_ui.customer_label }}<input name="customer_name" value="{{ pos_ui.customer_default }}" class="mt-1.5 h-10 w-full rounded-xl border border-stone-300 px-3 text-sm font-normal outline-none focus:border-stone-500"></label>
             <div class="grid grid-cols-2 gap-2"><label class="text-xs font-semibold text-stone-600">Phone<input name="customer_phone" class="mt-1.5 h-10 w-full rounded-xl border border-stone-300 px-3 text-sm font-normal"></label><label class="text-xs font-semibold text-stone-600">Email<input name="customer_email" type="email" class="mt-1.5 h-10 w-full rounded-xl border border-stone-300 px-3 text-sm font-normal"></label></div>
             {% if delivery_enabled %}<section class="rounded-xl border border-stone-200 bg-stone-50 p-3">
-              <label class="flex cursor-pointer items-center justify-between gap-3"><span><strong class="block text-xs text-stone-800">Arrange delivery</strong><span class="mt-0.5 block text-[11px] leading-4 text-stone-500">Quote the destination and add delivery to the amount collected.</span></span><span class="cf-switch shrink-0"><input id="pos-request-delivery" type="checkbox" name="request_delivery" {% if request.POST.request_delivery == "on" %}checked{% endif %}><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label>
+              <label class="flex cursor-pointer items-center justify-between gap-3">
+                <span class="inline-flex items-center gap-1.5">
+                  <strong class="text-xs text-stone-800">Arrange delivery</strong>
+                  {% include "_help_tip.html" with help_text="Quote the destination and add delivery to the amount collected." label="Arrange delivery" %}
+                </span>
+                <span class="cf-switch shrink-0">
+                  <input id="pos-request-delivery" type="checkbox" name="request_delivery" {% if request.POST.request_delivery == "on" %}checked{% endif %}>
+                  <span class="cf-switch-track">
+                    <span class="cf-switch-thumb"></span>
+                  </span>
+                </span>
+              </label>
               <div id="pos-delivery-fields" class="mt-3 {% if request.POST.request_delivery != 'on' %}hidden{% endif %} space-y-3 border-t border-stone-200 pt-3">
                 <label class="block text-xs font-semibold text-stone-600">Delivery destination / zone<select id="pos-delivery-area" name="delivery_area" class="mt-1.5 h-10 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal"><option value="">Use map coordinates</option>{% for area in delivery_areas %}<option value="{{ area.pk }}" {% if request.POST.delivery_area == area.pk|stringformat:"s" %}selected{% endif %}>{{ area.name }} · {{ area.radius_km }} km radius{% if area.extension_ne_km or area.extension_se_km or area.extension_sw_km or area.extension_nw_km %} + extended corridors{% endif %}{% if area.rate_band %} · {{ area.rate_band.name }}{% endif %}</option>{% endfor %}</select></label>
-                <label class="block text-xs font-semibold text-stone-600">Precise customer delivery address<textarea id="pos-customer-address" name="customer_address" rows="2" autocomplete="street-address" class="mt-1.5 w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm font-normal" placeholder="House or building, street, area and landmark">{{ request.POST.customer_address }}</textarea><span class="mt-1 block text-[11px] font-normal leading-4 text-stone-500">INPROFIC locates this inside the selected zone. Use the map pin when the address is new or difficult to find.</span></label>
+                <label class="block text-xs font-semibold text-stone-600">
+                  <span class="inline-flex items-center gap-1.5">
+                    <span>Precise customer delivery address</span>
+                    {% include "_help_tip.html" with help_text="INPROFIC locates this inside the selected zone. Use the map pin when the address is new or difficult to find." label="Precise customer delivery address" %}
+                  </span>
+                  <textarea
+                    id="pos-customer-address"
+                    name="customer_address"
+                    rows="2"
+                    autocomplete="street-address"
+                    class="mt-1.5 w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm font-normal"
+                    placeholder="House or building, street, area and landmark"
+                  >{{ request.POST.customer_address }}</textarea>
+                </label>
                 {% url 'storefront_delivery_location' biz.slug as pos_location_url %}{% include "commerce/delivery/_location_picker.html" with latitude_selector="#pos-delivery-latitude" longitude_selector="#pos-delivery-longitude" area_selector="#pos-delivery-area" address_selector="#pos-customer-address" resolve_url=pos_location_url picker_label="customer delivery destination" %}
                 <div id="pos-delivery-quote-status" class="rounded-lg border border-transparent bg-white px-3 py-2 text-[11px] leading-4 text-stone-500" aria-live="polite" role="alert">The live fee and ETA will be confirmed before payment.</div>
                 <div id="pos-delivery-method-options" class="hidden space-y-2"></div>
@@ -135,7 +159,45 @@
               <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1"><dt class="text-sky-700">Bank</dt><dd id="pos-transfer-bank" class="font-semibold"></dd><dt class="text-sky-700">Account name</dt><dd id="pos-transfer-account-name" class="font-semibold"></dd><dt class="text-sky-700">Account number</dt><dd id="pos-transfer-account-number" class="font-mono text-sm font-bold"></dd></dl>
               <p id="pos-transfer-instructions" class="mt-2 hidden border-t border-sky-200 pt-2 leading-5 text-sky-800"></p>
             </div>
-            <label id="manual-confirm-wrap" class="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-stone-200 bg-stone-50 p-3 text-xs leading-5 text-stone-600"><span><strong id="manual-confirm-title" class="text-stone-800">Cash received</strong><br><span id="manual-confirm-copy">Turn this on only after the cash is physically in hand.</span></span><span class="cf-switch shrink-0"><input type="checkbox" name="manual_payment_received"><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label>
+            <label
+              id="manual-confirm-wrap"
+              class="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-stone-200 bg-stone-50 p-3 text-xs leading-5 text-stone-600"
+            >
+              <span class="inline-flex items-center gap-1.5">
+                <strong id="manual-confirm-title" class="text-stone-800">Cash received</strong>
+                <span class="form-help-tip normal-case tracking-normal" data-form-help-tip>
+                  <button
+                    type="button"
+                    class="form-help-tip__trigger"
+                    data-form-help-trigger
+                    aria-label="Payment confirmation help"
+                    aria-expanded="false"
+                    aria-controls="manual-confirm-copy"
+                  >
+                    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                      <circle cx="10" cy="10" r="8"></circle>
+                      <path d="M10 9v5"></path>
+                      <path d="M10 6.25h.01"></path>
+                    </svg>
+                  </button>
+                  <span
+                    id="manual-confirm-copy"
+                    class="form-help-tip__bubble normal-case tracking-normal"
+                    data-form-help-bubble
+                    role="tooltip"
+                    hidden
+                  >
+                    Turn this on only after the cash is physically in hand.
+                  </span>
+                </span>
+              </span>
+              <span class="cf-switch shrink-0">
+                <input type="checkbox" name="manual_payment_received">
+                <span class="cf-switch-track">
+                  <span class="cf-switch-thumb"></span>
+                </span>
+              </span>
+            </label>
             <button id="checkout-button" {% if not payment_methods or not products %}disabled{% endif %} class="mt-1 w-full rounded-xl bg-[#D14900] px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 disabled:cursor-not-allowed disabled:opacity-50">{{ pos_ui.checkout_label }}</button>
           </div>
         </div>

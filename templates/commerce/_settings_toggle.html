@@ -1,8 +1,31 @@
-<div class="flex min-h-[5.5rem] items-center justify-between gap-4 rounded-xl border border-[#E7DFCC] bg-white p-3.5 {% if emphasis %}ring-1 ring-[#8f172d]/10{% endif %}">
+<div
+  class="flex min-h-[4rem] items-center justify-between gap-4 rounded-xl border border-[#E7DFCC] bg-white p-3.5 {% if emphasis %}ring-1 ring-[#8f172d]/10{% endif %}"
+>
   <div class="min-w-0">
-    <div class="text-sm font-medium text-stone-900">{{ field.label }}</div>
-    {% if description %}<div class="mt-0.5 text-xs leading-5 text-stone-500">{{ description }}</div>{% elif field.help_text %}<div class="mt-0.5 text-xs leading-5 text-stone-500">{{ field.help_text }}</div>{% endif %}
-    {% for error in field.errors %}<div class="mt-1 text-xs text-rose-700">{{ error }}</div>{% endfor %}
+    <div class="flex items-center gap-1.5 text-sm font-medium text-stone-900">
+      <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+      {% if description %}
+        {% include "_help_tip.html" with help_text=description label=field.label %}
+      {% else %}
+        {% include "_help_tip.html" with help_text=field.help_text help_id=field.auto_id|add:"_helptext" label=field.label %}
+      {% endif %}
+    </div>
+
+    {% for error in field.errors %}
+      <div class="mt-1 text-xs text-rose-700">
+        {{ error }}
+      </div>
+    {% endfor %}
   </div>
-  <label class="relative inline-flex shrink-0 cursor-pointer items-center"><span class="sr-only">{{ field.label }}</span>{{ field }}<span class="relative h-6 w-11 rounded-full bg-stone-300 peer-focus:ring-2 peer-focus:ring-[#8f172d]/25 peer-checked:bg-[#8f172d] after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-transform after:content-[''] peer-checked:after:translate-x-5"></span></label>
+
+  <label
+    class="relative inline-flex shrink-0 cursor-pointer items-center"
+    for="{{ field.id_for_label }}"
+  >
+    <span class="sr-only">{{ field.label }}</span>
+    {{ field }}
+    <span
+      class="relative h-6 w-11 rounded-full bg-stone-300 peer-focus:ring-2 peer-focus:ring-[#8f172d]/25 peer-checked:bg-[#8f172d] after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-transform after:content-[''] peer-checked:after:translate-x-5"
+    ></span>
+  </label>
 </div>

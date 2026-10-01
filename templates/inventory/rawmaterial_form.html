@@ -9,6 +9,13 @@
     {% include "_field.html" with field=form.name %}
     {% include "_field.html" with field=form.category %}
 
+    <datalist id="raw-material-unit-options">
+      {% for unit in raw_material_unit_options %}
+      <option value="{{ unit.value }}">{{ unit.label }} · {{ unit.group }}</option>
+      {% endfor %}
+    </datalist>
+    {{ raw_material_unit_catalog|json_script:"raw-material-unit-catalog" }}
+
     <details class="raw-material-help mb-4 rounded-lg border border-sky-200 bg-sky-50 text-xs">
       <summary class="cursor-pointer px-4 py-3 font-semibold text-stone-700">{% if vertical_ui.uses_production %}How purchase, package and usage units work{% else %}How supplier, package and issue units work{% endif %}</summary>
       <div class="border-t border-[#D9CFB4] px-4 py-4 leading-5">
@@ -62,12 +69,36 @@
         <label class="text-[11px] font-medium text-stone-600">To<select id="converter-to" class="mt-1 w-full rounded-md border border-sky-200 bg-white px-2.5 py-2 text-sm"></select></label>
       </div>
       <div id="density-wrap" class="hidden mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-        <label class="text-[11px] font-medium text-amber-900">Material density (kg/L)<input id="converter-density" type="number" min="0.000001" step="any" placeholder="e.g. water 1.0, cooking oil about 0.92" class="mt-1 w-full rounded-md border border-amber-300 bg-white px-2.5 py-2 text-sm"></label>
-        <p class="text-[10px] text-amber-700 mt-1">Required for mass ↔ volume. Use the supplier specification or a measured density; INPROFIC will not guess because temperature and material composition change this relationship.</p>
+        <label class="text-[11px] font-medium text-amber-900">
+          <span class="inline-flex items-center gap-1.5">
+            <span>Material density (kg/L)</span>
+            {% include "_help_tip.html" with help_text="Required for mass ↔ volume. Use the supplier specification or a measured density; INPROFIC will not guess because temperature and material composition change this relationship." label="Material density" %}
+          </span>
+          <input
+            id="converter-density"
+            type="number"
+            min="0.000001"
+            step="any"
+            placeholder="e.g. water 1.0, cooking oil about 0.92"
+            class="mt-1 w-full rounded-md border border-amber-300 bg-white px-2.5 py-2 text-sm"
+          >
+        </label>
       </div>
       <div id="custom-ratio-wrap" class="hidden mt-3 rounded-lg border border-violet-200 bg-violet-50 p-3">
-        <label class="text-[11px] font-medium text-violet-900">Measured relationship: 1 source unit equals how many target units?<input id="converter-custom-factor" type="number" min="0.000001" step="any" placeholder="e.g. 200 spoons per kg" class="mt-1 w-full rounded-md border border-violet-300 bg-white px-2.5 py-2 text-sm"></label>
-        <p class="text-[10px] text-violet-700 mt-1">Use this for spoons, caps, scoops, sachets, buckets, rolls, pallets, or any business-specific unit without a universal physical definition.</p>
+        <label class="text-[11px] font-medium text-violet-900">
+          <span class="inline-flex items-center gap-1.5">
+            <span>Measured relationship: 1 source unit equals how many target units?</span>
+            {% include "_help_tip.html" with help_text="Use this for spoons, caps, scoops, sachets, buckets, rolls, pallets, or any business-specific unit without a universal physical definition." label="Measured relationship" %}
+          </span>
+          <input
+            id="converter-custom-factor"
+            type="number"
+            min="0.000001"
+            step="any"
+            placeholder="e.g. 200 spoons per kg"
+            class="mt-1 w-full rounded-md border border-violet-300 bg-white px-2.5 py-2 text-sm"
+          >
+        </label>
       </div>
       <div class="mt-3 flex flex-wrap items-center gap-2">
         <button id="converter-calculate" type="button" class="rounded-md bg-[#8f172d] px-3 py-2 text-xs font-semibold text-white">Calculate conversion</button>
@@ -109,7 +140,7 @@
         {% include "_field.html" with field=form.measurement_change_reason %}
       </div>
       <div class="mt-2">{% include "_field.html" with field=form.measurement_change_confirm %}</div>
-      <p class="mt-2 text-[10px] text-amber-800">Example: changing kg → g uses <code>1000</code>; g → kg uses <code>0.001</code>. If only pack size/purchase-unit presentation changes while the usage unit stays the same, the ratio is automatically 1 and operational quantities are preserved.</p>
+      <p data-form-help-text data-form-help-for="{{ form.usage_unit_change_factor.id_for_label }}" class="mt-2 text-[10px] text-amber-800">Example: changing kg → g uses <code>1000</code>; g → kg uses <code>0.001</code>. If only pack size/purchase-unit presentation changes while the usage unit stays the same, the ratio is automatically 1 and operational quantities are preserved.</p>
     </section>
     {% endif %}
 
@@ -150,53 +181,13 @@
       if (converterDialog.contains(event.target) && !converterDialog.open) converterDialog.showModal();
     }, true);
   }
-  const unitGroups = [
-    ['Mass / weight', [
-      ['mcg','Microgram (µg)','mass',0.000000001], ['mg','Milligram (mg)','mass',0.000001],
-      ['g','Gram (g)','mass',0.001], ['kg','Kilogram (kg)','mass',1], ['t','Metric tonne (t)','mass',1000],
-      ['oz','Ounce (oz)','mass',0.028349523125], ['lb','Pound (lb)','mass',0.45359237],
-      ['st','Stone (st)','mass',6.35029318], ['short_ton','US short ton','mass',907.18474], ['long_ton','Imperial long ton','mass',1016.0469088]
-    ]],
-    ['Volume / capacity', [
-      ['ul','Microlitre (µL)','volume',0.000001], ['ml','Millilitre (mL)','volume',0.001],
-      ['cl','Centilitre (cL)','volume',0.01], ['dl','Decilitre (dL)','volume',0.1], ['l','Litre (L)','volume',1],
-      ['m3','Cubic metre (m³)','volume',1000], ['tsp_us','Teaspoon (US)','volume',0.00492892159375],
-      ['tbsp_us','Tablespoon (US)','volume',0.01478676478125], ['floz_us','Fluid ounce (US)','volume',0.0295735295625],
-      ['cup_us','Cup (US)','volume',0.2365882365], ['pt_us','Pint (US)','volume',0.473176473],
-      ['qt_us','Quart (US)','volume',0.946352946], ['gal_us','Gallon (US)','volume',3.785411784],
-      ['tsp_imp','Teaspoon (Imperial)','volume',0.005919388020833], ['tbsp_imp','Tablespoon (Imperial)','volume',0.0177581640625],
-      ['floz_imp','Fluid ounce (Imperial)','volume',0.0284130625], ['pt_imp','Pint (Imperial)','volume',0.56826125],
-      ['qt_imp','Quart (Imperial)','volume',1.1365225], ['gal_imp','Gallon (Imperial)','volume',4.54609],
-      ['cu_in','Cubic inch','volume',0.016387064], ['cu_ft','Cubic foot','volume',28.316846592]
-    ]],
-    ['Count / packaging', [
-      ['piece','Piece / each','count',1], ['pair','Pair','count',2], ['dozen','Dozen','count',12],
-      ['score','Score','count',20], ['gross','Gross','count',144], ['ream','Ream (500)','count',500],
-      ['thousand','Thousand','count',1000]
-    ]],
-    ['Length', [
-      ['mm','Millimetre (mm)','length',0.001], ['cm','Centimetre (cm)','length',0.01], ['m','Metre (m)','length',1],
-      ['km','Kilometre (km)','length',1000], ['in','Inch (in)','length',0.0254], ['ft','Foot (ft)','length',0.3048],
-      ['yd','Yard (yd)','length',0.9144], ['mi','Mile (mi)','length',1609.344]
-    ]],
-    ['Area', [
-      ['mm2','Square millimetre','area',0.000001], ['cm2','Square centimetre','area',0.0001], ['m2','Square metre','area',1],
-      ['ha','Hectare','area',10000], ['km2','Square kilometre','area',1000000], ['in2','Square inch','area',0.00064516],
-      ['ft2','Square foot','area',0.09290304], ['yd2','Square yard','area',0.83612736], ['acre','Acre','area',4046.8564224]
-    ]],
-    ['Custom / local', [['custom','Custom measured unit','custom',1]]]
-  ];
-  const aliases = {
-    'µg':'mcg','ug':'mcg','microgram':'mcg','micrograms':'mcg','milligram':'mg','milligrams':'mg','gram':'g','grams':'g',
-    'kilogram':'kg','kilograms':'kg','kgs':'kg','ton':'t','tons':'t','tonne':'t','tonnes':'t','ounce':'oz','ounces':'oz',
-    'pound':'lb','pounds':'lb','lbs':'lb','liter':'l','litre':'l','litres':'l','liters':'l','ltr':'l','ltrs':'l',
-    'milliliter':'ml','millilitre':'ml','millilitres':'ml','milliliters':'ml','centilitre':'cl','centiliter':'cl',
-    'microlitre':'ul','microliter':'ul','gallon':'gal_us','gallons':'gal_us','us_gallon':'gal_us','imperial_gallon':'gal_imp',
-    'cup':'cup_us','cups':'cup_us','pint':'pt_us','pints':'pt_us','quart':'qt_us','quarts':'qt_us',
-    'teaspoon':'tsp_us','teaspoons':'tsp_us','tablespoon':'tbsp_us','tablespoons':'tbsp_us',
-    'pcs':'piece','pc':'piece','pieces':'piece','each':'piece','pairs':'pair','dozens':'dozen',
-    'meter':'m','metre':'m','meters':'m','metres':'m','feet':'ft','foot':'ft','inches':'in','inch':'in','yard':'yd','yards':'yd'
-  };
+  const unitCatalogNode = document.getElementById('raw-material-unit-catalog');
+  const unitCatalog = unitCatalogNode ? JSON.parse(unitCatalogNode.textContent) : {groups: [], aliases: {}};
+  const unitGroups = (unitCatalog.groups || []).map(group => [
+    group.label,
+    (group.units || []).map(unit => [unit.key, unit.label, unit.dimension, unit.factor]),
+  ]);
+  const aliases = unitCatalog.aliases || {};
   const units = {};
   const from = document.getElementById('converter-from');
   const to = document.getElementById('converter-to');

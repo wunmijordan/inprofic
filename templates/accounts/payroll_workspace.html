@@ -8,8 +8,28 @@
     <p class="mt-1 text-xs text-stone-500">Keep staff pay structures, configure payroll calculations and issue shareable payslips without making payroll a separate INPROFIC module.</p>
   </div>
   <div class="flex flex-wrap gap-2">
-    <a href="{% url 'users_list' %}" class="rounded-md border border-[#D9CFB4] px-3 py-2 text-sm">Users & Access</a>
-    {% if not payroll_state.included %}<a href="{% url 'payroll_addon_checkout' %}" class="rounded-md bg-[#050733] px-3 py-2 text-sm font-semibold text-white">Payroll add-on pricing</a>{% endif %}
+    <a
+      href="{% url 'users_list' %}"
+      class="rounded-md border border-[#D9CFB4] px-3 py-2 text-sm"
+    >
+      Users & Access
+    </a>
+    {% if payroll_state.enabled %}
+      <a
+        href="{% url 'payroll_run_create' %}"
+        class="rounded-md bg-[#8f172d] px-3 py-2 text-sm font-semibold text-white"
+      >
+        Run payroll
+      </a>
+    {% endif %}
+    {% if not payroll_state.included %}
+      <a
+        href="{% url 'payroll_addon_checkout' %}"
+        class="rounded-md bg-[#050733] px-3 py-2 text-sm font-semibold text-white"
+      >
+        Payroll add-on pricing
+      </a>
+    {% endif %}
   </div>
 </div>
 
@@ -20,6 +40,22 @@
   </div>
   {% if not payroll_state.enabled %}<p class="mt-2 text-xs leading-5">Your normal plan can remain active while payroll is purchased separately. Choose a Founder-configured staff tier to restore payroll access.</p>{% endif %}
 </div>
+
+{% if payroll_recent_runs %}
+<section class="mb-5 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] px-4 py-3">
+  <div class="flex flex-wrap items-center gap-2">
+    <span class="mr-1 text-[10px] font-bold uppercase tracking-[.14em] text-stone-400">Recent pay runs</span>
+    {% for run in payroll_recent_runs %}
+      <a
+        href="{% url 'payroll_run_detail' run.pk %}"
+        class="rounded-full border border-[#D9CFB4] bg-white px-3 py-1.5 text-xs hover:bg-[#F5EFE0]"
+      >
+        {{ run.period_end|date:"M Y" }} · {{ run.staff_count }} staff · {{ biz.currency_symbol }}{{ run.total_net_pay|num }}
+      </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
 
 <div class="grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(19rem,.8fr)]">
   <section class="overflow-hidden rounded-xl border border-[#E7DFCC] bg-white">

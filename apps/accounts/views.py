@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.contrib import messages
 from django.contrib.auth import login as auth_login
 from django.contrib.auth.decorators import login_required
@@ -1730,7 +1732,7 @@ def payroll_workspace(request):
     if not can_manage(request):
         return render(request, "403.html", status=403)
     from .forms import PayrollStaffProfileForm, PayrollRecurringAdjustmentFormSet, PayrollCalculationRuleForm
-    from .models import PayrollStaffProfile, PayrollCalculationRule
+    from .models import PayrollStaffProfile, PayrollCalculationRule, PayrollRun
     from .payroll import payroll_access_state, assert_payroll_capacity, sync_staff_recurring_totals
 
     state = payroll_access_state(request.business)
@@ -1744,6 +1746,11 @@ def payroll_workspace(request):
     rules = list(
         PayrollCalculationRule.objects.filter(business=request.business)
         .order_by("sort_order", "name", "id")
+    )
+    recent_runs = list(
+        PayrollRun.objects.filter(business=request.business)
+        .prefetch_related("funding_lines__account")
+        .order_by("-pay_date", "-id")[:5]
     )
     action = request.POST.get("action") if request.method == "POST" else ""
     adding_staff = action == "add_staff"
@@ -1798,6 +1805,7 @@ def payroll_workspace(request):
         "payroll_adjustment_formset": adjustment_formset,
         "payroll_rules": rules,
         "payroll_rule_form": rule_form,
+        "payroll_recent_runs": recent_runs,
         "payroll_user_data": _payroll_user_autofill_data(form),
     })
 
@@ -1854,6 +1862,7 @@ def payroll_staff_payslips(request, staff_pk):
     staff = get_object_or_404(PayrollStaffProfile.objects, pk=staff_pk, business=request.business)
     payslips = list(
         Payslip.objects.filter(business=request.business, staff=staff)
+        .select_related("payroll_run")
         .prefetch_related("adjustment_lines", "calculation_lines", "revisions__edited_by")
         .order_by("-period_end", "-issued_at", "-id")
     )
@@ -1918,51 +1927,54 @@ def payroll_payslip_create(request, staff_pk):
     if not can_manage(request):
         return render(request, "403.html", status=403)
     from .forms import PayslipForm
-    from .models import PayrollStaffProfile
-    from .payroll import (
-        payroll_access_state, calculate_payslip, persist_payslip_calculation_lines,
-        recurring_adjustments_for_staff, recurring_adjustment_totals,
-        persist_payslip_adjustment_lines,
-    )
+    from .models import PayrollRun, PayrollStaffProfile
+    from .payroll import issue_bulk_payroll_run, payroll_access_state, recurring_adjustments_for_staff
+
     state = payroll_access_state(request.business)
     if not state["enabled"]:
         messages.error(request, "Payroll access is not active for this business.")
         return redirect("payroll_workspace")
+
     staff = get_object_or_404(
         PayrollStaffProfile.objects.prefetch_related("recurring_adjustments"),
-        pk=staff_pk, business=request.business, active=True,
+        pk=staff_pk,
+        business=request.business,
+        active=True,
     )
     if request.method == "POST":
-        form = PayslipForm(request.POST, staff=staff)
+        form = PayslipForm(request.POST, staff=staff, business=request.business)
         if form.is_valid():
-            with transaction.atomic():
-                payslip = form.save(commit=False)
-                payslip.business = request.business
-                payslip.created_by = request.user
-                payslip.staff = staff
-                adjustments = recurring_adjustments_for_staff(staff)
-                recurring_allowances, recurring_deductions = recurring_adjustment_totals(adjustments)
-                calculation = calculate_payslip(
+            try:
+                payroll_run, payslips = issue_bulk_payroll_run(
                     business=request.business,
-                    base_pay=payslip.base_pay,
-                    recurring_allowances=recurring_allowances,
-                    recurring_deductions=recurring_deductions,
-                    manual_allowances=payslip.manual_allowances,
-                    manual_deductions=payslip.manual_deductions,
+                    user=request.user,
+                    staff_members=[staff],
+                    period_start=form.cleaned_data["period_start"],
+                    period_end=form.cleaned_data["period_end"],
+                    pay_date=form.cleaned_data["pay_date"],
+                    funding=[(form.cleaned_data["finance_account"], None)],
+                    notes=form.cleaned_data.get("notes", ""),
+                    kind=PayrollRun.KIND_SINGLE,
+                    manual_values={
+                        staff.pk: {
+                            "base_pay": form.cleaned_data["base_pay"],
+                            "manual_allowances": form.cleaned_data["manual_allowances"],
+                            "manual_deductions": form.cleaned_data["manual_deductions"],
+                            "notes": form.cleaned_data.get("notes", ""),
+                        }
+                    },
                 )
-                payslip.allowances = calculation["allowances"]
-                payslip.deductions = calculation["deductions"]
-                payslip.gross_pay = calculation["gross_pay"]
-                payslip.net_pay = calculation["net_pay"]
-                payslip.employer_contributions = calculation["employer_contributions"]
-                payslip.employer_cost = calculation["employer_cost"]
-                payslip.save()
-                persist_payslip_adjustment_lines(payslip, adjustments)
-                persist_payslip_calculation_lines(payslip, calculation["lines"])
-            messages.success(request, f"Payslip created for {staff.full_name}.")
-            return redirect("payroll_payslip_detail", pk=payslip.pk)
+            except ValidationError as exc:
+                form.add_error(None, "; ".join(exc.messages))
+            else:
+                payslip = payslips[0]
+                messages.success(
+                    request,
+                    f"Payslip created for {staff.full_name} and the wage outflow was recorded in Finance.",
+                )
+                return redirect("payroll_payslip_detail", pk=payslip.pk)
     else:
-        form = PayslipForm(staff=staff)
+        form = PayslipForm(staff=staff, business=request.business)
     return render(request, "accounts/payroll_payslip_form.html", {
         "form": form,
         "staff": staff,
@@ -1979,7 +1991,7 @@ def payroll_payslip_detail(request, pk):
         payslip_public_url, payslip_whatsapp_url, payslip_filename,
     )
     payslip = get_object_or_404(
-        Payslip.objects.select_related("staff", "business")
+        Payslip.objects.select_related("staff", "business", "payroll_run")
         .prefetch_related("calculation_lines", "adjustment_lines", "revisions__edited_by"),
         pk=pk, business=request.business,
     )
@@ -2017,40 +2029,71 @@ def payroll_payslip_edit(request, pk):
         return redirect("payroll_payslip_detail", pk=payslip.pk)
 
     if request.method == "POST":
-        form = PayslipEditForm(request.POST, instance=payslip)
+        form = PayslipEditForm(request.POST, instance=payslip, business=request.business)
         adjustment_formset = PayslipAdjustmentLineFormSet(
             request.POST, instance=payslip, prefix="adjustments"
         )
         if form.is_valid() and adjustment_formset.is_valid():
-            with transaction.atomic():
-                # ModelForm validation mutates its instance with posted values.
-                # Re-fetch and lock a clean database copy before snapshotting so
-                # the audit history always preserves the actual previously
-                # issued version, not the just-submitted correction.
-                previous_payslip = (
-                    Payslip.objects.select_for_update()
-                    .select_related("staff", "business")
-                    .prefetch_related("calculation_lines", "adjustment_lines")
-                    .get(pk=payslip.pk, business=request.business)
+            try:
+                with transaction.atomic():
+                    # ModelForm validation mutates its instance with posted values.
+                    # Re-fetch and lock a clean database copy before snapshotting so
+                    # the audit history always preserves the actual previously
+                    # issued version, not the just-submitted correction.
+                    previous_payslip = (
+                        Payslip.objects.select_for_update()
+                        .select_related("staff", "business")
+                        .prefetch_related("calculation_lines", "adjustment_lines")
+                        .get(pk=payslip.pk, business=request.business)
+                    )
+                    previous = payslip_revision_snapshot(previous_payslip)
+                    revision = PayslipRevision.objects.create(
+                        payslip=previous_payslip,
+                        reason=form.cleaned_data["edit_reason"],
+                        previous_snapshot=previous,
+                        edited_by=request.user,
+                    )
+                    previous_net_pay = previous_payslip.net_pay
+                    payslip = form.save()
+                    adjustment_formset.instance = payslip
+                    adjustment_formset.save()
+                    recalculate_issued_payslip(payslip)
+                    payslip.refresh_from_db(fields=["net_pay", "gross_pay", "employer_cost"])
+                    finance_delta = payslip.net_pay - previous_net_pay
+                    if finance_delta and previous_payslip.payroll_run_id:
+                        from .payroll import post_payslip_finance_adjustment
+                        account = form.cleaned_data.get("finance_adjustment_account")
+                        if account is None:
+                            raise ValidationError(
+                                "This correction changes net pay. Choose the Finance "
+                                "account that should receive the payroll adjustment."
+                            )
+                        post_payslip_finance_adjustment(
+                            payslip=payslip,
+                            delta=finance_delta,
+                            account=account,
+                            user=request.user,
+                            revision=revision,
+                        )
+            except ValidationError as exc:
+                error_field = (
+                    "finance_adjustment_account"
+                    if "finance_adjustment_account" in form.fields
+                    else None
                 )
-                previous = payslip_revision_snapshot(previous_payslip)
-                PayslipRevision.objects.create(
-                    payslip=previous_payslip,
-                    reason=form.cleaned_data["edit_reason"],
-                    previous_snapshot=previous,
-                    edited_by=request.user,
+                form.add_error(error_field, "; ".join(exc.messages))
+            else:
+                messages.success(
+                    request,
+                    (
+                        "Payslip updated. The previous issued values and your reason "
+                        "were retained in its edit history; any net-pay change was "
+                        "posted to Finance as an adjustment."
+                    ),
                 )
-                payslip = form.save()
-                adjustment_formset.instance = payslip
-                adjustment_formset.save()
-                recalculate_issued_payslip(payslip)
-            messages.success(
-                request,
-                "Payslip updated. The previous issued values and your reason were retained in its edit history.",
-            )
-            return redirect("payroll_payslip_detail", pk=payslip.pk)
+                return redirect("payroll_payslip_detail", pk=payslip.pk)
     else:
-        form = PayslipEditForm(instance=payslip)
+        form = PayslipEditForm(instance=payslip, business=request.business)
         adjustment_formset = PayslipAdjustmentLineFormSet(
             instance=payslip, prefix="adjustments"
         )
@@ -2129,6 +2172,145 @@ def payroll_payslip_public_pdf(request, public_id):
     response = HttpResponse(payslip_pdf_bytes(payslip), content_type="application/pdf")
     response["Content-Disposition"] = f'inline; filename="{payslip_filename(payslip)}"'
     return response
+
+
+@login_required
+def payroll_run_create(request):
+    if not can_manage(request):
+        return render(request, "403.html", status=403)
+    from .forms import PayrollFundingFormSet, PayrollRunForm
+    from .models import PayrollCalculationRule, PayrollStaffProfile
+    from .payroll import (
+        issue_bulk_payroll_run,
+        payroll_access_state,
+        payroll_preview_for_staff,
+    )
+
+    state = payroll_access_state(request.business)
+    if not state["enabled"]:
+        messages.error(request, "Payroll access is not active for this business.")
+        return redirect("payroll_workspace")
+
+    active_staff = list(
+        PayrollStaffProfile.objects.filter(business=request.business, active=True)
+        .prefetch_related("recurring_adjustments")
+        .order_by("full_name", "id")
+    )
+    rules = list(
+        PayrollCalculationRule.objects.filter(
+            business=request.business,
+            active=True,
+        ).order_by("sort_order", "name", "id")
+    )
+    previews = [
+        payroll_preview_for_staff(
+            staff,
+            business=request.business,
+            rules=rules,
+        )
+        for staff in active_staff
+    ]
+    projected_total = sum(
+        (row["calculation"]["net_pay"] for row in previews),
+        Decimal("0.00"),
+    )
+
+    if request.method == "POST":
+        form = PayrollRunForm(request.POST, business=request.business)
+        funding_formset = PayrollFundingFormSet(
+            request.POST,
+            prefix="funding",
+            form_kwargs={"business": request.business},
+        )
+        if form.is_valid() and funding_formset.is_valid():
+            funding = [
+                (row.cleaned_data["account"], row.cleaned_data["amount"])
+                for row in funding_formset.forms
+                if row.cleaned_data
+                and not row.cleaned_data.get("DELETE")
+                and row.cleaned_data.get("account")
+                and row.cleaned_data.get("amount")
+            ]
+            try:
+                payroll_run, _ = issue_bulk_payroll_run(
+                    business=request.business,
+                    user=request.user,
+                    staff_members=list(form.cleaned_data["staff"]),
+                    period_start=form.cleaned_data["period_start"],
+                    period_end=form.cleaned_data["period_end"],
+                    pay_date=form.cleaned_data["pay_date"],
+                    funding=funding,
+                    notes=form.cleaned_data.get("notes", ""),
+                )
+            except ValidationError as exc:
+                form.add_error(None, "; ".join(exc.messages))
+            else:
+                messages.success(
+                    request,
+                    (
+                        f"Payroll run posted for {payroll_run.staff_count} staff. "
+                        "Payslips were generated and Finance was updated."
+                    ),
+                )
+                return redirect("payroll_run_detail", pk=payroll_run.pk)
+    else:
+        today = timezone.localdate()
+        month_start = today.replace(day=1)
+        form = PayrollRunForm(
+            business=request.business,
+            initial={
+                "period_start": month_start,
+                "period_end": today,
+                "pay_date": today,
+                "staff": [staff.pk for staff in active_staff],
+            },
+        )
+        from core.models import CashAccount
+        first_account = CashAccount.objects.filter(
+            business=request.business, active=True
+        ).order_by("name").first()
+        funding_initial = [{
+            "account": first_account.pk if first_account else None,
+            "amount": projected_total or None,
+        }]
+        funding_formset = PayrollFundingFormSet(
+            prefix="funding",
+            form_kwargs={"business": request.business},
+            initial=funding_initial,
+        )
+
+    if request.method == "POST":
+        selected_ids = {str(value) for value in request.POST.getlist("staff")}
+    else:
+        selected_ids = {str(staff.pk) for staff in active_staff}
+    for row in previews:
+        row["selected"] = str(row["staff"].pk) in selected_ids
+
+    return render(request, "accounts/payroll_run_form.html", {
+        "form": form,
+        "funding_formset": funding_formset,
+        "staff_previews": previews,
+        "projected_total": projected_total,
+        "payroll_state": state,
+    })
+
+
+@login_required
+def payroll_run_detail(request, pk):
+    if not can_manage(request):
+        return render(request, "403.html", status=403)
+    from .models import PayrollRun
+    run = get_object_or_404(
+        PayrollRun.objects.prefetch_related(
+            "funding_lines__account",
+            "funding_lines__finance_transaction",
+            "payslips__staff",
+            "payslips__revisions__finance_transaction",
+        ),
+        pk=pk,
+        business=request.business,
+    )
+    return render(request, "accounts/payroll_run_detail.html", {"payroll_run": run})
 
 
 @login_required

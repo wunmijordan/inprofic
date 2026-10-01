@@ -6,19 +6,25 @@ from django.test import override_settings
 from django.db import connection
 from django.core.management import call_command
 from django.core import mail
+from django.core.exceptions import ValidationError
 from django.template.loader import get_template
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
-from core.models import Business
+from core.models import Business, CashAccount, FinancialTransaction
 from .models import (
     BusinessFeatureAccess, BusinessModuleAccess, BusinessSubscription, CustomUser,
     RoleModulePermission, SubscriptionPayment, SubscriptionPaymentSettings, SubscriptionPolicySettings, FounderTrialGrant,
     SubscriptionPlanModule, SubscriptionPromotion, MarketingPromoCampaign, SubscriptionService, UserBusiness, UserModulePermission, PlatformEvent, FounderSignupContactState,
-    PayrollCalculationRule, PayrollRecurringAdjustment, PayrollStaffProfile,
+    PayrollCalculationRule, PayrollRecurringAdjustment, PayrollRun, PayrollStaffProfile,
 )
-from .payroll import calculate_payslip, recurring_adjustment_totals, sync_staff_recurring_totals
+from .payroll import (
+    calculate_payslip,
+    issue_bulk_payroll_run,
+    recurring_adjustment_totals,
+    sync_staff_recurring_totals,
+)
 from .services import business_has_module, can_use_commerce_storefront, is_live_tester, seed_business_roles, user_has_permission
 from .subscription_services import (
     apply_subscription_entitlements,
@@ -121,6 +127,110 @@ class PayrollCalculationTests(TestCase):
         self.assertEqual(result["allowances"], Decimal("16000.00"))
         self.assertEqual(result["deductions"], Decimal("2500.00"))
         self.assertEqual(result["net_pay"], Decimal("113500.00"))
+
+
+class PayrollFinanceIntegrationTests(TestCase):
+    def test_bulk_payroll_posts_all_payslips_and_account_outflows_atomically(self):
+        business = Business.objects.create(name="Finance Payroll", slug="finance-payroll")
+        user = CustomUser.objects.create_user(
+            username="payroll-admin",
+            fullname="Payroll Admin",
+            password="test-password",
+        )
+        staff_a = PayrollStaffProfile.objects.create(
+            business=business,
+            full_name="Ada One",
+            base_pay=Decimal("100000.00"),
+        )
+        staff_b = PayrollStaffProfile.objects.create(
+            business=business,
+            full_name="Bola Two",
+            base_pay=Decimal("80000.00"),
+        )
+        account_a = CashAccount.objects.create(
+            business=business,
+            name="Payroll Bank A",
+            account_type="bank",
+        )
+        account_b = CashAccount.objects.create(
+            business=business,
+            name="Payroll Bank B",
+            account_type="bank",
+        )
+
+        payroll_run, payslips = issue_bulk_payroll_run(
+            business=business,
+            user=user,
+            staff_members=[staff_a, staff_b],
+            period_start=timezone.localdate().replace(day=1),
+            period_end=timezone.localdate(),
+            pay_date=timezone.localdate(),
+            funding=[
+                (account_a, Decimal("90000.00")),
+                (account_b, Decimal("90000.00")),
+            ],
+        )
+
+        self.assertEqual(payroll_run.staff_count, 2)
+        self.assertEqual(payroll_run.total_net_pay, Decimal("180000.00"))
+        self.assertEqual(len(payslips), 2)
+        self.assertTrue(all(row.payroll_run_id == payroll_run.pk for row in payslips))
+        self.assertEqual(payroll_run.funding_lines.count(), 2)
+        transactions = FinancialTransaction.objects.filter(
+            business=business,
+            category="Payroll / Wages",
+            reference=f"PAYRUN-{payroll_run.pk}",
+        )
+        self.assertEqual(transactions.count(), 2)
+        self.assertEqual(
+            sum((row.amount for row in transactions), Decimal("0.00")),
+            Decimal("180000.00"),
+        )
+        self.assertTrue(
+            all(
+                row.transaction_type == FinancialTransaction.OUTFLOW
+                for row in transactions
+            )
+        )
+
+        from core.views import _cash_payroll
+
+        self.assertEqual(
+            _cash_payroll(timezone.localdate(), timezone.localdate()),
+            Decimal("180000.00"),
+        )
+
+    def test_bulk_payroll_rejects_finance_allocation_that_does_not_match_net_wages(self):
+        business = Business.objects.create(name="Mismatch Payroll", slug="mismatch-payroll")
+        user = CustomUser.objects.create_user(
+            username="mismatch-admin",
+            fullname="Mismatch Admin",
+            password="test-password",
+        )
+        staff = PayrollStaffProfile.objects.create(
+            business=business,
+            full_name="Mismatch Staff",
+            base_pay=Decimal("50000.00"),
+        )
+        account = CashAccount.objects.create(
+            business=business,
+            name="Main Bank",
+            account_type="bank",
+        )
+
+        with self.assertRaisesMessage(ValidationError, "allocation must match"):
+            issue_bulk_payroll_run(
+                business=business,
+                user=user,
+                staff_members=[staff],
+                period_start=timezone.localdate().replace(day=1),
+                period_end=timezone.localdate(),
+                pay_date=timezone.localdate(),
+                funding=[(account, Decimal("40000.00"))],
+            )
+
+        self.assertFalse(PayrollRun.objects.filter(business=business).exists())
+        self.assertFalse(FinancialTransaction.objects.filter(business=business).exists())
 
 
 class TenantSignupTests(TestCase):

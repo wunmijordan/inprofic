@@ -237,9 +237,32 @@ def _expense_spend(start, end):
 def _cash_procurement(start, end):
     """Actual procurement cash leaving accounts, including later supplier payments."""
     return FinancialTransaction.objects.filter(
-        date__range=(start, end), transaction_type=FinancialTransaction.OUTFLOW,
+        date__range=(start, end),
+        transaction_type=FinancialTransaction.OUTFLOW,
         category__in=("Procurement", "Supplier payment"),
     ).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+
+
+def _cash_payroll(start, end):
+    """Net payroll cash movement, including later wage corrections/recoveries."""
+    payroll_categories = ("Payroll / Wages", "Payroll adjustment")
+    paid = (
+        FinancialTransaction.objects.filter(
+            date__range=(start, end),
+            transaction_type=FinancialTransaction.OUTFLOW,
+            category__in=payroll_categories,
+        ).aggregate(total=Sum("amount"))["total"]
+        or Decimal("0")
+    )
+    recovered = (
+        FinancialTransaction.objects.filter(
+            date__range=(start, end),
+            transaction_type=FinancialTransaction.INCOME,
+            category="Payroll adjustment",
+        ).aggregate(total=Sum("amount"))["total"]
+        or Decimal("0")
+    )
+    return paid - recovered
 
 
 def _procurement_scope_key(line):
@@ -400,8 +423,9 @@ def _financial_breakdown(start, end):
             cogs += (item.unit_cost or Decimal("0")) * item.total_units
     unpaid_retail, unpaid_cost = _unpaid_product_value(start, end)
     cash_procurement = _cash_procurement(start, end)
+    cash_payroll = _cash_payroll(start, end)
     cash_procurement_breakdown = _cash_outflow_breakdown(start, end)
-    total_cash_out = cash_procurement + misc_total
+    total_cash_out = cash_procurement + cash_payroll + misc_total
 
     outflows = [
         ("Raw materials", cash_procurement_breakdown["raw_materials"]),
@@ -409,7 +433,13 @@ def _financial_breakdown(start, end):
         ("Operational materials", cash_procurement_breakdown["operational_materials"]),
         ("Products for resale", cash_procurement_breakdown["products_for_resale"]),
     ]
-    outflows.extend((label, amount) for label, amount in sorted(misc_by_category.items()) if amount)
+    if cash_payroll:
+        outflows.append(("Payroll / Wages", cash_payroll))
+    outflows.extend(
+        (label, amount)
+        for label, amount in sorted(misc_by_category.items())
+        if amount
+    )
     if cash_procurement_breakdown["other_procurement"]:
         outflows.append(("Other procurement / supplier payments", cash_procurement_breakdown["other_procurement"]))
 
@@ -422,7 +452,11 @@ def _financial_breakdown(start, end):
         "procurement": {k: float(v) for k, v in procurement.items()},
         "misc_total": float(misc_total),
         "cash_procurement": float(cash_procurement),
-        "cash_procurement_breakdown": {k: float(v) for k,v in cash_procurement_breakdown.items()},
+        "cash_payroll": float(cash_payroll),
+        "cash_procurement_breakdown": {
+            key: float(value)
+            for key, value in cash_procurement_breakdown.items()
+        },
         "total_cash_out": float(total_cash_out),
         "net_cash_flow": float(sales_total - total_cash_out),
         "cogs": float(cogs),

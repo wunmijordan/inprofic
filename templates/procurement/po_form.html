@@ -15,8 +15,10 @@
     </div>
 
     {% if formset.non_form_errors %}<div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-3">{{ formset.non_form_errors }}</div>{% endif %}
-    <span class="block text-xs font-medium text-stone-600 mb-1">Items</span>
-    <p class="text-[11px] text-stone-400 mb-1">Enter the quantity actually purchased and the total amount paid for that quantity. Fractional quantities are supported — for example, 0.5 bag at ₦35,000. INPROFIC calculates the equivalent cost of one whole purchase unit automatically. For products for resale, quantity uses the product's stock unit.</p>
+    <div class="mb-1 flex items-center gap-1.5 text-xs font-medium text-stone-600">
+      <span>Items</span>
+      {% include "_help_tip.html" with help_text="Enter the quantity actually purchased and the total amount paid for that quantity. Fractional quantities are supported — for example, 0.5 bag at ₦35,000. INPROFIC calculates the equivalent cost of one whole purchase unit automatically. For products for resale, quantity uses the product's stock unit." label="Purchase order items" %}
+    </div>
     {{ formset.management_form }}
     <div class="border border-[#E7DFCC] rounded-md overflow-hidden">
       <div class="overflow-x-auto">

@@ -264,3 +264,195 @@ html[data-theme="dark"] main img { opacity: .94; }
   .workspace-utility-bar [data-appearance-panel] { position: absolute; top: 100%; right: 0; left: auto; width: 20rem; margin-top: .5rem; max-height: min(34rem,calc(100dvh - 5rem)); }
 }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { scroll-behavior: auto !important; transition-duration: .01ms !important; } }
+
+/* Light warning rows need dark text even while the rest of the workspace is dark. */
+html[data-theme="dark"] main tr.inventory-warning-row {
+  background: #fef3c7 !important;
+  color: #422006 !important;
+}
+html[data-theme="dark"] main tr.inventory-warning-row :where(td, button, a, div, span) {
+  color: inherit !important;
+}
+html[data-theme="dark"] main tr.inventory-warning-row:hover {
+  background: var(--ui-surface-muted) !important;
+  color: var(--ui-surface-text) !important;
+}
+html[data-theme="dark"] main tr.inventory-warning-row:hover
+  :where(td, button, a, div, span) {
+  color: var(--ui-surface-text) !important;
+}
+html[data-theme="dark"] main tr.procurement-group-row,
+html[data-theme="dark"] main tr.procurement-row:hover {
+  background: var(--ui-surface-muted) !important;
+  color: var(--ui-surface-text) !important;
+}
+html[data-theme="dark"] main tr.procurement-group-row
+  :where(td, button, a, div, span),
+html[data-theme="dark"] main tr.procurement-row:hover
+  :where(td, button, a, div, span) {
+  color: var(--ui-surface-text) !important;
+}
+
+/* Stock-state chips keep their own contrast inside intentionally light warning
+   rows. The warning row itself remains light in dark mode; hovering returns the
+   row and chip to the normal dark workspace surface. */
+html[data-theme="dark"] main tr.inventory-warning-row .inventory-stock-chip--warning {
+  background: #fffbeb !important;
+  border-color: #f59e0b !important;
+  color: #78350f !important;
+  box-shadow: inset 0 0 0 1px rgba(217, 119, 6, .22) !important;
+}
+
+html[data-theme="dark"] main tr.inventory-warning-row:hover .inventory-stock-chip--warning {
+  background: color-mix(in srgb, var(--ui-surface) 78%, #f59e0b 22%) !important;
+  border-color: color-mix(in srgb, #f59e0b 65%, var(--ui-border)) !important;
+  color: var(--ui-surface-text) !important;
+}
+
+/* Founder marketing geography: dependency-free interactive world map. */
+.marketing-visit-map {
+  position: relative;
+  isolation: isolate;
+  aspect-ratio: 2 / 1;
+  overflow: hidden;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-card-radius);
+  background: #f6f3ec;
+}
+
+.marketing-visit-map__image,
+.marketing-visit-map__markers {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.marketing-visit-map__image {
+  object-fit: fill;
+  opacity: .92;
+}
+
+.marketing-visit-marker {
+  position: absolute;
+  z-index: 4;
+  transform: translate(-50%, -50%);
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: var(--ui-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent) 22%, transparent), 0 4px 12px rgba(15, 23, 42, .22);
+  cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+}
+
+.marketing-visit-marker[data-precision="country"] {
+  background: #050733;
+}
+
+.marketing-visit-marker:hover,
+.marketing-visit-marker:focus-visible,
+.marketing-visit-marker[data-active="true"] {
+  z-index: 6;
+  transform: translate(-50%, -50%) scale(1.2);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--ui-accent) 28%, transparent), 0 7px 18px rgba(15, 23, 42, .28);
+}
+
+.marketing-visit-map__detail {
+  position: absolute;
+  z-index: 8;
+  left: .75rem;
+  bottom: .75rem;
+  width: min(16rem, calc(100% - 1.5rem));
+  border: 1px solid rgba(255, 255, 255, .72);
+  border-radius: .9rem;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, .16);
+  padding: .75rem;
+  backdrop-filter: blur(9px);
+}
+
+.marketing-visit-map__empty {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #78716c;
+  font-size: .75rem;
+}
+
+.marketing-location-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  border-radius: .7rem;
+  padding: .55rem .65rem;
+  color: var(--ui-surface-muted-text);
+  background: transparent !important;
+  text-align: left;
+}
+
+.marketing-location-row:hover,
+.marketing-location-row:focus-visible,
+.marketing-location-row[data-active="true"] {
+  color: var(--ui-surface-text) !important;
+  background: color-mix(in srgb, var(--ui-accent) 8%, var(--ui-surface)) !important;
+}
+
+.marketing-visit-trend {
+  display: grid;
+  grid-template-columns: repeat(14, minmax(1.75rem, 1fr));
+  gap: .35rem;
+  overflow-x: auto;
+  padding-bottom: .2rem;
+}
+
+.marketing-visit-trend__item {
+  display: grid;
+  min-width: 1.75rem;
+  grid-template-rows: 1rem 5rem 1rem;
+  gap: .25rem;
+  align-items: end;
+  text-align: center;
+}
+
+.marketing-visit-trend__value,
+.marketing-visit-trend__label {
+  color: var(--ui-surface-muted-text);
+  font-size: .58rem;
+  line-height: 1;
+}
+
+.marketing-visit-trend__value {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.marketing-visit-trend__track {
+  position: relative;
+  display: flex;
+  height: 5rem;
+  align-items: flex-end;
+  overflow: hidden;
+  border-radius: .4rem;
+  background: color-mix(in srgb, var(--ui-border) 35%, transparent);
+}
+
+.marketing-visit-trend__bar {
+  display: block;
+  width: 100%;
+  min-height: .2rem;
+  border-radius: .4rem .4rem .2rem .2rem;
+  background: linear-gradient(180deg, var(--ui-accent), color-mix(in srgb, var(--ui-accent) 62%, #050733));
+}
+
+html[data-theme="dark"] .marketing-visit-map {
+  background: #d8d4ca;
+}
+
+html[data-theme="dark"] .marketing-visit-map__detail {
+  background: rgba(24, 34, 48, .94);
+  border-color: rgba(255, 255, 255, .12);
+  color: var(--ui-surface-text);
+}

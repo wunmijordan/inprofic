@@ -1,10 +1,32 @@
 from decimal import Decimal
 from django import forms
-from django.forms import inlineformset_factory
+from django.forms import BaseFormSet, formset_factory, inlineformset_factory
 import re
 from django.contrib.auth import password_validation
-from core.models import Business
-from .models import CustomUser, Role, RoleModulePermission, UserBusiness, UserModulePermission, SubscriptionPlan, SubscriptionPromotion, MarketingPromoCampaign, SubscriptionPolicySettings, PlatformMailTemplate, BusinessTrialIdentity, MarketingTrustSettings, MarketingTrustLogo, PlatformPrivacyPolicy, PayrollAddonTier, PayrollStaffProfile, PayrollRecurringAdjustment, PayrollCalculationRule, Payslip, PayslipAdjustmentLine
+from django.utils import timezone
+from core.models import Business, CashAccount
+from .models import (
+    BusinessTrialIdentity,
+    CustomUser,
+    MarketingPromoCampaign,
+    MarketingTrustLogo,
+    MarketingTrustSettings,
+    PayrollAddonTier,
+    PayrollCalculationRule,
+    PayrollRecurringAdjustment,
+    PayrollStaffProfile,
+    Payslip,
+    PayslipAdjustmentLine,
+    PlatformMailTemplate,
+    PlatformPrivacyPolicy,
+    Role,
+    RoleModulePermission,
+    SubscriptionPlan,
+    SubscriptionPolicySettings,
+    SubscriptionPromotion,
+    UserBusiness,
+    UserModulePermission,
+)
 from .services import ensure_permissions, is_business_admin, seed_business_roles
 
 CLS = "w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 focus:border-[#8f172d]"
@@ -817,7 +839,118 @@ class PayrollCalculationRuleForm(forms.ModelForm):
         return cleaned
 
 
+class PayrollRunForm(forms.Form):
+    period_start = forms.DateField(
+        label="Pay period start",
+        widget=forms.DateInput(attrs={"type": "date"}),
+    )
+    period_end = forms.DateField(
+        label="Pay period end",
+        widget=forms.DateInput(attrs={"type": "date"}),
+    )
+    pay_date = forms.DateField(
+        label="Payment date",
+        widget=forms.DateInput(attrs={"type": "date"}),
+        help_text="Date the wage outflow should appear in Finance.",
+    )
+    staff = forms.ModelMultipleChoiceField(
+        queryset=PayrollStaffProfile.objects.none(),
+        widget=forms.CheckboxSelectMultiple,
+    )
+    notes = forms.CharField(
+        required=False,
+        max_length=500,
+        widget=forms.Textarea(attrs={"rows": 2}),
+    )
+
+    def __init__(self, *args, business=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.business = business
+        queryset = PayrollStaffProfile.objects.filter(active=True).order_by("full_name", "id")
+        if business is not None:
+            queryset = queryset.filter(business=business)
+        self.fields["staff"].queryset = queryset
+        for name, field in self.fields.items():
+            if name != "staff":
+                field.widget.attrs["class"] = CLS
+
+    def clean(self):
+        cleaned = super().clean()
+        start = cleaned.get("period_start")
+        end = cleaned.get("period_end")
+        if start and end and end < start:
+            self.add_error("period_end", "Pay period end cannot be before the start date.")
+        if not cleaned.get("staff"):
+            self.add_error("staff", "Select at least one active staff member.")
+        return cleaned
+
+
+class PayrollFundingForm(forms.Form):
+    account = forms.ModelChoiceField(queryset=CashAccount.objects.none(), label="Finance account")
+    amount = forms.DecimalField(
+        min_value=Decimal("0.01"),
+        max_digits=16,
+        decimal_places=2,
+        help_text="Amount of this payroll run paid from this account.",
+    )
+
+    def __init__(self, *args, business=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        accounts = CashAccount.objects.filter(active=True).order_by("name")
+        if business is not None:
+            accounts = accounts.filter(business=business)
+        self.fields["account"].queryset = accounts
+        self.fields["amount"].widget.attrs.update({
+            "class": CLS,
+            "min": "0.01",
+            "step": "0.01",
+            "data-formset-default": "0",
+        })
+        self.fields["account"].widget.attrs["class"] = CLS
+
+
+class BasePayrollFundingFormSet(BaseFormSet):
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        seen_accounts = set()
+        active_rows = 0
+        for form in self.forms:
+            if not form.cleaned_data or form.cleaned_data.get("DELETE"):
+                continue
+            account = form.cleaned_data.get("account")
+            amount = form.cleaned_data.get("amount")
+            if not account and not amount:
+                continue
+            active_rows += 1
+            if account and account.pk in seen_accounts:
+                raise forms.ValidationError("Use each Finance account only once in a payroll run.")
+            if account:
+                seen_accounts.add(account.pk)
+        if not active_rows:
+            raise forms.ValidationError("Choose at least one Finance account for wage payment.")
+
+
+PayrollFundingFormSet = formset_factory(
+    PayrollFundingForm,
+    formset=BasePayrollFundingFormSet,
+    extra=0,
+    can_delete=True,
+)
+
+
 class PayslipForm(forms.ModelForm):
+    pay_date = forms.DateField(
+        label="Payment date",
+        widget=forms.DateInput(attrs={"type": "date"}),
+        help_text="Date the wage outflow should appear in Finance.",
+    )
+    finance_account = forms.ModelChoiceField(
+        queryset=CashAccount.objects.none(),
+        label="Pay from Finance account",
+        help_text="The staff net pay is recorded as a wage outflow from this Finance account.",
+    )
     class Meta:
         model = Payslip
         fields = ["period_start", "period_end", "base_pay", "manual_allowances", "manual_deductions", "notes"]
@@ -827,12 +960,17 @@ class PayslipForm(forms.ModelForm):
             "notes": forms.Textarea(attrs={"rows": 3}),
         }
 
-    def __init__(self, *args, staff=None, **kwargs):
+    def __init__(self, *args, staff=None, business=None, **kwargs):
         super().__init__(*args, **kwargs)
+        accounts = CashAccount.objects.filter(active=True).order_by("name")
+        if business is not None:
+            accounts = accounts.filter(business=business)
+        self.fields["finance_account"].queryset = accounts
         if staff and not self.is_bound and not getattr(self.instance, "pk", None):
             self.fields["base_pay"].initial = staff.base_pay
             self.fields["manual_allowances"].initial = Decimal("0")
             self.fields["manual_deductions"].initial = Decimal("0")
+            self.fields["pay_date"].initial = timezone.localdate()
         self.fields["manual_allowances"].label = "Additional allowance / earning for this period"
         self.fields["manual_allowances"].help_text = (
             "Optional one-off amount. Named recurring allowances from the staff profile are included separately."
@@ -856,6 +994,16 @@ class PayslipForm(forms.ModelForm):
 
 
 class PayslipEditForm(PayslipForm):
+    finance_adjustment_account = forms.ModelChoiceField(
+        queryset=CashAccount.objects.none(),
+        required=False,
+        label="Finance adjustment account",
+        help_text=(
+            "Required only when this correction changes net pay on a Finance-posted "
+            "payslip. Choose the account only when the extra payment or recovery is "
+            "actually being settled now."
+        ),
+    )
     edit_reason = forms.CharField(
         max_length=500,
         label="Reason for editing issued payslip",
@@ -863,8 +1011,23 @@ class PayslipEditForm(PayslipForm):
         help_text="Required. This reason and the previous payslip values are retained in the edit history.",
     )
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args, business=None, **kwargs):
+        super().__init__(*args, business=business, **kwargs)
+        self.fields.pop("finance_account", None)
+        self.fields.pop("pay_date", None)
+        accounts = CashAccount.objects.filter(active=True).order_by("name")
+        if business is not None:
+            accounts = accounts.filter(business=business)
+        self.fields["finance_adjustment_account"].queryset = accounts
+        self.fields["finance_adjustment_account"].widget.attrs["class"] = CLS
+        if getattr(self.instance, "payroll_run_id", None):
+            for field_name in ("period_start", "period_end"):
+                self.fields[field_name].disabled = True
+                self.fields[field_name].help_text = (
+                    "The pay period is locked because this payslip belongs to a posted pay run."
+                )
+        else:
+            self.fields.pop("finance_adjustment_account", None)
         self.fields["edit_reason"].widget.attrs["class"] = CLS
 
     def clean_edit_reason(self):

@@ -53,6 +53,7 @@ from core.pdf_fonts import (
     PDF_DISPLAY_FONT,
     PDF_MONO_MEDIUM_FONT,
 )
+from .units import unit_catalog_payload, unit_datalist_options
 from .services import (
     change_raw_material_measurement,
     default_location,
@@ -534,7 +535,16 @@ def raw_material_form(request, pk=None):
             return redirect("raw_material_add" if "save_add_new" in request.POST else "inventory")
     else:
         form = RawMaterialForm(instance=obj, business=request.business)
-    return render(request, "inventory/rawmaterial_form.html", {"form": form, "obj": obj})
+    return render(
+        request,
+        "inventory/rawmaterial_form.html",
+        {
+            "form": form,
+            "obj": obj,
+            "raw_material_unit_options": unit_datalist_options(),
+            "raw_material_unit_catalog": unit_catalog_payload(),
+        },
+    )
 
 
 @login_required

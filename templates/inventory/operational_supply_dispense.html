@@ -15,7 +15,7 @@
     <div class="grid sm:grid-cols-2 gap-3">
       <div>
         {% include "_field.html" with field=form.quantity %}
-        <p id="unit-hint" class="text-[11px] text-stone-400 mt-1"></p>
+        <p data-form-help-text data-form-help-for="{{ form.quantity.id_for_label }}" id="unit-hint" class="text-[11px] text-stone-400 mt-1"></p>
       </div>
       {% include "_field.html" with field=form.reason %}
     </div>

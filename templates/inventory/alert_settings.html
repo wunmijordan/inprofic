@@ -9,19 +9,30 @@
   <form method="post" class="space-y-5">{% csrf_token %}
     {% if form.non_field_errors %}<div class="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{{ form.non_field_errors }}</div>{% endif %}
     <section class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
-      <label class="flex cursor-pointer items-center justify-between gap-4"><span><strong>Persistent inventory alerts</strong><span class="mt-1 block text-xs text-stone-500">Master switch for this business.</span></span><span class="cf-switch shrink-0">{{ form.enabled }}<span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label>
+      <label class="flex cursor-pointer items-center justify-between gap-4">
+        <span class="inline-flex items-center gap-1.5">
+          <strong>Persistent inventory alerts</strong>
+          {% include "_help_tip.html" with help_text="Master switch for this business." label="Persistent inventory alerts" %}
+        </span>
+        <span class="cf-switch shrink-0">
+          {{ form.enabled }}
+          <span class="cf-switch-track">
+            <span class="cf-switch-thumb"></span>
+          </span>
+        </span>
+      </label>
       <div class="mt-4 grid gap-4 sm:grid-cols-2">
-        <div>{% include '_field.html' with field=form.poll_seconds %}<p class="mt-1 text-[11px] text-stone-500">How often open INPROFIC pages refresh stock conditions (15–300 seconds).</p></div>
-        <div>{% include '_field.html' with field=form.sound_repeat_minutes %}<p class="mt-1 text-[11px] text-stone-500">Repeat the stock-attention sound while an alert is visible. Acknowledging/snoozing that alert stops its sound until the existing condition-specific repeat window brings it back.</p></div>
-        <div>{% include '_field.html' with field=form.sound_tune %}<p class="mt-1 text-[11px] text-stone-500">Choose a synthesized alert or one of the bundled audio chimes. INPROFIC uses persistent foreground alarm bursts after audio permission is available; background Web Push uses the notification sound provided by the device/browser.</p></div>
+        <div>{% include '_field.html' with field=form.poll_seconds %}<p data-form-help-text data-form-help-for="{{ form.poll_seconds.id_for_label }}" class="mt-1 text-[11px] text-stone-500">How often open INPROFIC pages refresh stock conditions (15–300 seconds).</p></div>
+        <div>{% include '_field.html' with field=form.sound_repeat_minutes %}<p data-form-help-text data-form-help-for="{{ form.sound_repeat_minutes.id_for_label }}" class="mt-1 text-[11px] text-stone-500">Repeat the stock-attention sound while an alert is visible. Acknowledging/snoozing that alert stops its sound until the existing condition-specific repeat window brings it back.</p></div>
+        <div>{% include '_field.html' with field=form.sound_tune %}<p data-form-help-text data-form-help-for="{{ form.sound_tune.id_for_label }}" class="mt-1 text-[11px] text-stone-500">Choose a synthesized alert or one of the bundled audio chimes. INPROFIC uses persistent foreground alarm bursts after audio permission is available; background Web Push uses the notification sound provided by the device/browser.</p></div>
         <div>{% include '_field.html' with field=form.sound_enabled %}</div>
       </div>
     </section>
     <div class="grid gap-4 md:grid-cols-2">
-      <section class="rounded-xl border border-amber-200 bg-amber-50/50 p-5"><h2 class="font-semibold text-amber-900">Raw material · warning</h2><p class="mt-1 text-xs text-stone-600">Approaching the reorder threshold.</p><div class="mt-4 space-y-3">{% include '_field.html' with field=form.raw_warning_enabled %}{% include '_field.html' with field=form.raw_warning_repeat_minutes %}</div></section>
-      <section class="rounded-xl border border-rose-200 bg-rose-50/50 p-5"><h2 class="font-semibold text-rose-900">Raw material · low</h2><p class="mt-1 text-xs text-stone-600">At or below the reorder threshold.</p><div class="mt-4 space-y-3">{% include '_field.html' with field=form.raw_low_enabled %}{% include '_field.html' with field=form.raw_low_repeat_minutes %}</div></section>
-      <section class="rounded-xl border border-amber-300 bg-yellow-50 p-5"><h2 class="font-semibold text-amber-950">Finished good · warning</h2><p class="mt-1 text-xs text-stone-600">Shelf stock is approaching its reorder threshold.</p><div class="mt-4 space-y-3">{% include '_field.html' with field=form.finished_warning_enabled %}{% include '_field.html' with field=form.finished_warning_repeat_minutes %}</div></section>
-      <section class="rounded-xl border border-red-300 bg-red-50 p-5"><h2 class="font-semibold text-red-950">Finished good · low</h2><p class="mt-1 text-xs text-stone-600">Shelf stock is at or below its reorder threshold.</p><div class="mt-4 space-y-3">{% include '_field.html' with field=form.finished_low_enabled %}{% include '_field.html' with field=form.finished_low_repeat_minutes %}</div></section>
+      <section class="rounded-xl border border-amber-200 bg-amber-50/50 p-5"><h2 id="raw-warning-help-anchor" class="inline-flex items-center gap-1.5 font-semibold text-amber-900">Raw material · warning</h2><p data-form-help-text data-form-help-anchor="raw-warning-help-anchor" class="mt-1 text-xs text-stone-600">Approaching the reorder threshold.</p><div class="mt-4 space-y-3">{% include '_field.html' with field=form.raw_warning_enabled %}{% include '_field.html' with field=form.raw_warning_repeat_minutes %}</div></section>
+      <section class="rounded-xl border border-rose-200 bg-rose-50/50 p-5"><h2 id="raw-low-help-anchor" class="inline-flex items-center gap-1.5 font-semibold text-rose-900">Raw material · low</h2><p data-form-help-text data-form-help-anchor="raw-low-help-anchor" class="mt-1 text-xs text-stone-600">At or below the reorder threshold.</p><div class="mt-4 space-y-3">{% include '_field.html' with field=form.raw_low_enabled %}{% include '_field.html' with field=form.raw_low_repeat_minutes %}</div></section>
+      <section class="rounded-xl border border-amber-300 bg-yellow-50 p-5"><h2 id="finished-warning-help-anchor" class="inline-flex items-center gap-1.5 font-semibold text-amber-950">Finished good · warning</h2><p data-form-help-text data-form-help-anchor="finished-warning-help-anchor" class="mt-1 text-xs text-stone-600">Shelf stock is approaching its reorder threshold.</p><div class="mt-4 space-y-3">{% include '_field.html' with field=form.finished_warning_enabled %}{% include '_field.html' with field=form.finished_warning_repeat_minutes %}</div></section>
+      <section class="rounded-xl border border-red-300 bg-red-50 p-5"><h2 id="finished-low-help-anchor" class="inline-flex items-center gap-1.5 font-semibold text-red-950">Finished good · low</h2><p data-form-help-text data-form-help-anchor="finished-low-help-anchor" class="mt-1 text-xs text-stone-600">Shelf stock is at or below its reorder threshold.</p><div class="mt-4 space-y-3">{% include '_field.html' with field=form.finished_low_enabled %}{% include '_field.html' with field=form.finished_low_repeat_minutes %}</div></section>
     </div>
     <button class="rounded-md bg-[#8f172d] px-4 py-2.5 text-sm font-semibold text-white">Save alert settings</button>
   </form>

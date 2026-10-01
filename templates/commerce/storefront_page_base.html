@@ -8,7 +8,7 @@
   {% include "_brand_icons.html" %}
   <title>{% block title %}{{ store_business.name }}{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
-  <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}">
+  <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}?v={{ static_asset_version }}">
   <style>
     @font-face { font-family:'Sora'; src:url('{% static "core/fonts/Sora-Variable.ttf" %}') format('truetype'); font-weight:100 800; font-style:normal; font-display:swap; }
     @font-face { font-family:'Fraunces'; src:url('{% static "core/fonts/Fraunces-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
@@ -21,7 +21,7 @@
     .storefront-brand-control { color:var(--brand-dark-contrast)!important;border-color:color-mix(in srgb,var(--brand-dark-contrast) 20%,transparent)!important;background:color-mix(in srgb,var(--brand-dark) 78%,transparent)!important; }
   </style>
   {% block extra_head %}{% endblock %}
-  <script src="{% static 'core/js/form-experience.js' %}" defer></script>
+  <script src="{% static 'core/js/form-experience.js' %}?v={{ static_asset_version }}" defer></script>
 </head>
 <body class="min-h-screen">
   {% if not hide_storefront_header %}<header class="storefront-brand-surface relative isolate overflow-hidden">

@@ -37,3 +37,115 @@
 .overflow-x-auto table input[type="number"] { min-width: 8.75rem; }
 .overflow-x-auto table textarea { min-width: 14rem; }
 .overflow-x-auto table .cf-switch input[type="checkbox"] { min-width: 0; }
+
+/* Helper copy is promoted into the info popover by form-experience.js.
+   Hide the source node immediately so it never flashes inline or inherits an
+   uppercase label treatment while the deferred script initializes. */
+form :is(.helptext, .help-text, [data-form-help-text]) {
+  display: none !important;
+}
+
+/* Shared field-help popover. This lives with the shared form renderer so it
+   behaves the same in the workspace, login/signup, hosted storefront and POS. */
+.form-help-tip {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  vertical-align: middle;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
+
+.form-help-tip__trigger {
+  display: inline-grid;
+  width: 1.05rem;
+  height: 1.05rem;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent !important;
+  color: var(--ui-local-muted, var(--ui-muted, #78716c)) !important;
+  cursor: help;
+  font: inherit;
+  line-height: 1;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
+
+.form-help-tip__trigger:hover,
+.form-help-tip__trigger:focus-visible,
+.form-help-tip.is-open .form-help-tip__trigger {
+  color: var(--tenant-button, var(--brand, #8f172d)) !important;
+}
+
+.form-help-tip__trigger:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--tenant-button, #8f172d) 35%, transparent);
+  outline-offset: 2px;
+}
+
+.form-help-tip__trigger svg {
+  width: .95rem;
+  height: .95rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+
+.form-help-tip__bubble {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + .5rem);
+  z-index: 120;
+  width: min(18rem, calc(100vw - 2rem));
+  transform: translateX(-50%);
+  border: 1px solid var(--ui-border, #e7dfcc);
+  border-radius: .7rem;
+  background: var(--ui-surface, #fffdf8);
+  color: var(--ui-surface-text, #211d1a) !important;
+  box-shadow: var(--ui-shadow-raised, 0 14px 34px rgba(33, 29, 26, .16));
+  padding: .65rem .75rem;
+  font-size: .72rem !important;
+  font-style: normal !important;
+  font-weight: 500 !important;
+  line-height: 1.5 !important;
+  letter-spacing: normal !important;
+  text-align: left !important;
+  text-transform: none !important;
+  white-space: normal;
+}
+
+.form-help-tip__detail {
+  display: block;
+}
+
+.form-help-tip__detail--continued {
+  margin-top: .5rem;
+  padding-top: .5rem;
+  border-top: 1px solid color-mix(in srgb, var(--ui-border, #e7dfcc) 72%, transparent);
+}
+
+.form-help-tip__bubble[hidden] {
+  display: none !important;
+}
+
+.form-help-tip.is-open .form-help-tip__bubble {
+  display: block !important;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .form-help-tip__trigger {
+    width: 1.25rem;
+    height: 1.25rem;
+    cursor: pointer;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .form-help-tip:hover .form-help-tip__bubble[hidden],
+  .form-help-tip:focus-within .form-help-tip__bubble[hidden] {
+    display: block !important;
+  }
+}

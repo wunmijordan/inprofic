@@ -9,12 +9,12 @@
     {% if form.non_field_errors %}<div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-3">{{ form.non_field_errors }}</div>{% endif %}
     <section class="cf-form-section mb-4">
       <div class="cf-form-section-title mb-3">Product details</div>
-      {% if form.source_type %}<div class="rounded-xl border border-[#E7DFCC] bg-[#FAF8F1] p-3 mb-3">{% include "_field.html" with field=form.source_type %}<p class="text-[11px] leading-5 text-stone-500">{{ vertical_ui.product_sources.purchased_for_resale }} items are received through Procurement and can be sold from both storefronts without entering production.</p></div>{% endif %}
+      {% if form.source_type %}<div class="rounded-xl border border-[#E7DFCC] bg-[#FAF8F1] p-3 mb-3">{% include "_field.html" with field=form.source_type %}<p data-form-help-text data-form-help-for="{{ form.source_type.id_for_label }}" class="text-[11px] leading-5 text-stone-500">{{ vertical_ui.product_sources.purchased_for_resale }} items are received through Procurement and can be sold from both storefronts without entering production.</p></div>{% endif %}
       <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
         {% include "_field.html" with field=form.name %}
         {% include "_field.html" with field=form.product_category %}
       </div>
-      <p class="-mt-1 mb-3 text-[11px] text-stone-500">Need another storefront grouping? <a href="{% url 'product_categories' %}" class="font-semibold text-[#8f172d] hover:underline">Manage product categories</a>. Category is independent from whether the product is made in-house or procured for resale.</p>
+      <p data-form-help-text data-form-help-for="{{ form.product_category.id_for_label }}" class="-mt-1 mb-3 text-[11px] text-stone-500">Need another storefront grouping? <a href="{% url 'product_categories' %}" class="font-semibold text-[#8f172d] hover:underline">Manage product categories</a>. Category is independent from whether the product is made in-house or procured for resale.</p>
       <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
         {% include "_field.html" with field=form.unit %}
         {% include "_field.html" with field=form.selling_price %}
@@ -23,8 +23,9 @@
       {% include "_field.html" with field=form.stock %}
       {% if vertical_ui.uses_production %}
         <div data-production-only {% if not show_production_fields %}class="hidden"{% endif %}>
-          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">{% include "_field.html" with field=form.units_per_batch %}{% include "_field.html" with field=form.base_material %}</div>
-          <p class="-mt-1 mb-2 text-[11px] leading-5 text-stone-500">Base material is optional. When set, stock production can be planned from the amount of a key ingredient/component available—for example 15 kg, 25 metres or 40 pieces. It must be included in the {{ vertical_ui.recipe_label|lower }} below.</p>
+          <div class="max-w-md">
+            {% include "_field.html" with field=form.units_per_batch %}
+          </div>
         </div>
       {% if obj %}<p class="text-[11px] text-stone-400 -mt-2 mb-3">Total made all-time: <span class="font-mono">{{ obj.total_produced|num }}</span> {{ obj.unit }} (updates automatically as orders complete)</p>{% endif %}
       {% else %}
@@ -35,8 +36,8 @@
     <section class="cf-form-section mb-4" id="portion-config-section">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <span class="cf-form-section-title block mb-1">{% if vertical_ui.uses_production %}Selling portions &amp; product contents{% else %}Selling units &amp; pack options{% endif %}</span>
-          <p class="max-w-3xl text-[11px] leading-5 text-stone-500">{% if vertical_ui.uses_production %}Keep the product's base unit operational (for example piece, loaf, bottle, metre, scoop or ml), then describe the unit customers buy. Existing products remain 1:1 unless this is enabled.{% else %}Keep the product's stock unit authoritative, then define a customer selling unit only when a customer-facing pack represents multiple stock units. Products remain 1:1 unless this is enabled.{% endif %}</p>
+          <span id="portion-config-help-anchor" class="cf-form-section-title inline-flex items-center gap-1.5 mb-1">{% if vertical_ui.uses_production %}Selling portions &amp; product contents{% else %}Selling units &amp; pack options{% endif %}</span>
+          <p data-form-help-text data-form-help-anchor="portion-config-help-anchor" class="max-w-3xl text-[11px] leading-5 text-stone-500">{% if vertical_ui.uses_production %}Keep the product's base unit operational (for example piece, loaf, bottle, metre, scoop or ml), then describe the unit customers buy. Existing products remain 1:1 unless this is enabled.{% else %}Keep the product's stock unit authoritative, then define a customer selling unit only when a customer-facing pack represents multiple stock units. Products remain 1:1 unless this is enabled.{% endif %}</p>
         </div>
         <label class="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[#E7DFCC] bg-[#FAF8F1] px-3 py-2 text-xs font-semibold text-stone-700">
           <span class="cf-switch">{{ portion_form.active }}<span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span>
@@ -56,8 +57,8 @@
 
       <div class="mt-5 flex items-end justify-between gap-3">
         <div>
-          <p class="text-xs font-bold uppercase tracking-[.14em] text-stone-500">{% if vertical_ui.uses_production %}Individual / plain selling options{% else %}Alternative selling options{% endif %}</p>
-          <p class="mt-1 max-w-3xl text-[11px] leading-5 text-stone-400">{% if vertical_ui.uses_production %}Expose this same finished product separately without the standard portion's additional sides or packaging. Each option uses the existing stock/production balance and can be priced independently by channel.{% else %}Offer the same stocked product in another customer-facing unit or pack without creating duplicate inventory. Each option draws from the same stock balance and can be priced independently by channel.{% endif %}</p>
+          <p id="individual-options-help-anchor" class="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-[.14em] text-stone-500">{% if vertical_ui.uses_production %}Individual / plain selling options{% else %}Alternative selling options{% endif %}</p>
+          <p data-form-help-text data-form-help-anchor="individual-options-help-anchor" class="mt-1 max-w-3xl text-[11px] leading-5 text-stone-400">{% if vertical_ui.uses_production %}Expose this same finished product separately without the standard portion's additional sides or packaging. Each option uses the existing stock/production balance and can be priced independently by channel.{% else %}Offer the same stocked product in another customer-facing unit or pack without creating duplicate inventory. Each option draws from the same stock balance and can be priced independently by channel.{% endif %}</p>
         </div>
       </div>
       {{ individual_option_formset.management_form }}
@@ -91,7 +92,7 @@
       </div>
 
       <div class="mt-5 flex items-end justify-between gap-3">
-        <div><p class="text-xs font-bold uppercase tracking-[.14em] text-stone-500">{% if vertical_ui.uses_production %}Bulk / distribution options{% else %}Pack / bulk selling options{% endif %}</p><p class="mt-1 text-[11px] leading-5 text-stone-400">Optional customer-facing bulk sizes/containers. Each pack converts back to the same {% if vertical_ui.uses_production %}base unit before INPROFIC hands demand to the existing stock/production flow{% else %}stock unit before INPROFIC fulfils demand from procured inventory{% endif %}.</p></div>
+        <div><p id="bulk-options-help-anchor" class="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-[.14em] text-stone-500">{% if vertical_ui.uses_production %}Bulk / distribution options{% else %}Pack / bulk selling options{% endif %}</p><p data-form-help-text data-form-help-anchor="bulk-options-help-anchor" class="mt-1 text-[11px] leading-5 text-stone-400">Optional customer-facing bulk sizes/containers. Each pack converts back to the same {% if vertical_ui.uses_production %}base unit before INPROFIC hands demand to the existing stock/production flow{% else %}stock unit before INPROFIC fulfils demand from procured inventory{% endif %}.</p></div>
       </div>
       {{ bulk_pack_formset.management_form }}
       {% if bulk_pack_formset.non_form_errors %}<div class="mt-2 rounded-md border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">{{ bulk_pack_formset.non_form_errors }}</div>{% endif %}
@@ -122,8 +123,8 @@
 
       {% if vertical_ui.uses_production %}
       <div class="mt-5">
-        <p class="text-xs font-bold uppercase tracking-[.14em] text-stone-500">Additional contents</p>
-        <p class="mt-1 text-[11px] leading-5 text-stone-400">The base product is already included automatically. Add only extra finished/procured goods, protein, sauce, packaging or other materials. Internal quantities are saved for operations; only items you mark public appear in the customer “What's included?” view.</p>
+        <p id="additional-contents-help-anchor" class="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-[.14em] text-stone-500">Additional contents</p>
+        <p data-form-help-text data-form-help-anchor="additional-contents-help-anchor" class="mt-1 text-[11px] leading-5 text-stone-400">The base product is already included automatically. Add only extra finished/procured goods, protein, sauce, packaging or other materials. Internal quantities are saved for operations; only items you mark public appear in the customer “What's included?” view.</p>
       </div>
       {{ composition_formset.management_form }}
       {% if composition_formset.non_form_errors %}<div class="mt-2 rounded-md border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">{{ composition_formset.non_form_errors }}</div>{% endif %}
@@ -155,8 +156,8 @@
     </section>
 
     <section class="cf-form-section mb-4">
-    <span class="cf-form-section-title block mb-1">Channel selling prices</span>
-    <p class="text-[11px] text-stone-400 mb-2">Optional channel-specific prices. Physical Store and Online can fall back to the default Selling Price above. {{ bulk_channel_label }} is isolated from the standard portion: set an explicit channel price when selling the base product there, or use the Bulk / distribution options above; if neither is set, that product is unavailable for {{ bulk_channel_label }}.</p>
+    <span id="channel-prices-help-anchor" class="cf-form-section-title inline-flex items-center gap-1.5 mb-1">Channel selling prices</span>
+    <p data-form-help-text data-form-help-anchor="channel-prices-help-anchor" class="text-[11px] text-stone-400 mb-2">Optional channel-specific prices. Physical Store and Online can fall back to the default Selling Price above. {{ bulk_channel_label }} is isolated from the standard portion: set an explicit channel price when selling the base product there, or use the Bulk / distribution options above; if neither is set, that product is unavailable for {{ bulk_channel_label }}.</p>
     {{ channel_price_formset.management_form }}
     {% if channel_price_formset.non_form_errors %}
       <div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-2">{{ channel_price_formset.non_form_errors }}</div>
@@ -188,8 +189,11 @@
 
     {% if vertical_ui.uses_production %}
     <section class="cf-form-section {% if not show_production_fields %}hidden{% endif %}" data-production-chain>
-    <span class="cf-form-section-title block mb-1">{{ vertical_ui.recipe_label }} · quantities per batch</span>
-    <p class="text-[11px] text-stone-400 mb-1">Quantity is defined against the registered batch yield above and entered in each material's <strong>usage unit</strong>. Mark <strong>Flexible</strong> only where the {{ vertical_ui.recipe_label|lower }} permits an approval-time quantity adjustment.</p>
+    <div class="mb-4 max-w-md rounded-xl border border-[#E7DFCC] bg-[#FAF8F1] p-3">
+      {% include "_field.html" with field=form.base_material %}
+    </div>
+    <span id="recipe-help-anchor" class="cf-form-section-title inline-flex items-center gap-1.5 mb-1">{{ vertical_ui.recipe_label }} · quantities per batch</span>
+    <p data-form-help-text data-form-help-anchor="recipe-help-anchor" class="text-[11px] text-stone-400 mb-1">Quantity is defined against the registered batch yield above and entered in each material's <strong>usage unit</strong>. Mark <strong>Flexible</strong> only where the {{ vertical_ui.recipe_label|lower }} permits an approval-time quantity adjustment.</p>
     {{ formset.management_form }}
     {% if formset.non_form_errors %}
       <div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-2">{{ formset.non_form_errors }}</div>
@@ -220,8 +224,8 @@
       <button type="button" onclick="addFormsetRow('recipe_items','recipe-rows')" class="w-full text-xs text-[#8f172d] font-medium py-2 hover:bg-[#F0EAD9]">+ Add {{ vertical_ui.recipe_item_label }}</button>
     </div>
 
-    <span class="cf-form-section-title block mb-1 mt-5">{{ vertical_ui.production_inputs_label }}</span>
-    <p class="text-[11px] text-stone-400 mb-1">These are consumed per batch but sit outside the main {{ vertical_ui.recipe_label|lower }} — for example packaging, labels, fuel, or other per-production supplies. Quantities use each material's usage unit.</p>
+    <span id="production-inputs-help-anchor" class="cf-form-section-title inline-flex items-center gap-1.5 mb-1 mt-5">{{ vertical_ui.production_inputs_label }}</span>
+    <p data-form-help-text data-form-help-anchor="production-inputs-help-anchor" class="text-[11px] text-stone-400 mb-1">These are consumed per batch but sit outside the main {{ vertical_ui.recipe_label|lower }} — for example packaging, labels, fuel, or other per-production supplies. Quantities use each material's usage unit.</p>
     {{ production_formset.management_form }}
     {% if production_formset.non_form_errors %}
       <div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-2">{{ production_formset.non_form_errors }}</div>
@@ -300,7 +304,7 @@
     const options = [{value:'standard', label:'Standard portion'}];
     bulkPackRows().forEach(row => {
       const name = row.querySelector('input[name$="-name"]')?.value.trim();
-      const key = ensureBulkKey(row);
+      const key = name ? ensureBulkKey(row) : '';
       if (name && key) options.push({value:key, label:`Bulk · ${name}`});
     });
     document.querySelectorAll('#composition-rows select[name$="-profile_key"]').forEach(select => {
@@ -345,7 +349,6 @@
     const row = addFormsetRow('bulk_packs', 'bulk-pack-rows');
     if (!row) return;
     row.dataset.bulkPackRow = '1';
-    ensureBulkKey(row);
     const active = row.querySelector('input[name$="-active"]'); if (active) active.checked = true;
     ['customer_quantity','base_quantity','min_order_quantity'].forEach(name => { const field=row.querySelector(`[name$="-${name}"]`); if(field && !field.value) field.value='1'; });
     syncCompositionTargets();
@@ -365,7 +368,7 @@
   });
   document.getElementById('id_portion-active')?.addEventListener('change', syncStandardPortionUI);
   ['id_unit','id_portion-customer_quantity','id_portion-customer_unit','id_portion-base_quantity'].forEach(id => document.getElementById(id)?.addEventListener('input', syncStandardPortionUI));
-  document.addEventListener('DOMContentLoaded', () => { syncStandardPortionUI(); syncAllCompositionRows(); bulkPackRows().forEach(ensureBulkKey); });
+  document.addEventListener('DOMContentLoaded', () => { syncStandardPortionUI(); syncAllCompositionRows(); });
 </script>
 
 {% if vertical_ui.uses_production %}

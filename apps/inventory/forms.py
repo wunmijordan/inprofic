@@ -125,6 +125,24 @@ class RawMaterialForm(StyledModelForm):
             self.fields.pop("measurement_change_confirm", None)
             self.fields.pop("measurement_change_reason", None)
             self.fields.pop("usage_unit_change_factor", None)
+        unit_list_id = "raw-material-unit-options"
+        unit_placeholders = {
+            "purchase_unit": "Search or type a purchase unit…",
+            "package_unit": "Search or type a package unit…",
+            "usage_unit": "Search or type a usage unit…",
+        }
+        for field_name in ("purchase_unit", "package_unit", "usage_unit"):
+            field = self.fields[field_name]
+            field.widget.attrs.update({
+                "list": unit_list_id,
+                "autocomplete": "off",
+                "placeholder": unit_placeholders[field_name],
+            })
+            field.help_text = (
+                (field.help_text + " " if field.help_text else "")
+                + "Choose from the searchable unit catalogue or type a business-specific unit."
+            )
+
         if business:
             vocabulary = vertical_config(business)
             self.fields["usage_unit"].help_text = (
@@ -451,6 +469,23 @@ class BulkPackProfileForm(StyledModelForm):
         self.fields["profile_key"].initial = (
             f"bulk:{self.instance.public_id}" if getattr(self.instance, "public_id", None) else ""
         )
+        # The inline formset always renders one optional blank row. ModelForm
+        # fields inherit ``required=True`` from the model, which makes the
+        # browser block the entire Finished Good form even when that optional
+        # row is intentionally unused. Keep the row optional at field level and
+        # enforce completeness below only after the user actually starts it.
+        for field_name in (
+            "name",
+            "package_type",
+            "customer_quantity",
+            "customer_unit",
+            "base_quantity",
+            "price",
+            "min_order_quantity",
+            "sort_order",
+        ):
+            self.fields[field_name].required = False
+
         self.fields["package_type"].label = "Bulk container / pack type"
         self.fields["package_type"].widget = forms.Select(choices=[("", "Choose type…"), *bulk_package_type_choices(business)] if business else [("", "Choose type…")])
         self.fields["package_type"].widget.attrs["class"] = INPUT_CLS
@@ -464,6 +499,24 @@ class BulkPackProfileForm(StyledModelForm):
             self.fields[name].widget.attrs["data-formset-default"] = "1"
         self.fields["sort_order"].widget.attrs["data-formset-default"] = "0"
 
+    def has_changed(self):
+        changed = super().has_changed()
+        if not changed or getattr(self.instance, "pk", None):
+            return changed
+
+        prefix = self.prefix or ""
+        value_for = lambda name: str(self.data.get(f"{prefix}-{name}", "") or "").strip()
+        if any(value_for(name) for name in ("name", "package_type", "customer_unit", "price")):
+            return True
+
+        numeric_defaults = {
+            "customer_quantity": {"", "1", "1.0", "1.00"},
+            "base_quantity": {"", "1", "1.0", "1.00", "1.000"},
+            "min_order_quantity": {"", "1", "1.0", "1.00"},
+            "sort_order": {"", "0"},
+        }
+        return any(value_for(name) not in defaults for name, defaults in numeric_defaults.items())
+
     def clean_profile_key(self):
         value = (self.cleaned_data.get("profile_key") or "").strip()
         if not value and getattr(self.instance, "public_id", None):
@@ -476,7 +529,10 @@ class BulkPackProfileForm(StyledModelForm):
         cleaned = super().clean()
         if cleaned.get("DELETE"):
             return cleaned
-        populated = any(cleaned.get(name) not in (None, "") for name in ("name", "customer_unit", "price"))
+        populated = bool(self.instance.pk) or any(
+            cleaned.get(name) not in (None, "")
+            for name in ("name", "package_type", "customer_unit", "price")
+        )
         if not populated:
             return cleaned
         if not (cleaned.get("name") or "").strip():
@@ -489,11 +545,19 @@ class BulkPackProfileForm(StyledModelForm):
                 if uses_production
                 else "Enter the customer-facing pack unit, e.g. piece, pack, carton, case or pallet.",
             )
-        for name, label in (("customer_quantity", "Displayed size"), ("base_quantity", "Base units" if uses_production else "Stock units"), ("min_order_quantity", "Minimum bulk units")):
+        for name, label in (
+            ("customer_quantity", "Displayed size"),
+            ("base_quantity", "Base units" if uses_production else "Stock units"),
+            ("min_order_quantity", "Minimum bulk units"),
+        ):
             if (cleaned.get(name) or Decimal("0")) <= 0:
                 self.add_error(name, f"{label} must be greater than zero.")
-        if cleaned.get("price") is not None and cleaned["price"] < 0:
+        if cleaned.get("price") is None:
+            self.add_error("price", "Enter the price for this bulk option.")
+        elif cleaned["price"] < 0:
             self.add_error("price", "Price cannot be negative.")
+        if cleaned.get("sort_order") is None:
+            cleaned["sort_order"] = 0
         return cleaned
 
 

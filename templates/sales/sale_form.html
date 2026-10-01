@@ -19,8 +19,33 @@
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">{% include "_field.html" with field=form.transaction_type %}<div id="unpaid-reason-wrap">{% include "_field.html" with field=form.unpaid_description %}</div>{% include "_field.html" with field=form.account %}</div>
 
     {% if formset.non_form_errors %}<div class="text-sm text-rose-700 bg-rose-50 text-rose-700 border border-rose-200 rounded-md p-3 mb-3">{{ formset.non_form_errors }}</div>{% endif %}
-    <span class="block text-xs font-medium text-stone-600 mb-1">Products</span>
-    <p class="text-[11px] text-stone-400 mb-1">{% if vertical_ui.uses_production %}Batches and/or loose pieces.{% else %}Enter the number of stock units sold.{% endif %} INPROFIC automatically applies the correct product, channel, and customer price where applicable.</p>
+    <div class="mb-1 flex items-center gap-1.5 text-xs font-medium text-stone-600">
+      <span>Products</span>
+      <span class="form-help-tip normal-case tracking-normal" data-form-help-tip>
+        <button
+          type="button"
+          class="form-help-tip__trigger"
+          data-form-help-trigger
+          aria-label="Help for sale products"
+          aria-expanded="false"
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+            <circle cx="10" cy="10" r="8"></circle>
+            <path d="M10 9v5"></path>
+            <path d="M10 6.25h.01"></path>
+          </svg>
+        </button>
+        <span
+          class="form-help-tip__bubble normal-case tracking-normal"
+          data-form-help-bubble
+          role="tooltip"
+          hidden
+        >
+          {% if vertical_ui.uses_production %}Batches and/or loose pieces.{% else %}Enter the number of stock units sold.{% endif %}
+          INPROFIC automatically applies the correct product, channel, and customer price where applicable.
+        </span>
+      </span>
+    </div>
     {{ formset.management_form }}
     <div class="border border-[#E7DFCC] rounded-md overflow-hidden">
       <div class="overflow-x-auto">

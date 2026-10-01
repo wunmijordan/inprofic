@@ -1,1 +1,85 @@
-{% extends "base.html" %}{% block content %}<div class="max-w-2xl"><div class="mb-4"><h2 class="text-xl font-semibold font-display text-[#8f172d]">{{ title }}</h2>{% if help_text %}<p class="text-sm text-stone-500 mt-1">{{ help_text }}</p>{% endif %}</div><form method="post" class="bg-white border border-[#E7DFCC] rounded-xl p-5 space-y-4">{% csrf_token %}{% if form.non_field_errors %}<div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3">{{ form.non_field_errors }}</div>{% endif %}{% for field in form %}<div>{% include "_field.html" with field=field %}</div>{% endfor %}<button class="px-4 py-2 rounded-md bg-[#8f172d] text-white">Record payment</button></form></div>{% if sales_payload %}{{ sales_payload|json_script:"customer-sales-data" }}<script>const SALES_BY_CUSTOMER=JSON.parse(document.getElementById('customer-sales-data').textContent||'{}');const c=document.querySelector('[name="customer"]'),s=document.querySelector('[name="sale"]'),a=document.querySelector('[name="amount"]');function refreshSales(){const rows=SALES_BY_CUSTOMER[c?.value]||[];if(!s)return;s.innerHTML='<option value="">Select sale…</option>'+rows.map(x=>`<option value="${x.id}">${x.label}</option>`).join('');if(rows.length){s.value=rows[0].id;if(a)a.value=rows[0].outstanding;}}c?.addEventListener('change',refreshSales);refreshSales();</script>{% endif %}{% if supplier_payload %}{{ supplier_payload|json_script:"supplier-po-data" }}<script>const POS=JSON.parse(document.getElementById('supplier-po-data').textContent||'{}');const po=document.querySelector('[name="purchase_order"]'),sup=document.querySelector('[name="supplier"]'),amt=document.querySelector('[name="amount"]');function refreshPO(){const x=POS[po?.value];if(x){if(sup)sup.value=x.supplier;if(amt)amt.value=x.outstanding;}}po?.addEventListener('change',refreshPO);refreshPO();</script>{% endif %}{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-2xl">
+  <div class="mb-4 flex items-center gap-2">
+    <h2 class="font-display text-xl font-semibold text-[#8f172d]">
+      {{ title }}
+    </h2>
+    {% include "_help_tip.html" with help_text=help_text %}
+  </div>
+
+  <form
+    method="post"
+    class="space-y-4 rounded-xl border border-[#E7DFCC] bg-white p-5"
+  >
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+
+    {% for field in form %}
+      <div>
+        {% include "_field.html" with field=field %}
+      </div>
+    {% endfor %}
+
+    <button class="rounded-md bg-[#8f172d] px-4 py-2 text-white">
+      Record payment
+    </button>
+  </form>
+</div>
+
+{% if sales_payload %}
+  {{ sales_payload|json_script:"customer-sales-data" }}
+  <script>
+    const SALES_BY_CUSTOMER = JSON.parse(
+      document.getElementById('customer-sales-data').textContent || '{}',
+    );
+    const customerSelect = document.querySelector('[name="customer"]');
+    const saleSelect = document.querySelector('[name="sale"]');
+    const amountInput = document.querySelector('[name="amount"]');
+
+    function refreshSales() {
+      const rows = SALES_BY_CUSTOMER[customerSelect?.value] || [];
+      if (!saleSelect) return;
+
+      saleSelect.innerHTML = '<option value="">Select sale…</option>'
+        + rows.map((row) => `<option value="${row.id}">${row.label}</option>`).join('');
+
+      if (rows.length) {
+        saleSelect.value = rows[0].id;
+        if (amountInput) amountInput.value = rows[0].outstanding;
+      }
+    }
+
+    customerSelect?.addEventListener('change', refreshSales);
+    refreshSales();
+  </script>
+{% endif %}
+
+{% if supplier_payload %}
+  {{ supplier_payload|json_script:"supplier-po-data" }}
+  <script>
+    const PURCHASE_ORDERS = JSON.parse(
+      document.getElementById('supplier-po-data').textContent || '{}',
+    );
+    const purchaseOrderSelect = document.querySelector('[name="purchase_order"]');
+    const supplierSelect = document.querySelector('[name="supplier"]');
+    const amountInput = document.querySelector('[name="amount"]');
+
+    function refreshPurchaseOrder() {
+      const row = PURCHASE_ORDERS[purchaseOrderSelect?.value];
+      if (!row) return;
+
+      if (supplierSelect) supplierSelect.value = row.supplier;
+      if (amountInput) amountInput.value = row.outstanding;
+    }
+
+    purchaseOrderSelect?.addEventListener('change', refreshPurchaseOrder);
+    refreshPurchaseOrder();
+  </script>
+{% endif %}
+{% endblock %}

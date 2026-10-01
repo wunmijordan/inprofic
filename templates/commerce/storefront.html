@@ -8,7 +8,7 @@
   {% include "_brand_icons.html" %}
   <title>{{ store_business.name }} · {% if order_now_mode %}Order Now{% else %}Catalogue{% endif %}</title>
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
-  <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}">
+  <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}?v={{ static_asset_version }}">
   <style>
     @font-face { font-family:'Sora'; src:url('{% static "core/fonts/Sora-Variable.ttf" %}') format('truetype'); font-weight:100 800; font-style:normal; font-display:swap; }
     @font-face { font-family:'Fraunces'; src:url('{% static "core/fonts/Fraunces-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
@@ -34,7 +34,7 @@
     @media (prefers-reduced-motion: reduce) { .product-card, .product-card img { transition: none; } .channel-price-pill.is-changing .channel-price-pill__inner { animation:none; } }
     @media (max-width: 640px) { dialog[open] { margin: auto 0 0; width: 100%; max-width: none; border-radius: 1.5rem 1.5rem 0 0; } }
   </style>
-  <script src="{% static 'core/js/form-experience.js' %}" defer></script>
+  <script src="{% static 'core/js/form-experience.js' %}?v={{ static_asset_version }}" defer></script>
 </head>
 <body class="min-h-screen">
   <header class="storefront-brand-surface relative isolate overflow-hidden">
@@ -180,7 +180,79 @@
         <label class="text-xs font-semibold text-stone-600">Phone <span class="text-rose-600">*</span><input required name="phone" autocomplete="tel" inputmode="tel" value="{% if storefront_customer %}{{ storefront_customer.phone }}{% endif %}" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"></label>
         <label class="text-xs font-semibold text-stone-600 sm:col-span-2">Email <span class="font-normal text-stone-400">(optional)</span><input name="email" type="email" autocomplete="email" value="{% if storefront_customer %}{{ storefront_customer.email }}{% endif %}" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"></label>
       </div>
-      {% if delivery_enabled %}<section class="mt-5 rounded-2xl border border-stone-200 bg-white p-4"><label class="flex cursor-pointer items-start justify-between gap-3"><span><strong class="block text-sm text-stone-900">Deliver this order</strong><span class="text-xs leading-5 text-stone-500">A live distance-based quote is locked into checkout before payment.</span></span><span class="cf-switch shrink-0"><input id="request-delivery" name="request_delivery" type="checkbox"><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label><div id="delivery-fields" class="mt-4 hidden"><label class="block text-xs font-semibold text-stone-600">Delivery destination / zone<select id="delivery-area" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal"><option value="">Use map coordinates</option>{% for area in delivery_areas %}<option value="{{ area.pk }}">{{ area.name }} · {{ area.radius_km }} km radius{% if area.extension_ne_km or area.extension_se_km or area.extension_sw_km or area.extension_nw_km %} + extended corridors{% endif %}{% if area.rate_band %} · {{ area.rate_band.name }}{% endif %}</option>{% endfor %}</select></label><label class="mt-3 block text-xs font-semibold text-stone-600">Precise delivery address<textarea id="checkout-address" name="address" rows="2" autocomplete="street-address" class="mt-1.5 w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100" placeholder="House or building, street, area and landmark">{% if storefront_customer %}{{ storefront_customer.default_address }}{% endif %}</textarea><span class="mt-1 block text-[11px] font-normal leading-4 text-stone-500">INPROFIC first tries to locate this address inside the selected coverage shape. If it cannot, correct the address or place the map pin at the exact destination.</span></label><label class="mt-3 block text-xs font-semibold text-stone-600">Preferred delivery time <span class="font-normal text-stone-400">(optional)</span><input name="requested_delivery_at" type="datetime-local" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal"><span class="mt-1 block text-[11px] font-normal text-stone-500">The earliest valid time is calculated from the slowest item plus the quoted delivery ETA.</span></label>{% url 'storefront_delivery_location' store_business.slug as storefront_location_url %}{% include "commerce/delivery/_location_picker.html" with latitude_selector="#delivery-latitude" longitude_selector="#delivery-longitude" area_selector="#delivery-area" address_selector="#checkout-address" resolve_url=storefront_location_url picker_label="delivery destination" %}<div id="delivery-quote-status" class="mt-3 rounded-xl border border-transparent bg-stone-50 px-3 py-2.5 text-xs leading-5 text-stone-500" role="alert">Choose a destination zone and enter the precise address, or place the destination pin.</div><div id="delivery-method-options" class="mt-3 hidden space-y-2"></div><div id="delivery-switch-policy" class="mt-3 hidden rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs leading-5 text-sky-900"></div></div></section>{% endif %}
+      {% if delivery_enabled %}
+      <section class="mt-5 rounded-2xl border border-stone-200 bg-white p-4">
+        <label class="flex cursor-pointer items-start justify-between gap-3">
+          <span class="inline-flex items-center gap-1.5">
+            <strong class="text-sm text-stone-900">Deliver this order</strong>
+            {% include "_help_tip.html" with help_text="A live distance-based quote is locked into checkout before payment." label="Deliver this order" %}
+          </span>
+          <span class="cf-switch shrink-0">
+            <input id="request-delivery" name="request_delivery" type="checkbox">
+            <span class="cf-switch-track">
+              <span class="cf-switch-thumb"></span>
+            </span>
+          </span>
+        </label>
+
+        <div id="delivery-fields" class="mt-4 hidden">
+          <label class="block text-xs font-semibold text-stone-600">
+            Delivery destination / zone
+            <select
+              id="delivery-area"
+              class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal"
+            >
+              <option value="">Use map coordinates</option>
+              {% for area in delivery_areas %}
+              <option value="{{ area.pk }}">
+                {{ area.name }} · {{ area.radius_km }} km radius{% if area.extension_ne_km or area.extension_se_km or area.extension_sw_km or area.extension_nw_km %} + extended corridors{% endif %}{% if area.rate_band %} · {{ area.rate_band.name }}{% endif %}
+              </option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <label class="mt-3 block text-xs font-semibold text-stone-600">
+            <span class="inline-flex items-center gap-1.5">
+              <span>Precise delivery address</span>
+              {% include "_help_tip.html" with help_text="INPROFIC first tries to locate this address inside the selected coverage shape. If it cannot, correct the address or place the map pin at the exact destination." label="Precise delivery address" %}
+            </span>
+            <textarea
+              id="checkout-address"
+              name="address"
+              rows="2"
+              autocomplete="street-address"
+              class="mt-1.5 w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"
+              placeholder="House or building, street, area and landmark"
+            >{% if storefront_customer %}{{ storefront_customer.default_address }}{% endif %}</textarea>
+          </label>
+
+          <label class="mt-3 block text-xs font-semibold text-stone-600">
+            <span class="inline-flex items-center gap-1.5">
+              <span>Preferred delivery time <span class="font-normal text-stone-400">(optional)</span></span>
+              {% include "_help_tip.html" with help_text="The earliest valid time is calculated from the slowest item plus the quoted delivery ETA." label="Preferred delivery time" %}
+            </span>
+            <input
+              name="requested_delivery_at"
+              type="datetime-local"
+              class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal"
+            >
+          </label>
+
+          {% url 'storefront_delivery_location' store_business.slug as storefront_location_url %}
+          {% include "commerce/delivery/_location_picker.html" with latitude_selector="#delivery-latitude" longitude_selector="#delivery-longitude" area_selector="#delivery-area" address_selector="#checkout-address" resolve_url=storefront_location_url picker_label="delivery destination" %}
+
+          <div
+            id="delivery-quote-status"
+            class="mt-3 rounded-xl border border-transparent bg-stone-50 px-3 py-2.5 text-xs leading-5 text-stone-500"
+            role="alert"
+          >
+            Choose a destination zone and enter the precise address, or place the destination pin.
+          </div>
+          <div id="delivery-method-options" class="mt-3 hidden space-y-2"></div>
+          <div id="delivery-switch-policy" class="mt-3 hidden rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs leading-5 text-sky-900"></div>
+        </div>
+      </section>
+      {% endif %}
       <div class="mt-6"><p class="text-xs font-semibold text-stone-600">Choose one ordering option for this basket</p><div class="mt-2 grid gap-2">
         <button type="submit" name="order_mode" value="online" data-checkout-mode="online" class="channel-submit flex items-center justify-between rounded-xl border border-stone-200 bg-white px-3.5 py-3 text-left text-sm shadow-sm transition hover:border-stone-400 disabled:cursor-not-allowed disabled:opacity-45"><span><strong class="block text-stone-900">{{ commerce_channels.online }}</strong><small class="mode-note text-stone-500">{% if store_business.uses_production and not p.finished_good.is_purchased_for_resale %}{{ storefront_copy.prepared_order }}{% else %}{{ storefront_copy.immediate_order }}{% endif %}</small></span><strong class="mode-total shrink-0 text-stone-900"></strong></button>
         <button type="submit" name="order_mode" value="distribution" data-checkout-mode="distribution" class="channel-submit flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-left text-sm shadow-sm transition hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-45"><span><strong class="block text-stone-900">{{ commerce_channels.distribution }}</strong><small class="mode-note text-stone-500">{% if store_business.uses_production and not p.finished_good.is_purchased_for_resale %}{{ storefront_copy.prepared_order }}{% else %}{{ storefront_copy.immediate_order }}{% endif %}</small></span><strong class="mode-total shrink-0 text-stone-900"></strong></button>

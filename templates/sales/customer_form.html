@@ -11,8 +11,8 @@
 <div class="mt-5">
   <div class="flex items-center justify-between gap-3 mb-1">
     <div>
-      <h3 class="text-sm font-semibold text-[#1E4536]">Customer-specific prices</h3>
-      <p class="text-[11px] text-stone-400">Optional agreed prices for Distribution or Online. These override the product's channel price for this customer only.</p>
+      <h3 id="customer-prices-help-anchor" class="inline-flex items-center gap-1.5 text-sm font-semibold text-[#1E4536]">Customer-specific prices</h3>
+      <p data-form-help-text data-form-help-anchor="customer-prices-help-anchor" class="text-[11px] text-stone-400">Optional agreed prices for Distribution or Online. These override the product's channel price for this customer only.</p>
     </div>
   </div>
   {{ price_formset.management_form }}

@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% load core_extras %}
+{% block content %}
+<div class="mx-auto max-w-6xl">
+  <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+    <div>
+      <a href="{% url 'payroll_workspace' %}" class="text-sm text-[#8f172d] underline">← Staff payroll</a>
+      <div class="mt-4 text-[10px] font-bold uppercase tracking-[.18em] text-stone-400">
+        Finance-posted pay run · #{{ payroll_run.pk }}
+      </div>
+      <h1 class="mt-1 font-display text-2xl font-semibold text-[#8f172d]">
+        {{ payroll_run.period_start|date:"j M Y" }} – {{ payroll_run.period_end|date:"j M Y" }}
+      </h1>
+      <p class="mt-1 text-sm text-stone-500">
+        Paid {{ payroll_run.pay_date|date:"j M Y" }} · {{ payroll_run.staff_count }} staff
+      </p>
+    </div>
+    <a
+      href="{% url 'payroll_run_create' %}"
+      class="rounded-md bg-[#8f172d] px-4 py-2.5 text-sm font-semibold text-white"
+    >
+      Run payroll again
+    </a>
+  </div>
+
+  <div class="mt-5 grid gap-3 sm:grid-cols-3">
+    <div class="rounded-xl border border-[#E7DFCC] bg-white p-4">
+      <div class="text-[10px] font-bold uppercase tracking-[.14em] text-stone-400">Gross pay</div>
+      <div class="mt-1 font-mono text-lg font-semibold">{{ biz.currency_symbol }}{{ payroll_run.total_gross_pay|num }}</div>
+    </div>
+    <div class="rounded-xl border border-[#E7DFCC] bg-white p-4">
+      <div class="text-[10px] font-bold uppercase tracking-[.14em] text-stone-400">Net wages paid</div>
+      <div class="mt-1 font-mono text-lg font-semibold text-[#8f172d]">{{ biz.currency_symbol }}{{ payroll_run.total_net_pay|num }}</div>
+    </div>
+    <div class="rounded-xl border border-[#E7DFCC] bg-white p-4">
+      <div class="text-[10px] font-bold uppercase tracking-[.14em] text-stone-400">Employer cost</div>
+      <div class="mt-1 font-mono text-lg font-semibold">{{ biz.currency_symbol }}{{ payroll_run.total_employer_cost|num }}</div>
+    </div>
+  </div>
+
+  <section class="mt-5 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <h2 class="font-semibold">Finance account activity</h2>
+        <p class="mt-0.5 text-xs text-stone-500">
+          These are the wage outflows recorded in Finance for this pay run.
+        </p>
+      </div>
+      <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-800">
+        Posted
+      </span>
+    </div>
+    <div class="mt-3 grid gap-2 md:grid-cols-2">
+      {% for line in payroll_run.funding_lines.all %}
+        <div
+          class="flex items-center justify-between gap-4 rounded-lg border border-[#E7DFCC] bg-white px-3 py-2.5 text-sm"
+        >
+          <div>
+            <strong>{{ line.account.name }}</strong>
+            <div class="text-[11px] text-stone-500">
+              Original wage payment · {{ line.account.get_account_type_display }} ·
+              PAYRUN-{{ payroll_run.pk }}
+            </div>
+          </div>
+          <span class="font-mono font-semibold">
+            {{ biz.currency_symbol }}{{ line.amount|num }}
+          </span>
+        </div>
+      {% endfor %}
+
+      {% for payslip in payroll_run.payslips.all %}
+        {% for revision in payslip.revisions.all %}
+          {% if revision.finance_transaction %}
+            <div
+              class="flex items-center justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm"
+            >
+              <div>
+                <strong>{{ payslip.staff.full_name }} · correction</strong>
+                <div class="text-[11px] text-stone-500">
+                  {{ revision.finance_transaction.account.name|default:"Finance account" }} ·
+                  {{ revision.finance_transaction.date|date:"j M Y" }}
+                </div>
+              </div>
+              <span class="font-mono font-semibold">
+                {{ biz.currency_symbol }}{{ revision.finance_delta|num }}
+              </span>
+            </div>
+          {% endif %}
+        {% endfor %}
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="mt-5 overflow-hidden rounded-xl border border-[#E7DFCC] bg-white">
+    <div class="border-b border-[#E7DFCC] bg-[#FFFDF8] px-4 py-3">
+      <h2 class="font-semibold">Generated payslips</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[760px] text-sm">
+        <thead class="bg-[#F5EFE0] text-xs text-stone-600">
+          <tr>
+            <th class="px-4 py-3 text-left">Staff</th>
+            <th class="px-4 py-3 text-right">Gross</th>
+            <th class="px-4 py-3 text-right">Deductions</th>
+            <th class="px-4 py-3 text-right">Net</th>
+            <th class="px-4 py-3"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for payslip in payroll_run.payslips.all %}
+            <tr class="border-t border-[#E7DFCC]">
+              <td class="px-4 py-3">
+                <strong>{{ payslip.staff.full_name }}</strong>
+                <div class="text-xs text-stone-500">{{ payslip.staff.job_title|default:"Staff" }}</div>
+              </td>
+              <td class="px-4 py-3 text-right font-mono">{{ biz.currency_symbol }}{{ payslip.gross_pay|num }}</td>
+              <td class="px-4 py-3 text-right font-mono">{{ biz.currency_symbol }}{{ payslip.deductions|num }}</td>
+              <td class="px-4 py-3 text-right font-mono font-semibold">{{ biz.currency_symbol }}{{ payslip.net_pay|num }}</td>
+              <td class="px-4 py-3 text-right">
+                <a href="{% url 'payroll_payslip_detail' payslip.pk %}" class="text-[#8f172d]">
+                  View / resend
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  {% if payroll_run.notes %}
+    <div class="mt-4 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4 text-sm text-stone-600">
+      <strong class="text-stone-700">Run note:</strong> {{ payroll_run.notes }}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

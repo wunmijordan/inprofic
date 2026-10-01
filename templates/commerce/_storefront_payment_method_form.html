@@ -12,9 +12,18 @@
   {% if not checkout.customer_email %}
     {% if method.code == 'paystack' or method.code == 'monnify' %}
     <label class="mb-3 block text-xs font-semibold text-stone-600">
-      Email for {{ method.label }}
-      <input name="payment_email" type="email" required autocomplete="email" placeholder="you@example.com" class="mt-1.5 h-10 w-full rounded-lg border border-stone-300 px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100">
-      <span class="mt-1 block font-normal leading-4 text-stone-400">Required by this payment provider only.</span>
+      <span class="inline-flex items-center gap-1.5">
+        <span>Email for {{ method.label }}</span>
+        {% include "_help_tip.html" with help_text="Required by this payment provider only." label="Payment email" %}
+      </span>
+      <input
+        name="payment_email"
+        type="email"
+        required
+        autocomplete="email"
+        placeholder="you@example.com"
+        class="mt-1.5 h-10 w-full rounded-lg border border-stone-300 px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"
+      >
     </label>
     {% endif %}
   {% endif %}

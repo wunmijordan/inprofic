@@ -6,8 +6,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% if biz %}{{ biz.name }} · {% endif %}INPROFIC</title>
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
-  <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}">
-  <link rel="stylesheet" href="{% static 'core/css/workspace.css' %}">
+  <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}?v={{ static_asset_version }}">
+  <link rel="stylesheet" href="{% static 'core/css/workspace.css' %}?v={{ static_asset_version }}">
   <script src="{% static 'core/js/workspace.js' %}"></script>
   {% include "pwa/head.html" %}
   {% block head_scripts %}{% endblock %}
@@ -82,7 +82,7 @@
     }
     @media (prefers-reduced-motion: reduce) { #commerce-notification-dock { transition:none; } }
   </style>
-  <script src="{% static 'core/js/form-experience.js' %}" defer></script>
+  <script src="{% static 'core/js/form-experience.js' %}?v={{ static_asset_version }}" defer></script>
 </head>
 <body class="min-h-screen flex">
   <div class="page-progress" aria-hidden="true"></div>

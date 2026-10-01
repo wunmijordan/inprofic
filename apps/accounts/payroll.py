@@ -16,6 +16,9 @@ from .models import (
     PayrollAddonTier,
     PayrollCalculationRule,
     PayrollRecurringAdjustment,
+    PayrollRun,
+    PayrollRunFunding,
+    Payslip,
     PayslipAdjustmentLine,
     PayslipCalculationLine,
     PayrollStaffProfile,
@@ -129,7 +132,15 @@ def calculate_payslip(
 
 
 def recurring_adjustments_for_staff(staff):
-    return list(staff.recurring_adjustments.filter(active=True).order_by("kind", "name", "id"))
+    prefetched = getattr(staff, "_prefetched_objects_cache", {}).get(
+        "recurring_adjustments"
+    )
+    if prefetched is not None:
+        rows = [row for row in prefetched if row.active]
+        return sorted(rows, key=lambda row: (row.kind, row.name.lower(), row.pk or 0))
+    return list(
+        staff.recurring_adjustments.filter(active=True).order_by("kind", "name", "id")
+    )
 
 
 def recurring_adjustment_totals(adjustments):
@@ -200,6 +211,317 @@ def persist_payslip_calculation_lines(payslip, lines):
     if rows:
         PayslipCalculationLine.objects.bulk_create(rows)
     return rows
+
+
+def payroll_preview_for_staff(staff, *, business=None, rules=None):
+    """Calculate the current saved payroll structure without issuing anything."""
+    business = business or staff.business
+    adjustments = recurring_adjustments_for_staff(staff)
+    recurring_allowances, recurring_deductions = recurring_adjustment_totals(
+        adjustments
+    )
+    if rules is None:
+        calculation = calculate_payslip(
+            business=business,
+            base_pay=staff.base_pay,
+            recurring_allowances=recurring_allowances,
+            recurring_deductions=recurring_deductions,
+        )
+    else:
+        calculation = _calculate_with_rules(
+            rules,
+            base_pay=staff.base_pay,
+            recurring_allowances=recurring_allowances,
+            recurring_deductions=recurring_deductions,
+        )
+    return {
+        "staff": staff,
+        "adjustments": adjustments,
+        "calculation": calculation,
+    }
+
+
+def _post_payroll_funding(*, payroll_run, funding, user):
+    from core.models import FinancialTransaction
+    from core.services import record_cash
+
+    description = (
+        f"Payroll wages · {payroll_run.period_start:%d %b %Y}–"
+        f"{payroll_run.period_end:%d %b %Y} · {payroll_run.staff_count} staff"
+    )
+    for account, amount in funding:
+        tx = record_cash(
+            payroll_run.business,
+            user,
+            date=payroll_run.pay_date,
+            amount=_money(amount),
+            transaction_type=FinancialTransaction.OUTFLOW,
+            category="Payroll / Wages",
+            description=description,
+            payment_method=account.get_account_type_display(),
+            reference=f"PAYRUN-{payroll_run.pk}",
+            account=account,
+        )
+        PayrollRunFunding.objects.create(
+            payroll_run=payroll_run,
+            account=account,
+            amount=_money(amount),
+            finance_transaction=tx,
+        )
+
+
+@transaction.atomic
+def issue_bulk_payroll_run(
+    *,
+    business,
+    user,
+    staff_members,
+    period_start,
+    period_end,
+    pay_date,
+    funding,
+    notes="",
+    kind=PayrollRun.KIND_BULK,
+    manual_values=None,
+):
+    """Issue payslips and post the matching wage outflow as one transaction."""
+    submitted_staff = list(staff_members)
+    if not submitted_staff:
+        raise ValidationError("Select at least one active staff member.")
+    if period_end < period_start:
+        raise ValidationError("Pay period end cannot be before the start date.")
+
+    staff_ids = [staff.pk for staff in submitted_staff]
+    if len(staff_ids) != len(set(staff_ids)):
+        raise ValidationError("Each staff member can appear only once in a payroll run.")
+
+    # Lock selected profiles in a stable order. Two concurrent pay runs for the
+    # same staff/period cannot both pass the duplicate-payslip check.
+    locked_staff = list(
+        PayrollStaffProfile.objects.select_for_update()
+        .filter(
+            business=business,
+            active=True,
+            pk__in=staff_ids,
+        )
+        .prefetch_related("recurring_adjustments")
+        .order_by("pk")
+    )
+    if len(locked_staff) != len(staff_ids):
+        raise ValidationError(
+            "Every selected payroll profile must be active and belong to this business."
+        )
+    staff_by_id = {staff.pk: staff for staff in locked_staff}
+    staff_members = [staff_by_id[staff_id] for staff_id in staff_ids]
+
+    duplicate_names = list(
+        Payslip.objects.filter(
+            business=business,
+            staff_id__in=staff_ids,
+            period_start=period_start,
+            period_end=period_end,
+        )
+        .values_list("staff__full_name", flat=True)
+    )
+    if duplicate_names:
+        unique_names = sorted(set(duplicate_names))
+        names = ", ".join(unique_names[:5])
+        suffix = "…" if len(unique_names) > 5 else ""
+        raise ValidationError(
+            f"A payslip already exists for this exact period for: {names}{suffix}. "
+            "Open the existing payslip instead of issuing a duplicate."
+        )
+
+    rules = list(
+        PayrollCalculationRule.objects.filter(
+            business=business,
+            active=True,
+        ).order_by("sort_order", "name", "id")
+    )
+    prepared = []
+    total_gross = Decimal("0.00")
+    total_net = Decimal("0.00")
+    total_employer_cost = Decimal("0.00")
+    manual_values = manual_values or {}
+
+    for staff in staff_members:
+        values = manual_values.get(staff.pk, {})
+        adjustments = recurring_adjustments_for_staff(staff)
+        recurring_allowances, recurring_deductions = recurring_adjustment_totals(
+            adjustments
+        )
+        calculation = _calculate_with_rules(
+            rules,
+            base_pay=values.get("base_pay", staff.base_pay),
+            recurring_allowances=recurring_allowances,
+            recurring_deductions=recurring_deductions,
+            manual_allowances=values.get("manual_allowances", 0),
+            manual_deductions=values.get("manual_deductions", 0),
+        )
+        prepared.append(
+            (
+                staff,
+                adjustments,
+                calculation,
+                values.get("notes", ""),
+            )
+        )
+        total_gross = _money(total_gross + calculation["gross_pay"])
+        total_net = _money(total_net + calculation["net_pay"])
+        total_employer_cost = _money(
+            total_employer_cost + calculation["employer_cost"]
+        )
+
+    if total_net <= 0:
+        raise ValidationError(
+            "The selected staff have no positive net wages to post to Finance."
+        )
+
+    funding = list(funding)
+    if len(funding) == 1 and funding[0][1] is None:
+        funding = [(funding[0][0], total_net)]
+
+    cleaned_funding = []
+    funding_total = Decimal("0.00")
+    seen_accounts = set()
+    for account, amount in funding:
+        amount = _money(amount)
+        if amount <= 0:
+            continue
+        if account.business_id != business.pk or not account.active:
+            raise ValidationError(
+                "Every Finance account must be active and belong to this business."
+            )
+        if account.pk in seen_accounts:
+            raise ValidationError(
+                "Use each Finance account only once in a payroll run."
+            )
+        seen_accounts.add(account.pk)
+        cleaned_funding.append((account, amount))
+        funding_total = _money(funding_total + amount)
+
+    if not cleaned_funding:
+        raise ValidationError("Choose at least one Finance account for wage payment.")
+    if funding_total != total_net:
+        raise ValidationError(
+            f"Finance account allocations total {funding_total:,.2f}, but staff net "
+            f"pay is {total_net:,.2f}. The allocation must match the net wages exactly."
+        )
+
+    payroll_run = PayrollRun.objects.create(
+        business=business,
+        created_by=user,
+        kind=kind,
+        period_start=period_start,
+        period_end=period_end,
+        pay_date=pay_date,
+        staff_count=len(prepared),
+        total_gross_pay=total_gross,
+        total_net_pay=total_net,
+        total_employer_cost=total_employer_cost,
+        notes=(notes or "").strip(),
+    )
+
+    payslips = []
+    for staff, adjustments, calculation, row_notes in prepared:
+        payslip = Payslip.objects.create(
+            business=business,
+            created_by=user,
+            staff=staff,
+            payroll_run=payroll_run,
+            period_start=period_start,
+            period_end=period_end,
+            base_pay=calculation["base_pay"],
+            manual_allowances=calculation["manual_allowances"],
+            manual_deductions=calculation["manual_deductions"],
+            allowances=calculation["allowances"],
+            deductions=calculation["deductions"],
+            gross_pay=calculation["gross_pay"],
+            net_pay=calculation["net_pay"],
+            employer_contributions=calculation["employer_contributions"],
+            employer_cost=calculation["employer_cost"],
+            notes=(row_notes or notes or "").strip(),
+        )
+        persist_payslip_adjustment_lines(payslip, adjustments)
+        persist_payslip_calculation_lines(payslip, calculation["lines"])
+        payslips.append(payslip)
+
+    _post_payroll_funding(
+        payroll_run=payroll_run,
+        funding=cleaned_funding,
+        user=user,
+    )
+
+    from core.services import audit
+
+    audit(
+        business,
+        user,
+        "create",
+        payroll_run,
+        f"Payroll run {payroll_run.pk} posted to Finance",
+        {
+            "staff_count": payroll_run.staff_count,
+            "net_pay": str(payroll_run.total_net_pay),
+            "finance_accounts": [account.pk for account, _ in cleaned_funding],
+        },
+    )
+    return payroll_run, payslips
+
+
+def post_payslip_finance_adjustment(*, payslip, delta, account, user, revision):
+    """Post an auditable ledger delta after correcting a Finance-posted payslip."""
+    from core.models import FinancialTransaction
+    from core.services import record_cash
+
+    delta = _money(delta)
+    if not delta:
+        return None
+    if account is None or account.business_id != payslip.business_id or not account.active:
+        raise ValidationError("Choose an active Finance account from this business for the payroll correction.")
+    transaction_type = FinancialTransaction.OUTFLOW if delta > 0 else FinancialTransaction.INCOME
+    tx = record_cash(
+        payslip.business,
+        user,
+        date=timezone.localdate(),
+        amount=abs(delta),
+        transaction_type=transaction_type,
+        category="Payroll adjustment",
+        description=f"Payroll correction · {payslip.staff.full_name} · payslip #{payslip.pk}",
+        payment_method=account.get_account_type_display(),
+        reference=f"PAYSLIP-{payslip.pk}-REV-{revision.pk}",
+        account=account,
+    )
+    revision.finance_delta = delta
+    revision.finance_transaction = tx
+    revision.save(update_fields=["finance_delta", "finance_transaction"])
+    if payslip.payroll_run_id:
+        run = PayrollRun.objects.select_for_update().get(pk=payslip.payroll_run_id)
+        run_payslips = list(
+            run.payslips.all().only(
+                "gross_pay",
+                "net_pay",
+                "employer_cost",
+            )
+        )
+        run.total_gross_pay = _money(
+            sum((row.gross_pay for row in run_payslips), Decimal("0.00"))
+        )
+        run.total_net_pay = _money(
+            sum((row.net_pay for row in run_payslips), Decimal("0.00"))
+        )
+        run.total_employer_cost = _money(
+            sum((row.employer_cost for row in run_payslips), Decimal("0.00"))
+        )
+        run.save(
+            update_fields=[
+                "total_gross_pay",
+                "total_net_pay",
+                "total_employer_cost",
+                "updated_at",
+            ]
+        )
+    return tx
 
 
 def recalculate_issued_payslip(payslip):
