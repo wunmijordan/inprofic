@@ -364,6 +364,30 @@ class PwaEndpointTests(TestCase):
         self.assertEqual(dark_response.json()["theme_color"], "#050733")
         self.assertTrue(any("icon-mark-on-dark-192.png" in icon["src"] for icon in dark_response.json()["icons"]))
 
+    def test_manifest_theme_cookie_overrides_stale_query_and_keeps_pair_consistent(self):
+        self.client.cookies["inprofic_theme"] = "dark"
+        stale = self.client.get(f'{reverse("pwa_manifest")}?theme=light').json()
+        self.assertEqual(stale["background_color"], "#050733")
+        self.assertEqual(stale["theme_color"], "#050733")
+        self.assertTrue(all("on-dark" in i["src"] for i in stale["icons"] if i["purpose"] == "any"))
+        win = self.client.get(f'{reverse("pwa_manifest")}?platform=windows').json()
+        self.assertEqual(win["background_color"], "#050733")
+        self.assertTrue(all("icon-mark-windows-" in i["src"] for i in win["icons"]))
+        self.client.cookies["inprofic_theme"] = "light"
+        light = self.client.get(f'{reverse("pwa_manifest")}?theme=dark').json()
+        self.assertEqual(light["background_color"], "#FFF1E8")
+        response = self.client.get(reverse("pwa_manifest"))
+        self.assertIn("Cookie", response["Vary"])
+        self.assertIn("private", response["Cache-Control"])
+
+    def test_favicon_is_swapped_by_resolved_theme(self):
+        from django.template.loader import render_to_string
+
+        html = render_to_string("pwa/head.html")
+        self.assertIn('id="inprofic-favicon"', html)
+        self.assertIn("inprofic-favicon-on-dark.png", html)
+        self.assertIn("favicon.href = dark", html)
+
     def test_launch_overlay_follows_resolved_app_theme_not_only_the_os(self):
         from django.template.loader import render_to_string
 

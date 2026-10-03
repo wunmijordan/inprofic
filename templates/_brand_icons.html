@@ -1,3 +1,10 @@
 {% load static %}
-<link rel="icon" type="image/png" href="{% static 'core/brand/inprofic-favicon.png' %}" sizes="128x128">
-<link rel="icon" type="image/png" media="(prefers-color-scheme: dark)" href="{% static 'core/brand/inprofic-favicon-on-dark.png' %}" sizes="128x128">
+<link id="inprofic-favicon" rel="icon" type="image/png" href="{% static 'core/brand/inprofic-favicon.png' %}" data-light-href="{% static 'core/brand/inprofic-favicon.png' %}" data-dark-href="{% static 'core/brand/inprofic-favicon-on-dark.png' %}" sizes="128x128">
+<script>
+  // Pages without the full PWA head (storefront, privacy) still get the dark
+  // favicon; pwa/head.html later refines this with the in-app theme choice.
+  (function () {
+    var link = document.getElementById('inprofic-favicon');
+    if (link && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) link.href = link.dataset.darkHref;
+  }());
+</script>

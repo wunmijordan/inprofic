@@ -21,6 +21,7 @@
     const manifest = document.getElementById('inprofic-pwa-manifest');
     const touchIcon = document.getElementById('inprofic-apple-touch-icon');
     const themeColor = document.getElementById('inprofic-theme-color');
+    const favicon = document.getElementById('inprofic-favicon');
     const resolveDark = function () {
       let choice = null;
       try { choice = window.localStorage.getItem('inprofic-theme'); } catch (_error) {}
@@ -35,6 +36,11 @@
       // Drives the in-page launch overlay (see <style> below).
       root.setAttribute('data-launch-theme', theme);
       if (themeColor) themeColor.setAttribute('content', dark ? '#050733' : '#FFF1E8');
+      // Tab / window-frame icon follows the resolved app theme, not just the OS.
+      if (favicon) favicon.href = dark ? favicon.dataset.darkHref : favicon.dataset.lightHref;
+      // Remembered for the server: manifest requests (install and the browser's
+      // later update checks) read it so splash colour and icon always match.
+      try { document.cookie = 'inprofic_theme=' + theme + ';path=/;max-age=31536000;SameSite=Lax'; } catch (_error) {}
       if (theme === lastTheme) return;
       lastTheme = theme;
       const platform = navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || '';
@@ -42,10 +48,9 @@
       if (manifest) {
         // Installed splash/title-bar colours and icon variant are read from the
         // manifest, so request the one matching the resolved theme. Windows
-        // keeps its dedicated dark-mark-only set on a light canvas.
-        const scheme = windows ? 'light' : theme;
+        // gets the same theme-matched colours; only its icon set differs.
         const separator = manifest.dataset.baseHref.includes('?') ? '&' : '?';
-        manifest.href = `${manifest.dataset.baseHref}${separator}theme=${scheme}${windows ? '&platform=windows' : ''}`;
+        manifest.href = `${manifest.dataset.baseHref}${separator}theme=${theme}${windows ? '&platform=windows' : ''}`;
       }
       if (touchIcon) touchIcon.href = dark ? touchIcon.dataset.darkHref : touchIcon.dataset.lightHref;
       if ('serviceWorker' in navigator) {

@@ -64,8 +64,21 @@ def _icons(theme="light", platform=""):
     ]
 
 
+def _launch_theme(request):
+    """Theme for launch surfaces: the page-reported cookie wins over the URL.
+
+    Browsers re-use the manifest URL they stored at install time for update
+    checks, so a ``?theme=`` baked into that URL goes stale. The cookie is
+    refreshed on every page view with the user's resolved theme.
+    """
+    cookie = request.COOKIES.get("inprofic_theme")
+    if cookie in ("dark", "light"):
+        return cookie
+    return "dark" if request.GET.get("theme") == "dark" else "light"
+
+
 def _launch_background(request):
-    return "#050733" if request.GET.get("theme") == "dark" else "#FFF1E8"
+    return "#050733" if _launch_theme(request) == "dark" else "#FFF1E8"
 
 
 def _can_access_business(user, business):
@@ -81,12 +94,10 @@ def _can_access_business(user, business):
 def _manifest_response(payload, *, tenant=False):
     response = JsonResponse(payload)
     response["Content-Type"] = "application/manifest+json; charset=utf-8"
-    # A short private cache prevents browsers from re-querying tenant metadata
-    # during ordinary navigation while still allowing branding changes to settle
-    # quickly. The public INPROFIC manifest is stable for longer.
-    response["Cache-Control"] = "private, max-age=300" if tenant else "public, max-age=3600"
-    if tenant:
-        patch_vary_headers(response, ("Cookie",))
+    # Colours and icon variant depend on the viewer's theme cookie, so the
+    # response must never be shared between users or themes.
+    response["Cache-Control"] = "private, max-age=300"
+    patch_vary_headers(response, ("Cookie",))
     return response
 
 
@@ -104,7 +115,7 @@ def manifest(request):
             "background_color": _launch_background(request),
             "theme_color": _launch_background(request),
             "categories": ["business", "productivity", "finance"],
-            "icons": _icons(request.GET.get("theme", "light"), request.GET.get("platform", "")),
+            "icons": _icons(_launch_theme(request), request.GET.get("platform", "")),
             "prefer_related_applications": False,
         }
     )
@@ -135,7 +146,7 @@ def tenant_manifest(request, business_slug):
             "categories": ["business", "productivity", "finance"],
             # Installed app artwork remains INPROFIC by design. The optional
             # tenant logo is storefront-only and is never used as a PWA icon.
-            "icons": _icons(request.GET.get("theme", "light"), request.GET.get("platform", "")),
+            "icons": _icons(_launch_theme(request), request.GET.get("platform", "")),
             "prefer_related_applications": False,
         },
         tenant=True,
