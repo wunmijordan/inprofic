@@ -8,35 +8,62 @@
   <link id="inprofic-pwa-manifest" rel="manifest" href="{{ pwa_manifest_url }}?theme=light" data-base-href="{{ pwa_manifest_url }}">
 {% endif %}
 <link id="inprofic-apple-touch-icon" rel="apple-touch-icon" sizes="180x180" href="{% static 'core/pwa/icon-mark-180.png' %}" data-light-href="{% static 'core/pwa/icon-mark-180.png' %}" data-dark-href="{% static 'core/pwa/icon-mark-on-dark-180.png' %}">
+<meta id="inprofic-theme-color" name="theme-color" content="#FFF1E8">
 <script>
   (function () {
+    // Single source of truth for launch theming. The in-app appearance choice
+    // (Light / Dark / System, stored by workspace.js) wins over the operating
+    // system; "System" or no choice follows the OS. Pages that do not load
+    // workspace.js (e.g. the marketing site) still resolve correctly because
+    // the stored choice is read directly.
+    const root = document.documentElement;
+    const media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
     const manifest = document.getElementById('inprofic-pwa-manifest');
     const touchIcon = document.getElementById('inprofic-apple-touch-icon');
-    if ((!manifest && !touchIcon) || !window.matchMedia) return;
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const syncInstalledTheme = function () {
-      const dark = media.matches;
+    const themeColor = document.getElementById('inprofic-theme-color');
+    const resolveDark = function () {
+      let choice = null;
+      try { choice = window.localStorage.getItem('inprofic-theme'); } catch (_error) {}
+      if (choice === 'dark') return true;
+      if (choice === 'light') return false;
+      return !!(media && media.matches);
+    };
+    let lastTheme = '';
+    const syncLaunchTheme = function () {
+      const dark = resolveDark();
+      const theme = dark ? 'dark' : 'light';
+      // Drives the in-page launch overlay (see <style> below).
+      root.setAttribute('data-launch-theme', theme);
+      if (themeColor) themeColor.setAttribute('content', dark ? '#050733' : '#FFF1E8');
+      if (theme === lastTheme) return;
+      lastTheme = theme;
       const platform = navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || '';
       const windows = /win/i.test(platform);
       if (manifest) {
-        const scheme = windows ? 'light' : (dark ? 'dark' : 'light');
+        // Installed splash/title-bar colours and icon variant are read from the
+        // manifest, so request the one matching the resolved theme. Windows
+        // keeps its dedicated dark-mark-only set on a light canvas.
+        const scheme = windows ? 'light' : theme;
         const separator = manifest.dataset.baseHref.includes('?') ? '&' : '?';
         manifest.href = `${manifest.dataset.baseHref}${separator}theme=${scheme}${windows ? '&platform=windows' : ''}`;
       }
       if (touchIcon) touchIcon.href = dark ? touchIcon.dataset.darkHref : touchIcon.dataset.lightHref;
       if ('serviceWorker' in navigator) {
-        const message = { type: 'INPROFIC_THEME', theme: dark ? 'dark' : 'light' };
+        const message = { type: 'INPROFIC_THEME', theme: theme };
         if (navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage(message);
         navigator.serviceWorker.ready.then(registration => registration.active?.postMessage(message)).catch(() => {});
       }
     };
-    syncInstalledTheme();
-    if (media.addEventListener) media.addEventListener('change', syncInstalledTheme);
-    else if (media.addListener) media.addListener(syncInstalledTheme);
+    syncLaunchTheme();
+    if (media) {
+      if (media.addEventListener) media.addEventListener('change', syncLaunchTheme);
+      else if (media.addListener) media.addListener(syncLaunchTheme);
+    }
+    // In-app theme switch (workspace.js updates data-theme) and other tabs.
+    if (window.MutationObserver) new MutationObserver(syncLaunchTheme).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+    window.addEventListener('storage', function (event) { if (event.key === 'inprofic-theme') syncLaunchTheme(); });
   }());
 </script>
-<meta name="theme-color" media="(prefers-color-scheme: light)" content="#FFF1E8">
-<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#050733">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="{% if user.is_authenticated and biz %}{{ biz.name|truncatechars:30 }}{% else %}INPROFIC{% endif %}">
@@ -46,10 +73,8 @@
   html.pwa-launching body::before{content:"";position:fixed;inset:0;z-index:2147483646;background:#fff1e8 url("{% static 'core/brand/inprofic-wordmark-on-light.png' %}") center/ min(76vw,22rem) auto no-repeat;opacity:1;pointer-events:none;transition:opacity .38s ease}
   html.pwa-launching body::after{content:"Production to Commerce";position:fixed;z-index:2147483647;left:50%;top:calc(50% + 3.35rem);transform:translateX(-50%);width:min(86vw,28rem);color:#d14900;font-family:'Sora',system-ui,sans-serif;font-size:clamp(.68rem,2.8vw,.85rem);font-weight:800;letter-spacing:.12em;text-align:center;text-transform:uppercase;opacity:1;pointer-events:none;transition:opacity .38s ease}
   html.pwa-launching.pwa-launch-fading body::before,html.pwa-launching.pwa-launch-fading body::after{opacity:0}
-  @media(prefers-color-scheme:dark){
-    html.pwa-launching body::before{background-color:#050733;background-image:url("{% static 'core/brand/inprofic-wordmark-on-dark.png' %}")}
-    html.pwa-launching body::after{color:#f2782d}
-  }
+  html[data-launch-theme="dark"].pwa-launching body::before{background-color:#050733;background-image:url("{% static 'core/brand/inprofic-wordmark-on-dark.png' %}")}
+  html[data-launch-theme="dark"].pwa-launching body::after{color:#f2782d}
   @media(prefers-reduced-motion:reduce){
     html.pwa-launching body::before,html.pwa-launching body::after{transition:none}
   }

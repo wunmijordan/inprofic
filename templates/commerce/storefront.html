@@ -55,7 +55,7 @@
       </nav>
       <div class="mt-8 max-w-xl sm:mt-10">
         <p class="storefront-brand-muted text-[11px] font-bold uppercase tracking-[.22em]">{{ storefront_copy.eyebrow }}</p>
-        <h1 class="mt-3 font-display text-3xl font-semibold leading-[1.08] sm:text-5xl">{{ commerce_settings.storefront_headline|default:storefront_copy.headline }}</h1>
+        <h1 class="mt-3 font-display text-3xl font-semibold leading-[1.08] sm:text-5xl">{{ commerce_settings.storefront_headline|default:.headline }}</h1>
         <p class="storefront-brand-muted mt-4 max-w-lg text-sm leading-6">{{ commerce_settings.public_note|default:storefront_copy.intro }}</p>
       </div>
     </div>

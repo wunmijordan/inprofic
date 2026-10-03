@@ -102,7 +102,7 @@ def manifest(request):
             "scope": "/",
             "display": "standalone",
             "background_color": _launch_background(request),
-            "theme_color": "#050733",
+            "theme_color": _launch_background(request),
             "categories": ["business", "productivity", "finance"],
             "icons": _icons(request.GET.get("theme", "light"), request.GET.get("platform", "")),
             "prefer_related_applications": False,
@@ -126,10 +126,12 @@ def tenant_manifest(request, business_slug):
             "start_url": reverse("pwa_launch", kwargs={"business_slug": business.slug}),
             "scope": "/",
             "display": "standalone",
-            # The OS canvas stays neutral while the icon itself remains a
-            # transparent N mark; tenant colours still brand browser chrome.
+            # The OS splash/title bar stays a neutral, theme-matched canvas so
+            # the two-colour transparent N mark is always drawn on the
+            # background its icon variant was designed for. Tenant colours
+            # brand the workspace itself, never the launch surface.
             "background_color": _launch_background(request),
-            "theme_color": business.background_color,
+            "theme_color": _launch_background(request),
             "categories": ["business", "productivity", "finance"],
             # Installed app artwork remains INPROFIC by design. The optional
             # tenant logo is storefront-only and is never used as a PWA icon.

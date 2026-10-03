@@ -316,13 +316,14 @@ class PwaEndpointTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["name"], "INPROFIC")
         self.assertEqual(payload["id"], "/pwa/inprofic")
-        self.assertEqual(payload["theme_color"], "#050733")
+        self.assertEqual(payload["theme_color"], "#FFF1E8")
         self.assertEqual(payload["background_color"], "#FFF1E8")
         self.assertTrue(any(icon["sizes"] == "512x512" for icon in payload["icons"]))
         self.assertTrue(all("core/pwa/icon-" in icon["src"] for icon in payload["icons"]))
         self.assertEqual({icon["purpose"] for icon in payload["icons"]}, {"any", "monochrome"})
         dark_payload = self.client.get(f'{reverse("pwa_manifest")}?theme=dark').json()
         self.assertEqual(dark_payload["background_color"], "#050733")
+        self.assertEqual(dark_payload["theme_color"], "#050733")
         self.assertTrue(any("icon-mark-on-dark-192.png" in icon["src"] for icon in dark_payload["icons"]))
         windows_payload = self.client.get(f'{reverse("pwa_manifest")}?theme=dark&platform=windows').json()
         self.assertEqual({icon["purpose"] for icon in windows_payload["icons"]}, {"any"})
@@ -351,7 +352,8 @@ class PwaEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["name"], "Northwind Foods")
-        self.assertEqual(payload["theme_color"], "#173B45")
+        # Launch surfaces are neutral and theme-matched, never the tenant brand.
+        self.assertEqual(payload["theme_color"], "#FFF1E8")
         self.assertEqual(payload["background_color"], "#FFF1E8")
         self.assertEqual(payload["id"], "/pwa/tenant/northwind-foods")
         self.assertEqual({icon["purpose"] for icon in payload["icons"]}, {"any", "monochrome"})
@@ -359,7 +361,25 @@ class PwaEndpointTests(TestCase):
             f'{reverse("pwa_manifest_tenant", kwargs={"business_slug": business.slug})}?theme=dark'
         )
         self.assertEqual(dark_response.json()["background_color"], "#050733")
+        self.assertEqual(dark_response.json()["theme_color"], "#050733")
         self.assertTrue(any("icon-mark-on-dark-192.png" in icon["src"] for icon in dark_response.json()["icons"]))
+
+    def test_launch_overlay_follows_resolved_app_theme_not_only_the_os(self):
+        from django.template.loader import render_to_string
+
+        html = render_to_string("pwa/head.html")
+        self.assertIn('data-launch-theme="dark"', html)
+        self.assertIn("inprofic-wordmark-on-dark.png", html)
+        self.assertIn("localStorage.getItem('inprofic-theme')", html)
+        self.assertNotIn("@media(prefers-color-scheme:dark)", html)
+
+    def test_offline_page_ships_both_wordmarks_for_light_and_dark(self):
+        from django.template.loader import render_to_string
+
+        html = render_to_string("pwa/offline.html")
+        self.assertIn("inprofic-wordmark-on-light.png", html)
+        self.assertIn("inprofic-wordmark-on-dark.png", html)
+        self.assertIn('html[data-theme="dark"]', html)
 
     def test_service_worker_has_root_scope_and_does_not_cache_dynamic_html(self):
         response = self.client.get(reverse("pwa_service_worker"))
