@@ -427,3 +427,81 @@ class TenantBackupIsolationTests(TestCase):
         self.assertEqual(business_pks, {first.pk})
         self.assertEqual(account_names, {"First Cash"})
         self.assertEqual(recipe_pks, {recipe_first.pk})
+
+
+class DashboardStockTickerTests(TestCase):
+    """Daily balances: opening balance, live change, and the two finished-good balances."""
+
+    def setUp(self):
+        from decimal import Decimal
+        from inventory.models import FinishedGood, RawMaterial, StockMovement
+
+        self.Decimal = Decimal
+        self.StockMovement = StockMovement
+        self.business = Business.objects.create(name="Ticker Bakery", slug="ticker-bakery")
+        self.user = CustomUser.objects.create_superuser(username="ticker-admin", password="safe-password-123", fullname="Admin")
+        self.flour = RawMaterial.raw_objects.create(
+            business=self.business, name="Flour", category=RawMaterial.CATEGORY_INGREDIENT,
+            purchase_unit="bag", package_qty=Decimal("50"), package_unit="kg", usage_unit="kg",
+            usage_conversion_factor=Decimal("1"), stock=Decimal("100"), reorder_level=Decimal("5"), cost_per_unit=Decimal("10"),
+        )
+        self.empty = RawMaterial.raw_objects.create(
+            business=self.business, name="Empty", category=RawMaterial.CATEGORY_INGREDIENT,
+            purchase_unit="bag", package_qty=Decimal("1"), package_unit="kg", usage_unit="kg",
+            usage_conversion_factor=Decimal("1"), stock=Decimal("0"), reorder_level=Decimal("1"), cost_per_unit=Decimal("10"),
+        )
+        self.bread = FinishedGood.raw_objects.create(
+            business=self.business, name="Bread", unit="loaf", units_per_batch=Decimal("10"),
+            stock=Decimal("40"), reorder_level=Decimal("2"), selling_price=Decimal("500"),
+        )
+
+    def build(self):
+        from .context import set_current_business
+        from .stock_ticker import build_stock_ticker
+
+        set_current_business(self.business)
+        try:
+            return build_stock_ticker(timezone.localdate())
+        finally:
+            set_current_business(None)
+
+    def test_opening_balance_is_current_minus_todays_net_movement(self):
+        D = self.Decimal
+        self.StockMovement.objects.create(
+            business=self.business, raw_material=self.flour, movement_type="raw_consumption",
+            quantity=D("-12"), balance_after=D("100"),
+        )
+        self.StockMovement.objects.create(
+            business=self.business, raw_material=self.flour, movement_type="raw_purchase",
+            quantity=D("5"), balance_after=D("105"),
+        )
+        data = self.build()
+        flour = next(r for r in data["raw"] if r["name"] == "Flour")
+        self.assertEqual((flour["balance"], flour["opening"], flour["change"]), (100.0, 107.0, -7.0))
+        self.assertNotIn("Empty", [r["name"] for r in data["raw"]])  # nothing available, no activity
+
+    def test_item_with_no_activity_opens_at_its_current_balance(self):
+        flour = next(r for r in self.build()["raw"] if r["name"] == "Flour")
+        self.assertEqual((flour["balance"], flour["opening"], flour["change"]), (100.0, 100.0, 0.0))
+
+    def test_finished_good_without_market_stock_has_a_single_store_balance(self):
+        bread = next(r for r in self.build()["finished"] if r["name"] == "Bread")
+        self.assertIsNone(bread["market"])
+        self.assertEqual(bread["store"]["balance"], 40.0)
+
+    def test_endpoint_requires_login_and_returns_json_without_caching(self):
+        self.assertEqual(self.client.get(reverse("dashboard_stock_ticker")).status_code, 302)
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("dashboard_stock_ticker"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Cache-Control"], "no-store")
+        self.assertEqual(set(response.json()), {"raw", "finished", "date"})
+
+    def test_dashboard_embeds_initial_ticker_data_and_cards(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("dashboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="stock-ticker-data"')
+        self.assertContains(response, 'data-stock-ticker="raw"')
+        self.assertContains(response, 'data-stock-ticker="finished"')
+        self.assertContains(response, reverse("dashboard_stock_ticker"))

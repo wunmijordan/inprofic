@@ -7,6 +7,7 @@ urlpatterns = [
     path("runs/<int:pk>/", views.production_run_detail, name="production_run_detail"),
     path("runs/<int:pk>/edit/", views.production_run_form, name="production_run_edit"),
     path("runs/<int:pk>/approve/", views.production_run_approve, name="production_run_approve"),
+    path("runs/<int:pk>/pool/", views.production_run_adjust_pool, name="production_run_adjust_pool"),
     path("runs/<int:pk>/delete/", views.production_run_delete, name="production_run_delete"),
     path("batches/", views.production_batches, name="production_batches"),
     path("batches/<int:pk>/", views.production_batch_detail, name="production_batch_detail"),

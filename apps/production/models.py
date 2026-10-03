@@ -417,6 +417,16 @@ class ProductionRun(BusinessOwnedModel):
     approved_date = models.DateField(null=True, blank=True)
     completed_date = models.DateField(null=True, blank=True)
     orders = models.ManyToManyField(Order, through="ProductionRunOrder", related_name="production_runs")
+    BASIS_PRODUCT_QUANTITY = Order.BASIS_PRODUCT_QUANTITY
+    BASIS_BASE_MATERIAL = Order.BASIS_BASE_MATERIAL
+    production_basis = models.CharField(
+        max_length=24, choices=Order.PRODUCTION_BASIS_CHOICES, default=Order.BASIS_PRODUCT_QUANTITY,
+        help_text="Sized by each order's own quantities, or against one overall base-material pool shared by every member order.",
+    )
+    base_material_quantity = models.DecimalField(
+        max_digits=14, decimal_places=4, default=0, blank=True,
+        help_text="Overall pool of the base material (taken from the member orders' products) available to the whole run.",
+    )
 
     class Meta:
         ordering = ["-date", "-id"]

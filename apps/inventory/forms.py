@@ -109,8 +109,22 @@ class RawMaterialForm(StyledModelForm):
         fields = ["name", "category", "purchase_unit", "package_qty", "package_unit",
                   "usage_unit", "usage_conversion_factor", "reorder_level_purchase_units"]
 
+    def clean_name(self):
+        value = (self.cleaned_data.get("name") or "").strip()
+        business = self.business or getattr(self.instance, "business", None)
+        if business is not None and getattr(business, "pk", None) and value:
+            clash = RawMaterial.raw_objects.filter(business=business, name__iexact=value)
+            if self.instance.pk:
+                clash = clash.exclude(pk=self.instance.pk)
+            if clash.exists():
+                raise forms.ValidationError(
+                    f"A material named \u201c{value}\u201d already exists. Choose a different name, or edit the existing material."
+                )
+        return value
+
     def __init__(self, *args, business=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.business = business
         self.original_measurement = None
         if self.instance and self.instance.pk:
             current = RawMaterial.raw_objects.get(pk=self.instance.pk, business_id=self.instance.business_id)
@@ -135,6 +149,7 @@ class RawMaterialForm(StyledModelForm):
             field = self.fields[field_name]
             field.widget.attrs.update({
                 "list": unit_list_id,
+                "data-datalist-combobox": "1",
                 "autocomplete": "off",
                 "placeholder": unit_placeholders[field_name],
             })
@@ -244,6 +259,20 @@ class FinishedGoodForm(StyledModelForm):
     class Meta:
         model = FinishedGood
         fields = ["source_type", "name", "product_category", "unit", "units_per_batch", "base_material", "stock", "reorder_level", "selling_price"]
+
+    def clean_name(self):
+        value = (self.cleaned_data.get("name") or "").strip()
+        business = self.business or getattr(self.instance, "business", None)
+        if business is not None and getattr(business, "pk", None) and value:
+            # raw_objects includes archived rows: the DB constraint counts them too.
+            clash = FinishedGood.raw_objects.filter(business=business, name__iexact=value)
+            if self.instance.pk:
+                clash = clash.exclude(pk=self.instance.pk)
+            if clash.exists():
+                raise forms.ValidationError(
+                    f"A product named \u201c{value}\u201d already exists. Choose a different name, or edit the existing product."
+                )
+        return value
 
     def __init__(self, *args, business=None, ingredient_choices=None, **kwargs):
         super().__init__(*args, **kwargs)

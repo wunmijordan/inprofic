@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block content %}
 <div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Inventory setup</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit{% else %}Add{% endif %} {% if vertical_ui.uses_production %}Raw Material{% else %}Supporting Supply{% endif %}</h2><p class="mt-1 max-w-3xl text-sm text-stone-500">{% if vertical_ui.uses_production %}Define how this material is bought, measured, costed and consumed so stock and production calculations stay consistent.{% else %}Define how this supporting supply is purchased, packed, measured, costed and issued around the operation. Products bought for resale belong under {{ vertical_ui.product_label }} instead.{% endif %}</p></div>
 <div class="cf-form-shell max-w-6xl">
@@ -163,6 +164,7 @@
   </form>
 </div>
 </div>
+<script src="{% static 'core/js/datalist-combobox.js' %}" defer></script>
 <script>
 (() => {
   const converterDialog = document.getElementById('raw-material-converter-dialog');

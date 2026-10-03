@@ -1830,3 +1830,78 @@ class PlatformMailingTests(TestCase):
         self.assertContains(workspace, "Send campaign now")
         self.assertEqual(topic_form.status_code, 200)
         self.assertContains(topic_form, "Build a reusable, branded message")
+
+
+class PayrollAddonPricingVisibilityTests(TestCase):
+    """Payroll add-on prices are visible to everyone, including trial and
+    Founder-lifetime tenants who currently get payroll free."""
+
+    def setUp(self):
+        from .models import PayrollAddonTier
+        self.PayrollAddonTier = PayrollAddonTier
+        self.plans = ensure_default_plans()
+        self.business = Business.objects.create(name="Payroll Plans", slug="payroll-plans", currency_symbol="₦")
+        roles = seed_business_roles(self.business)
+        self.admin = CustomUser.objects.create_user(username="payroll-admin", password="safe-password-123", fullname="Admin")
+        UserBusiness.objects.create(user=self.admin, business=self.business, role=roles[CustomUser.ROLE_BUSINESS_ADMIN])
+        plan = self.plans["business_pro"] if "business_pro" in self.plans else list(self.plans.values())[-1]
+        self.plan = plan
+        self.PayrollAddonTier.objects.create(plan=plan, staff_limit=5, monthly_price=Decimal("2500.00"))
+        self.PayrollAddonTier.objects.create(plan=plan, staff_limit=20, monthly_price=Decimal("7500.00"))
+        self.PayrollAddonTier.objects.create(plan=plan, staff_limit=50, monthly_price=Decimal("99999.00"), active=False)
+        self.subscription = BusinessSubscription.objects.create(
+            primary_business=self.business, plan=plan, status=BusinessSubscription.STATUS_TRIAL,
+            trial_ends_at=timezone.now() + timezone.timedelta(days=30),
+        )
+        SubscriptionService.objects.create(subscription=self.subscription, business=self.business, is_primary=True)
+        apply_subscription_entitlements(self.subscription)
+
+    def test_matrix_row_shows_from_price_and_staff_range_only_for_priced_plans(self):
+        from .subscription_services import attach_payroll_tiers
+        from .models import SubscriptionPlan
+        plans = attach_payroll_tiers(SubscriptionPlan.objects.filter(active=True).prefetch_related("module_entitlements").order_by("monthly_price", "id"))
+        row = next(r for r in build_plan_feature_matrix(plans) if r["label"] == "Staff payroll add-on")
+        by_plan = dict(zip([p.code for p in plans], row["values"]))
+        self.assertEqual(by_plan[self.plan.code]["text"], "From ₦2,500.00 / mo")
+        self.assertEqual(by_plan[self.plan.code]["sub"], "5–20 staff")
+        unpriced = [v for code, v in by_plan.items() if code != self.plan.code]
+        self.assertTrue(all(v["text"] == "Pricing coming soon" for v in unpriced))
+
+    def test_retired_tiers_are_not_exposed(self):
+        from .subscription_services import attach_payroll_tiers
+        [plan] = attach_payroll_tiers([self.plan])
+        self.assertEqual([t.staff_limit for t in plan.payroll_tiers], [5, 20])
+
+    def test_marketing_cards_list_tiers_for_anonymous_visitors(self):
+        response = self.client.get(reverse("marketing_home"), {"nocache": "1"})
+        self.assertContains(response, "from <span")
+        self.assertContains(response, "₦2,500.00")
+        self.assertContains(response, "Up to 20 staff")
+        self.assertNotContains(response, "99,999.00")
+
+    def test_in_app_plan_card_shows_tiers_to_trial_tenant_with_included_note(self):
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse("subscription_plans"))
+        self.assertContains(response, "Up to 5 staff")
+        self.assertContains(response, "Included free on your current access")
+        self.assertNotContains(response, "99,999.00")
+
+    def test_founder_lifetime_tenant_also_sees_prices(self):
+        self.subscription.status = BusinessSubscription.STATUS_ACTIVE
+        self.subscription.founder_lifetime = True
+        self.subscription.save()
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse("subscription_plans"))
+        self.assertContains(response, "₦7,500.00")
+
+    def test_checkout_is_read_only_for_included_tenants_and_blocks_payment(self):
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse("payroll_addon_checkout"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "nothing to pay")
+        self.assertContains(response, "Included with your current access")
+        tier = self.plan.payroll_addon_tiers.get(staff_limit=5)
+        before = SubscriptionPayment.objects.count()
+        post = self.client.post(reverse("payroll_addon_checkout"), {"tier_id": tier.pk, "billing_cycle": "monthly", "provider": "paystack"})
+        self.assertRedirects(post, reverse("payroll_addon_checkout"), fetch_redirect_response=False)
+        self.assertEqual(SubscriptionPayment.objects.count(), before)

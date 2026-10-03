@@ -97,6 +97,38 @@
     if(trigger)trigger.setAttribute('aria-expanded','false');
     if(bubble)bubble.hidden=true;
   }
+  function placeHelpTip(tip){
+    const trigger=tip&&tip.querySelector('[data-form-help-trigger]');
+    const bubble=tip&&tip.querySelector('[data-form-help-bubble]');
+    if(!trigger||!bubble)return;
+    const vp=window.visualViewport;
+    const vw=vp?vp.width:window.innerWidth, vh=vp?vp.height:window.innerHeight;
+    const ox=vp?vp.offsetLeft:0, oy=vp?vp.offsetTop:0, m=8;
+    bubble.style.maxWidth=(vw-m*2)+'px';
+    const t=trigger.getBoundingClientRect();
+    const bw=bubble.offsetWidth, bh=bubble.offsetHeight;
+    const left=Math.max(ox+m,Math.min(t.left+t.width/2-bw/2,ox+vw-bw-m));
+    let top=t.bottom+8;
+    if(top+bh>oy+vh-m&&t.top-8-bh>=oy+m)top=t.top-8-bh;
+    bubble.style.left=left+'px';
+    bubble.style.top=top+'px';
+    // An ancestor with transform/filter becomes the containing block for
+    // position:fixed; measure and correct so placement is still viewport-true.
+    const r=bubble.getBoundingClientRect();
+    if(Math.abs(r.left-left)>1||Math.abs(r.top-top)>1){
+      bubble.style.left=(left-(r.left-left))+'px';
+      bubble.style.top=(top-(r.top-top))+'px';
+    }
+  }
+  function placeVisibleHelpTips(){
+    document.querySelectorAll('[data-form-help-tip].is-open').forEach(placeHelpTip);
+  }
+  window.addEventListener('resize',placeVisibleHelpTips);
+  window.addEventListener('scroll',placeVisibleHelpTips,true);
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('resize',placeVisibleHelpTips);
+    window.visualViewport.addEventListener('scroll',placeVisibleHelpTips);
+  }
   function openHelpTip(tip){
     if(!tip)return;
     document.querySelectorAll('[data-form-help-tip].is-open').forEach(other=>{
@@ -107,6 +139,20 @@
     tip.classList.add('is-open');
     if(trigger)trigger.setAttribute('aria-expanded','true');
     if(bubble)bubble.hidden=false;
+    placeHelpTip(tip);
+  }
+  // A <label> without for="" activates its FIRST labelable descendant. When a
+  // help-tip button precedes a toggle/checkbox inside the same label, the button
+  // wins, so tapping the switch only opened the tip. Point the label at the real
+  // control explicitly.
+  function retargetWrappingLabel(tip){
+    const label=tip.closest('label');
+    if(!label||label.hasAttribute('for'))return;
+    const control=Array.from(label.querySelectorAll('input:not([type=hidden]),select,textarea'))
+      .find(el=>!tip.contains(el));
+    if(!control)return;
+    if(!control.id)control.id='ctl_'+Math.random().toString(36).slice(2,9);
+    label.htmlFor=control.id;
   }
   function enhanceHelpTip(tip){
     if(!tip||tip.dataset.formHelpBound==='1')return;
@@ -114,6 +160,9 @@
     const bubble=tip.querySelector('[data-form-help-bubble]');
     if(!trigger||!bubble)return;
     tip.dataset.formHelpBound='1';
+    retargetWrappingLabel(tip);
+    // Desktop hover/focus reveal is CSS-driven; place it once it is displayed.
+    ['mouseenter','focusin'].forEach(type=>tip.addEventListener(type,()=>requestAnimationFrame(()=>placeHelpTip(tip))));
     bubble.hidden=true;
     trigger.setAttribute('aria-expanded','false');
     trigger.addEventListener('click',event=>{

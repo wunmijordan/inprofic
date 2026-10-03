@@ -447,6 +447,33 @@ def _public_products(business):
     )
 
 
+def _distribution_display(packs, explicit_price, default_unit, default_minimum):
+    """Customer-facing Distribution/Bulk price for a product card or API row.
+
+    Mirrors the in-premise POS, which opens on the first configured bulk
+    option: with bulk packs, show the FIRST pack's price (``is_from`` is True
+    only when several packs exist, so clients can prefix "from"); otherwise use
+    the explicit Distribution channel price. Display only: ordering still
+    requires the selected ``bulk_pack_id`` whenever packs exist.
+    """
+    if packs:
+        first = packs[0]
+        return {
+            "price": first.price,
+            "unit": first.customer_unit or first.name,
+            "min_quantity": first.min_order_quantity,
+            "is_from": len(packs) > 1,
+            "pack": first,
+        }
+    return {
+        "price": explicit_price,
+        "unit": default_unit,
+        "min_quantity": default_minimum if explicit_price is not None else None,
+        "is_from": False,
+        "pack": None,
+    }
+
+
 def _public_catalog_data(business):
     from .delivery_services import delivery_available
 
@@ -473,7 +500,14 @@ def _public_catalog_data(business):
             product.allow_online_order and (product.public_stock_source_available or product.public_made_source_available)
         )
         product.public_bulk_packs = list(product.bulk_pack_options)
-        product.public_distribution_price = product.finished_good.explicit_selling_price_for("distribution")
+        _display = _distribution_display(
+            product.public_bulk_packs,
+            product.finished_good.explicit_selling_price_for("distribution"),
+            product.finished_good.unit,
+            product.distribution_min_quantity,
+        )
+        product.public_distribution_price = _display["price"]
+        product.public_distribution_price_is_from = _display["is_from"]
         product.public_distribution_uses_bulk_packs = bool(product.public_bulk_packs)
         product.public_distribution_available = bool(
             product.allow_distribution_order
@@ -1063,6 +1097,9 @@ def api_products(request, business_slug):
 
         bulk_packs_source = list(p.bulk_pack_options)
         explicit_distribution_price = p.finished_good.explicit_selling_price_for("distribution")
+        distribution_display = _distribution_display(
+            bulk_packs_source, explicit_distribution_price, p.finished_good.unit, p.distribution_min_quantity,
+        )
         distribution_enabled = bool(
             p.allow_distribution_order
             and (bulk_packs_source or explicit_distribution_price is not None)
@@ -1123,12 +1160,16 @@ def api_products(request, business_slug):
             order_modes.append({
                 "code": "distribution",
                 "label": channel_labels["distribution"],
-                # When bulk packs exist their own prices/minimums are the only
-                # Distribution price contract. Standard portion pricing must
-                # never leak into this mode.
-                "price": None if bulk_packs_source else str(explicit_distribution_price),
-                "unit": None if bulk_packs_source else p.finished_good.unit,
-                "min_quantity": None if bulk_packs_source else str(p.distribution_min_quantity),
+                # Display price: the FIRST bulk pack when packs exist (``price_is_from``
+                # is true when there are several), else the Distribution channel
+                # price. Standard-portion pricing never leaks into this mode.
+                # With packs, ordering still requires the chosen ``bulk_pack_id``
+                # and that pack's own price/minimum are authoritative.
+                "price": str(distribution_display["price"]),
+                "price_is_from": distribution_display["is_from"],
+                "display_bulk_pack_id": str(distribution_display["pack"].public_id) if distribution_display["pack"] else None,
+                "unit": distribution_display["unit"],
+                "min_quantity": str(distribution_display["min_quantity"]),
                 "max_quantity": str(p.max_quantity) if p.max_quantity is not None else None,
                 "pricing_source": "bulk_options" if bulk_packs_source else "channel_price",
                 "requires_bulk_pack": bool(bulk_packs_source),
@@ -1250,6 +1291,7 @@ def api_products(request, business_slug):
             "image": image_url,
             "image_url": image_url,
             "unit": p.customer_unit,
+            "portion_label": p.portion_label,
             "available_now": str(stock_available),
             "contents": p.standard_public_contents,
             "bulk_packs": bulk_packs,
@@ -1258,14 +1300,15 @@ def api_products(request, business_slug):
             "ordering_modes": submitted_modes,
             "online_min_quantity": str(p.preorder_min_quantity),
             "preorder_min_quantity": str(p.preorder_min_quantity),
-            "distribution_min_quantity": None if bulk_packs_source else (str(p.distribution_min_quantity) if explicit_distribution_price is not None else None),
+            "distribution_min_quantity": str(distribution_display["min_quantity"]) if distribution_enabled and distribution_display["min_quantity"] is not None else None,
             "distribution_requires_bulk_pack": bool(bulk_packs_source and distribution_enabled),
             "max_quantity": str(p.max_quantity) if p.max_quantity is not None else None,
             "preorder_lead_time": p.preorder_lead_time,
             "estimated_ready_minutes": p.estimated_ready_minutes,
             "online_price": str(p.finished_good.selling_price_for("online")) if p.allow_online_order else None,
             "preorder_price": str(p.finished_good.selling_price_for("online")) if p.allow_online_order else None,
-            "distribution_price": None if bulk_packs_source else (str(explicit_distribution_price) if distribution_enabled else None),
+            "distribution_price": str(distribution_display["price"]) if distribution_enabled and distribution_display["price"] is not None else None,
+            "distribution_price_is_from": bool(distribution_enabled and distribution_display["is_from"]),
         })
 
     visible_category_ids = {

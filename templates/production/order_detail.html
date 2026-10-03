@@ -74,17 +74,47 @@
 {% if order.status == 'pending' and flexible_usages %}
 <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4 max-w-3xl">
   <h3 class="text-sm font-semibold text-amber-900">Flexible {{ vertical_ui.recipe_label|lower }} usage</h3>
-  <p class="text-xs text-amber-700 mt-1 mb-3">Only {{ vertical_ui.recipe_item_label|lower }} quantities marked Flexible on the product {{ vertical_ui.recipe_label|lower }} can be changed here. Enter the actual quantity per batch to release for this order.</p>
-  <div class="space-y-2">
+  <p class="text-xs text-amber-700 mt-1 mb-3">Only {{ vertical_ui.recipe_item_label|lower }} quantities marked Flexible on the product {{ vertical_ui.recipe_label|lower }} can be changed here.{% if order.production_basis == 'base_material' %} This order is sized from one shared base material, so enter the <b>total</b> actually used across all products. It is allotted to each product in proportion to its planned amount.{% else %} Enter the actual quantity per batch to release for this order.{% endif %}</p>
+  <div class="space-y-3">
     {% for row in flexible_usages %}
+    {% if row.central %}
+    <div class="border-t border-amber-200 pt-2" data-flex-central>
+      <div class="grid grid-cols-1 sm:grid-cols-[1fr_9rem_auto] gap-2 items-end">
+        <div class="text-xs"><b>{{ row.material.name }}</b> · all products<div class="text-[10px] text-amber-600">Planned total: {{ row.planned_total|num }} {{ row.usage_unit }}</div></div>
+        <label class="text-[10px] text-amber-700">Total used for this order<input form="approve-order-form" type="number" min="0" step="0.0001" name="{{ row.input_name }}" value="{{ row.input_value }}" data-flex-total class="mt-1 w-full rounded-md border border-amber-300 bg-white px-2 py-1.5 text-sm font-mono"></label>
+        <span class="text-[10px] text-amber-600 pb-2">{{ row.usage_unit }}</span>
+      </div>
+      <ul class="mt-2 space-y-0.5 text-[11px] text-amber-800">
+        {% for a in row.allocations %}<li class="flex justify-between gap-3" data-flex-alloc data-planned="{{ a.planned }}"><span>{{ a.good.name }} <span class="text-amber-600">(planned {{ a.planned|num }})</span></span><span class="font-mono"><span data-flex-alloc-value>{{ a.actual|num }}</span> {{ row.usage_unit }}</span></li>{% endfor %}
+      </ul>
+    </div>
+    {% else %}
     <div class="grid grid-cols-1 sm:grid-cols-[1fr_9rem_auto] gap-2 items-end border-t border-amber-200 pt-2">
       <div class="text-xs"><b>{{ row.good.name }}</b> · {{ row.material.name }}<div class="text-[10px] text-amber-600">{{ vertical_ui.recipe_label }}: {{ row.planned_per_batch|num }} {{ row.usage_unit }} / batch · production equivalent {{ row.multiplier|num }} batch(es)</div></div>
-      <label class="text-[10px] text-amber-700">Actual qty / batch<input form="approve-order-form" type="number" min="0" step="0.01" name="{{ row.input_name }}" value="{{ row.actual_per_batch }}" class="mt-1 w-full rounded-md border border-amber-300 bg-white px-2 py-1.5 text-sm font-mono"></label>
+      <label class="text-[10px] text-amber-700">Actual qty / batch<input form="approve-order-form" type="number" min="0" step="0.01" name="{{ row.input_name }}" value="{{ row.input_value }}" class="mt-1 w-full rounded-md border border-amber-300 bg-white px-2 py-1.5 text-sm font-mono"></label>
       <span class="text-[10px] text-amber-600 pb-2">{{ row.usage_unit }}</span>
     </div>
+    {% endif %}
     {% endfor %}
   </div>
 </div>
+<script>
+// Live preview of the per-product split; the server recomputes it exactly on approval.
+document.querySelectorAll('[data-flex-central]').forEach(function (box) {
+  var input = box.querySelector('[data-flex-total]');
+  var rows = Array.prototype.slice.call(box.querySelectorAll('[data-flex-alloc]'));
+  function update() {
+    var total = parseFloat(input.value); if (isNaN(total) || total < 0) return;
+    var weights = rows.map(function (r) { return parseFloat(r.dataset.planned) || 0; });
+    var sum = weights.reduce(function (a, b) { return a + b; }, 0);
+    if (sum <= 0) { weights = rows.map(function () { return 1; }); sum = rows.length; }
+    rows.forEach(function (r, i) {
+      r.querySelector('[data-flex-alloc-value]').textContent = (total * weights[i] / sum).toFixed(4).replace(/\.?0+$/, '');
+    });
+  }
+  input.addEventListener('input', update);
+});
+</script>
 {% endif %}
 
 {% if shortages %}
@@ -104,7 +134,7 @@
   {% if confirm_approve %}
   <form method="post" action="{% url 'order_approve' order.pk %}" class="mt-2">
     {% csrf_token %}<input type="hidden" name="force" value="1">
-    {% for row in flexible_usages %}<input type="hidden" name="{{ row.input_name }}" value="{{ row.actual_per_batch }}">{% endfor %}
+    {% for row in flexible_usages %}<input type="hidden" name="{{ row.input_name }}" value="{{ row.input_value }}">{% endfor %}
     <button type="submit" class="px-3 py-1.5 text-xs rounded-md font-medium bg-rose-600 text-white hover:bg-rose-700">Approve anyway (Raw Materials go negative)</button>
   </form>
   {% endif %}

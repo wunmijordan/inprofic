@@ -495,3 +495,68 @@ class DistributionMarketStockTests(TestCase):
             with self.subTest(route=route_name):
                 response = self.client.get(reverse(route_name))
                 self.assertEqual(response.status_code, 200)
+
+
+class DuplicateNameValidationTests(TestCase):
+    """A duplicate product/material name is a form error, never a 500."""
+
+    def setUp(self):
+        self.business = Business.objects.create(name="Dup Bakery", slug="dup-bakery")
+        self.user = CustomUser.objects.create_superuser(username="dup-admin", password="safe-password-123", fullname="Admin")
+        self.client.force_login(self.user)
+        FinishedGood.raw_objects.create(
+            business=self.business, name="Hotdog Bread", unit="loaf", units_per_batch=Decimal("10"),
+            stock=Decimal("0"), reorder_level=Decimal("0"), selling_price=Decimal("500"),
+        )
+        RawMaterial.raw_objects.create(
+            business=self.business, name="Yeast", category=RawMaterial.CATEGORY_INGREDIENT,
+            purchase_unit="pack", package_qty=Decimal("1"), package_unit="kg", usage_unit="g",
+            usage_conversion_factor=Decimal("1000"), stock=Decimal("1"), reorder_level=Decimal("1"), cost_per_unit=Decimal("1"),
+        )
+
+    def test_product_form_rejects_duplicate_name_case_insensitively(self):
+        form = FinishedGoodForm({"name": "  hotdog bread ", "source_type": "made_in_house", "unit": "loaf", "units_per_batch": "10"}, business=self.business)
+        self.assertFalse(form.is_valid())
+        self.assertIn("already exists", form.errors["name"][0])
+
+    def test_product_form_allows_keeping_its_own_name_on_edit(self):
+        good = FinishedGood.raw_objects.get(name="Hotdog Bread")
+        form = FinishedGoodForm({"name": "Hotdog Bread", "source_type": "made_in_house", "unit": "loaf", "units_per_batch": "10"}, instance=good, business=self.business)
+        form.is_valid()
+        self.assertNotIn("name", form.errors)
+
+    def test_raw_material_form_rejects_duplicate_name(self):
+        form = RawMaterialForm({"name": "yeast"}, business=self.business)
+        self.assertFalse(form.is_valid())
+        self.assertIn("already exists", form.errors["name"][0])
+
+
+class PortionLabelTests(TestCase):
+    def setUp(self):
+        from .portioning import portion_label
+        self.label = portion_label
+        self.business = Business.objects.create(name="Portion Bakery", slug="portion-bakery")
+        self.good = FinishedGood.raw_objects.create(
+            business=self.business, name="Buns", unit="bun", units_per_batch=Decimal("40"),
+            stock=Decimal("0"), reorder_level=Decimal("0"), selling_price=Decimal("500"),
+        )
+
+    def profile(self, **kw):
+        from .models import ProductPortionProfile
+        values = dict(business=self.business, finished_good=self.good, active=True,
+                      customer_quantity=Decimal("1"), customer_unit="pack", base_quantity=Decimal("4"))
+        values.update(kw)
+        return ProductPortionProfile.raw_objects.create(**values)
+
+    def test_customer_portion_is_described_in_the_base_unit(self):
+        self.profile()
+        self.assertEqual(self.label(FinishedGood.raw_objects.get(pk=self.good.pk)), "1 pack of 4 buns")
+
+    def test_plural_customer_quantity_and_fractional_base(self):
+        self.profile(customer_quantity=Decimal("2"), customer_unit="box", base_quantity=Decimal("2.5"))
+        self.assertEqual(self.label(FinishedGood.raw_objects.get(pk=self.good.pk)), "2 boxes of 2.5 buns")
+
+    def test_no_label_without_active_portion_or_when_it_equals_the_base_unit(self):
+        self.assertEqual(self.label(self.good), "")
+        self.profile(customer_unit="bun", base_quantity=Decimal("1"))
+        self.assertEqual(self.label(FinishedGood.raw_objects.get(pk=self.good.pk)), "")

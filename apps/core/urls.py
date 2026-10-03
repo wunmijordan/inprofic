@@ -29,6 +29,7 @@ urlpatterns = [
     path("dashboard/financial-breakdown/", views.dashboard_financial_breakdown, name="dashboard_financial_breakdown"),
     path("business/settings/", views.business_settings, name="business_settings"),
     path("business/switch/", views.switch_business, name="switch_business"),
+    path("dashboard/stock-ticker/", views.dashboard_stock_ticker, name="dashboard_stock_ticker"),
     path("search/", views.dashboard_search, name="dashboard_search"),
     path("search/detail/", views.dashboard_search_detail, name="dashboard_search_detail"),
     path("reports/", views.reports, name="reports"),

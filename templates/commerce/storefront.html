@@ -87,7 +87,7 @@
 
       <div id="catalogue-grid" class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {% for p in products %}
-        {% if p.public_online_available or p.public_distribution_available %}<article class="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white" data-product-card data-basket-key="{{ p.public_id }}" data-product-id="{{ p.public_id }}" data-individual-option-id="" data-product-name="{{ p.display_name }}" data-category="{% if p.finished_good.product_category_id %}{{ p.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-unit="{{ p.customer_unit }}" data-search="{{ p.display_name|lower }} {{ p.description|lower }}" data-modes="{% if p.public_online_available %} online{% endif %}{% if p.public_distribution_available %} distribution{% endif %}" data-min-online="{{ p.preorder_min_quantity }}" data-min-distribution="{{ p.public_distribution_min_quantity }}" data-price-online="{{ p.preorder_price }}" data-price-distribution="{% if p.public_distribution_price != None %}{{ p.public_distribution_price }}{% endif %}" data-unit-online="{{ p.customer_unit }}" data-unit-distribution="{{ p.finished_good.unit }}" data-max="{% if p.max_quantity %}{{ p.max_quantity }}{% endif %}" data-stock-available="{{ p.public_stock_available }}" data-stock-source="{% if p.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if p.public_made_source_available %}1{% else %}0{% endif %}" data-procured-source="{% if p.public_procured_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ p.estimated_ready_minutes }}">
+        {% if p.public_online_available or p.public_distribution_available %}<article class="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white" data-product-card data-basket-key="{{ p.public_id }}" data-product-id="{{ p.public_id }}" data-individual-option-id="" data-product-name="{{ p.display_name }}" data-category="{% if p.finished_good.product_category_id %}{{ p.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-unit="{{ p.customer_unit }}" data-search="{{ p.display_name|lower }} {{ p.description|lower }}" data-modes="{% if p.public_online_available %} online{% endif %}{% if p.public_distribution_available %} distribution{% endif %}" data-min-online="{{ p.preorder_min_quantity }}" data-min-distribution="{{ p.public_distribution_min_quantity }}" data-price-online="{{ p.preorder_price }}" data-price-distribution="{% if p.public_distribution_price != None %}{{ p.public_distribution_price }}{% endif %}" data-bulk-from="{% if p.public_distribution_price_is_from %}1{% endif %}" data-unit-online="{{ p.customer_unit }}" data-unit-distribution="{{ p.finished_good.unit }}" data-max="{% if p.max_quantity %}{{ p.max_quantity }}{% endif %}" data-stock-available="{{ p.public_stock_available }}" data-stock-source="{% if p.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if p.public_made_source_available %}1{% else %}0{% endif %}" data-procured-source="{% if p.public_procured_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ p.estimated_ready_minutes }}">
           <div class="relative aspect-[16/10] overflow-hidden bg-stone-100">
             {% if p.public_image_url %}<img src="{{ p.public_image_url }}" alt="{{ p.display_name }}" class="h-full w-full object-cover" loading="lazy">
             {% else %}<div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-stone-100 via-[#efe8dc] to-stone-200"><div class="flex h-20 w-20 items-center justify-center rounded-full border border-white/80 bg-white/55 shadow-inner backdrop-blur"><svg viewBox="0 0 24 24" class="h-8 w-8 fill-none stroke-stone-400" stroke-width="1.35"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg></div></div>{% endif %}
@@ -100,6 +100,7 @@
           <div class="flex flex-1 flex-col p-4">
             <div class="mb-2"><span class="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-500">{% if p.finished_good.product_category %}{{ p.finished_good.product_category.name }}{% else %}Uncategorised{% endif %}</span></div>
             <h3 class="font-display text-lg font-semibold leading-tight text-stone-900">{{ p.display_name }}</h3>
+            {% if p.portion_label %}<p class="mt-0.5 text-[11px] font-semibold text-stone-500" data-portion-label>{{ p.portion_label }}</p>{% endif %}
             <p class="line-clamp-2 mt-1.5 min-h-[2rem] text-xs leading-4 text-stone-500">{{ p.description|default:"Choose from the ordering options below." }}</p>
             {% if p.standard_public_contents|length > 1 or p.bulk_pack_options %}
             <details class="relative mt-2" data-contents-popover>
@@ -350,12 +351,15 @@
         if (!pill || !mode || !modes.includes(mode)) return;
         let price = Number(card.dataset[`price${mode[0].toUpperCase()}${mode.slice(1)}`] || 0);
         let unit = card.dataset[`unit${mode[0].toUpperCase()}${mode.slice(1)}`] || card.dataset.unit;
+        let fromPrefix = false;
         if (mode === 'distribution') {
           const option = card.querySelector('[data-bulk-pack-select]')?.selectedOptions?.[0];
           if (option?.value) { price = Number(option.dataset.price || price); unit = option.dataset.unit || option.dataset.name || unit; }
+          // Several bulk options: until the visitor picks one, the first option's price is a "from" price.
+          fromPrefix = card.dataset.bulkFrom === '1' && !card.querySelector('[data-bulk-pack-select]')?.dataset.touched;
         }
         card.querySelector('[data-price-channel]').textContent = channelLabels[mode] || mode;
-        card.querySelector('[data-price-value]').textContent = `{{ store_business.currency_symbol }}${price.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+        card.querySelector('[data-price-value]').textContent = `${fromPrefix ? 'from ' : ''}{{ store_business.currency_symbol }}${price.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
         card.querySelector('[data-price-unit]').textContent = `/ ${unit}`;
         const shouldSlide = animate && activeChannel === 'all' && modes.length > 1;
         pill.classList.remove('is-changing');
@@ -529,6 +533,7 @@
         basketCount.textContent = basket.size; basketDock.classList.toggle('hidden', basket.size === 0); saveBasket(); refreshModes();
       }
       document.querySelectorAll('[data-bulk-pack-select]').forEach(select => select.addEventListener('change', function () {
+        select.dataset.touched = '1';
         const card = select.closest('[data-product-card]');
         renderCardPrice(card, true);
         const existing = basket.get(card.dataset.basketKey || card.dataset.productId);

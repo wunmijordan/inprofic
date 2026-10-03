@@ -38,6 +38,44 @@ def customer_unit(good):
     return good.unit
 
 
+def _plural(unit, quantity):
+    """Light English pluralisation for a unit label; leaves the unit alone when unsure."""
+    unit = (unit or "").strip()
+    if not unit or Decimal(quantity) == 1 or not unit.isalpha() or unit.lower().endswith("s"):
+        return unit
+    low = unit.lower()
+    if low.endswith(("x", "z", "ch", "sh")):
+        return unit + "es"
+    if low.endswith("y") and len(low) > 1 and low[-2] not in "aeiou":
+        return unit[:-1] + "ies"
+    return unit + "s"
+
+
+def _clean_number(value):
+    value = Decimal(value or 0).normalize()
+    return format(value, "f") if value == value.to_integral() else format(value.quantize(Decimal("0.001")).normalize(), "f")
+
+
+def portion_label(good):
+    """Customer portion expressed in the internal base unit, e.g. "1 pack of 4 buns".
+
+    Empty unless an active Standard Portion exists and actually differs from the
+    base unit, so ordinary products show nothing extra on their cards.
+    """
+    profile = standard_profile(good)
+    if not profile:
+        return ""
+    unit = (profile.customer_unit or "").strip()
+    customer_qty = Decimal(profile.customer_quantity or 1)
+    base_qty = Decimal(profile.base_quantity or 1)
+    base_unit = (good.unit or "").strip()
+    if not unit or not base_unit:
+        return ""
+    if customer_qty == base_qty and unit.lower() == base_unit.lower():
+        return ""
+    return f"{_clean_number(customer_qty)} {_plural(unit, customer_qty)} of {_clean_number(base_qty)} {_plural(base_unit, base_qty)}"
+
+
 def standard_multiplier(good):
     profile = standard_profile(good)
     if not profile:

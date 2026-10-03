@@ -16,6 +16,7 @@ from .models import (
     BusinessSubscription,
     FounderTrialGrant,
     PaidPlanTrialClaim,
+    PayrollAddonTier,
     RoleModulePermission,
     SubscriptionPayment,
     SubscriptionPlan,
@@ -65,7 +66,25 @@ PLAN_MATRIX = {
 }
 
 
-def build_plan_feature_matrix(plans):
+def attach_payroll_tiers(plans):
+    """Attach each plan's active payroll add-on tiers in one query.
+
+    Sets ``plan.payroll_tiers`` (ordered by staff capacity) and
+    ``plan.payroll_from`` (cheapest monthly price, or None when the Founder has
+    not priced the add-on for that plan). Shown to every tenant and visitor,
+    including trial and Founder-lifetime tenants who currently get it free.
+    """
+    plans = list(plans)
+    by_plan = {plan.pk: [] for plan in plans}
+    for tier in PayrollAddonTier.objects.filter(plan_id__in=list(by_plan), active=True).order_by("staff_limit", "id"):
+        by_plan[tier.plan_id].append(tier)
+    for plan in plans:
+        plan.payroll_tiers = by_plan[plan.pk]
+        plan.payroll_from = min((t.monthly_price for t in plan.payroll_tiers), default=None)
+    return plans
+
+
+def build_plan_feature_matrix(plans, currency_symbol="\u20a6"):
     """Return one comparison matrix shared by public and in-app plan views.
 
     The table is intentionally derived from the persisted plan entitlements so
@@ -82,6 +101,17 @@ def build_plan_feature_matrix(plans):
     def capacity_value(text):
         # Capacity rows carry meaningful text rather than a binary entitlement.
         return {"text": text, "state": "text"}
+
+    def payroll_value(plan):
+        tiers = getattr(plan, "payroll_tiers", None)
+        if not tiers:
+            return capacity_value("Pricing coming soon") if tiers is not None else capacity_value("Available as add-on")
+        limits = [t.staff_limit for t in tiers]
+        value = capacity_value(f"From {currency_symbol}{plan.payroll_from:,.2f} / mo")
+        value["sub"] = (
+            f"{limits[0]}\u2013{limits[-1]} staff" if len(limits) > 1 else f"Up to {limits[0]} staff"
+        )
+        return value
 
     rows = [
         {
@@ -114,7 +144,7 @@ def build_plan_feature_matrix(plans):
         {
             "label": "Staff payroll add-on",
             "detail": "Supplementary payroll is included during free trial and Founder lifetime access; after that, Founder-configured staff tiers are purchased separately.",
-            "values": [capacity_value("Available as add-on") for plan in plans],
+            "values": [payroll_value(plan) for plan in plans],
         },
     ]
 

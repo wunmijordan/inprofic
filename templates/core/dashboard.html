@@ -1,8 +1,9 @@
 {% extends "base.html" %} 
-{% load core_extras %} 
+{% load core_extras static %} 
 {% block head_scripts %}
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.17.1/dist/cdn.min.js"></script>
+<script defer src="{% static 'core/js/dashboard-stock-ticker.js' %}"></script>
 {% endblock %}
 {% block content %}
 <style>
@@ -11,7 +12,36 @@
   .dashboard-kpi { transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease; }
   .dashboard-kpi:hover { transform: translateY(-2px); border-color: color-mix(in srgb,var(--ui-accent) 28%,var(--ui-border)); box-shadow: var(--ui-shadow-raised); }
   @media (prefers-reduced-motion: reduce) { .dashboard-kpi { transition: none; } .dashboard-kpi:hover { transform: none; } }
+  /* Daily-balance ticker on the Raw materials / Products cards */
+  .stock-ticker { margin-top: .55rem; min-height: 3.6rem; overflow: hidden; border-top: 1px dashed var(--ui-border); padding-top: .45rem; }
+  .stock-ticker[hidden] { display: none; }
+  .stock-ticker__item { transform-origin: left center; }
+  .stock-ticker__item.is-in { animation: stk-scale-in .28s cubic-bezier(.2,.8,.2,1) both; }
+  .stock-ticker__item.is-out { animation: stk-scale-out .24s ease-in both; }
+  .stock-ticker__name { font-size: .7rem; font-weight: 700; color: var(--ui-surface-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stock-ticker__bal { perspective: 600px; margin-top: .15rem; }
+  .stock-ticker__bal.is-in { animation: stk-swipe-in .4s .12s cubic-bezier(.2,.8,.2,1) both; }
+  .stock-ticker__bal.is-updated .stock-ticker__val { animation: stk-pulse .9s ease; }
+  .stock-ticker__flip { position: relative; display: grid; transition: transform .55s cubic-bezier(.4,.2,.2,1); transform-style: preserve-3d; }
+  .stock-ticker.is-flipped .stock-ticker__flip { transform: rotateX(180deg); }
+  .stock-ticker__face { grid-area: 1 / 1; backface-visibility: hidden; -webkit-backface-visibility: hidden; min-width: 0; }
+  .stock-ticker__face[data-t-face="b"] { transform: rotateX(180deg); }
+  .stock-ticker__face[hidden] { display: none; }
+  .stock-ticker__label { font-size: .58rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ui-accent, #8f172d); }
+  .stock-ticker__val { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .95rem; font-weight: 700; color: var(--ui-surface-text); }
+  .stock-ticker__unit { font-size: .65rem; color: var(--ui-surface-muted-text); }
+  .stock-ticker__sub { font-size: .6rem; color: var(--ui-surface-muted-text); opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  @keyframes stk-scale-in { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: scale(1); } }
+  @keyframes stk-scale-out { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(.6); } }
+  @keyframes stk-swipe-in { from { opacity: 0; transform: translateX(1.6rem); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes stk-pulse { 0% { color: #10b981; } 100% { color: var(--ui-surface-text); } }
+  @media (prefers-reduced-motion: reduce) {
+    .stock-ticker__item.is-in, .stock-ticker__item.is-out, .stock-ticker__bal.is-in, .stock-ticker__bal.is-updated .stock-ticker__val { animation: none; }
+    .stock-ticker__flip { transition: none; }
+  }
 </style>
+{{ stock_ticker|json_script:"stock-ticker-data" }}
+<span hidden data-stock-ticker-url="{% url 'dashboard_stock_ticker' %}"></span>
 <div x-data="{ dashboardView: new URLSearchParams(window.location.search).has('stock_item') ? 'stock' : 'overview' }">
 <header data-tour-target="dashboard" class="mb-4 flex items-end justify-between gap-4">
   <div>
@@ -226,6 +256,7 @@
       Raw materials
     </div>
     <div class="text-2xl font-semibold mt-1 font-mono text-[#8f172d]">{{ raw_count }}</div>
+    <div class="stock-ticker" data-stock-ticker="raw" hidden role="status" aria-live="off"><div class="stock-ticker__item" data-t-item><div class="stock-ticker__name" data-t-name></div><div class="stock-ticker__bal" data-t-bal><div class="stock-ticker__flip" data-t-flip><div class="stock-ticker__face" data-t-face="a"><div class="stock-ticker__label" data-t-label></div><div><span class="stock-ticker__val" data-t-val></span><span class="stock-ticker__unit" data-t-unit></span></div><div class="stock-ticker__sub" data-t-sub></div></div><div class="stock-ticker__face" data-t-face="b"><div class="stock-ticker__label" data-t-label></div><div><span class="stock-ticker__val" data-t-val></span><span class="stock-ticker__unit" data-t-unit></span></div><div class="stock-ticker__sub" data-t-sub></div></div></div></div></div></div>
   </a>
   <a href="{% url 'inventory' %}#finished" class="dashboard-surface dashboard-kpi rounded-2xl p-3 md:p-4">
     <div class="text-xs flex items-center uppercase tracking-wider font-bold text-[#8f172d] block mb-1 gap-2">
@@ -235,6 +266,7 @@
       Products
     </div>
     <div class="text-2xl font-semibold mt-1 font-mono text-[#8f172d]">{{ goods_count }}</div>
+    <div class="stock-ticker" data-stock-ticker="finished" hidden role="status" aria-live="off"><div class="stock-ticker__item" data-t-item><div class="stock-ticker__name" data-t-name></div><div class="stock-ticker__bal" data-t-bal><div class="stock-ticker__flip" data-t-flip><div class="stock-ticker__face" data-t-face="a"><div class="stock-ticker__label" data-t-label></div><div><span class="stock-ticker__val" data-t-val></span><span class="stock-ticker__unit" data-t-unit></span></div><div class="stock-ticker__sub" data-t-sub></div></div><div class="stock-ticker__face" data-t-face="b"><div class="stock-ticker__label" data-t-label></div><div><span class="stock-ticker__val" data-t-val></span><span class="stock-ticker__unit" data-t-unit></span></div><div class="stock-ticker__sub" data-t-sub></div></div></div></div></div></div>
   </a>
   <div class="dashboard-surface dashboard-kpi rounded-2xl p-3 md:p-4">
     <div class="text-xs flex items-center uppercase tracking-wider font-bold text-[#8f172d] block mb-1 gap-2">

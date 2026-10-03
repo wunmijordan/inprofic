@@ -33,6 +33,7 @@
         <p><strong class="text-stone-800">{% if plan.user_limit %}{{ plan.user_limit }} user{{ plan.user_limit|pluralize }}{% else %}Unlimited users{% endif %}</strong></p>
         <p>{% if plan.additional_service_limit == None %}Unlimited additional service profiles{% elif plan.additional_service_limit %}{{ plan.additional_service_limit }} additional service profile{{ plan.additional_service_limit|pluralize }}{% else %}Single service profile{% endif %}</p>
         {% if plan.code != 'starter' %}<p>Additional services use the configured {{ plan.additional_service_discount_percent }}% discount.</p>{% endif %}
+        {% include "accounts/_plan_payroll_addon.html" with plan=plan symbol=biz.currency_symbol included=card.payroll_included %}
       </div>
       <div class="mt-auto pt-5 w-full">
         {% if card.payment_locked %}

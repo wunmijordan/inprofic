@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load core_extras %}
+{% load core_extras l10n %}
 {% block content %}
 <div class="flex flex-wrap justify-between gap-3 mb-4">
   <div>
@@ -10,6 +10,7 @@
     {% if run.status == 'draft' %}
       <a href="{% url 'production_run_edit' run.pk %}" class="px-3 py-2 text-sm rounded-md border border-[#D9CFB4]">Attach / remove existing orders</a>
       <a href="{% url 'order_add' %}?run={{ run.pk }}" class="px-3 py-2 text-sm rounded-md bg-sky-700 text-white">+ Add New Customer Order</a>
+      {% if base_pool %}<a href="{% url 'order_add' %}?run={{ run.pk }}&independent=1" class="px-3 py-2 text-sm rounded-md bg-[#8f172d] text-white">+ Add independent order from the remaining {% if base_pool.material %}{{ base_pool.material.name }}{% else %}base material{% endif %}</a>{% endif %}
     {% endif %}
     <a href="{% url 'production_runs' %}" class="px-3 py-2 text-sm text-stone-500">All runs</a>
   </div>
@@ -18,6 +19,31 @@
 <div class="rounded-lg border border-sky-200 bg-sky-50 p-4 mb-4 text-sm text-sky-900">
   <b>Several commercial orders, one coordinated production approval.</b> Every order keeps its customer, channel, selling price, requested quantity and optional production target. Materials are still calculated proportionally from the registered product {{ vertical_ui.recipe_label|lower }}: for example, 50 pieces from a 110-piece batch uses 50/110 of each configured batch input. The run only combines those requirements before release.
 </div>
+
+{% if base_pool %}
+<div class="mb-4 rounded-lg border {% if base_pool.overflow > 0 %}border-rose-200 bg-rose-50{% else %}border-emerald-200 bg-emerald-50{% endif %} p-4 text-sm">
+  <div class="flex flex-wrap items-baseline justify-between gap-2">
+    <div class="font-semibold text-stone-800">Overall base material{% if base_pool.material %} · {{ base_pool.material.name }}{% endif %}</div>
+    <div class="font-mono text-xs"><span class="text-stone-500">Pool</span> <b>{{ base_pool.total|num }}</b> · <span class="text-stone-500">Used by orders</span> <b>{{ base_pool.used|num }}</b> · {% if base_pool.overflow > 0 %}<span class="font-semibold text-rose-700">Over by {{ base_pool.overflow|num }}</span>{% else %}<span class="font-semibold text-emerald-700">Remaining {{ base_pool.remaining|num }}</span>{% endif %} {{ base_pool.material.usage_unit|default:"" }}</div>
+  </div>
+  <div class="mt-2 h-2 overflow-hidden rounded-full bg-white/70"><div class="h-full {% if base_pool.overflow > 0 %}bg-rose-500{% else %}bg-emerald-500{% endif %}" style="width: {% if base_pool.total > 0 %}{% widthratio base_pool.used base_pool.total 100 %}{% else %}0{% endif %}%; max-width: 100%"></div></div>
+  <ul class="mt-2 space-y-0.5 text-xs text-stone-700">
+    {% for r in base_pool.rows %}<li class="flex justify-between gap-3"><a href="{% url 'order_detail' r.order.pk %}" class="text-[#8f172d] hover:underline">Order #{{ r.order.display_number }}</a><span class="font-mono">{% if not r.fits %}<span class="font-sans font-semibold text-rose-700">can't draw from this pool</span>{% elif r.counted %}{{ r.quantity|num }} {{ base_pool.material.usage_unit|default:"" }}{% else %}<span class="text-stone-400">not using {{ base_pool.material.name|default:"the base material" }}</span>{% endif %}</span></li>{% endfor %}
+  </ul>
+  {% if base_pool.misfits %}<div class="mt-3 rounded-md border border-rose-200 bg-white p-2 text-xs text-rose-700"><b>These orders are not counted against the pool and block approval:</b>{% for m in base_pool.misfits %}<div>Order #{{ m.order.display_number }}: {{ m.reason }}.</div>{% endfor %}</div>{% endif %}
+  {% if run.status == 'draft' %}
+  <form method="post" action="{% url 'production_run_adjust_pool' run.pk %}" class="mt-3 flex flex-wrap items-end gap-2 border-t {% if base_pool.overflow > 0 %}border-rose-200{% else %}border-emerald-200{% endif %} pt-3">{% csrf_token %}
+    <label class="text-[11px] font-semibold text-stone-600">Adjust pool{% if base_pool.material %} ({{ base_pool.material.usage_unit }}){% endif %}
+      <input type="number" name="base_material_quantity" value="{{ base_pool.total|unlocalize }}" min="0.0001" step="0.0001" required class="mt-1 block w-40 rounded-md border border-stone-300 bg-white px-2 py-1.5 font-mono text-sm text-stone-900">
+    </label>
+    <button type="submit" class="rounded-md bg-[#8f172d] px-3 py-1.5 text-xs font-semibold text-white">Update pool</button>
+    {% if base_pool.overflow > 0 %}<button type="submit" name="use_needed" value="1" class="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700">Raise pool to {{ base_pool.used|num }} (what the orders need)</button>{% endif %}
+  </form>
+  {% endif %}
+  {% if not base_pool.material %}<p class="mt-2 text-xs text-amber-800">The base material comes from the products of the orders in this run. Add orders whose products share one base material.</p>{% endif %}
+  {% if base_pool.remaining > 0 %}<p class="mt-2 text-xs text-stone-600">{{ base_pool.remaining|num }} {{ base_pool.material.usage_unit|default:"" }}{% if base_pool.material %} of {{ base_pool.material.name }}{% endif %} is still unallocated. Add an independent order to stretch the run to the full pool.</p>{% endif %}
+</div>
+{% endif %}
 
 {% if plan_errors %}<div class="rounded-md border border-rose-200 bg-rose-50 p-3 mb-4 text-sm text-rose-700">{% for e in plan_errors %}<div>{{ e }}</div>{% endfor %}</div>{% endif %}
 
@@ -50,7 +76,7 @@
 <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
   <h3 class="text-sm font-semibold text-amber-900">Flexible {{ vertical_ui.recipe_label|lower }} usage for this run</h3>
   <p class="text-xs text-amber-700 mt-1 mb-2">These are the same flexible {{ vertical_ui.recipe_label|lower }} controls used by individual order approval. Any override is applied to that product/order's own proportional multiplier.</p>
-  {% for row in flexible_usages %}<div class="grid grid-cols-[1fr_10rem] gap-3 border-t border-amber-200 py-2 items-end"><div class="text-xs"><b>Order #{{ row.item.order.display_number }} · {{ row.good.name }}</b> · {{ row.material.name }} · {{ vertical_ui.recipe_label }} {{ row.planned_per_batch|num }} {{ row.usage_unit }}/batch</div><label class="text-[10px]">Actual / batch<input form="approve-run-form" type="number" min="0" step="0.01" name="{{ row.input_name }}" value="{{ row.actual_per_batch }}" class="w-full rounded border border-amber-300 px-2 py-1"></label></div>{% endfor %}
+  {% for row in flexible_usages %}{% if row.central %}<div class="border-t border-amber-200 py-2"><div class="grid grid-cols-[1fr_10rem] gap-3 items-end"><div class="text-xs"><b>{{ row.material.name }}</b> · one merged total for {% if row.order %}Order #{{ row.order.display_number }}{% else %}the whole run{% endif %} · planned {{ row.planned_total|num }} {{ row.usage_unit }}</div><label class="text-[10px]">Total used ({{ row.usage_unit }})<input form="approve-run-form" type="number" min="0" step="0.0001" name="{{ row.input_name }}" value="{{ row.input_value }}" class="w-full rounded border border-amber-300 px-2 py-1"></label></div><ul class="mt-1 text-[11px] text-amber-800">{% for a in row.allocations %}<li class="flex justify-between gap-3"><span>Order #{{ a.order.display_number }} · {{ a.good.name }}</span><span class="font-mono">{{ a.actual|num }} {{ row.usage_unit }}</span></li>{% endfor %}</ul></div>{% else %}<div class="grid grid-cols-[1fr_10rem] gap-3 border-t border-amber-200 py-2 items-end"><div class="text-xs"><b>Order #{{ row.item.order.display_number }} · {{ row.good.name }}</b> · {{ row.material.name }} · {{ vertical_ui.recipe_label }} {{ row.planned_per_batch|num }} {{ row.usage_unit }}/batch</div><label class="text-[10px]">Actual / batch<input form="approve-run-form" type="number" min="0" step="0.01" name="{{ row.input_name }}" value="{{ row.input_value }}" class="w-full rounded border border-amber-300 px-2 py-1"></label></div>{% endif %}{% endfor %}
 </div>
 {% endif %}
 
@@ -61,7 +87,7 @@
 <div class="flex flex-wrap gap-2">
 {% if run.status == 'draft' %}
   <form id="approve-run-form" method="post" action="{% url 'production_run_approve' run.pk %}">{% csrf_token %}<button class="px-3.5 py-2 rounded-md bg-[#8f172d] text-white text-sm font-medium">Approve Run — release combined materials</button></form>
-  {% if confirm_approve %}<form method="post" action="{% url 'production_run_approve' run.pk %}">{% csrf_token %}<input type="hidden" name="force" value="1">{% for row in flexible_usages %}<input type="hidden" name="{{ row.input_name }}" value="{{ row.actual_per_batch }}">{% endfor %}<button class="px-3.5 py-2 rounded-md bg-rose-600 text-white text-sm">Approve anyway (allow negative raw stock)</button></form>{% endif %}
+  {% if confirm_approve %}<form method="post" action="{% url 'production_run_approve' run.pk %}">{% csrf_token %}<input type="hidden" name="force" value="1">{% for row in flexible_usages %}<input type="hidden" name="{{ row.input_name }}" value="{{ row.input_value }}">{% endfor %}<button class="px-3.5 py-2 rounded-md bg-rose-600 text-white text-sm">Approve anyway (allow negative raw stock)</button></form>{% endif %}
   <form method="post" action="{% url 'production_run_delete' run.pk %}" onsubmit="return confirm('Delete this draft production run? Orders themselves will remain.');">{% csrf_token %}<button class="px-3.5 py-2 text-sm text-stone-500">Delete draft</button></form>
 {% endif %}
 </div>

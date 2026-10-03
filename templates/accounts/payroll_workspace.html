@@ -22,14 +22,12 @@
         Run payroll
       </a>
     {% endif %}
-    {% if not payroll_state.included %}
       <a
         href="{% url 'payroll_addon_checkout' %}"
         class="rounded-md bg-[#050733] px-3 py-2 text-sm font-semibold text-white"
       >
         Payroll add-on pricing
       </a>
-    {% endif %}
   </div>
 </div>
 

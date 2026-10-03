@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -13,7 +13,7 @@ from procurement.models import RawMaterialCostSnapshot
 from .forms import (OrderForm, OrderItemFormSet, ProductionCompletionForm, ProductionQualityCheckForm, ProductionReconciliationForm, ProductionRunForm, PlannedOffcutAllocationFormSet)
 from .models import (Order, OrderNumberSequence, OrderItem, OrderMaterialUsage, ProductionBatch, ProductionBatchReconciliation, ProductionQualityCheck, ProductionCostSnapshot, ProductionCostLine, ProductionRun, ProductionOffcutAllocation)
 from sales.models import CustomerProductPrice
-from inventory.models import FinishedGood
+from inventory.models import FinishedGood, RawMaterial
 from inventory.services import (
     receive_market_production,
     record_raw_material_movement,
@@ -121,9 +121,14 @@ def order_form(request, pk=None):
         has_items = formset.is_valid() and any(
             f.cleaned_data and not f.cleaned_data.get("DELETE") for f in formset.forms
         )
+        run_errors = []
+        if target_run and form.is_valid() and has_items:
+            run_errors = _run_order_errors(target_run, form, formset)
+            for run_error in run_errors:
+                messages.error(request, run_error)
         if form.is_valid() and formset.is_valid() and not has_items:
             messages.error(request, "Add at least one product.")
-        elif form.is_valid() and has_items:
+        elif form.is_valid() and has_items and not run_errors:
             order_type = form.cleaned_data.get("order_type")
             order = form.save(commit=False)
             order.business = request.business
@@ -205,16 +210,24 @@ def order_form(request, pk=None):
             messages.success(request, "Order updated." if obj else "Order created — approve it from the Orders page when ready.")
             return redirect("order_detail", pk=order.pk)
     else:
-        form = OrderForm(instance=obj, initial=None if obj else {"date": today(), "order_type": "distribution"}, business=request.business)
+        new_initial = {"date": today(), "order_type": "distribution"}
+        new_basis, new_pool = Order.BASIS_PRODUCT_QUANTITY, Decimal("0")
+        if target_run and target_run.production_basis == ProductionRun.BASIS_BASE_MATERIAL and request.GET.get("independent"):
+            # Independent order that stretches the run to its overall base material.
+            _flex, _entries, _agg, _summary, _errs = _shared_run_release_plan(target_run)
+            pool = _run_base_pool(target_run, _entries)
+            new_basis, new_pool = Order.BASIS_BASE_MATERIAL, (pool["remaining"] if pool else Decimal("0"))
+            new_initial.update({"order_type": "physical_store", "production_basis": new_basis, "base_material_quantity": new_pool})
+        form = OrderForm(instance=obj, initial=None if obj else new_initial, business=request.business)
         store_replenishment = bool(
             obj and obj.order_type == "physical_store" and obj.production_destination == "store"
         )
         formset = OrderItemFormSet(
             instance=obj, store_replenishment=store_replenishment,
             market_stock=bool(obj and obj.is_market_stock_order),
-            order_type=(obj.order_type if obj else "distribution"),
-            production_basis=(obj.production_basis if obj else Order.BASIS_PRODUCT_QUANTITY),
-            base_material_quantity=(obj.base_material_quantity if obj else Decimal("0")),
+            order_type=(obj.order_type if obj else new_initial["order_type"]),
+            production_basis=(obj.production_basis if obj else new_basis),
+            base_material_quantity=(obj.base_material_quantity if obj else new_pool),
         )
     prices = _price_map()
     return render(request, "production/order_form.html", {"form": form, "formset": formset, "prices": prices, "obj": obj, "target_run": target_run})
@@ -271,84 +284,183 @@ def order_recreate(request, pk):
     return redirect("order_edit", pk=new_order.pk)
 
 
+_USAGE_QUANTUM = Decimal("0.0001")
+
+
+def _allocate_proportionally(total, weights, fallback_weights=None):
+    """Split ``total`` across ``weights`` so the parts add up to exactly ``total``.
+
+    Parts are rounded to the 4 dp stored on OrderMaterialUsage; any rounding
+    remainder is settled on the largest share so nothing is lost or invented.
+    """
+    count = len(weights)
+    if count == 0:
+        return []
+    total = total.quantize(_USAGE_QUANTUM, rounding=ROUND_HALF_UP)
+    basis = list(weights)
+    if sum(basis, Decimal("0")) <= 0:
+        basis = list(fallback_weights or [])
+    if sum(basis, Decimal("0")) <= 0:
+        basis = [Decimal("1")] * count
+    basis_sum = sum(basis, Decimal("0"))
+    shares = [(total * w / basis_sum).quantize(_USAGE_QUANTUM, rounding=ROUND_HALF_UP) for w in basis]
+    largest = max(range(count), key=lambda idx: shares[idx])
+    shares[largest] += total - sum(shares, Decimal("0"))
+    return shares
+
+
 def _material_release_plan(order, post_data=None):
+    """Release plan for ONE order (see ``_plan_release``).
+
+    Base-material orders take one central total per flexible ingredient for the
+    whole order (``flex_total_<order>_<material>``); product-quantity orders keep
+    per-product, per-batch inputs (``flex_qty_<item>_<link>``).
+    """
+    return _plan_release(
+        [order], post_data, central=order.production_basis == Order.BASIS_BASE_MATERIAL, scope=order.pk
+    )
+
+
+def _plan_release(orders, post_data=None, *, central=False, scope=None):
     """Return flexible controls, per-item usage snapshots, and total release.
 
     Recipe quantities remain fixed unless the RecipeItem is explicitly marked
-    flexible. Flexible values are entered as quantity per batch at approval.
+    flexible. With ``central=True`` each flexible ingredient is ONE total across
+    every product of every order passed in (``flex_total_<scope>_<material>``).
+    That total is allotted to each product that uses it in proportion to its
+    planned requirement, and the allotment is what is stored per product and
+    released from stock. Otherwise flexible ingredients are entered per batch,
+    per product.
     """
     flexible_rows = []
     usage_entries = []
     aggregated = {}
     errors = []
+    central_mode = bool(central)
+    central_groups = {}
 
-    prefetched_items = getattr(order, "_prefetched_objects_cache", {}).get("items")
-    if prefetched_items is None:
-        items = list(order.items.select_related("finished_good").prefetch_related(
-            "finished_good__recipe_items__raw_material",
-            "finished_good__production_materials__raw_material",
-        ))
-    else:
-        items = prefetched_items
-    for item in items:
-        good = item.finished_good
-        upb = good.units_per_batch or Decimal("1")
-        multiplier = item.effective_production_batch_qty + (item.effective_production_piece_qty / upb)
-        per_material = {}
-        links = [(link, True) for link in good.recipe_items.all()]
-        links += [(link, False) for link in good.production_materials.all()]
+    for order in orders:
+        prefetched_items = getattr(order, "_prefetched_objects_cache", {}).get("items")
+        if prefetched_items is None:
+            items = list(order.items.select_related("finished_good").prefetch_related(
+                "finished_good__recipe_items__raw_material",
+                "finished_good__production_materials__raw_material",
+            ))
+        else:
+            items = prefetched_items
+        for item in items:
+            good = item.finished_good
+            upb = good.units_per_batch or Decimal("1")
+            multiplier = item.effective_production_batch_qty + (item.effective_production_piece_qty / upb)
+            per_material = {}
+            links = [(link, True) for link in good.recipe_items.all()]
+            links += [(link, False) for link in good.production_materials.all()]
 
-        for link, is_recipe in links:
-            planned_per_batch = link.qty_per_batch
-            actual_per_batch = planned_per_batch
-            flexible = bool(is_recipe and getattr(link, "flexible_usage", False))
-            input_name = f"flex_qty_{item.pk}_{link.pk}" if flexible else None
+            for link, is_recipe in links:
+                planned_per_batch = link.qty_per_batch
+                actual_per_batch = planned_per_batch
+                flexible = bool(is_recipe and getattr(link, "flexible_usage", False))
+                input_name = f"flex_qty_{item.pk}_{link.pk}" if flexible else None
 
-            if flexible and post_data is not None:
-                raw = post_data.get(input_name)
-                if raw not in (None, ""):
-                    try:
-                        actual_per_batch = Decimal(str(raw))
-                        if actual_per_batch < 0:
-                            raise ValueError
-                    except Exception:
-                        errors.append(
-                            f"Enter a valid non-negative quantity for {link.raw_material.name} in {good.name}."
-                        )
-                        actual_per_batch = planned_per_batch
-
-            if flexible:
-                flexible_rows.append({
-                    "item": item,
-                    "good": good,
-                    "material": link.raw_material,
-                    "input_name": input_name,
-                    "planned_per_batch": planned_per_batch,
-                    "actual_per_batch": actual_per_batch,
-                    "multiplier": multiplier,
-                    "usage_unit": link.raw_material.usage_unit,
+                material_row = per_material.setdefault(link.raw_material_id, {
+                    "order": order,
+                    "order_item": item,
+                    "raw_material": link.raw_material,
+                    "planned_quantity": Decimal("0"),
+                    "actual_quantity": Decimal("0"),
+                    "flexible": False,
                 })
+                material_row["planned_quantity"] += planned_per_batch * multiplier
 
-            material_row = per_material.setdefault(link.raw_material_id, {
-                "order": order,
-                "order_item": item,
-                "raw_material": link.raw_material,
-                "planned_quantity": Decimal("0"),
-                "actual_quantity": Decimal("0"),
-                "flexible": False,
+                if flexible and central_mode:
+                    # Resolved after every product has been seen, so the one
+                    # central total can be allotted across all of them.
+                    group = central_groups.setdefault(link.raw_material_id, {"material": link.raw_material, "entries": []})
+                    group["entries"].append({
+                        "order": order, "item": item, "good": good, "row": material_row,
+                        "planned": planned_per_batch * multiplier, "multiplier": multiplier,
+                    })
+                    continue
+
+                if flexible and post_data is not None:
+                    raw = post_data.get(input_name)
+                    if raw not in (None, ""):
+                        try:
+                            actual_per_batch = Decimal(str(raw))
+                            if actual_per_batch < 0:
+                                raise ValueError
+                        except Exception:
+                            errors.append(
+                                f"Enter a valid non-negative quantity for {link.raw_material.name} in {good.name}."
+                            )
+                            actual_per_batch = planned_per_batch
+
+                if flexible:
+                    flexible_rows.append({
+                        "central": False,
+                        "item": item,
+                        "good": good,
+                        "material": link.raw_material,
+                        "input_name": input_name,
+                        "input_value": actual_per_batch,
+                        "planned_per_batch": planned_per_batch,
+                        "actual_per_batch": actual_per_batch,
+                        "multiplier": multiplier,
+                        "usage_unit": link.raw_material.usage_unit,
+                    })
+
+                material_row["actual_quantity"] += actual_per_batch * multiplier
+                material_row["flexible"] = material_row["flexible"] or flexible
+
+            usage_entries.extend(per_material.values())
+
+    single_order = orders[0] if len(orders) == 1 else None
+    for material_id, group in central_groups.items():
+        material = group["material"]
+        entries = group["entries"]
+        planned_total = sum((e["planned"] for e in entries), Decimal("0"))
+        actual_total = planned_total
+        input_name = f"flex_total_{scope}_{material_id}"
+        if post_data is not None:
+            raw = post_data.get(input_name)
+            if raw not in (None, ""):
+                try:
+                    actual_total = Decimal(str(raw))
+                    if actual_total < 0:
+                        raise ValueError
+                except Exception:
+                    errors.append(f"Enter a valid non-negative total quantity for {material.name}.")
+                    actual_total = planned_total
+        shares = _allocate_proportionally(
+            actual_total, [e["planned"] for e in entries], [e["multiplier"] for e in entries]
+        )
+        allocations = []
+        for entry, share in zip(entries, shares):
+            entry["row"]["actual_quantity"] += share
+            entry["row"]["flexible"] = True
+            allocations.append({
+                "order": entry["order"], "item": entry["item"], "good": entry["good"],
+                "planned": entry["planned"], "actual": share, "multiplier": entry["multiplier"],
             })
-            material_row["planned_quantity"] += planned_per_batch * multiplier
-            material_row["actual_quantity"] += actual_per_batch * multiplier
-            material_row["flexible"] = material_row["flexible"] or flexible
+        flexible_rows.append({
+            "central": True,
+            "order": single_order,          # None when the total spans several orders (a run)
+            "material": material,
+            "input_name": input_name,
+            "input_value": actual_total,
+            "planned_total": planned_total,
+            "actual_total": actual_total,
+            "usage_unit": material.usage_unit,
+            "allocations": allocations,
+        })
 
-        usage_entries.extend(per_material.values())
-        for material_row in per_material.values():
-            mat = material_row["raw_material"]
-            current = aggregated.get(mat.pk)
-            if current:
-                current[1] += material_row["actual_quantity"]
-            else:
-                aggregated[mat.pk] = [mat, material_row["actual_quantity"]]
+    for material_row in usage_entries:
+        mat = material_row["raw_material"]
+        current = aggregated.get(mat.pk)
+        if current:
+            current[1] += material_row["actual_quantity"]
+        else:
+            aggregated[mat.pk] = [mat, material_row["actual_quantity"]]
 
     return flexible_rows, usage_entries, aggregated, errors
 
@@ -362,27 +474,30 @@ def _shared_run_release_plan(production_run, post_data=None):
     registered batch ingredient/input). The run simply sums those real
     requirements and releases them together once.
     """
-    flexible_rows = []
-    usage_entries = []
-    aggregated = {}
-    errors = []
-
-    for order in production_run.orders.all().prefetch_related(
+    orders = list(production_run.orders.all().prefetch_related(
         "items__finished_good__recipe_items__raw_material",
         "items__finished_good__production_materials__raw_material",
-    ):
-        order_flexible, order_entries, order_aggregated, order_errors = _material_release_plan(
-            order, post_data
+    ))
+    if production_run.production_basis == ProductionRun.BASIS_BASE_MATERIAL:
+        # One overall base-material pool means one merged total per flexible
+        # ingredient across the WHOLE run, allotted to every product of every
+        # member order in proportion to its planned requirement.
+        flexible_rows, usage_entries, aggregated, errors = _plan_release(
+            orders, post_data, central=True, scope=f"run{production_run.pk}"
         )
-        flexible_rows.extend(order_flexible)
-        usage_entries.extend(order_entries)
-        errors.extend(order_errors)
-        for mat_id, (mat, qty) in order_aggregated.items():
-            current = aggregated.get(mat_id)
-            if current:
-                current[1] += qty
-            else:
-                aggregated[mat_id] = [mat, Decimal(qty)]
+    else:
+        flexible_rows, usage_entries, aggregated, errors = [], [], {}, []
+        for order in orders:
+            order_flexible, order_entries, order_aggregated, order_errors = _material_release_plan(order, post_data)
+            flexible_rows.extend(order_flexible)
+            usage_entries.extend(order_entries)
+            errors.extend(order_errors)
+            for mat_id, (mat, qty) in order_aggregated.items():
+                current = aggregated.get(mat_id)
+                if current:
+                    current[1] += qty
+                else:
+                    aggregated[mat_id] = [mat, Decimal(qty)]
 
     material_summary = [
         {"material": mat, "quantity": qty}
@@ -391,6 +506,124 @@ def _shared_run_release_plan(production_run, post_data=None):
         )
     ]
     return flexible_rows, usage_entries, aggregated, material_summary, errors
+
+
+def _run_orders_in_attach_order(run):
+    ids = list(run.order_links.order_by("pk").values_list("order_id", flat=True))
+    by_pk = {o.pk: o for o in Order.objects.filter(pk__in=ids).select_related("customer").prefetch_related("items__finished_good")}
+    return [by_pk[i] for i in ids if i in by_pk]
+
+
+def run_base_material(run):
+    """The base material of a base-material run.
+
+    It is not typed on the run: it is the base material set on the products of
+    the member orders, and the FIRST attached order that has one defines it.
+    Orders that do not match are reported as misfits (see ``_run_base_pool``)
+    instead of making the whole pool disappear.
+    """
+    from .forms import order_base_material_id
+
+    if run.production_basis != ProductionRun.BASIS_BASE_MATERIAL:
+        return None
+    for order in _run_orders_in_attach_order(run):
+        base_id = order_base_material_id(order)
+        if base_id:
+            return RawMaterial.objects.filter(pk=base_id).first()
+    return None
+
+
+def _run_base_pool(run, usage_entries):
+    """Overall base-material pool of a shared run versus what its orders use.
+
+    Member orders keep their own sizing (customer orders stay product-quantity);
+    each draws its normal base-material requirement from the run's pool. What
+    counts is what the products actually use, never an order's own base-material
+    allotment, and the run's pool quantity is only ever changed on the run.
+    Orders that cannot draw from this pool (no base material on their products,
+    or a different one) are listed as misfits and block approval.
+    """
+    from .forms import order_base_material_id
+
+    if run.production_basis != ProductionRun.BASIS_BASE_MATERIAL:
+        return None
+    material = run_base_material(run)
+    drawn = {}
+    for entry in usage_entries:
+        if material and entry["raw_material"].pk == material.pk:
+            drawn[entry["order"].pk] = drawn.get(entry["order"].pk, Decimal("0")) + entry["actual_quantity"]
+    rows, misfits = [], []
+    for order in _run_orders_in_attach_order(run):
+        base_id = order_base_material_id(order)
+        fits = bool(material) and base_id == material.pk
+        reason = ""
+        if material and not fits:
+            reason = (
+                "no single base material is set on all its products" if base_id is None
+                else "its products use a different base material"
+            )
+            misfits.append({"order": order, "reason": reason})
+        qty = drawn.get(order.pk, Decimal("0")) if fits else Decimal("0")
+        rows.append({"order": order, "quantity": qty, "counted": qty > 0, "fits": fits or not material, "reason": reason})
+    used = sum((r["quantity"] for r in rows), Decimal("0"))
+    total = Decimal(run.base_material_quantity or 0)
+    return {
+        "material": material, "total": total, "used": used,
+        "remaining": max(Decimal("0"), total - used), "overflow": max(Decimal("0"), used - total),
+        "rows": rows, "misfits": misfits,
+    }
+
+
+def _run_order_errors(target_run, form, formset):
+    """Rules for a NEW order created inside a base-material run.
+
+    Every order in such a run must draw from the run's base material, so every
+    product on the new order must use it (or, while the run has no base yet,
+    share one). This applies to customer/product-quantity orders too. A short
+    pool is not an error here: the run page shows it and the pool can be raised.
+    An independent base-material order must also fit what is left in the pool.
+    """
+    if target_run.production_basis != ProductionRun.BASIS_BASE_MATERIAL:
+        return []
+    errors = []
+    _flex, entries, _agg, _summary, _errs = _shared_run_release_plan(target_run)
+    pool = _run_base_pool(target_run, entries)
+    material = pool["material"] if pool else None
+
+    goods = []
+    for f in formset.forms:
+        data = getattr(f, "cleaned_data", None) or {}
+        if data.get("finished_good") and not data.get("DELETE"):
+            goods.append(data["finished_good"])
+    if material:
+        for good in goods:
+            if good.base_material_id is None:
+                errors.append(
+                    f"{good.name} has no base material set, so this order cannot join a base-material run. "
+                    f"Set {material.name} as the product's base material first."
+                )
+            elif good.base_material_id != material.pk:
+                errors.append(
+                    f"{good.name} uses {good.base_material.name} as its base material, not {material.name}, "
+                    "so it cannot draw from this run's pool."
+                )
+    elif goods:
+        ids = {g.base_material_id for g in goods}
+        if None in ids:
+            names = ", ".join(g.name for g in goods if g.base_material_id is None)
+            errors.append(f"{names}: no base material is set, so this order cannot join a base-material run.")
+        elif len(ids) > 1:
+            errors.append("The products on this order use different base materials; a base-material run needs one shared base material.")
+
+    if form.cleaned_data.get("production_basis") == Order.BASIS_BASE_MATERIAL:
+        quantity = Decimal(form.cleaned_data.get("base_material_quantity") or 0)
+        unit = f" {material.usage_unit} of {material.name}" if material else ""
+        if pool and quantity > pool["remaining"]:
+            errors.append(
+                f"This order's base material ({quantity:g}) is more than what is left in the run's pool "
+                f"({pool['remaining']:g}{unit})."
+            )
+    return errors
 
 
 @login_required
@@ -436,7 +669,7 @@ def production_run_form(request, pk=None):
         if not run:
             initial = {"date": today(), "run_number": f"RUN-{today().strftime('%y%m%d')}-{get_random_string(4).upper()}"}
         form = ProductionRunForm(instance=instance, initial=initial)
-    return render(request, "production/run_form.html", {"form": form, "run": run})
+    return render(request, "production/run_form.html", {"form": form, "run": run, "order_bases": form.order_base_map})
 
 
 @login_required
@@ -449,8 +682,10 @@ def production_run_detail(request, pk):
     shortages = []
     plan_errors = []
     material_summary = []
+    base_pool = None
     if run.status == "draft":
         flexible_rows, _entries, aggregated, material_summary, plan_errors = _shared_run_release_plan(run)
+        base_pool = _run_base_pool(run, _entries)
         for mat, needed in aggregated.values():
             if needed > mat.stock:
                 shortages.append({
@@ -469,8 +704,42 @@ def production_run_detail(request, pk):
         ]
     return render(request, "production/run_detail.html", {
         "run": run, "flexible_usages": flexible_rows, "shortages": shortages,
-        "plan_errors": plan_errors, "material_summary": material_summary,
+        "plan_errors": plan_errors, "material_summary": material_summary, "base_pool": base_pool,
     })
+
+
+@login_required
+def production_run_adjust_pool(request, pk):
+    """Adjust the overall base-material pool of a draft run from the run page."""
+    run = get_object_or_404(ProductionRun, pk=pk)
+    if request.method != "POST":
+        return redirect("production_run_detail", pk=pk)
+    if run.status != "draft" or run.production_basis != ProductionRun.BASIS_BASE_MATERIAL:
+        messages.error(request, "The base-material pool can only be adjusted on a draft base-material run.")
+        return redirect("production_run_detail", pk=pk)
+    if request.POST.get("use_needed"):
+        _flex, entries, _agg, _summary, _errs = _shared_run_release_plan(run)
+        pool = _run_base_pool(run, entries)
+        new_total = pool["used"] if pool else Decimal("0")
+    else:
+        try:
+            new_total = Decimal(str(request.POST.get("base_material_quantity", "")).strip())
+        except Exception:
+            new_total = Decimal("0")
+    new_total = new_total.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP) if new_total.is_finite() else Decimal("0")
+    if new_total <= 0 or new_total >= Decimal("1e10"):
+        messages.error(request, "Enter a pool quantity greater than zero.")
+        return redirect("production_run_detail", pk=pk)
+    old_total = run.base_material_quantity
+    run.base_material_quantity = new_total
+    run.save(update_fields=["base_material_quantity", "updated_at"])
+    audit(
+        request.business, request.user, "adjust", run,
+        f"Shared production run {run.run_number} base-material pool adjusted",
+        {"from": str(old_total), "to": str(new_total)},
+    )
+    messages.success(request, f"Base-material pool updated to {new_total:g}.")
+    return redirect("production_run_detail", pk=pk)
 
 
 @login_required
@@ -488,12 +757,29 @@ def production_run_approve(request, pk):
         return redirect("production_run_detail", pk=pk)
 
     flexible_rows, usage_entries, aggregated, material_summary, errors = _shared_run_release_plan(run, request.POST)
+    base_pool = _run_base_pool(run, usage_entries)
+    if base_pool and base_pool["material"] is None:
+        errors = list(errors) + [
+            "A base-material run needs at least one order whose products have a base material set. "
+            "Add one, or change the run's basis."
+        ]
+    if base_pool:
+        errors = list(errors) + [
+            f"Order #{m['order'].display_number} cannot draw from the run's pool: {m['reason']}. "
+            "Remove it from the run or fix its products' base material before approving."
+            for m in base_pool["misfits"]
+        ]
+    if base_pool and base_pool["overflow"] > 0:
+        errors = list(errors) + [
+            f"Member orders need {base_pool['used']:g} {base_pool['material'].usage_unit} of {base_pool['material'].name}, "
+            f"but the run's overall pool is {base_pool['total']:g}. Reduce an order or raise the pool before approving."
+        ]
     if errors:
         for error in errors:
             messages.error(request, error)
         return render(request, "production/run_detail.html", {
             "run": run, "flexible_usages": flexible_rows, "shortages": [],
-            "plan_errors": errors, "material_summary": material_summary,
+            "plan_errors": errors, "material_summary": material_summary, "base_pool": base_pool,
         })
     shortages = []
     for mat, needed in aggregated.values():
@@ -505,7 +791,7 @@ def production_run_approve(request, pk):
     if shortages and not force:
         return render(request, "production/run_detail.html", {
             "run": run, "flexible_usages": flexible_rows, "shortages": shortages,
-            "confirm_approve": True, "plan_errors": [], "material_summary": material_summary,
+            "confirm_approve": True, "plan_errors": [], "material_summary": material_summary, "base_pool": base_pool,
         })
 
     with transaction.atomic():
@@ -625,6 +911,10 @@ def order_approve(request, pk):
         order.save()
         audit(request.business, request.user, "approve", order, f"Order #{order.display_number} approved", {
             "flexible_materials": [
+                {
+                    "material": r["material"].name, "central_total": str(r["actual_total"]),
+                    "allotted": {f"Order #{a['order'].display_number} · {a['good'].name}": str(a["actual"]) for a in r["allocations"]},
+                } if r["central"] else
                 {"product": r["good"].name, "material": r["material"].name, "qty_per_batch": str(r["actual_per_batch"])}
                 for r in flexible_usages
             ]

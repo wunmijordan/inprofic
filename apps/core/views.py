@@ -124,19 +124,20 @@ def marketing_home(request):
 
     marketing_cache_key = None
     if not request.user.is_authenticated and not request.GET:
-        marketing_cache_key = f"marketing:home:v2:{request.get_host().lower()}"
+        marketing_cache_key = f"marketing:home:v3:{request.get_host().lower()}"
         with performance_section(request, "marketing.cache_read"):
             cached_html = cache.get(marketing_cache_key)
         if cached_html is not None:
             return HttpResponse(cached_html, content_type="text/html; charset=utf-8")
     with performance_section(request, "marketing.data"):
         from accounts.models import MarketingPromoCampaign, SubscriptionPlan, SubscriptionPolicySettings
-        from accounts.subscription_services import attach_active_promotions, build_plan_feature_matrix
+        from accounts.subscription_services import attach_active_promotions, attach_payroll_tiers, build_plan_feature_matrix
         plans = attach_active_promotions(
             SubscriptionPlan.objects.filter(active=True)
             .prefetch_related("module_entitlements")
             .order_by("monthly_price", "id")
         )
+        plans = attach_payroll_tiers(plans)
         moment = timezone.now()
         marketing_campaigns = list(
             MarketingPromoCampaign.objects.filter(
@@ -1608,6 +1609,16 @@ def _segment_search_detail(kind, value):
 
 
 @login_required
+def dashboard_stock_ticker(request):
+    """Live daily balances for the dashboard cards (polled; no page load)."""
+    from .stock_ticker import build_stock_ticker
+
+    response = JsonResponse(build_stock_ticker(today()))
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@login_required
 def dashboard_search(request):
     q = request.GET.get("q", "")
     return JsonResponse({"results": _search_results(q)})
@@ -1655,6 +1666,8 @@ def reports_full_required(view_func):
 
 @login_required
 def dashboard(request):
+    from .stock_ticker import build_stock_ticker
+
     dashboard_date = today()
     month_start = dashboard_date.replace(day=1)
     year_start = dashboard_date.replace(month=1, day=1)
@@ -1783,6 +1796,7 @@ def dashboard(request):
             stock_unit = selected_item.unit
 
     context = {
+        "stock_ticker": build_stock_ticker(dashboard_date),
         "raw_count": len(raw_materials),
         "goods_count": len(finished_goods),
         "warning_raw": warning_raw,

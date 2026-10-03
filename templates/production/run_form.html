@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block content %}
 <div class="max-w-5xl">
   <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
@@ -16,11 +17,48 @@
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
           {% include "_field.html" with field=form.date %}
           {% include "_field.html" with field=form.run_number %}
-          <div class="md:col-span-2">{% include "_field.html" with field=form.orders %}<p data-form-help-text data-form-help-for="{{ form.orders.id_for_label }}" class="-mt-2 text-[11px] leading-5 text-stone-500">Choose one or more pending orders. On a desktop, use Ctrl or Cmd while selecting more than one.</p></div>
+          <div class="md:col-span-2">{% include "_field.html" with field=form.orders %}<p data-form-help-text data-form-help-for="{{ form.orders.id_for_label }}" class="-mt-2 text-[11px] leading-5 text-stone-500">Open the dropdown and tick one or more pending orders. With a base-material basis it only offers orders whose products share one base material.</p></div>
           <div class="md:col-span-2">{% include "_field.html" with field=form.notes %}</div>
         </div>
       </section>
-      <div class="rounded-2xl border border-[#E7DFCC] bg-stone-50 p-4 text-xs leading-5 text-stone-600"><strong>No extra material quantities are needed here.</strong> Each selected order already carries its own recipe and production size. Flexible recipe items remain adjustable during approval where the product allows it.</div>
+      <section class="cf-form-section" data-run-basis>
+        <div class="cf-form-section-title mb-1">Base material basis <span class="text-[11px] font-normal text-stone-400">(optional)</span></div>
+        <p class="mb-3 text-xs leading-5 text-stone-500">Enter one overall pool quantity for the whole run. The base material itself is not chosen here: it is the one set on the products of the orders you add, so every member order (customer orders included) must share it. Each order draws its normal requirement from the pool. The run page then shows what is left, so you can add an independent order to use up the remainder.</p>
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {% include "_field.html" with field=form.production_basis %}
+          <div data-run-basis-fields>{% include "_field.html" with field=form.base_material_quantity %}</div>
+        </div>
+      </section>
+      <script src="{% static 'core/js/multiselect-dropdown.js' %}" defer></script>
+      {{ order_bases|json_script:"run-order-bases" }}
+      <script>
+      (function () {
+        var root = document.querySelector('[data-run-basis]'); if (!root) return;
+        var select = root.querySelector('select[name="production_basis"]');
+        var fields = root.querySelectorAll('[data-run-basis-fields]');
+        var picker = document.querySelector('select[name="orders"]');
+        var map = JSON.parse(document.getElementById('run-order-bases').textContent || '{}');
+        function sync() {
+          var on = select && select.value === 'base_material';
+          fields.forEach(function (el) { el.hidden = !on; });
+          if (!picker) return;
+          // Base basis: only orders whose products share ONE base material, and
+          // once an order is picked, only orders using that same base material.
+          var chosen = null;
+          Array.prototype.forEach.call(picker.selectedOptions, function (o) { chosen = chosen || map[o.value]; });
+          Array.prototype.forEach.call(picker.options, function (opt) {
+            var base = map[opt.value];
+            var ok = !on || (base != null && (chosen == null || String(base) === String(chosen)));
+            opt.hidden = !ok; opt.disabled = !ok && !opt.selected;
+          });
+          picker.dispatchEvent(new Event('ms-refresh'));
+        }
+        if (select) { select.addEventListener('change', sync); }
+        if (picker) { picker.addEventListener('change', sync); }
+        sync();
+      })();
+      </script>
+      <div class="rounded-2xl border border-[#E7DFCC] bg-stone-50 p-4 text-xs leading-5 text-stone-600"><strong>No extra material quantities are needed here.</strong> With a base-material basis, flexible ingredients become one merged total for the whole run on the run page. Each selected order already carries its own recipe and production size. Flexible recipe items remain adjustable during approval where the product allows it.</div>
       <div class="flex justify-end"><button type="submit" class="rounded-xl bg-[#8f172d] px-5 py-2.5 text-sm font-semibold text-white">Save shared run</button></div>
     </div>
   </form>

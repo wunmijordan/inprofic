@@ -217,11 +217,79 @@ class CommerceApiProductTests(TestCase):
         distribution = next(mode for mode in row["order_modes"] if mode["code"] == "distribution")
         self.assertTrue(distribution["requires_bulk_pack"])
         self.assertEqual(distribution["pricing_source"], "bulk_options")
-        self.assertIsNone(distribution["price"])
-        self.assertIsNone(distribution["min_quantity"])
-        self.assertIsNone(row["distribution_price"])
-        self.assertIsNone(row["distribution_min_quantity"])
+        # Display price comes from the first bulk pack; ordering still needs the pack id.
+        self.assertEqual(distribution["price"], "9000.00")
+        self.assertFalse(distribution["price_is_from"])
+        self.assertEqual(distribution["display_bulk_pack_id"], str(pack.public_id))
+        self.assertEqual(distribution["unit"], "litre")
+        self.assertEqual(distribution["min_quantity"], "1.00")
+        self.assertEqual(row["distribution_price"], "9000.00")
+        self.assertFalse(row["distribution_price_is_from"])
+        self.assertEqual(row["distribution_min_quantity"], "1.00")
         self.assertNotIn("physical_store", {mode["code"] for mode in row["order_modes"]})
+
+    def test_portion_label_shows_customer_quantity_in_base_unit_on_api_and_card(self):
+        self.good.unit = "bun"
+        self.good.save(update_fields=["unit"])
+        ProductPortionProfile.raw_objects.create(
+            business=self.business, finished_good=self.good, active=True,
+            customer_quantity=1, customer_unit="pack", base_quantity=4,
+        )
+        row = self.client.get(f"/api/v1/storefronts/{self.business.slug}/products").json()["products"][0]
+        self.assertEqual(row["portion_label"], "1 pack of 4 buns")
+        page = self.client.get(reverse("storefront", args=[self.business.slug]))
+        self.assertContains(page, "1 pack of 4 buns")
+
+    def test_portion_label_is_empty_without_an_active_standard_portion(self):
+        ProductPortionProfile.raw_objects.create(
+            business=self.business, finished_good=self.good, active=False,
+            customer_quantity=1, customer_unit="pack", base_quantity=4,
+        )
+        row = self.client.get(f"/api/v1/storefronts/{self.business.slug}/products").json()["products"][0]
+        self.assertEqual(row["portion_label"], "")
+
+    def test_multiple_bulk_packs_expose_first_pack_as_a_from_price(self):
+        first = BulkPackProfile.raw_objects.create(
+            business=self.business, finished_good=self.good, name="Small tub", sort_order=1,
+            customer_quantity=1, customer_unit="tub", base_quantity=6, price=Decimal("4500"),
+        )
+        BulkPackProfile.raw_objects.create(
+            business=self.business, finished_good=self.good, name="Large tub", sort_order=2,
+            customer_quantity=2, customer_unit="tub", base_quantity=12, price=Decimal("8000"),
+            min_order_quantity=Decimal("3"),
+        )
+        row = self.client.get(f"/api/v1/storefronts/{self.business.slug}/products").json()["products"][0]
+        mode = next(m for m in row["order_modes"] if m["code"] == "distribution")
+        self.assertEqual(mode["price"], "4500.00")
+        self.assertTrue(mode["price_is_from"])
+        self.assertEqual(mode["display_bulk_pack_id"], str(first.public_id))
+        self.assertTrue(mode["requires_bulk_pack"])  # ordering contract is unchanged
+        self.assertEqual(row["distribution_price"], "4500.00")
+        self.assertTrue(row["distribution_price_is_from"])
+        self.assertEqual(len(row["bulk_packs"]), 2)
+
+    def test_channel_price_is_used_when_there_are_no_bulk_packs(self):
+        row = self.client.get(f"/api/v1/storefronts/{self.business.slug}/products").json()["products"][0]
+        mode = next(m for m in row["order_modes"] if m["code"] == "distribution")
+        self.assertFalse(mode["requires_bulk_pack"])
+        self.assertFalse(mode["price_is_from"])
+        self.assertIsNone(mode["display_bulk_pack_id"])
+        self.assertEqual(mode["price"], row["distribution_price"])
+        self.assertIsNotNone(row["distribution_price"])
+
+    def test_hosted_storefront_card_shows_first_pack_price_with_from_prefix(self):
+        BulkPackProfile.raw_objects.create(
+            business=self.business, finished_good=self.good, name="Small tub", sort_order=1,
+            customer_quantity=1, customer_unit="tub", base_quantity=6, price=Decimal("4500"),
+        )
+        BulkPackProfile.raw_objects.create(
+            business=self.business, finished_good=self.good, name="Large tub", sort_order=2,
+            customer_quantity=2, customer_unit="tub", base_quantity=12, price=Decimal("8000"),
+        )
+        page = self.client.get(reverse("storefront", args=[self.business.slug]))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'data-price-distribution="4500.00"')
+        self.assertContains(page, 'data-bulk-from="1"')
 
     def test_distribution_does_not_fall_back_to_standard_selling_price(self):
         FinishedGoodChannelPrice.objects.filter(finished_good=self.good, channel="distribution").delete()

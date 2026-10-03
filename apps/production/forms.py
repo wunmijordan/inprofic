@@ -3,7 +3,7 @@ from django import forms
 from django.forms.models import BaseInlineFormSet, inlineformset_factory
 from django.db.models import Q
 from .models import Order, OrderItem, ProductionBatch, ProductionQualityCheck, ProductionRun
-from inventory.models import FinishedGood
+from inventory.models import FinishedGood, RawMaterial
 from sales.models import Customer
 from core.models import CashAccount
 from core.verticals import vertical_config
@@ -533,6 +533,15 @@ class ProductionQualityCheckForm(StyledModelForm):
         widgets = {"notes": forms.Textarea(attrs={"rows": 2}), "defects": forms.Textarea(attrs={"rows": 2})}
 
 
+def order_base_material_id(order):
+    """The single base material every product of ``order`` shares, else None.
+
+    Used to decide which pending orders can join a base-material shared run.
+    """
+    ids = {item.finished_good.base_material_id for item in order.items.all()}
+    return next(iter(ids)) if len(ids) == 1 and None not in ids else None
+
+
 class ProductionRunForm(StyledModelForm):
     orders = forms.ModelMultipleChoiceField(
         queryset=Order.objects.none(),
@@ -542,12 +551,12 @@ class ProductionRunForm(StyledModelForm):
             "Optionally attach pending orders that are already in INPROFIC. "
             "After saving the run, you can also create new customer orders directly inside it."
         ),
-        widget=forms.SelectMultiple(attrs={"size": "7"}),
+        widget=forms.SelectMultiple(attrs={"data-multiselect-dropdown": "1", "data-placeholder": "Select pending orders\u2026", "data-noun": "selected"}),
     )
 
     class Meta:
         model = ProductionRun
-        fields = ["date", "run_number", "notes"]
+        fields = ["date", "run_number", "production_basis", "base_material_quantity", "notes"]
         widgets = {
             "date": forms.DateInput(attrs={"type": "date"}),
             "notes": forms.Textarea(attrs={"rows": 3}),
@@ -555,6 +564,10 @@ class ProductionRunForm(StyledModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["production_basis"].label = "Production basis"
+        self.fields["base_material_quantity"].required = False
+        self.fields["base_material_quantity"].label = "Overall base material quantity"
+        self.fields["base_material_quantity"].widget.attrs.update({"min": "0", "step": "0.0001", "placeholder": "0"})
         available = Order.objects.filter(status="pending")
         current_ids = []
         if self.instance and self.instance.pk:
@@ -568,14 +581,49 @@ class ProductionRunForm(StyledModelForm):
         ).prefetch_related("items__finished_good").order_by("date", "pk")
         if not self.is_bound and current_ids:
             self.initial["orders"] = current_ids
+        self.fields["orders"].queryset = self.fields["orders"].queryset.prefetch_related("items__finished_good__base_material")
+        # order pk -> its single shared base material id (None when mixed/missing).
+        # The page uses it to show only orders matching the chosen base material.
+        self.order_base_map = {o.pk: order_base_material_id(o) for o in self.fields["orders"].queryset}
+        base_names = dict(RawMaterial.objects.filter(pk__in={v for v in self.order_base_map.values() if v}).values_list("pk", "name"))
         self.fields["orders"].label_from_instance = lambda o: (
             f"Order #{o.display_number} · {o.display_order_type} · "
             f"{(o.customer_name or 'Physical Store')} · "
+            f"base: {base_names.get(self.order_base_map.get(o.pk)) or 'none / mixed'} · "
             + ", ".join(
                 f"{i.finished_good.name} ({i.production_total_units:g})"
                 for i in o.items.all()
             )
         )
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("production_basis") == ProductionRun.BASIS_BASE_MATERIAL:
+            if (cleaned.get("base_material_quantity") or Decimal("0")) <= 0:
+                self.add_error("base_material_quantity", "Enter the overall base material available to this run.")
+            # The base material is not chosen here: it is the one set on the
+            # products of the member orders, so every member must share it.
+            orders = list(cleaned.get("orders") or [])
+            by_base = {}
+            for o in orders:
+                by_base.setdefault(order_base_material_id(o), []).append(o)
+            missing = by_base.pop(None, [])
+            if missing:
+                self.add_error("orders", (
+                    "These orders have no single base material set on all their products: "
+                    + ", ".join(f"#{o.display_number}" for o in missing) + ". Set the product base material or remove them."
+                ))
+            if len(by_base) > 1:
+                names = dict(RawMaterial.objects.filter(pk__in=by_base).values_list("pk", "name"))
+                self.add_error("orders", (
+                    "A base-material run needs one shared base material, but the selected orders use: "
+                    + "; ".join(f"{names.get(pk, pk)} (" + ", ".join(f"#{o.display_number}" for o in os_) + ")" for pk, os_ in by_base.items())
+                    + "."
+                ))
+        else:
+            cleaned["production_basis"] = ProductionRun.BASIS_PRODUCT_QUANTITY
+            cleaned["base_material_quantity"] = Decimal("0")
+        return cleaned
 
     def clean_orders(self):
         orders = self.cleaned_data.get("orders")

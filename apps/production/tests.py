@@ -422,3 +422,519 @@ class BaseMaterialProductionTests(TestCase):
         self.assertEqual(item.effective_production_batch_qty, expected_factor)
         self.assertEqual(item.total_units, expected_factor * Decimal("50"))
 
+
+
+class CentralFlexibleMaterialTests(TestCase):
+    """Base-material orders take ONE central total per flexible ingredient and
+    allot it across the order's products; other orders keep per-batch inputs."""
+
+    def setUp(self):
+        from inventory.models import RawMaterial, RecipeItem
+
+        self.business = Business.objects.create(name="Flex Kitchen", slug="flex-kitchen")
+
+        def material(name, stock="500"):
+            return RawMaterial.raw_objects.create(
+                business=self.business, name=name, category=RawMaterial.CATEGORY_INGREDIENT,
+                purchase_unit="bag", package_qty=Decimal("50"), package_unit="kg", usage_unit="kg",
+                usage_conversion_factor=Decimal("1"), stock=Decimal(stock), reorder_level=Decimal("1"),
+                cost_per_unit=Decimal("100"),
+            )
+
+        self.rice = material("Rice")
+        self.sugar = material("Sugar")
+
+        def good(name, upb, sugar_per_batch):
+            fg = FinishedGood.raw_objects.create(
+                business=self.business, name=name, unit="portion", units_per_batch=Decimal(upb),
+                base_material=self.rice, stock=Decimal("0"), reorder_level=Decimal("0"),
+                selling_price=Decimal("1000"),
+            )
+            RecipeItem.objects.create(finished_good=fg, raw_material=self.rice, qty_per_batch=Decimal("5"))
+            RecipeItem.objects.create(
+                finished_good=fg, raw_material=self.sugar, qty_per_batch=Decimal(sugar_per_batch), flexible_usage=True,
+            )
+            return fg
+
+        self.jollof = good("Jollof", "50", "2")   # 1.5 batches x 2 = 3 planned
+        self.fried = good("Fried", "40", "1")     # 1.5 batches x 1 = 1.5 planned
+
+    def make_order(self, basis):
+        order = Order.raw_objects.create(
+            business=self.business, date=date(2026, 9, 2), order_type="physical_store", status="pending",
+            production_basis=basis,
+            base_material_quantity=Decimal("50") if basis == Order.BASIS_BASE_MATERIAL else Decimal("0"),
+        )
+        for fg, pieces in ((self.jollof, "25"), (self.fried, "20")):
+            OrderItem.objects.create(
+                order=order, finished_good=fg, batch_qty=Decimal("1"), piece_qty=Decimal(pieces),
+                price=Decimal("1000"), production_basis=basis,
+            )
+        return Order.objects.get(pk=order.pk)
+
+    def usage_by_good(self, entries):
+        return {
+            e["order_item"].finished_good.name: e["actual_quantity"]
+            for e in entries if e["raw_material"].pk == self.sugar.pk
+        }
+
+    def test_base_material_order_gets_one_central_row_per_flexible_material(self):
+        from .views import _material_release_plan
+
+        order = self.make_order(Order.BASIS_BASE_MATERIAL)
+        rows, entries, aggregated, errors = _material_release_plan(order)
+        self.assertEqual(errors, [])
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertTrue(row["central"])
+        self.assertEqual(row["input_name"], f"flex_total_{order.pk}_{self.sugar.pk}")
+        self.assertEqual(row["planned_total"], Decimal("4.5"))
+        self.assertEqual(self.usage_by_good(entries), {"Jollof": Decimal("3"), "Fried": Decimal("1.5")})
+
+    def test_central_total_is_allotted_in_proportion_to_each_products_plan(self):
+        from .views import _material_release_plan
+
+        order = self.make_order(Order.BASIS_BASE_MATERIAL)
+        post = {f"flex_total_{order.pk}_{self.sugar.pk}": "9"}
+        _, entries, aggregated, errors = _material_release_plan(order, post)
+        self.assertEqual(errors, [])
+        self.assertEqual(self.usage_by_good(entries), {"Jollof": Decimal("6"), "Fried": Decimal("3")})
+        self.assertEqual(aggregated[self.sugar.pk][1], Decimal("9"))
+        # The non-flexible base material is untouched by the central override.
+        self.assertEqual(aggregated[self.rice.pk][1], Decimal("15"))
+
+    def test_allotment_never_loses_or_invents_quantity_to_rounding(self):
+        from .views import _material_release_plan
+
+        order = self.make_order(Order.BASIS_BASE_MATERIAL)
+        post = {f"flex_total_{order.pk}_{self.sugar.pk}": "1"}
+        _, entries, aggregated, _ = _material_release_plan(order, post)
+        shares = self.usage_by_good(entries)
+        self.assertEqual(sum(shares.values(), Decimal("0")), Decimal("1.0000"))
+        self.assertEqual(shares["Jollof"], Decimal("0.6667"))
+        self.assertEqual(shares["Fried"], Decimal("0.3333"))
+        self.assertEqual(aggregated[self.sugar.pk][1], Decimal("1.0000"))
+
+    def test_invalid_central_total_is_reported_and_falls_back_to_plan(self):
+        from .views import _material_release_plan
+
+        order = self.make_order(Order.BASIS_BASE_MATERIAL)
+        for bad in ("abc", "-2"):
+            _, entries, _, errors = _material_release_plan(order, {f"flex_total_{order.pk}_{self.sugar.pk}": bad})
+            self.assertEqual(len(errors), 1)
+            self.assertEqual(self.usage_by_good(entries), {"Jollof": Decimal("3"), "Fried": Decimal("1.5")})
+
+    def test_product_quantity_orders_keep_per_product_per_batch_inputs(self):
+        from .views import _material_release_plan
+
+        order = self.make_order(Order.BASIS_PRODUCT_QUANTITY)
+        rows, entries, _, errors = _material_release_plan(order)
+        self.assertEqual(errors, [])
+        self.assertEqual(len(rows), 2)
+        self.assertFalse(any(r["central"] for r in rows))
+        self.assertTrue(all(r["input_name"].startswith("flex_qty_") for r in rows))
+
+    def test_order_detail_shows_central_input_and_approval_releases_allotted_totals(self):
+        user = CustomUser.objects.create_superuser(username="flex-admin", password="safe-password-123", fullname="Admin")
+        self.client.force_login(user)
+        order = self.make_order(Order.BASIS_BASE_MATERIAL)
+
+        page = self.client.get(reverse("order_detail", args=[order.pk]))
+        self.assertContains(page, "Total used for this order")
+        self.assertContains(page, f'name="flex_total_{order.pk}_{self.sugar.pk}"')
+        self.assertNotContains(page, "Actual qty / batch")
+
+        response = self.client.post(reverse("order_approve", args=[order.pk]), {f"flex_total_{order.pk}_{self.sugar.pk}": "9"})
+        self.assertRedirects(response, reverse("order_detail", args=[order.pk]))
+        from .models import OrderMaterialUsage
+
+        usage = {
+            u.order_item.finished_good.name: u.actual_quantity
+            for u in OrderMaterialUsage.objects.filter(order=order, raw_material=self.sugar)
+        }
+        self.assertEqual(usage, {"Jollof": Decimal("6.0000"), "Fried": Decimal("3.0000")})
+        self.sugar.refresh_from_db()
+        self.assertEqual(self.sugar.stock, Decimal("491"))
+
+
+class SharedRunBaseMaterialPoolTests(TestCase):
+    """A shared run can carry one overall base-material pool that all member
+    orders draw from, with the remainder available to an independent order."""
+
+    setUp = CentralFlexibleMaterialTests.setUp
+    make_order = CentralFlexibleMaterialTests.make_order
+
+    def make_run(self, pool, orders=2):
+        from .models import ProductionRun, ProductionRunOrder
+
+        run = ProductionRun.raw_objects.create(
+            business=self.business, date=date(2026, 9, 2), run_number=f"RUN-{pool}-{ProductionRun.raw_objects.count()}",
+            production_basis=ProductionRun.BASIS_BASE_MATERIAL,
+            base_material_quantity=Decimal(pool),
+        )
+        for _ in range(orders):
+            ProductionRunOrder.objects.create(production_run=run, order=self.make_order(Order.BASIS_PRODUCT_QUANTITY))
+        return ProductionRun.objects.get(pk=run.pk)
+
+    def pool(self, run):
+        from .views import _run_base_pool, _shared_run_release_plan
+
+        _f, entries, _a, _s, _e = _shared_run_release_plan(run)
+        return _run_base_pool(run, entries)
+
+    def test_pool_totals_what_member_orders_draw_and_what_is_left(self):
+        pool = self.pool(self.make_run("40"))
+        self.assertEqual((pool["used"], pool["remaining"], pool["overflow"]), (Decimal("30"), Decimal("10"), Decimal("0")))
+
+    def test_pool_reports_overflow_when_orders_need_more_than_the_pool(self):
+        pool = self.pool(self.make_run("20"))
+        self.assertEqual((pool["remaining"], pool["overflow"]), (Decimal("0"), Decimal("10")))
+
+    def test_product_quantity_runs_have_no_pool(self):
+        from .models import ProductionRun
+        run = ProductionRun.raw_objects.create(business=self.business, date=date(2026, 9, 2), run_number="RUN-PLAIN")
+        self.assertIsNone(self.pool(ProductionRun.objects.get(pk=run.pk)))
+
+    def test_independent_order_cannot_exceed_the_remaining_pool_or_use_another_base(self):
+        from types import SimpleNamespace
+        from .views import _run_order_errors
+
+        run = self.make_run("40")
+        form = lambda qty: SimpleNamespace(cleaned_data={"production_basis": Order.BASIS_BASE_MATERIAL, "base_material_quantity": Decimal(qty)})
+        formset = SimpleNamespace(forms=[SimpleNamespace(cleaned_data={"finished_good": self.jollof})])
+        self.assertEqual(_run_order_errors(run, form("10"), formset), [])
+        self.assertEqual(len(_run_order_errors(run, form("10.5"), formset)), 1)
+        other = SimpleNamespace(forms=[SimpleNamespace(cleaned_data={"finished_good": self.jollof})])
+        self.jollof.base_material = self.sugar
+        self.assertEqual(len(_run_order_errors(run, form("1"), other)), 1)
+
+    def test_approval_is_blocked_when_orders_overdraw_the_pool_and_allowed_when_they_fit(self):
+        user = CustomUser.objects.create_superuser(username="run-admin", password="safe-password-123", fullname="Admin")
+        self.client.force_login(user)
+        over = self.make_run("20")
+        self.client.post(reverse("production_run_approve", args=[over.pk]))
+        over.refresh_from_db()
+        self.assertEqual(over.status, "draft")
+        fits = self.make_run("40")
+        self.client.post(reverse("production_run_approve", args=[fits.pk]))
+        fits.refresh_from_db()
+        self.assertEqual(fits.status, "approved")
+
+    def test_run_page_shows_pool_and_the_independent_order_action(self):
+        user = CustomUser.objects.create_superuser(username="run-viewer", password="safe-password-123", fullname="Admin")
+        self.client.force_login(user)
+        run = self.make_run("40")
+        page = self.client.get(reverse("production_run_detail", args=[run.pk]))
+        self.assertContains(page, "Overall base material")
+        self.assertContains(page, "Remaining")
+        self.assertContains(page, "independent=1")
+        form = self.client.get(reverse("order_add"), {"run": run.pk, "independent": "1"})
+        self.assertEqual(form.status_code, 200)
+        self.assertEqual(form.context["form"].initial["base_material_quantity"], Decimal("10"))
+
+
+class SharedRunBaseMaterialMergeTests(SharedRunBaseMaterialPoolTests.__bases__[0]):
+    """Base-material runs accept every pending order sharing the base material
+    (customer orders included) and merge flexible ingredients into one run total."""
+
+    setUp = CentralFlexibleMaterialTests.setUp
+    make_order = CentralFlexibleMaterialTests.make_order
+    make_run = SharedRunBaseMaterialPoolTests.make_run
+    pool = SharedRunBaseMaterialPoolTests.pool
+
+    def login(self):
+        user = CustomUser.objects.create_superuser(username="merge-admin", password="safe-password-123", fullname="Admin")
+        self.client.force_login(user)
+
+    def customer_order(self):
+        order = self.make_order(Order.BASIS_PRODUCT_QUANTITY)
+        order.order_type, order.customer_name = "online", "Ada"
+        order.save(update_fields=["order_type", "customer_name"])
+        return order
+
+    def foreign_base_order(self):
+        syrup = FinishedGood.raw_objects.create(
+            business=self.business, name="Syrup", unit="bottle", units_per_batch=Decimal("10"),
+            base_material=self.sugar, stock=Decimal("0"), reorder_level=Decimal("0"), selling_price=Decimal("100"),
+        )
+        order = Order.raw_objects.create(business=self.business, date=date(2026, 9, 2), order_type="physical_store", status="pending")
+        OrderItem.objects.create(order=order, finished_good=syrup, batch_qty=Decimal("1"), price=Decimal("100"))
+        return Order.objects.get(pk=order.pk)
+
+    def run_post(self, orders):
+        return {
+            "date": "2026-09-02", "run_number": "RUN-MERGE", "production_basis": "base_material",
+            "base_material_quantity": "100", "orders": [o.pk for o in orders],
+        }
+
+    def test_customer_orders_sharing_the_base_material_can_be_drafted_into_the_run(self):
+        from .models import ProductionRun
+        self.login()
+        orders = [self.customer_order(), self.make_order(Order.BASIS_PRODUCT_QUANTITY)]
+        response = self.client.post(reverse("production_run_add"), self.run_post(orders))
+        self.assertEqual(response.status_code, 302, getattr(response, "context", None) and response.context["form"].errors)
+        run = ProductionRun.objects.get(run_number="RUN-MERGE")
+        self.assertEqual(set(run.orders.values_list("pk", flat=True)), {o.pk for o in orders})
+
+    def test_orders_that_do_not_share_one_base_material_are_rejected(self):
+        from .models import ProductionRun
+        self.login()
+        orders = [self.customer_order(), self.foreign_base_order()]
+        response = self.client.post(reverse("production_run_add"), self.run_post(orders))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("orders", response.context["form"].errors)
+        self.assertFalse(ProductionRun.objects.filter(run_number="RUN-MERGE").exists())
+
+    def test_run_form_lists_each_orders_base_material_for_the_picker(self):
+        self.login()
+        order = self.customer_order()
+        page = self.client.get(reverse("production_run_add"))
+        self.assertContains(page, 'id="run-order-bases"')
+        self.assertEqual(page.context["order_bases"][order.pk], self.rice.pk)
+        self.assertContains(page, "base: Rice")
+
+    def test_flexible_ingredient_is_one_merged_total_across_the_whole_run(self):
+        from .views import _shared_run_release_plan
+        run = self.make_run("100")
+        flex, entries, aggregated, _summary, errors = _shared_run_release_plan(run, {f"flex_total_run{run.pk}_{self.sugar.pk}": "18"})
+        self.assertEqual(errors, [])
+        self.assertEqual(len(flex), 1)
+        row = flex[0]
+        self.assertTrue(row["central"])
+        self.assertIsNone(row["order"])
+        self.assertEqual(row["planned_total"], Decimal("9"))
+        self.assertEqual(len(row["allocations"]), 4)  # 2 orders x 2 products
+        self.assertEqual(sum((a["actual"] for a in row["allocations"]), Decimal("0")), Decimal("18"))
+        self.assertEqual({a["good"].name: a["actual"] for a in row["allocations"]}, {"Jollof": Decimal("6"), "Fried": Decimal("3")})
+        self.assertEqual(aggregated[self.sugar.pk][1], Decimal("18"))
+
+    def test_product_quantity_runs_keep_per_order_flexible_inputs(self):
+        from .models import ProductionRun, ProductionRunOrder
+        from .views import _shared_run_release_plan
+        run = ProductionRun.raw_objects.create(business=self.business, date=date(2026, 9, 2), run_number="RUN-QTY")
+        for _ in range(2):
+            ProductionRunOrder.objects.create(production_run=run, order=self.make_order(Order.BASIS_PRODUCT_QUANTITY))
+        flex, *_ = _shared_run_release_plan(ProductionRun.objects.get(pk=run.pk))
+        self.assertEqual(len(flex), 4)
+        self.assertFalse(any(r["central"] for r in flex))
+
+    def test_approval_releases_the_merged_total_and_blocks_mismatched_orders(self):
+        from .models import OrderMaterialUsage
+        self.login()
+        run = self.make_run("100")
+        self.client.post(reverse("production_run_approve", args=[run.pk]), {f"flex_total_run{run.pk}_{self.sugar.pk}": "18"})
+        run.refresh_from_db()
+        self.assertEqual(run.status, "approved")
+        used = sum(u.actual_quantity for u in OrderMaterialUsage.objects.filter(order__production_runs=run, raw_material=self.sugar))
+        self.assertEqual(used, Decimal("18.0000"))
+        self.sugar.refresh_from_db()
+        self.assertEqual(self.sugar.stock, Decimal("482"))
+        bad = self.make_run("100")
+        from .models import ProductionRunOrder
+        ProductionRunOrder.objects.create(production_run=bad, order=self.foreign_base_order())
+        self.client.post(reverse("production_run_approve", args=[bad.pk]))
+        bad.refresh_from_db()
+        self.assertEqual(bad.status, "draft")
+
+    def test_run_form_has_no_base_material_field_and_derives_it_from_the_orders(self):
+        from .models import ProductionRun
+        from .views import run_base_material
+        self.login()
+        page = self.client.get(reverse("production_run_add"))
+        self.assertNotIn("base_material", page.context["form"].fields)
+        self.assertContains(page, 'name="base_material_quantity"')
+        orders = [self.customer_order(), self.make_order(Order.BASIS_PRODUCT_QUANTITY)]
+        self.client.post(reverse("production_run_add"), self.run_post(orders))
+        run = ProductionRun.objects.get(run_number="RUN-MERGE")
+        self.assertEqual(run_base_material(run), self.rice)
+        pool = self.pool(run)
+        self.assertEqual((pool["material"], pool["total"]), (self.rice, Decimal("100")))
+
+    def test_pool_without_orders_has_no_material_yet_and_cannot_be_approved(self):
+        from .models import ProductionRun
+        self.login()
+        run = ProductionRun.raw_objects.create(
+            business=self.business, date=date(2026, 9, 2), run_number="RUN-EMPTY",
+            production_basis=ProductionRun.BASIS_BASE_MATERIAL, base_material_quantity=Decimal("50"),
+        )
+        run = ProductionRun.objects.get(pk=run.pk)
+        self.assertIsNone(self.pool(run)["material"])
+        page = self.client.get(reverse("production_run_detail", args=[run.pk]))
+        self.assertContains(page, "comes from the products of the orders")
+
+
+class RunOrderPickerDropdownTests(TestCase):
+    """The pending-orders picker is a real multi-select dropdown, not a list box."""
+
+    setUp = CentralFlexibleMaterialTests.setUp
+    make_order = CentralFlexibleMaterialTests.make_order
+    login = SharedRunBaseMaterialMergeTests.login
+    customer_order = SharedRunBaseMaterialMergeTests.customer_order
+    run_post = SharedRunBaseMaterialMergeTests.run_post
+
+    def test_order_picker_is_enhanced_into_a_dropdown_and_keeps_its_select(self):
+        self.login()
+        self.customer_order()
+        page = self.client.get(reverse("production_run_add"))
+        field = page.context["form"].fields["orders"]
+        self.assertNotIn("size", field.widget.attrs)
+        self.assertEqual(field.widget.attrs["data-multiselect-dropdown"], "1")
+        self.assertContains(page, "data-multiselect-dropdown")
+        self.assertContains(page, "core/js/multiselect-dropdown.js")
+        self.assertContains(page, 'multiple')
+        self.assertNotContains(page, "use Ctrl or Cmd")
+
+    def test_dropdown_selection_still_posts_through_the_underlying_select(self):
+        from .models import ProductionRun
+        self.login()
+        orders = [self.customer_order(), self.make_order(Order.BASIS_PRODUCT_QUANTITY)]
+        response = self.client.post(reverse("production_run_add"), self.run_post(orders))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(ProductionRun.objects.get(run_number="RUN-MERGE").orders.count(), 2)
+
+
+class RunPoolAdjustmentTests(TestCase):
+    """The draft run page can adjust the overall pool without going back to run setup."""
+
+    setUp = CentralFlexibleMaterialTests.setUp
+    make_order = CentralFlexibleMaterialTests.make_order
+    make_run = SharedRunBaseMaterialPoolTests.make_run
+    login = SharedRunBaseMaterialMergeTests.login
+
+    def test_page_shows_the_adjust_form_only_on_draft_base_material_runs(self):
+        from .models import ProductionRun
+        self.login()
+        run = self.make_run("40")
+        page = self.client.get(reverse("production_run_detail", args=[run.pk]))
+        self.assertContains(page, reverse("production_run_adjust_pool", args=[run.pk]))
+        self.assertContains(page, "Adjust pool")
+        self.assertNotContains(page, "Raise pool to")  # not short
+        plain = ProductionRun.raw_objects.create(business=self.business, date=date(2026, 9, 2), run_number="RUN-PLAIN2")
+        self.assertNotContains(self.client.get(reverse("production_run_detail", args=[plain.pk])), "Adjust pool")
+
+    def test_adjusting_the_pool_saves_audits_and_redirects(self):
+        self.login()
+        run = self.make_run("40")
+        response = self.client.post(reverse("production_run_adjust_pool", args=[run.pk]), {"base_material_quantity": "55.5"})
+        self.assertRedirects(response, reverse("production_run_detail", args=[run.pk]), fetch_redirect_response=False)
+        run.refresh_from_db()
+        self.assertEqual(run.base_material_quantity, Decimal("55.5000"))
+
+    def test_invalid_pool_values_are_rejected(self):
+        self.login()
+        run = self.make_run("40")
+        for bad in ("0", "-3", "abc", "", "nan"):
+            self.client.post(reverse("production_run_adjust_pool", args=[run.pk]), {"base_material_quantity": bad})
+            run.refresh_from_db()
+            self.assertEqual(run.base_material_quantity, Decimal("40.0000"), bad)
+
+    def test_short_pool_can_be_raised_to_what_orders_need_then_approved(self):
+        self.login()
+        run = self.make_run("20")  # orders need 30
+        page = self.client.get(reverse("production_run_detail", args=[run.pk]))
+        self.assertContains(page, "Raise pool to 30")
+        self.client.post(reverse("production_run_approve", args=[run.pk]))
+        run.refresh_from_db()
+        self.assertEqual(run.status, "draft")
+        self.client.post(reverse("production_run_adjust_pool", args=[run.pk]), {"use_needed": "1"})
+        run.refresh_from_db()
+        self.assertEqual(run.base_material_quantity, Decimal("30.0000"))
+        self.client.post(reverse("production_run_approve", args=[run.pk]))
+        run.refresh_from_db()
+        self.assertEqual(run.status, "approved")
+
+    def test_approved_runs_and_get_requests_cannot_change_the_pool(self):
+        self.login()
+        run = self.make_run("40")
+        self.client.post(reverse("production_run_approve", args=[run.pk]))
+        run.refresh_from_db()
+        self.assertEqual(run.status, "approved")
+        self.client.post(reverse("production_run_adjust_pool", args=[run.pk]), {"base_material_quantity": "99"})
+        self.client.get(reverse("production_run_adjust_pool", args=[run.pk]), {"base_material_quantity": "77"})
+        run.refresh_from_db()
+        self.assertEqual(run.base_material_quantity, Decimal("40.0000"))
+
+
+class RunPoolWithMisfitOrdersTests(TestCase):
+    """A short pool must stay visible when an order without a base material is
+    added, and an order's own base-material quantity never changes the run pool."""
+
+    setUp = CentralFlexibleMaterialTests.setUp
+    make_order = CentralFlexibleMaterialTests.make_order
+    make_run = SharedRunBaseMaterialPoolTests.make_run
+    pool = SharedRunBaseMaterialPoolTests.pool
+    login = SharedRunBaseMaterialMergeTests.login
+    foreign_base_order = SharedRunBaseMaterialMergeTests.foreign_base_order
+
+    def no_base_order(self):
+        plain = FinishedGood.raw_objects.create(
+            business=self.business, name="Water", unit="bottle", units_per_batch=Decimal("10"),
+            stock=Decimal("0"), reorder_level=Decimal("0"), selling_price=Decimal("100"),
+        )
+        order = Order.raw_objects.create(business=self.business, date=date(2026, 9, 2), order_type="online", customer_name="Ada", status="pending")
+        OrderItem.objects.create(order=order, finished_good=plain, batch_qty=Decimal("1"), price=Decimal("100"))
+        return Order.objects.get(pk=order.pk)
+
+    def attach(self, run, order):
+        from .models import ProductionRunOrder
+        ProductionRunOrder.objects.create(production_run=run, order=order)
+        return type(run).objects.get(pk=run.pk)
+
+    def test_short_pool_stays_visible_when_an_order_without_a_base_material_is_attached(self):
+        run = self.attach(self.make_run("20"), self.no_base_order())   # two rice orders need 30 of 20
+        pool = self.pool(run)
+        self.assertEqual(pool["material"], self.rice)
+        self.assertEqual((pool["used"], pool["overflow"]), (Decimal("30"), Decimal("10")))   # not "fresh"
+        self.assertEqual(len(pool["misfits"]), 1)
+        self.assertIn("no single base material", pool["misfits"][0]["reason"])
+
+    def test_misfit_order_is_flagged_on_the_page_and_blocks_approval(self):
+        self.login()
+        run = self.attach(self.make_run("100"), self.no_base_order())
+        page = self.client.get(reverse("production_run_detail", args=[run.pk]))
+        self.assertContains(page, "not counted against the pool")
+        self.assertContains(page, "draw from this pool")
+        self.client.post(reverse("production_run_approve", args=[run.pk]))
+        run.refresh_from_db()
+        self.assertEqual(run.status, "draft")
+
+    def test_first_attached_order_with_a_base_defines_the_run_base_material(self):
+        from .models import ProductionRun
+        from .views import run_base_material
+        run = ProductionRun.raw_objects.create(
+            business=self.business, date=date(2026, 9, 2), run_number="RUN-FIRST",
+            production_basis=ProductionRun.BASIS_BASE_MATERIAL, base_material_quantity=Decimal("50"),
+        )
+        run = self.attach(run, self.no_base_order())
+        self.assertIsNone(run_base_material(run))                      # nothing has a base yet
+        run = self.attach(run, self.foreign_base_order())              # sugar-based
+        self.assertEqual(run_base_material(run), self.sugar)
+        run = self.attach(run, self.make_order(Order.BASIS_PRODUCT_QUANTITY))   # rice-based -> misfit
+        self.assertEqual(run_base_material(run), self.sugar)
+        self.assertEqual(len(self.pool(run)["misfits"]), 2)
+
+    def test_new_order_inside_a_base_material_run_must_have_a_base_material(self):
+        from types import SimpleNamespace
+        from .views import _run_order_errors
+        run = self.make_run("20")                                      # already short
+        plain = FinishedGood.raw_objects.create(
+            business=self.business, name="Water", unit="bottle", units_per_batch=Decimal("10"),
+            stock=Decimal("0"), reorder_level=Decimal("0"), selling_price=Decimal("100"),
+        )
+        customer_form = SimpleNamespace(cleaned_data={"production_basis": Order.BASIS_PRODUCT_QUANTITY})
+        no_base = SimpleNamespace(forms=[SimpleNamespace(cleaned_data={"finished_good": plain})])
+        errors = _run_order_errors(run, customer_form, no_base)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("no base material set", errors[0])
+        fits = SimpleNamespace(forms=[SimpleNamespace(cleaned_data={"finished_good": self.jollof})])
+        self.assertEqual(_run_order_errors(run, customer_form, fits), [])   # short pool is NOT a creation error
+
+    def test_an_orders_own_base_quantity_never_changes_the_run_pool(self):
+        run = self.make_run("40")                                       # two rice orders use 30
+        independent = self.make_order(Order.BASIS_BASE_MATERIAL)        # its own allotment is 50
+        self.assertEqual(independent.base_material_quantity, Decimal("50"))
+        run = self.attach(run, independent)
+        pool = self.pool(run)
+        self.assertEqual(pool["total"], Decimal("40"))                  # pool unchanged by the order's 50
+        self.assertEqual(pool["used"], Decimal("45"))                   # counts what its products use (15), not 50
+        self.assertEqual(run.base_material_quantity, Decimal("40.0000"))

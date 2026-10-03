@@ -32,7 +32,7 @@
               {% elif value.state == 'partial' %}
                 <span class="inline-flex rounded-full {% if matrix_theme == 'dark' %}bg-[#e7bd65]/15 text-[#f3d99b]{% else %}bg-amber-50 text-amber-800{% endif %} px-2.5 py-1 text-[11px] font-semibold">{{ value.text }}</span>
               {% elif value.state == 'text' %}
-                <span class="inline-flex items-center justify-center text-xs font-semibold normal-case {% if matrix_theme == 'dark' %}text-white/75{% else %}text-stone-700{% endif %}" style="text-transform:none;letter-spacing:normal;">{{ value.text }}</span>
+                <span class="inline-flex items-center justify-center text-xs font-semibold normal-case {% if matrix_theme == 'dark' %}text-white/75{% else %}text-stone-700{% endif %}" style="text-transform:none;letter-spacing:normal;">{{ value.text }}{% if value.sub %}<span class="mt-0.5 block text-[11px] font-normal {% if matrix_theme == 'dark' %}text-white/45{% else %}text-stone-500{% endif %}">{{ value.sub }}</span>{% endif %}</span>
               {% else %}
                 <span class="inline-flex items-center justify-center {% if matrix_theme == 'dark' %}text-emerald-300{% else %}text-emerald-700{% endif %}" title="{{ value.text }}" aria-label="{{ value.text }}">
                   <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8.5 12 2.25 2.25L15.75 9"></path></svg>

@@ -753,6 +753,11 @@ class StorefrontProduct(BusinessOwnedModel):
         return customer_unit(self.finished_good)
 
     @property
+    def portion_label(self):
+        from inventory.portioning import portion_label
+        return portion_label(self.finished_good)
+
+    @property
     def standard_base_quantity(self):
         from inventory.portioning import standard_multiplier
         return standard_multiplier(self.finished_good)

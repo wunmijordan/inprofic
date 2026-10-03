@@ -275,7 +275,7 @@ def subscription_plans(request):
     if not is_business_admin(request.user, request.business):
         return render(request, "403.html", status=403)
     from .models import BusinessSubscription, SubscriptionPlan
-    from .subscription_services import attach_active_promotions, build_plan_feature_matrix, ensure_default_plans, paid_trial_available, payment_is_locked
+    from .subscription_services import attach_active_promotions, attach_payroll_tiers, build_plan_feature_matrix, ensure_default_plans, paid_trial_available, payment_is_locked
     ensure_default_plans()
     service = getattr(request.business, "subscription_service", None)
     subscription = service.subscription if service else BusinessSubscription.objects.filter(primary_business=request.business).select_related("plan").first()
@@ -285,11 +285,18 @@ def subscription_plans(request):
     plans = attach_active_promotions(
         SubscriptionPlan.objects.filter(active=True).prefetch_related("module_entitlements").order_by("monthly_price", "id")
     )
+    plans = attach_payroll_tiers(plans)
+    # Mirrors payroll_access_state(): trial and Founder lifetime get payroll free.
+    payroll_included = bool(subscription and (
+        subscription.founder_lifetime
+        or (subscription.status == BusinessSubscription.STATUS_TRIAL and subscription.is_effectively_active)
+    ))
     plan_cards = [
         {
             "plan": plan,
             "is_current": bool(subscription and subscription.is_effectively_active and subscription.plan_id == plan.pk),
             "payment_locked": payment_is_locked(subscription, plan),
+            "payroll_included": payroll_included and bool(subscription and subscription.plan_id == plan.pk),
             "requires_change_warning": bool(
                 subscription and subscription.is_effectively_active and subscription.plan_id != plan.pk
             ),
@@ -307,7 +314,7 @@ def subscription_plans(request):
         "subscription": subscription,
         "plans": plans,
         "plan_cards": plan_cards,
-        "plan_feature_matrix": build_plan_feature_matrix(plans),
+        "plan_feature_matrix": build_plan_feature_matrix(plans, getattr(request.business, "currency_symbol", "\u20a6")),
         "paid_trial_available": can_start_paid_trial,
         "can_add_service": bool(
             subscription and (
@@ -2326,9 +2333,9 @@ def payroll_addon_checkout(request):
     if not subscription:
         messages.error(request, "Choose a business plan before purchasing the payroll add-on.")
         return redirect("subscription_plans")
-    if state["included"]:
-        messages.info(request, "Payroll is already included with the current free-trial or Founder lifetime access.")
-        return redirect("payroll_workspace")
+    if state["included"] and request.method == "POST":
+        messages.info(request, "Payroll is already included with the current free-trial or Founder lifetime access, so there is nothing to pay yet.")
+        return redirect("payroll_addon_checkout")
     tiers = list(PayrollAddonTier.objects.filter(plan=subscription.plan, active=True).order_by("staff_limit"))
     payment_settings = SubscriptionPaymentSettings.load()
     providers = [
