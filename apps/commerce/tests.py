@@ -769,3 +769,30 @@ class CommerceQrCodeTests(TestCase):
     def test_qr_rejects_unknown_destinations(self):
         response = self.client.get(reverse("commerce_qr_code"), {"target": "outside"})
         self.assertEqual(response.status_code, 400)
+
+
+class StorefrontTaglineTests(TestCase):
+    def setUp(self):
+        self.business = Business.objects.create(name="Tagline Bakery", slug="tagline-bakery")
+        CommerceSettings.raw_objects.create(business=self.business, enabled=True, api_enabled=True)
+        good = FinishedGood.raw_objects.create(
+            business=self.business, name="Loaf", unit="loaf", units_per_batch=1, stock=5, reorder_level=1, selling_price=1000,
+        )
+        StorefrontProduct.raw_objects.create(business=self.business, finished_good=good, published=True, min_quantity=1)
+
+    def page(self):
+        return self.client.get(reverse("storefront", args=[self.business.slug]))
+
+    def test_business_tagline_is_shown_under_the_business_name(self):
+        self.business.tagline = "Fresh bread, baked daily"
+        self.business.save()
+        response = self.page()
+        self.assertContains(response, 'data-store-tagline')
+        self.assertContains(response, "Fresh bread, baked daily")
+
+    def test_no_tagline_means_nothing_under_the_name_and_range_label_stays_elsewhere(self):
+        response = self.page()
+        self.assertNotContains(response, 'data-store-tagline')
+        range_label = response.context["storefront_copy"]["range_label"]
+        self.assertNotContains(response, f'tracking-[.22em]">{range_label}</span></span>')
+        self.assertContains(response, range_label)   # still used in search placeholder / section heading

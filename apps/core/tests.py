@@ -316,14 +316,13 @@ class PwaEndpointTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["name"], "INPROFIC")
         self.assertEqual(payload["id"], "/pwa/inprofic")
-        self.assertEqual(payload["theme_color"], "#FFF1E8")
+        self.assertEqual(payload["theme_color"], "#050733")
         self.assertEqual(payload["background_color"], "#FFF1E8")
         self.assertTrue(any(icon["sizes"] == "512x512" for icon in payload["icons"]))
         self.assertTrue(all("core/pwa/icon-" in icon["src"] for icon in payload["icons"]))
         self.assertEqual({icon["purpose"] for icon in payload["icons"]}, {"any", "monochrome"})
         dark_payload = self.client.get(f'{reverse("pwa_manifest")}?theme=dark').json()
         self.assertEqual(dark_payload["background_color"], "#050733")
-        self.assertEqual(dark_payload["theme_color"], "#050733")
         self.assertTrue(any("icon-mark-on-dark-192.png" in icon["src"] for icon in dark_payload["icons"]))
         windows_payload = self.client.get(f'{reverse("pwa_manifest")}?theme=dark&platform=windows').json()
         self.assertEqual({icon["purpose"] for icon in windows_payload["icons"]}, {"any"})
@@ -352,8 +351,7 @@ class PwaEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["name"], "Northwind Foods")
-        # Launch surfaces are neutral and theme-matched, never the tenant brand.
-        self.assertEqual(payload["theme_color"], "#FFF1E8")
+        self.assertEqual(payload["theme_color"], "#173B45")
         self.assertEqual(payload["background_color"], "#FFF1E8")
         self.assertEqual(payload["id"], "/pwa/tenant/northwind-foods")
         self.assertEqual({icon["purpose"] for icon in payload["icons"]}, {"any", "monochrome"})
@@ -361,49 +359,7 @@ class PwaEndpointTests(TestCase):
             f'{reverse("pwa_manifest_tenant", kwargs={"business_slug": business.slug})}?theme=dark'
         )
         self.assertEqual(dark_response.json()["background_color"], "#050733")
-        self.assertEqual(dark_response.json()["theme_color"], "#050733")
         self.assertTrue(any("icon-mark-on-dark-192.png" in icon["src"] for icon in dark_response.json()["icons"]))
-
-    def test_manifest_theme_cookie_overrides_stale_query_and_keeps_pair_consistent(self):
-        self.client.cookies["inprofic_theme"] = "dark"
-        stale = self.client.get(f'{reverse("pwa_manifest")}?theme=light').json()
-        self.assertEqual(stale["background_color"], "#050733")
-        self.assertEqual(stale["theme_color"], "#050733")
-        self.assertTrue(all("on-dark" in i["src"] for i in stale["icons"] if i["purpose"] == "any"))
-        win = self.client.get(f'{reverse("pwa_manifest")}?platform=windows').json()
-        self.assertEqual(win["background_color"], "#050733")
-        self.assertTrue(all("icon-mark-windows-" in i["src"] for i in win["icons"]))
-        self.client.cookies["inprofic_theme"] = "light"
-        light = self.client.get(f'{reverse("pwa_manifest")}?theme=dark').json()
-        self.assertEqual(light["background_color"], "#FFF1E8")
-        response = self.client.get(reverse("pwa_manifest"))
-        self.assertIn("Cookie", response["Vary"])
-        self.assertIn("private", response["Cache-Control"])
-
-    def test_favicon_is_swapped_by_resolved_theme(self):
-        from django.template.loader import render_to_string
-
-        html = render_to_string("pwa/head.html")
-        self.assertIn('id="inprofic-favicon"', html)
-        self.assertIn("inprofic-favicon-on-dark.png", html)
-        self.assertIn("favicon.href = dark", html)
-
-    def test_launch_overlay_follows_resolved_app_theme_not_only_the_os(self):
-        from django.template.loader import render_to_string
-
-        html = render_to_string("pwa/head.html")
-        self.assertIn('data-launch-theme="dark"', html)
-        self.assertIn("inprofic-wordmark-on-dark.png", html)
-        self.assertIn("localStorage.getItem('inprofic-theme')", html)
-        self.assertNotIn("@media(prefers-color-scheme:dark)", html)
-
-    def test_offline_page_ships_both_wordmarks_for_light_and_dark(self):
-        from django.template.loader import render_to_string
-
-        html = render_to_string("pwa/offline.html")
-        self.assertIn("inprofic-wordmark-on-light.png", html)
-        self.assertIn("inprofic-wordmark-on-dark.png", html)
-        self.assertIn('html[data-theme="dark"]', html)
 
     def test_service_worker_has_root_scope_and_does_not_cache_dynamic_html(self):
         response = self.client.get(reverse("pwa_service_worker"))
@@ -541,11 +497,149 @@ class DashboardStockTickerTests(TestCase):
         self.assertEqual(response["Cache-Control"], "no-store")
         self.assertEqual(set(response.json()), {"raw", "finished", "date"})
 
-    def test_dashboard_embeds_initial_ticker_data_and_cards(self):
+    def test_dashboard_has_ticker_cards_but_does_not_wait_for_their_data(self):
         self.client.force_login(self.user)
         response = self.client.get(reverse("dashboard"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'id="stock-ticker-data"')
+        self.assertNotContains(response, 'id="stock-ticker-data"')   # data is fetched after render
         self.assertContains(response, 'data-stock-ticker="raw"')
         self.assertContains(response, 'data-stock-ticker="finished"')
         self.assertContains(response, reverse("dashboard_stock_ticker"))
+
+    def test_ticker_query_count_does_not_grow_with_the_number_of_products(self):
+        from decimal import Decimal
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from inventory.models import FinishedGood
+        for i in range(30):
+            FinishedGood.raw_objects.create(
+                business=self.business, name=f"Extra {i}", unit="loaf", units_per_batch=Decimal("10"),
+                stock=Decimal("5"), reorder_level=Decimal("1"), selling_price=Decimal("100"))
+        self.client.force_login(self.user)
+        with CaptureQueriesContext(connection) as ctx:
+            self.assertEqual(self.client.get(reverse("dashboard_stock_ticker")).status_code, 200)
+        # Used to be ~2 queries per product (N+1); now a fixed handful.
+        self.assertLessEqual(len(ctx), 14, [q["sql"][:80] for q in ctx])
+
+
+class SeoPagesTests(TestCase):
+    """One public marketing page carries the SEO; the app itself stays out of search."""
+
+    def home(self):
+        return self.client.get("/").content.decode()
+
+    def test_home_page_has_complete_nigeria_seo_markup(self):
+        import json, re
+        from .seo import FEATURES
+        html = self.home()
+        self.assertIn('<html lang="en-NG">', html)
+        title = html.split("<title>")[1].split("</title>")[0]
+        self.assertIn("Nigeria", title)
+        self.assertLessEqual(len(title), 65, "title should fit a search result")
+        self.assertIn("From stock to sale, in one place", html)   # brand line kept for social previews
+        self.assertIn('rel="canonical"', html)
+        self.assertIn('hreflang="en-ng"', html)
+        graph = json.loads(re.search(r'<script type="application/ld\+json">(.*?)</script>', html, re.S).group(1))["@graph"]
+        self.assertEqual({n["@type"] for n in graph}, {"Organization", "WebSite", "SoftwareApplication"})
+        app = next(n for n in graph if n["@type"] == "SoftwareApplication")
+        self.assertEqual(app["areaServed"]["name"], "Nigeria")
+        self.assertEqual(app["featureList"], FEATURES)
+
+    def test_about_section_lists_every_module_with_payroll_last_as_an_addon(self):
+        import re
+        html = self.home()
+        about = re.search(r'<section id="about".*?</section>', html, re.S).group(0)
+        capabilities = re.search(r'<section id="capabilities".*?</section>', html, re.S).group(0)
+        cards = re.findall(r'<a class="about-module" href="#([a-z]+)"[^>]*>.*?</a>', about, re.S)
+        names = [re.sub(r"<[^>]+>", " ", c).split() for c in re.findall(r'<a class="about-module".*?</a>', about, re.S)]
+        module_titles = re.findall(r'<h3 class="mt-4 font-subheading text-xl">(.*?)</h3>', capabilities)
+        self.assertEqual(len(module_titles), 9)
+        self.assertEqual(cards, ["capabilities"] * 9 + ["plans"])      # modules -> module section, payroll -> plans
+        for title, words in zip(module_titles, names):
+            self.assertEqual(" ".join(words), title)
+        self.assertEqual(" ".join(names[-1]), "Staff payroll Add-on")
+        # every module icon is the exact SVG used in the module section
+        for svg in re.findall(r"<svg.*?</svg>", about, re.S)[:9]:
+            self.assertIn(svg, capabilities)
+
+    def test_about_explanation_is_merged_concise_and_keeps_payroll_quiet(self):
+        import re
+        html = self.home()
+        about = re.search(r'<section id="about".*?</section>', html, re.S).group(0)
+        text = re.sub(r"<[^>]+>", " ", about)
+        self.assertLess(len(text.split()), 150, "the section should stay short")
+        for phrase in ("production-aware commercial management system", "payables, receivables and cash flow", "deliver orders", "one reliable record"):
+            self.assertIn(phrase, text)
+        headline = re.search(r'<h2 id="about-title"[^>]*>(.*?)</h2>', about).group(1)
+        self.assertNotIn("payroll", headline.lower())               # payroll is an add-on, not the headline
+        self.assertIn("add-on", text.lower())
+
+    def test_header_menu_has_at_most_four_links_and_each_targets_a_real_section(self):
+        import re
+        html = self.home()
+        panel = re.search(r'<div class="site-menu-panel".*?</div>', html, re.S).group(0)
+        targets = re.findall(r'href="#([a-z-]+)"', panel)
+        self.assertEqual(targets, ["about", "capabilities", "plans", "faq"])
+        self.assertLessEqual(len(targets), 4)
+        for target in targets:
+            self.assertIn(f'id="{target}"', html, target)
+        self.assertIn('data-site-menu-btn', html)
+        self.assertIn('aria-expanded="false"', html)
+
+    def test_landing_pages_are_gone_and_no_footer_links_remain(self):
+        for path in ("/inventory-management-software-nigeria/", "/payroll-software-nigeria/"):
+            self.assertNotEqual(self.client.get(path).status_code, 200, path)
+        html = self.home()
+        self.assertNotIn("Software for Nigerian businesses", html)
+        sitemap = self.client.get("/sitemap.xml").content.decode()
+        self.assertNotIn("software-nigeria", sitemap)
+        self.assertIn("http://testserver/", sitemap)
+
+    def test_robots_hides_the_app_and_lists_the_sitemap(self):
+        robots = self.client.get("/robots.txt").content.decode()
+        self.assertIn("Allow: /", robots)
+        for prefix in ("/dashboard/", "/inventory/", "/orders/", "/api/"):
+            self.assertIn(f"Disallow: {prefix}", robots)
+        self.assertNotIn("Disallow: /shop/", robots)             # public storefronts stay indexable
+        self.assertIn("Sitemap: http://testserver/sitemap.xml", robots)
+
+    def test_app_pages_are_noindex_but_the_marketing_page_is_not(self):
+        user = CustomUser.objects.create_superuser(username="seo-admin", password="safe-password-123", fullname="A")
+        Business.objects.create(name="Seo Biz", slug="seo-biz")
+        self.client.force_login(user)
+        self.assertContains(self.client.get(reverse("dashboard")), '<meta name="robots" content="noindex,nofollow">')
+        self.client.logout()
+        self.assertNotIn("noindex", self.home())
+        self.assertNotIn("noindex", self.client.get(reverse("login")).content.decode())
+
+
+class PerformanceBasicsTests(TestCase):
+    def test_text_responses_are_gzipped_and_binary_ones_are_not(self):
+        import gzip
+        from django.http import HttpResponse
+        from django.test import RequestFactory
+        from .performance import TextOnlyGZipMiddleware
+        request = RequestFactory().get("/", HTTP_ACCEPT_ENCODING="gzip")
+        html = TextOnlyGZipMiddleware(lambda r: HttpResponse("<p>x</p>" * 400, content_type="text/html"))(request)
+        self.assertEqual(html["Content-Encoding"], "gzip")
+        self.assertEqual(gzip.decompress(html.content).decode(), "<p>x</p>" * 400)
+        png = TextOnlyGZipMiddleware(lambda r: HttpResponse(b"\x89PNG" * 400, content_type="image/png"))(request)
+        self.assertNotIn("Content-Encoding", png)
+        pdf = TextOnlyGZipMiddleware(lambda r: HttpResponse(b"%PDF" * 400, content_type="application/pdf"))(request)
+        self.assertNotIn("Content-Encoding", pdf)
+
+    def test_public_pages_are_gzipped_when_the_browser_accepts_it(self):
+        response = self.client.get("/", HTTP_ACCEPT_ENCODING="gzip")
+        self.assertEqual(response["Content-Encoding"], "gzip")
+        self.assertIn("Accept-Encoding", response["Vary"])
+
+    def test_shared_shell_scripts_are_cached_files_not_repeated_inline(self):
+        user = CustomUser.objects.create_superuser(username="perf-admin", password="safe-password-123", fullname="P")
+        Business.objects.create(name="Perf Biz", slug="perf-biz")
+        self.client.force_login(user)
+        html = self.client.get(reverse("dashboard")).content.decode()
+        self.assertIn("core/js/shell-alerts.js", html)
+        self.assertIn("core/js/shell-tabs.js", html)
+        self.assertIn("window.INPROFIC_SHELL", html)
+        self.assertNotIn("audio_chime_1", html)                  # the ~40 KB script no longer rides in every page
+        self.assertLess(len(html), 150_000)

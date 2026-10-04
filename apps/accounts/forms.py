@@ -12,6 +12,7 @@ from .models import (
     MarketingTrustLogo,
     MarketingTrustSettings,
     PayrollAddonTier,
+    PayrollStaffBatch,
     PayrollCalculationRule,
     PayrollRecurringAdjustment,
     PayrollStaffProfile,
@@ -708,20 +709,69 @@ class PlatformMailComposeForm(PlatformMailContentFormMixin, forms.Form):
 class PayrollAddonTierForm(forms.ModelForm):
     class Meta:
         model = PayrollAddonTier
-        fields = ["plan", "staff_limit", "monthly_price", "active"]
+        fields = ["plan", "unlimited", "staff_limit", "monthly_price", "active"]
 
     def __init__(self, *args, plan_choices=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["plan"].queryset = SubscriptionPlan.objects.filter(active=True).order_by("monthly_price", "id")
         if not self.is_bound:
             _set_static_model_choices(self.fields["plan"], plan_choices)
-        self.fields["staff_limit"].help_text = "Number of active staff this add-on price covers for the selected plan."
-        self.fields["monthly_price"].help_text = "Monthly payroll add-on charge for this staff capacity."
+        self.fields["staff_limit"].required = False
+        self.fields["unlimited"].label = "Unlimited staff"
+        self.fields["unlimited"].help_text = "Cover unlimited active staff for this price. Extra-staff batches are not offered with it."
+        self.fields["staff_limit"].help_text = "Number of active staff this package covers. Leave empty when unlimited."
+        self.fields["monthly_price"].help_text = "Monthly price of this primary payroll package."
         for field in self.fields.values():
             if isinstance(field.widget, forms.CheckboxInput):
                 field.widget.attrs["class"] = "h-4 w-4 accent-[#8f172d]"
             else:
                 field.widget.attrs["class"] = CLS
+
+    def clean(self):
+        cleaned = super().clean()
+        unlimited = cleaned.get("unlimited")
+        limit = cleaned.get("staff_limit")
+        plan = cleaned.get("plan")
+        if unlimited:
+            cleaned["staff_limit"] = None
+            if plan and PayrollAddonTier.objects.filter(plan=plan, unlimited=True).exclude(pk=self.instance.pk).exists():
+                raise forms.ValidationError("This plan already has an unlimited payroll package. Remove it first or edit its price.")
+        elif not limit:
+            self.add_error("staff_limit", "Enter the number of staff this package covers, or tick Unlimited staff.")
+        return cleaned
+
+    def _post_clean(self):
+        # Normalise before model validation so the unlimited/limit constraint sees None.
+        if self.cleaned_data.get("unlimited"):
+            self.cleaned_data["staff_limit"] = None
+        super()._post_clean()
+
+
+class PayrollStaffBatchForm(forms.ModelForm):
+    class Meta:
+        model = PayrollStaffBatch
+        fields = ["plan", "staff_count", "monthly_price", "active"]
+
+    def __init__(self, *args, plan_choices=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["plan"].queryset = SubscriptionPlan.objects.filter(active=True).order_by("monthly_price", "id")
+        if not self.is_bound:
+            _set_static_model_choices(self.fields["plan"], plan_choices)
+        self.fields["staff_count"].min_value = 1
+        self.fields["staff_count"].widget.attrs["min"] = 1
+        self.fields["staff_count"].help_text = "Extra active staff this batch adds on top of the primary package."
+        self.fields["monthly_price"].help_text = "Monthly price per batch. Buyers are charged pro-rata until their next renewal."
+        for field in self.fields.values():
+            if isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs["class"] = "h-4 w-4 accent-[#8f172d]"
+            else:
+                field.widget.attrs["class"] = CLS
+
+    def clean_staff_count(self):
+        value = self.cleaned_data["staff_count"]
+        if value < 1:
+            raise forms.ValidationError("A batch must add at least one staff member.")
+        return value
 
 
 class PayrollStaffProfileForm(forms.ModelForm):

@@ -44,7 +44,7 @@
         <td class="px-3 py-2 text-xs">{% if o.is_market_stock_order %}<span class="text-emerald-700">Market stock</span>{% elif o.order_type == 'physical_store' %}{% if o.production_destination == 'store' %}<span class="text-emerald-700">Store replenishment</span>{% else %}<span class="text-stone-500">Non-stock purpose</span>{% endif %}{% else %}<span class="text-stone-400">—</span>{% endif %}</td>
         <td class="px-3 py-2 text-xs">{% if not o.is_customer_order %}<span class="text-stone-400">—</span>{% else %}{% if o.customer_payment_status == 'paid' %}<span class="text-emerald-700">Received</span>{% else %}<span class="text-amber-700">Receivable</span>{% endif %}{% endif %}</td>
         <td class="px-3 py-2 text-xs">{% if o.is_market_stock_order %}Future customers{% elif o.order_type == 'distribution' %}{{ o.customer_name }}{% elif o.order_type == 'online' %}{{ o.customer_name|default:'Not provided' }}{% else %}Physical store{% endif %}</td>
-        <td class="px-3 py-2 text-xs text-stone-500">{% for i in o.items.all %}{{ i.finished_good.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+        <td class="px-3 py-2 text-xs" style="min-width:11rem;max-width:20rem">{% include "partials/_items_summary.html" with items=o.items.all dialog_prefix="order-items-" row_pk=o.pk %}</td>
         <td class="px-3 py-2 text-right font-mono">{{ o.total_units|num }}</td>
         <td class="px-3 py-2"><span class="inline-block px-2 py-0.5 rounded-full text-[11px] font-medium border capitalize
           {% if o.status == 'pending' %}bg-amber-50 text-amber-800 border-amber-300
@@ -57,5 +57,7 @@
     </tbody>
   </table>
 </div>
+{% for o in orders %}{% if o.items.all|length > 1 %}{% include "partials/_items_dialog.html" with items=o.items.all dialog_prefix="order-items-" row_pk=o.pk title_prefix="Order #" title_ref=o.display_number subtitle=o.date total_label="Total units" total_value=o.total_units|num %}{% endif %}{% endfor %}
+{% include "partials/_items_dialog_assets.html" %}
 {% endif %}
 {% endblock %}

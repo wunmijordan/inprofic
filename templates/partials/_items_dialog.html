@@ -1,0 +1,32 @@
+{% comment %}
+  Full item list for one row. Only rendered for rows with more than one item.
+  Needs: dialog_prefix, row_pk, title_prefix, title_ref, subtitle, items, with_amount (optional), currency, total_label, total_value.
+{% endcomment %}{% load core_extras %}
+<dialog style="width:min(94vw,40rem)" id="{{ dialog_prefix }}{{ row_pk }}" class="items-dialog rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-0 shadow-2xl" aria-label="{{ title_prefix }}{{ title_ref }}">
+  <div class="border-b border-[#E7DFCC] bg-[#F8F2E4] px-5 py-4">
+    <div class="flex items-start justify-between gap-4">
+      <div class="min-w-0">
+        <p class="text-[11px] uppercase tracking-wide text-stone-400">{{ title_prefix }}{{ title_ref }}</p>
+        <p class="mt-1 text-xs text-stone-500">{{ subtitle }} &middot; {{ items|length }} item{{ items|length|pluralize }}</p>
+      </div>
+      <form method="dialog"><button class="rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-xs text-stone-600 hover:bg-stone-50">Close</button></form>
+    </div>
+  </div>
+  <div class="max-h-[60vh] overflow-auto p-4">
+    <div class="overflow-x-auto rounded-lg border border-[#E7DFCC]">
+      <table class="min-w-full text-sm">
+        <thead class="bg-[#F0EAD9] text-xs text-stone-500"><tr><th class="px-3 py-2 text-left">Item</th><th class="px-3 py-2 text-right">Quantity</th>{% if with_amount %}<th class="px-3 py-2 text-right">Amount</th>{% endif %}</tr></thead>
+        <tbody>
+          {% for i in items %}
+          <tr class="border-t border-[#E7DFCC]">
+            <td class="px-3 py-2 font-medium text-stone-700">{{ i.finished_good.name }}</td>
+            <td class="px-3 py-2 text-right font-mono">{{ i.total_units|num }}</td>
+            {% if with_amount %}<td class="px-3 py-2 text-right font-mono">{{ i.line_total|money:currency }}</td>{% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+        {% if total_label %}<tfoot class="border-t border-[#D9CFB4] bg-[#FAF6EA]"><tr><td class="px-3 py-2 text-right font-semibold text-stone-600" colspan="{% if with_amount %}2{% else %}1{% endif %}">{{ total_label }}</td><td class="px-3 py-2 text-right font-mono font-semibold text-[#8f172d]">{{ total_value }}</td></tr></tfoot>{% endif %}
+      </table>
+    </div>
+  </div>
+</dialog>

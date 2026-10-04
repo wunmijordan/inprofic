@@ -10,8 +10,8 @@
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
   <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}?v={{ static_asset_version }}">
   <style>
-    @font-face { font-family:'Sora'; src:url('{% static "core/fonts/Sora-Variable.ttf" %}') format('truetype'); font-weight:100 800; font-style:normal; font-display:swap; }
-    @font-face { font-family:'Fraunces'; src:url('{% static "core/fonts/Fraunces-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
+    @font-face { font-family:'Sora'; src:url('{% static "core/fonts/Sora-Variable.woff2" %}') format('woff2'), url('{% static "core/fonts/Sora-Variable.ttf" %}') format('truetype'); font-weight:100 800; font-style:normal; font-display:swap; }
+    @font-face { font-family:'Fraunces'; src:url('{% static "core/fonts/Fraunces-SemiBold.woff2" %}') format('woff2'), url('{% static "core/fonts/Fraunces-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
     :root { --brand: {{ store_business.accent_color }}; --brand-dark: {{ store_business.background_color }}; --brand-dark-contrast: {{ store_business.background_text_color|default:'#FFFFFF' }}; --tenant-button: {{ store_business.accent_color }}; --tenant-button-contrast: {{ store_business.button_text_color|default:'#FFFFFF' }}; }
     body { font-family: 'Sora', sans-serif; background: #f7f4ee; color: #211d1a; }
     .font-display { font-family: 'Fraunces', serif; }
@@ -35,7 +35,7 @@
     <nav class="relative mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-6 sm:px-8">
       <a href="{% url 'storefront' store_business.slug %}" class="flex min-w-0 items-center gap-3">
         {% if store_business.storefront_logo %}<img src="{{ store_business.storefront_logo.url }}" alt="{{ store_business.name }} logo" class="h-10 w-10 shrink-0 rounded-xl border border-white/20 bg-white/95 object-contain p-1 shadow-sm">{% endif %}
-        <span class="min-w-0"><span class="block truncate font-display text-xl font-semibold sm:text-2xl">{{ store_business.name }}</span><span class="storefront-brand-muted mt-0.5 block text-[10px] font-bold uppercase tracking-[.22em]">{{ storefront_copy.range_label }}</span></span>
+        <span class="min-w-0"><span class="block truncate font-display text-xl font-semibold sm:text-2xl">{{ store_business.name }}</span>{% if store_business.tagline %}<span class="storefront-brand-muted mt-0.5 block truncate text-[11px] font-medium leading-tight" data-store-tagline>{{ store_business.tagline }}</span>{% endif %}</span>
       </a>
       <a href="{% url 'storefront' store_business.slug %}" class="storefront-brand-control rounded-full border px-3.5 py-2 text-xs font-semibold backdrop-blur transition hover:brightness-95">Back to catalogue</a>
     </nav>

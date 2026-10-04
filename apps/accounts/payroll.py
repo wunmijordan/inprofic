@@ -12,6 +12,7 @@ from django.utils.text import slugify
 
 from .models import (
     BusinessPayrollAddon,
+    BusinessPayrollBatch,
     BusinessSubscription,
     PayrollAddonTier,
     PayrollCalculationRule,
@@ -609,28 +610,54 @@ def payroll_subscription_for_business(business):
 def payroll_access_state(business):
     subscription = payroll_subscription_for_business(business)
     if not subscription:
-        return {"enabled": False, "included": False, "reason": "No subscription", "staff_limit": 0, "subscription": None, "addon": None}
-    tiers = list(PayrollAddonTier.objects.filter(plan=subscription.plan, active=True).order_by("staff_limit"))
+        return {
+            "enabled": False, "included": False, "reason": "No subscription", "staff_limit": 0,
+            "unlimited": False, "base_limit": 0, "extra_staff": 0, "batches": [],
+            "subscription": None, "addon": None,
+        }
+    tiers = list(PayrollAddonTier.objects.filter(plan=subscription.plan, active=True))
     included = bool(subscription.founder_lifetime or (subscription.status == BusinessSubscription.STATUS_TRIAL and subscription.is_effectively_active))
     if included:
+        # Tiers are ordered with the unlimited tier last, so an unlimited tier
+        # (staff_limit None) correctly lifts the cap for trial/Founder access.
+        limit = tiers[-1].staff_limit if tiers else None
         return {
             "enabled": True,
             "included": True,
             "reason": "Founder lifetime" if subscription.founder_lifetime else "Included during free trial",
-            "staff_limit": tiers[-1].staff_limit if tiers else None,
+            "staff_limit": limit,
+            "unlimited": limit is None,
+            "base_limit": limit,
+            "extra_staff": 0,
+            "batches": [],
             "subscription": subscription,
             "addon": None,
             "tiers": tiers,
         }
-    addon = BusinessPayrollAddon.objects.filter(business=business, active=True).select_related("tier__plan").first()
+    addon = (
+        BusinessPayrollAddon.objects.filter(business=business, active=True)
+        .select_related("tier__plan").prefetch_related("batches__batch").first()
+    )
     paid_active = bool(
         addon and addon.tier.plan_id == subscription.plan_id and addon.paid_until and addon.paid_until >= timezone.now()
     )
+    held = list(addon.batches.all()) if paid_active else []
+    unlimited = bool(paid_active and addon.tier.unlimited)
+    base_limit = addon.tier.staff_limit if paid_active and not unlimited else 0
+    extra = 0 if unlimited else sum(h.staff for h in held)
+    if not paid_active:
+        limit = 0
+    else:
+        limit = None if unlimited else base_limit + extra
     return {
         "enabled": paid_active,
         "included": False,
         "reason": "Paid add-on" if paid_active else "Payroll add-on required",
-        "staff_limit": addon.tier.staff_limit if paid_active else 0,
+        "staff_limit": limit,
+        "unlimited": unlimited,
+        "base_limit": base_limit,
+        "extra_staff": extra,
+        "batches": held,
         "subscription": subscription,
         "addon": addon,
         "tiers": tiers,
@@ -648,8 +675,78 @@ def assert_payroll_capacity(business, *, excluding_profile=None):
     if excluding_profile and excluding_profile.pk:
         qs = qs.exclude(pk=excluding_profile.pk)
     if qs.count() >= limit:
-        raise ValidationError(f"Your payroll access currently covers up to {limit} active staff. Choose a larger payroll add-on tier before adding another staff profile.")
+        hint = "Buy an extra-staff batch or choose a larger payroll add-on tier" if not state["included"] else "Choose a larger payroll add-on tier"
+        raise ValidationError(f"Your payroll access currently covers up to {limit} active staff. {hint} before adding another staff profile.")
     return state
+
+
+# --- Extra-staff batches and renewal pricing ---------------------------------
+
+MAX_BATCH_QUANTITY = 50
+_DAYS_PER_YEAR = Decimal("365")
+
+
+def _cents(value):
+    return Decimal(value).quantize(Decimal("0.01"))
+
+
+def held_batches_for_renewal(addon):
+    """Batches that renew with the primary package (empty for unlimited tiers)."""
+    if not addon or addon.tier.unlimited:
+        return []
+    return list(addon.batches.select_related("batch"))
+
+
+def renewal_monthly_total(tier, addon):
+    """Monthly price of renewing ``tier`` plus every held batch at today's price."""
+    total = Decimal(tier.monthly_price or 0)
+    if not tier.unlimited:
+        total += sum((Decimal(h.batch.monthly_price or 0) * h.quantity for h in held_batches_for_renewal(addon)), Decimal("0"))
+    return _cents(total)
+
+
+def batch_snapshot(holdings):
+    return [
+        {
+            "batch_id": h.batch_id, "staff_count": h.batch.staff_count, "quantity": h.quantity,
+            "unit_monthly_price": str(_cents(h.batch.monthly_price or 0)),
+        }
+        for h in holdings
+    ]
+
+
+def prorated_batch_amount(batch, quantity, paid_until, *, now=None):
+    """Charge for adding ``quantity`` of ``batch`` until the primary period ends.
+
+    Priced per day on an annualised basis (monthly price x 12 / 365) so a batch
+    bought at the start of a yearly period costs exactly 12 months and one
+    bought on the last day costs a single day. Part-days round up.
+    """
+    now = now or timezone.now()
+    seconds = (paid_until - now).total_seconds()
+    if seconds <= 0:
+        raise ValidationError("Your payroll add-on has expired. Renew it before adding extra staff.")
+    days = max(1, int(-(-seconds // 86400)))
+    amount = Decimal(batch.monthly_price or 0) * 12 * Decimal(quantity) * Decimal(days) / _DAYS_PER_YEAR
+    return _cents(amount), days
+
+
+def assert_can_buy_batch(business, batch, quantity):
+    """Return the paid, current addon if ``quantity`` of ``batch`` can be bought now."""
+    state = payroll_access_state(business)
+    subscription = state["subscription"]
+    if state["included"]:
+        raise ValidationError("Payroll is already included with the current free-trial or Founder lifetime access.")
+    if not subscription or not state["enabled"]:
+        raise ValidationError("Buy or renew a primary payroll package before adding extra staff.")
+    addon = state["addon"]
+    if addon.tier.unlimited:
+        raise ValidationError("Your payroll package already covers unlimited staff.")
+    if not batch.active or batch.plan_id != subscription.plan_id:
+        raise ValidationError("Choose an active extra-staff batch configured for your current plan.")
+    if not 1 <= int(quantity) <= MAX_BATCH_QUANTITY:
+        raise ValidationError(f"Choose between 1 and {MAX_BATCH_QUANTITY} batches.")
+    return addon
 
 
 @transaction.atomic
@@ -668,7 +765,32 @@ def activate_paid_payroll_addon(payment):
     duration_days = 365 if payment.billing_cycle == payment.CYCLE_YEARLY else 30 * payment.months
     addon.paid_until = base + timezone.timedelta(days=duration_days)
     addon.save(update_fields=["tier", "active", "paid_until", "updated_at"])
+    if tier.unlimited:
+        # Batches are meaningless under an unlimited package and were not billed.
+        addon.batches.all().delete()
     return addon
+
+
+@transaction.atomic
+def activate_paid_payroll_batch(payment):
+    """Add the purchased batch(es). ``paid_until`` is deliberately untouched:
+    the pro-rata charge covers the batch only until the current period ends,
+    after which it renews together with the primary package."""
+    batch = payment.payroll_batch
+    if not batch or batch.plan_id != payment.subscription.plan_id:
+        raise ValidationError("This payroll batch no longer matches the business's active plan.")
+    addon = BusinessPayrollAddon.objects.select_for_update().select_related("tier").filter(
+        business=payment.subscription.primary_business, active=True,
+    ).first()
+    if not addon or addon.tier.unlimited or not addon.paid_until or addon.paid_until < timezone.now():
+        raise ValidationError("The primary payroll add-on is no longer active, so the extra staff batch could not be applied.")
+    holding, created = BusinessPayrollBatch.objects.select_for_update().get_or_create(
+        addon=addon, batch=batch, defaults={"quantity": payment.payroll_batch_quantity},
+    )
+    if not created:
+        holding.quantity = min(holding.quantity + payment.payroll_batch_quantity, 32767)
+        holding.save(update_fields=["quantity", "updated_at"])
+    return holding
 
 
 def normalize_whatsapp_number(value):

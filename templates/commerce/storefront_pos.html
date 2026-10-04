@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="{% static 'core/css/workspace.css' %}?v={{ static_asset_version }}">
   <script src="{% static 'core/js/workspace.js' %}"></script>
   <style>
-    @font-face{font-family:Sora;src:url('{% static "core/fonts/Sora-Variable.ttf" %}') format('truetype');font-weight:100 800;font-display:swap}
-    @font-face{font-family:Fraunces;src:url('{% static "core/fonts/Fraunces-SemiBold.ttf" %}') format('truetype');font-weight:600 700;font-display:swap}
+    @font-face{font-family:Sora;src:url('{% static "core/fonts/Sora-Variable.woff2" %}') format('woff2'), url('{% static "core/fonts/Sora-Variable.ttf" %}') format('truetype');font-weight:100 800;font-display:swap}
+    @font-face{font-family:Fraunces;src:url('{% static "core/fonts/Fraunces-SemiBold.woff2" %}') format('woff2'), url('{% static "core/fonts/Fraunces-SemiBold.ttf" %}') format('truetype');font-weight:600 700;font-display:swap}
     body{font-family:Sora,sans-serif;background:#f6f3ee;color:#211d1a}.font-display{font-family:Fraunces,serif}
     .pos-scroll{scrollbar-width:thin;scrollbar-color:#c9c1b7 transparent}.pos-scroll::-webkit-scrollbar{width:7px;height:7px}.pos-scroll::-webkit-scrollbar-thumb{background:#c9c1b7;border-radius:999px}
     .product-card[data-hidden="true"]{display:none}.cart-row[hidden]{display:none}

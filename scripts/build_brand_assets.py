@@ -67,6 +67,21 @@ def pwa_icon(mark: Image.Image, size: int) -> Image.Image:
     return padded_mark(mark, size=size, fill_ratio=0.70)
 
 
+LAUNCHER_TILE = (255, 241, 232, 255)  # #FFF1E8, the light launch canvas
+
+
+def launcher_icon(mark: Image.Image, size: int, fill_ratio: float) -> Image.Image:
+    """Opaque light tile carrying the two-colour N.
+
+    Launchers (Android adaptive/maskable, iOS home screen) draw their own
+    backdrop and ignore the app theme, so this icon must stay legible on its
+    own: it always uses the coloured mark, never the white on-dark variant.
+    """
+    tile = Image.new("RGBA", (size, size), LAUNCHER_TILE)
+    tile.alpha_composite(padded_mark(mark, size=size, fill_ratio=fill_ratio))
+    return tile
+
+
 def monochrome_icon(mark: Image.Image, size: int) -> Image.Image:
     """Preserve the N silhouette and alpha for OS-controlled themed icons."""
     rendered = pwa_icon(mark, size)
@@ -86,9 +101,18 @@ def save_pwa_assets(images: dict[str, Image.Image]) -> None:
         # Distinct URLs avoid Windows retaining a previously selected white/themed icon.
         "icon-mark-windows-192.png": pwa_icon(light_mark, 192),
         "icon-mark-windows-512.png": pwa_icon(light_mark, 512),
+        # Small desktop sizes (title bar / taskbar) in both themes. The server
+        # advertises the one matching the user's last-known app theme.
+        **{f"icon-mark-windows-{n}.png": pwa_icon(light_mark, n) for n in (32, 48, 64)},
+        **{f"icon-mark-windows-on-dark-{n}.png": pwa_icon(dark_mark, n) for n in (32, 48, 64)},
         "icon-mark-on-dark-180.png": pwa_icon(dark_mark, 180),
         "icon-mark-on-dark-192.png": pwa_icon(dark_mark, 192),
         "icon-mark-on-dark-512.png": pwa_icon(dark_mark, 512),
+        # Theme-independent launcher icons (coloured N on an opaque light tile).
+        # Maskable keeps the N inside the 80% safe zone; Apple gets a bit more.
+        "icon-launcher-maskable-192.png": launcher_icon(light_mark, 192, 0.52),
+        "icon-launcher-maskable-512.png": launcher_icon(light_mark, 512, 0.52),
+        "icon-launcher-apple-180.png": launcher_icon(light_mark, 180, 0.64),
         "icon-mark-monochrome-192.png": monochrome_icon(light_mark, 192),
         "icon-mark-monochrome-512.png": monochrome_icon(light_mark, 512),
         # Keep legacy filenames correct for already-installed manifests while

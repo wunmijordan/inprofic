@@ -456,3 +456,19 @@ html[data-theme="dark"] .marketing-visit-map__detail {
   border-color: rgba(255, 255, 255, .12);
   color: var(--ui-surface-text);
 }
+
+/* Smooth page switches: browsers that support cross-document view transitions
+   keep the old page painted until the next one is ready and cross-fade the two
+   quickly, so moving between screens no longer flashes white. Unsupported
+   browsers ignore this and navigate exactly as before. */
+@view-transition { navigation: auto; }
+::view-transition-group(root) { animation-duration: 120ms; }
+@media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
+
+/* Utilities used by newer templates that the committed Tailwind build does not contain.
+   (If the stylesheet is rebuilt with `npm run build:css` these become harmless duplicates.) */
+.gap-x-1\.5 { column-gap: .375rem; }
+.gap-y-0\.5 { row-gap: .125rem; }
+.max-w-\[14rem\] { max-width: 14rem; }
+.space-y-0\.5 > :not([hidden]) ~ :not([hidden]) { margin-top: .125rem; }
+

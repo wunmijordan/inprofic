@@ -1905,3 +1905,235 @@ class PayrollAddonPricingVisibilityTests(TestCase):
         post = self.client.post(reverse("payroll_addon_checkout"), {"tier_id": tier.pk, "billing_cycle": "monthly", "provider": "paystack"})
         self.assertRedirects(post, reverse("payroll_addon_checkout"), fetch_redirect_response=False)
         self.assertEqual(SubscriptionPayment.objects.count(), before)
+
+
+class PayrollStaffBatchTests(TestCase):
+    """Extra-staff batches, unlimited packages, pro-rata and auto-renewal."""
+
+    def setUp(self):
+        from .models import PayrollAddonTier, PayrollStaffBatch
+        self.plans = ensure_default_plans()
+        self.plan = self.plans["business_pro"] if "business_pro" in self.plans else list(self.plans.values())[-1]
+        self.business = Business.objects.create(name="Batch Co", slug="batch-co", currency_symbol="₦")
+        roles = seed_business_roles(self.business)
+        self.admin = CustomUser.objects.create_user(username="batch-admin", password="safe-password-123", fullname="Admin")
+        UserBusiness.objects.create(user=self.admin, business=self.business, role=roles[CustomUser.ROLE_BUSINESS_ADMIN])
+        self.tier = PayrollAddonTier.objects.create(plan=self.plan, staff_limit=2, monthly_price=Decimal("3000.00"))
+        self.batch5 = PayrollStaffBatch.objects.create(plan=self.plan, staff_count=5, monthly_price=Decimal("1200.00"))
+        self.batch10 = PayrollStaffBatch.objects.create(plan=self.plan, staff_count=10, monthly_price=Decimal("2000.00"))
+        self.subscription = BusinessSubscription.objects.create(
+            primary_business=self.business, plan=self.plan, status=BusinessSubscription.STATUS_ACTIVE,
+            paid_until=timezone.now() + timezone.timedelta(days=200),
+        )
+        SubscriptionService.objects.create(subscription=self.subscription, business=self.business, is_primary=True)
+        apply_subscription_entitlements(self.subscription)
+
+    def _pay(self, payment):
+        from .subscription_services import mark_payment_paid
+        return mark_payment_paid(payment)
+
+    def _buy_primary(self, tier=None, cycle="monthly"):
+        from .subscription_services import create_payment_request
+        payment = create_payment_request(
+            self.subscription, self.plan, months=12 if cycle == "yearly" else 1, billing_cycle=cycle,
+            purpose=SubscriptionPayment.PURPOSE_PAYROLL_ADDON, payroll_tier=tier or self.tier,
+        )
+        self._pay(payment)
+        return payment
+
+    def _buy_batch(self, batch, quantity=1):
+        from .subscription_services import create_payment_request
+        payment = create_payment_request(
+            self.subscription, self.plan, purpose=SubscriptionPayment.PURPOSE_PAYROLL_BATCH,
+            payroll_batch=batch, batch_quantity=quantity,
+        )
+        self._pay(payment)
+        return payment
+
+    def _state(self):
+        from .payroll import payroll_access_state
+        return payroll_access_state(self.business)
+
+    def test_batches_require_an_active_primary_package(self):
+        from .subscription_services import create_payment_request
+        with self.assertRaises(ValidationError):
+            create_payment_request(
+                self.subscription, self.plan, purpose=SubscriptionPayment.PURPOSE_PAYROLL_BATCH, payroll_batch=self.batch5,
+            )
+
+    def test_batch_is_prorated_to_the_primary_period_and_stacks_capacity(self):
+        self._buy_primary()
+        addon = self.business.payroll_addon
+        paid_until = addon.paid_until
+        payment = self._buy_batch(self.batch5, quantity=2)
+        days = payment.payroll_batch_snapshot[0]["prorated_days"]
+        self.assertIn(days, (30, 31))
+        expected = (Decimal("1200.00") * 12 * 2 * days / Decimal("365")).quantize(Decimal("0.01"))
+        self.assertEqual(payment.amount, expected)
+        self.assertLess(payment.amount, Decimal("2400.00"))  # cheaper than two full months
+        addon.refresh_from_db()
+        self.assertEqual(addon.paid_until, paid_until)  # a batch never extends the period
+        state = self._state()
+        self.assertEqual((state["base_limit"], state["extra_staff"], state["staff_limit"]), (2, 10, 12))
+        self._buy_batch(self.batch5)  # same batch again stacks the quantity
+        self.assertEqual(self.business.payroll_addon.batches.get(batch=self.batch5).quantity, 3)
+        self.assertEqual(self._state()["staff_limit"], 2 + 15)
+
+    def test_capacity_check_uses_primary_plus_batches(self):
+        from .payroll import assert_payroll_capacity
+        self._buy_primary()
+        for n in range(2):
+            PayrollStaffProfile.objects.create(business=self.business, full_name=f"Staff {n}")
+        with self.assertRaises(ValidationError) as ctx:
+            assert_payroll_capacity(self.business)
+        self.assertIn("extra-staff batch", str(ctx.exception))
+        self._buy_batch(self.batch5)
+        assert_payroll_capacity(self.business)  # now room for 7
+
+    def test_renewal_includes_held_batches_at_current_prices_and_is_automatic(self):
+        self._buy_primary()
+        self._buy_batch(self.batch5, quantity=2)
+        self.batch5.monthly_price = Decimal("1500.00")  # price change is picked up on renewal
+        self.batch5.save()
+        before = self.business.payroll_addon.paid_until
+        renewal = self._buy_primary()
+        self.assertEqual(renewal.amount, Decimal("3000.00") + Decimal("1500.00") * 2)
+        self.assertEqual(renewal.payroll_batch_snapshot[0]["quantity"], 2)
+        addon = self.business.payroll_addon
+        addon.refresh_from_db()
+        self.assertEqual(addon.paid_until, before + timezone.timedelta(days=30))
+        self.assertEqual(addon.batches.get().quantity, 2)  # still held after renewal
+        yearly = self._buy_primary(cycle="yearly")
+        self.assertEqual(yearly.amount, (Decimal("3000.00") + Decimal("1500.00") * 2) * 12)
+
+    def test_retired_batch_still_renews_for_existing_holders_but_cannot_be_bought(self):
+        from .subscription_services import create_payment_request
+        self._buy_primary()
+        self._buy_batch(self.batch10)
+        self.batch10.active = False
+        self.batch10.save()
+        renewal = self._buy_primary()
+        self.assertEqual(renewal.amount, Decimal("3000.00") + Decimal("2000.00"))
+        with self.assertRaises(ValidationError):
+            create_payment_request(
+                self.subscription, self.plan, purpose=SubscriptionPayment.PURPOSE_PAYROLL_BATCH, payroll_batch=self.batch10,
+            )
+
+    def test_unlimited_package_has_no_cap_and_refuses_batches(self):
+        from .models import PayrollAddonTier
+        from .payroll import assert_payroll_capacity
+        from .subscription_services import create_payment_request
+        unlimited = PayrollAddonTier.objects.create(plan=self.plan, unlimited=True, staff_limit=None, monthly_price=Decimal("9000.00"))
+        self._buy_primary(tier=unlimited)
+        state = self._state()
+        self.assertTrue(state["unlimited"])
+        self.assertIsNone(state["staff_limit"])
+        for n in range(30):
+            PayrollStaffProfile.objects.create(business=self.business, full_name=f"S{n}")
+        assert_payroll_capacity(self.business)
+        with self.assertRaises(ValidationError):
+            create_payment_request(
+                self.subscription, self.plan, purpose=SubscriptionPayment.PURPOSE_PAYROLL_BATCH, payroll_batch=self.batch5,
+            )
+
+    def test_switching_to_unlimited_drops_batches_and_does_not_bill_them(self):
+        from .models import PayrollAddonTier
+        self._buy_primary()
+        self._buy_batch(self.batch5)
+        unlimited = PayrollAddonTier.objects.create(plan=self.plan, unlimited=True, staff_limit=None, monthly_price=Decimal("9000.00"))
+        payment = self._buy_primary(tier=unlimited)
+        self.assertEqual(payment.amount, Decimal("9000.00"))
+        self.assertFalse(self.business.payroll_addon.batches.exists())
+
+    def test_lapsed_primary_package_disables_payroll_including_batches(self):
+        self._buy_primary()
+        self._buy_batch(self.batch5)
+        addon = self.business.payroll_addon
+        addon.paid_until = timezone.now() - timezone.timedelta(days=1)
+        addon.save()
+        state = self._state()
+        self.assertFalse(state["enabled"])
+        self.assertEqual(state["staff_limit"], 0)
+        self.assertEqual(addon.batches.count(), 1)  # kept, so renewing restores them
+
+    def test_tier_constraints_and_form_validation(self):
+        from .forms import PayrollAddonTierForm
+        from .models import PayrollAddonTier
+        PayrollAddonTier.objects.create(plan=self.plan, unlimited=True, staff_limit=None, monthly_price=Decimal("1"))
+        dup = PayrollAddonTierForm({"plan": self.plan.pk, "unlimited": "on", "monthly_price": "5", "active": "on"})
+        self.assertFalse(dup.is_valid())
+        missing = PayrollAddonTierForm({"plan": self.plan.pk, "monthly_price": "5", "active": "on"})
+        self.assertFalse(missing.is_valid())
+        self.assertIn("staff_limit", missing.errors)
+
+    def test_checkout_page_and_post_flow(self):
+        self._buy_primary()
+        self.client.force_login(self.admin)
+        page = self.client.get(reverse("payroll_addon_checkout"))
+        self.assertContains(page, "Add extra staff")
+        self.assertContains(page, "+5 staff")
+        before = SubscriptionPayment.objects.count()
+        post = self.client.post(reverse("payroll_addon_checkout"), {
+            "kind": "batch", "batch_id": self.batch5.pk, "quantity": "0", "provider": "paystack",
+        })
+        self.assertRedirects(post, reverse("payroll_addon_checkout"), fetch_redirect_response=False)
+        self.assertEqual(SubscriptionPayment.objects.count(), before)  # invalid quantity rejected
+
+    def test_workspace_badge_shows_base_plus_extra(self):
+        self._buy_primary()
+        self._buy_batch(self.batch5)
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse("payroll_workspace"))
+        self.assertContains(response, "Up to 7 active staff")
+        self.assertContains(response, "2 + 5 extra")
+
+    def test_plan_card_and_matrix_mention_batches_and_unlimited(self):
+        from .models import PayrollAddonTier
+        from .subscription_services import attach_payroll_tiers
+        [plan] = attach_payroll_tiers([self.plan])
+        row = next(r for r in build_plan_feature_matrix([plan]) if r["label"] == "Staff payroll add-on")
+        self.assertIn("extra batches", row["values"][0]["sub"])
+        PayrollAddonTier.objects.create(plan=self.plan, unlimited=True, staff_limit=None, monthly_price=Decimal("9000"))
+        [plan] = attach_payroll_tiers([self.plan])
+        self.assertEqual([t.capacity_label for t in plan.payroll_tiers], ["Up to 2 staff", "Unlimited staff"])
+        row = next(r for r in build_plan_feature_matrix([plan]) if r["label"] == "Staff payroll add-on")
+        self.assertIn("or unlimited", row["values"][0]["sub"])
+
+
+class FounderPayrollPackageConfigTests(TestCase):
+    def setUp(self):
+        from .models import PayrollAddonTier, PayrollStaffBatch
+        self.PayrollAddonTier, self.PayrollStaffBatch = PayrollAddonTier, PayrollStaffBatch
+        self.founder = CustomUser.objects.create_superuser(username="founder-pay", password="safe-password-123", fullname="Founder")
+        self.plan = list(ensure_default_plans().values())[-1]
+        self.client.force_login(self.founder)
+        self.url = reverse("founder_subscriptions")
+
+    def test_founder_can_configure_unlimited_package_and_batches(self):
+        self.client.post(self.url, {"action": "add_payroll_tier", "plan": self.plan.pk, "unlimited": "on", "monthly_price": "9000", "active": "on"})
+        tier = self.PayrollAddonTier.objects.get(plan=self.plan)
+        self.assertTrue(tier.unlimited)
+        self.assertIsNone(tier.staff_limit)
+        self.client.post(self.url, {"action": "add_payroll_batch", "plan": self.plan.pk, "staff_count": "5", "monthly_price": "1200", "active": "on"})
+        batch = self.PayrollStaffBatch.objects.get(plan=self.plan)
+        self.assertEqual(batch.label, "+5 staff")
+        page = self.client.get(self.url)
+        self.assertContains(page, "Unlimited staff")
+        self.assertContains(page, "+5 staff")
+
+    def test_limited_package_needs_a_staff_count_and_zero_batch_is_rejected(self):
+        self.client.post(self.url, {"action": "add_payroll_tier", "plan": self.plan.pk, "monthly_price": "9000", "active": "on"})
+        self.assertFalse(self.PayrollAddonTier.objects.exists())
+        self.client.post(self.url, {"action": "add_payroll_batch", "plan": self.plan.pk, "staff_count": "0", "monthly_price": "10", "active": "on"})
+        self.assertFalse(self.PayrollStaffBatch.objects.exists())
+
+    def test_removing_a_held_batch_retires_it(self):
+        from .models import BusinessPayrollAddon, BusinessPayrollBatch
+        tier = self.PayrollAddonTier.objects.create(plan=self.plan, staff_limit=2, monthly_price=Decimal("1"))
+        batch = self.PayrollStaffBatch.objects.create(plan=self.plan, staff_count=3, monthly_price=Decimal("1"))
+        biz = Business.objects.create(name="Holder", slug="holder")
+        addon = BusinessPayrollAddon.objects.create(business=biz, tier=tier, paid_until=timezone.now() + timezone.timedelta(days=5))
+        BusinessPayrollBatch.objects.create(addon=addon, batch=batch)
+        self.client.post(self.url, {"action": "delete_payroll_batch", "payroll_batch_id": batch.pk})
+        batch.refresh_from_db()
+        self.assertFalse(batch.active)

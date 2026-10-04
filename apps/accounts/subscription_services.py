@@ -11,12 +11,14 @@ from django.utils import timezone
 
 from core.models import Business
 from .models import (
+    BusinessPayrollAddon,
     BusinessFeatureAccess,
     BusinessModuleAccess,
     BusinessSubscription,
     FounderTrialGrant,
     PaidPlanTrialClaim,
     PayrollAddonTier,
+    PayrollStaffBatch,
     RoleModulePermission,
     SubscriptionPayment,
     SubscriptionPlan,
@@ -67,19 +69,26 @@ PLAN_MATRIX = {
 
 
 def attach_payroll_tiers(plans):
-    """Attach each plan's active payroll add-on tiers in one query.
+    """Attach each plan's active payroll packages and extra-staff batches.
 
-    Sets ``plan.payroll_tiers`` (ordered by staff capacity) and
-    ``plan.payroll_from`` (cheapest monthly price, or None when the Founder has
-    not priced the add-on for that plan). Shown to every tenant and visitor,
-    including trial and Founder-lifetime tenants who currently get it free.
+    Sets ``plan.payroll_tiers`` (ordered by capacity, unlimited last),
+    ``plan.payroll_batches`` (extra-staff batches, smallest first) and
+    ``plan.payroll_from`` (cheapest monthly package price, or None when the
+    Founder has not priced the add-on for that plan). Shown to every tenant and
+    visitor, including trial and Founder-lifetime tenants who currently get it
+    free.
     """
     plans = list(plans)
     by_plan = {plan.pk: [] for plan in plans}
-    for tier in PayrollAddonTier.objects.filter(plan_id__in=list(by_plan), active=True).order_by("staff_limit", "id"):
+    batches_by_plan = {plan.pk: [] for plan in plans}
+    ids = list(by_plan)
+    for tier in PayrollAddonTier.objects.filter(plan_id__in=ids, active=True):
         by_plan[tier.plan_id].append(tier)
+    for batch in PayrollStaffBatch.objects.filter(plan_id__in=ids, active=True).order_by("staff_count", "id"):
+        batches_by_plan[batch.plan_id].append(batch)
     for plan in plans:
         plan.payroll_tiers = by_plan[plan.pk]
+        plan.payroll_batches = batches_by_plan[plan.pk]
         plan.payroll_from = min((t.monthly_price for t in plan.payroll_tiers), default=None)
     return plans
 
@@ -106,11 +115,18 @@ def build_plan_feature_matrix(plans, currency_symbol="\u20a6"):
         tiers = getattr(plan, "payroll_tiers", None)
         if not tiers:
             return capacity_value("Pricing coming soon") if tiers is not None else capacity_value("Available as add-on")
-        limits = [t.staff_limit for t in tiers]
+        limits = [t.staff_limit for t in tiers if not t.unlimited]
+        has_unlimited = any(t.unlimited for t in tiers)
         value = capacity_value(f"From {currency_symbol}{plan.payroll_from:,.2f} / mo")
-        value["sub"] = (
-            f"{limits[0]}\u2013{limits[-1]} staff" if len(limits) > 1 else f"Up to {limits[0]} staff"
-        )
+        if has_unlimited and not limits:
+            sub = "Unlimited staff"
+        elif has_unlimited:
+            sub = f"{limits[0]}\u2013{limits[-1]} staff, or unlimited"
+        else:
+            sub = f"{limits[0]}\u2013{limits[-1]} staff" if len(limits) > 1 else f"Up to {limits[0]} staff"
+        if getattr(plan, "payroll_batches", None) and not (has_unlimited and not limits):
+            sub += " + extra batches"
+        value["sub"] = sub
         return value
 
     rows = [
@@ -759,12 +775,44 @@ def payment_is_locked(subscription, plan):
 
 
 @transaction.atomic
-def create_payment_request(subscription, plan, *, months=1, billing_cycle="monthly", provider="manual", purpose=None, payroll_tier=None):
+def create_payment_request(subscription, plan, *, months=1, billing_cycle="monthly", provider="manual", purpose=None, payroll_tier=None, payroll_batch=None, batch_quantity=1):
     purpose = purpose or SubscriptionPayment.PURPOSE_SUBSCRIPTION
     if billing_cycle == SubscriptionPayment.CYCLE_YEARLY:
         months = 12
     service_count = max(1, subscription.services.count())
+    if purpose == SubscriptionPayment.PURPOSE_PAYROLL_BATCH:
+        from .payroll import assert_can_buy_batch, batch_snapshot, prorated_batch_amount
+        if not subscription.is_effectively_active:
+            raise ValidationError("Renew the business plan before adding extra payroll staff.")
+        if payroll_batch is None:
+            raise ValidationError("Choose an extra-staff batch.")
+        quantity = int(batch_quantity or 1)
+        addon = assert_can_buy_batch(subscription.primary_business, payroll_batch, quantity)
+        amount, days = prorated_batch_amount(payroll_batch, quantity, addon.paid_until)
+        if amount <= 0:
+            raise ValidationError("This extra-staff batch does not yet have a payable price configured.")
+        from types import SimpleNamespace
+        pending = SimpleNamespace(batch_id=payroll_batch.pk, batch=payroll_batch, quantity=quantity)
+        snapshot = batch_snapshot([pending])
+        snapshot[0]["prorated_days"] = days
+        return SubscriptionPayment.objects.create(
+            subscription=subscription,
+            plan=subscription.plan,
+            purpose=purpose,
+            payroll_batch=payroll_batch,
+            payroll_batch_quantity=quantity,
+            payroll_batch_snapshot=snapshot,
+            amount=amount,
+            base_amount=amount,
+            service_count=service_count,
+            months=1,
+            billing_cycle=SubscriptionPayment.CYCLE_MONTHLY,
+            provider=provider,
+            reference=f"PAYBATCH-{subscription.pk}-{uuid4().hex[:12].upper()}",
+            notes=f"Pro-rata for {days} day(s) until the payroll add-on renews.",
+        )
     if purpose == SubscriptionPayment.PURPOSE_PAYROLL_ADDON:
+        from .payroll import batch_snapshot, held_batches_for_renewal, renewal_monthly_total
         if subscription.founder_lifetime or (subscription.status == BusinessSubscription.STATUS_TRIAL and subscription.is_effectively_active):
             raise ValidationError("Payroll is already included with the current Founder lifetime or free-trial access.")
         if not subscription.is_effectively_active:
@@ -772,7 +820,10 @@ def create_payment_request(subscription, plan, *, months=1, billing_cycle="month
         if not payroll_tier or not payroll_tier.active or payroll_tier.plan_id != subscription.plan_id:
             raise ValidationError("Choose an active payroll add-on tier configured for the current plan.")
         period_count = Decimal("12") if billing_cycle == SubscriptionPayment.CYCLE_YEARLY else Decimal(max(1, int(months or 1)))
-        amount = (Decimal(payroll_tier.monthly_price or 0) * period_count).quantize(Decimal("0.01"))
+        # Held extra-staff batches renew automatically at today's batch prices.
+        addon = BusinessPayrollAddon.objects.filter(business=subscription.primary_business).select_related("tier").first()
+        holdings = [] if payroll_tier.unlimited else held_batches_for_renewal(addon)
+        amount = (renewal_monthly_total(payroll_tier, addon) * period_count).quantize(Decimal("0.01"))
         if amount <= 0:
             raise ValidationError("This payroll add-on tier does not yet have a payable price configured.")
         return SubscriptionPayment.objects.create(
@@ -780,6 +831,7 @@ def create_payment_request(subscription, plan, *, months=1, billing_cycle="month
             plan=subscription.plan,
             purpose=purpose,
             payroll_tier=payroll_tier,
+            payroll_batch_snapshot=batch_snapshot(holdings),
             amount=amount,
             base_amount=amount,
             service_count=service_count,
@@ -839,6 +891,10 @@ def mark_payment_paid(payment):
     if payment.purpose == SubscriptionPayment.PURPOSE_PAYROLL_ADDON:
         from .payroll import activate_paid_payroll_addon
         activate_paid_payroll_addon(payment)
+        return payment
+    if payment.purpose == SubscriptionPayment.PURPOSE_PAYROLL_BATCH:
+        from .payroll import activate_paid_payroll_batch
+        activate_paid_payroll_batch(payment)
         return payment
 
     # A stale payment request must not revoke a newer founder lifetime grant.

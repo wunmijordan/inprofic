@@ -22,45 +22,30 @@ def _pwa_build_version():
 
 
 def _icons(theme="light", platform=""):
-    # Keep the transparent two-colour N as the canonical installed artwork.
-    # Do not advertise it as maskable: that purpose requires an opaque canvas,
-    # which would break the explicitly transparent installed-app treatment.
-    # Monochrome entries let supported operating systems tint the same N to
-    # the device's themed-icon palette automatically.
+    """Manifest icons.
+
+    The splash is a fixed brand-navy canvas, so every large "any" icon is the
+    light (white + orange) N. Small desktop sizes, which Chrome uses for the
+    title bar and taskbar, follow the user's app theme instead. Mobile
+    launchers draw their own light backdrop, so they get an opaque tile with
+    the coloured N (maskable), identical in every theme.
+    """
+    splash_192 = {"src": static("core/pwa/icon-mark-on-dark-192.png"), "sizes": "192x192", "type": "image/png", "purpose": "any"}
+    splash_512 = {"src": static("core/pwa/icon-mark-on-dark-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "any"}
     if platform == "windows":
-        # Windows may choose monochrome artwork independently of taskbar colour.
-        # Serve a distinct, dark-mark-only set so a light taskbar stays readable.
-        return [
-            {"src": static("core/pwa/icon-mark-windows-192.png"), "sizes": "192x192", "type": "image/png", "purpose": "any"},
-            {"src": static("core/pwa/icon-mark-windows-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "any"},
+        stem = "icon-mark-windows-on-dark" if theme == "dark" else "icon-mark-windows"
+        small = [
+            {"src": static(f"core/pwa/{stem}-{n}.png"), "sizes": f"{n}x{n}", "type": "image/png", "purpose": "any"}
+            for n in (32, 48, 64)
         ]
-    dark = theme == "dark"
-    mark_stem = "icon-mark-on-dark" if dark else "icon-mark"
+        return [*small, splash_192, splash_512]
     return [
-        {
-            "src": static(f"core/pwa/{mark_stem}-192.png"),
-            "sizes": "192x192",
-            "type": "image/png",
-            "purpose": "any",
-        },
-        {
-            "src": static(f"core/pwa/{mark_stem}-512.png"),
-            "sizes": "512x512",
-            "type": "image/png",
-            "purpose": "any",
-        },
-        {
-            "src": static("core/pwa/icon-mark-monochrome-192.png"),
-            "sizes": "192x192",
-            "type": "image/png",
-            "purpose": "monochrome",
-        },
-        {
-            "src": static("core/pwa/icon-mark-monochrome-512.png"),
-            "sizes": "512x512",
-            "type": "image/png",
-            "purpose": "monochrome",
-        },
+        {"src": static("core/pwa/icon-launcher-maskable-192.png"), "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+        {"src": static("core/pwa/icon-launcher-maskable-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+        splash_192,
+        splash_512,
+        {"src": static("core/pwa/icon-mark-monochrome-192.png"), "sizes": "192x192", "type": "image/png", "purpose": "monochrome"},
+        {"src": static("core/pwa/icon-mark-monochrome-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "monochrome"},
     ]
 
 
@@ -77,8 +62,11 @@ def _launch_theme(request):
     return "dark" if request.GET.get("theme") == "dark" else "light"
 
 
+SPLASH_BACKGROUND = "#050733"  # fixed brand navy; only the in-page launch screen is theme-aware
+
+
 def _launch_background(request):
-    return "#050733" if _launch_theme(request) == "dark" else "#FFF1E8"
+    return SPLASH_BACKGROUND
 
 
 def _can_access_business(user, business):
@@ -159,10 +147,19 @@ def service_worker(request):
         static("core/pwa/icon-mark-180.png"),
         static("core/pwa/icon-mark-on-dark-180.png"),
         static("core/pwa/icon-mark-192.png"),
+        static("core/pwa/icon-launcher-maskable-192.png"),
+        static("core/pwa/icon-launcher-maskable-512.png"),
+        static("core/pwa/icon-launcher-apple-180.png"),
         static("core/pwa/icon-mark-512.png"),
         static("core/pwa/icon-mark-on-dark-192.png"),
         static("core/pwa/icon-mark-on-dark-512.png"),
         static("core/pwa/icon-mark-windows-192.png"),
+        static("core/pwa/icon-mark-windows-32.png"),
+        static("core/pwa/icon-mark-windows-48.png"),
+        static("core/pwa/icon-mark-windows-64.png"),
+        static("core/pwa/icon-mark-windows-on-dark-32.png"),
+        static("core/pwa/icon-mark-windows-on-dark-48.png"),
+        static("core/pwa/icon-mark-windows-on-dark-64.png"),
         static("core/pwa/icon-mark-windows-512.png"),
         static("core/pwa/icon-mark-monochrome-192.png"),
         static("core/pwa/icon-mark-monochrome-512.png"),

@@ -458,7 +458,7 @@ def subscription_payment_callback(request, provider):
     from .payment_gateways import verify_gateway
     from .subscription_services import mark_payment_paid
     reference = (request.GET.get("reference") or request.GET.get("trxref") or request.GET.get("paymentReference") or "").strip()
-    payment = SubscriptionPayment.objects.filter(reference=reference, provider=provider).select_related("subscription", "plan", "payroll_tier").first()
+    payment = SubscriptionPayment.objects.filter(reference=reference, provider=provider).select_related("subscription", "plan", "payroll_tier", "payroll_batch").first()
     if not payment:
         return render(request, "accounts/subscription_payment_result.html", {"success": False, "message": "Payment reference was not found."}, status=404)
     if payment.status == SubscriptionPayment.STATUS_PAID:
@@ -510,7 +510,7 @@ def subscription_payment_webhook(request, provider):
             reference = str((payload.get("eventData") or {}).get("paymentReference") or "")
         else:
             return HttpResponse(status=404)
-        payment = SubscriptionPayment.objects.filter(reference=reference, provider=provider).select_related("subscription", "plan", "payroll_tier").first()
+        payment = SubscriptionPayment.objects.filter(reference=reference, provider=provider).select_related("subscription", "plan", "payroll_tier", "payroll_batch").first()
         if not payment or payment.status == SubscriptionPayment.STATUS_PAID:
             return HttpResponse(status=200)
         verified, verify_payload = verify_gateway(payment)
@@ -872,12 +872,12 @@ def founder_subscriptions(request):
     from .forms import (
         FounderGrantForm, FounderTrialGrantForm, SubscriptionTrialPolicyForm,
         BusinessRestoreForm, SubscriptionPromotionForm, MarketingPromoCampaignForm,
-        MarketingTrustSettingsForm, MarketingTrustLogoForm, PlatformPrivacyPolicyForm, PayrollAddonTierForm,
+        MarketingTrustSettingsForm, MarketingTrustLogoForm, PlatformPrivacyPolicyForm, PayrollAddonTierForm, PayrollStaffBatchForm,
     )
     from .models import (
         BusinessSubscription, FounderTrialGrant, SubscriptionPlan, SubscriptionPayment,
         SubscriptionPaymentSettings, SubscriptionPolicySettings, PlatformIntegrationSettings,
-        SubscriptionPromotion, MarketingPromoCampaign, MarketingTrustSettings, MarketingTrustLogo, PlatformPrivacyPolicy, PayrollAddonTier,
+        SubscriptionPromotion, MarketingPromoCampaign, MarketingTrustSettings, MarketingTrustLogo, PlatformPrivacyPolicy, PayrollAddonTier, PayrollStaffBatch,
     )
     from .subscription_services import (
         ensure_default_plans, grant_founder_lifetime, grant_founder_trial_extension,
@@ -944,6 +944,10 @@ def founder_subscriptions(request):
     )
     payroll_tier_form = PayrollAddonTierForm(
         request.POST if action == "add_payroll_tier" else None,
+        plan_choices=plan_choices,
+    )
+    payroll_batch_form = PayrollStaffBatchForm(
+        request.POST if action == "add_payroll_batch" else None,
         plan_choices=plan_choices,
     )
     privacy_policy_form = PlatformPrivacyPolicyForm(
@@ -1093,7 +1097,7 @@ def founder_subscriptions(request):
             return redirect(f"{reverse('founder_subscriptions')}#marketing-trust-strip")
         if action == "add_payroll_tier" and payroll_tier_form.is_valid():
             tier = payroll_tier_form.save()
-            messages.success(request, f"Payroll add-on tier saved for {tier.plan.name}: up to {tier.staff_limit} staff.")
+            messages.success(request, f"Payroll add-on tier saved for {tier.plan.name}: {tier.capacity_label.lower()}.")
             return redirect(f"{reverse('founder_subscriptions')}#payroll-addon-pricing")
         if action == "delete_payroll_tier":
             tier = get_object_or_404(PayrollAddonTier, pk=request.POST.get("payroll_tier_id"))
@@ -1104,6 +1108,20 @@ def founder_subscriptions(request):
             else:
                 tier.delete()
                 messages.success(request, "Payroll tier deleted.")
+            return redirect(f"{reverse('founder_subscriptions')}#payroll-addon-pricing")
+        if action == "add_payroll_batch" and payroll_batch_form.is_valid():
+            batch = payroll_batch_form.save()
+            messages.success(request, f"Extra-staff batch saved for {batch.plan.name}: {batch.label}.")
+            return redirect(f"{reverse('founder_subscriptions')}#payroll-addon-pricing")
+        if action == "delete_payroll_batch":
+            batch = get_object_or_404(PayrollStaffBatch, pk=request.POST.get("payroll_batch_id"))
+            if batch.holdings.exists() or batch.subscription_payments.exists():
+                batch.active = False
+                batch.save(update_fields=["active", "updated_at"])
+                messages.success(request, "That batch is held by businesses or has payment history, so it was retired instead of deleted. Current holders keep it and it still renews for them.")
+            else:
+                batch.delete()
+                messages.success(request, "Extra-staff batch deleted.")
             return redirect(f"{reverse('founder_subscriptions')}#payroll-addon-pricing")
         if action == "create_promotion" and promotion_form.is_valid():
             promotion = promotion_form.save(commit=False)
@@ -1370,7 +1388,8 @@ def founder_subscriptions(request):
             "subscription__primary_business", "plan", "granted_by"
         )[:12])
         trust_logos = list(MarketingTrustLogo.objects.select_related("created_by").all())
-        payroll_tiers = list(PayrollAddonTier.objects.select_related("plan").order_by("plan__monthly_price", "staff_limit", "id"))
+        payroll_tiers = list(PayrollAddonTier.objects.select_related("plan"))
+        payroll_batches = list(PayrollStaffBatch.objects.select_related("plan"))
         promotions = list(
             SubscriptionPromotion.objects.select_related("plan", "created_by")
             .order_by("-active", "-starts_at", "-id")[:50]
@@ -1400,6 +1419,8 @@ def founder_subscriptions(request):
         "trust_logos": trust_logos,
         "payroll_tier_form": payroll_tier_form,
         "payroll_tiers": payroll_tiers,
+        "payroll_batch_form": payroll_batch_form,
+        "payroll_batches": payroll_batches,
         "promotions": promotions,
         "campaign_form": campaign_form,
         "campaign_instance": campaign_instance,
@@ -2324,8 +2345,8 @@ def payroll_run_detail(request, pk):
 def payroll_addon_checkout(request):
     if not can_manage(request):
         return render(request, "403.html", status=403)
-    from .models import PayrollAddonTier, SubscriptionPayment, SubscriptionPaymentSettings
-    from .payroll import payroll_access_state
+    from .models import PayrollAddonTier, PayrollStaffBatch, SubscriptionPayment, SubscriptionPaymentSettings
+    from .payroll import MAX_BATCH_QUANTITY, payroll_access_state, prorated_batch_amount, renewal_monthly_total
     from .subscription_services import create_payment_request
     from .payment_gateways import initialize_gateway
     state = payroll_access_state(request.business)
@@ -2336,7 +2357,20 @@ def payroll_addon_checkout(request):
     if state["included"] and request.method == "POST":
         messages.info(request, "Payroll is already included with the current free-trial or Founder lifetime access, so there is nothing to pay yet.")
         return redirect("payroll_addon_checkout")
-    tiers = list(PayrollAddonTier.objects.filter(plan=subscription.plan, active=True).order_by("staff_limit"))
+    tiers = list(PayrollAddonTier.objects.filter(plan=subscription.plan, active=True))
+    addon = state["addon"] if state["enabled"] and not state["included"] else None
+    # Extra staff can only be added on top of a live, limited primary package.
+    batch_offers = []
+    if addon and not addon.tier.unlimited:
+        for batch in PayrollStaffBatch.objects.filter(plan=subscription.plan, active=True).order_by("staff_count", "id"):
+            try:
+                due_now, days = prorated_batch_amount(batch, 1, addon.paid_until)
+            except Exception:
+                break
+            batch_offers.append({"batch": batch, "due_now": due_now, "days": days})
+    for tier in tiers:
+        tier.renewal_total = renewal_monthly_total(tier, addon) if addon else tier.monthly_price
+        tier.renewal_extra = tier.renewal_total - tier.monthly_price
     payment_settings = SubscriptionPaymentSettings.load()
     providers = [
         (code, label) for code, label in (
@@ -2345,22 +2379,41 @@ def payroll_addon_checkout(request):
         ) if payment_settings.provider_enabled(code)
     ]
     if request.method == "POST":
-        tier = get_object_or_404(PayrollAddonTier, pk=request.POST.get("tier_id"), plan=subscription.plan, active=True)
-        billing_cycle = request.POST.get("billing_cycle") or SubscriptionPayment.CYCLE_MONTHLY
-        if billing_cycle not in {SubscriptionPayment.CYCLE_MONTHLY, SubscriptionPayment.CYCLE_YEARLY}:
-            billing_cycle = SubscriptionPayment.CYCLE_MONTHLY
+        kind = request.POST.get("kind") or "package"
         provider = request.POST.get("provider") or ""
         if not payment_settings.provider_enabled(provider):
             messages.error(request, "That payment provider is currently unavailable.")
             return redirect("payroll_addon_checkout")
+        request_kwargs = {}
+        if kind == "batch":
+            batch = get_object_or_404(PayrollStaffBatch, pk=request.POST.get("batch_id"), plan=subscription.plan, active=True)
+            try:
+                quantity = int(request.POST.get("quantity") or 1)
+            except (TypeError, ValueError):
+                quantity = 0
+            if not 1 <= quantity <= MAX_BATCH_QUANTITY:
+                messages.error(request, f"Choose between 1 and {MAX_BATCH_QUANTITY} batches.")
+                return redirect("payroll_addon_checkout")
+            billing_cycle = SubscriptionPayment.CYCLE_MONTHLY
+            request_kwargs = {
+                "months": 1, "purpose": SubscriptionPayment.PURPOSE_PAYROLL_BATCH,
+                "payroll_batch": batch, "batch_quantity": quantity,
+            }
+        else:
+            tier = get_object_or_404(PayrollAddonTier, pk=request.POST.get("tier_id"), plan=subscription.plan, active=True)
+            billing_cycle = request.POST.get("billing_cycle") or SubscriptionPayment.CYCLE_MONTHLY
+            if billing_cycle not in {SubscriptionPayment.CYCLE_MONTHLY, SubscriptionPayment.CYCLE_YEARLY}:
+                billing_cycle = SubscriptionPayment.CYCLE_MONTHLY
+            request_kwargs = {
+                "months": 12 if billing_cycle == SubscriptionPayment.CYCLE_YEARLY else 1,
+                "purpose": SubscriptionPayment.PURPOSE_PAYROLL_ADDON, "payroll_tier": tier,
+            }
         try:
             payment = create_payment_request(
                 subscription, subscription.plan,
-                months=12 if billing_cycle == SubscriptionPayment.CYCLE_YEARLY else 1,
                 billing_cycle=billing_cycle,
                 provider=provider,
-                purpose=SubscriptionPayment.PURPOSE_PAYROLL_ADDON,
-                payroll_tier=tier,
+                **request_kwargs,
             )
             callback = request.build_absolute_uri(reverse("subscription_payment_callback", args=[provider]))
             callback = f"{callback}?reference={payment.reference}"
@@ -2380,5 +2433,8 @@ def payroll_addon_checkout(request):
                 payment.status = SubscriptionPayment.STATUS_FAILED
                 payment.notes = str(exc)[:255]
                 payment.save(update_fields=["status", "notes"])
-            messages.error(request, str(exc))
-    return render(request, "accounts/payroll_addon_checkout.html", {"payroll_state": state, "tiers": tiers, "providers": providers, "subscription": subscription})
+            messages.error(request, str(getattr(exc, "messages", [exc])[0]) if hasattr(exc, "messages") else str(exc))
+    return render(request, "accounts/payroll_addon_checkout.html", {
+        "payroll_state": state, "tiers": tiers, "providers": providers, "subscription": subscription,
+        "batch_offers": batch_offers, "max_batch_quantity": MAX_BATCH_QUANTITY, "addon": addon,
+    })

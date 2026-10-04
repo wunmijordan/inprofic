@@ -1,0 +1,14 @@
+{% comment %}
+  Compact item list for table rows: one item, "+N more", and a button that opens
+  the full list in a dialog (same behaviour as the procurement table).
+  Needs: items (prefetched list), dialog_prefix, row_pk, show_qty (optional).
+{% endcomment %}{% load core_extras %}
+{% with item_count=items|length first_item=items|first %}
+  {% if first_item %}
+    <div class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+      <span class="max-w-[14rem] truncate font-medium text-stone-700" title="{{ first_item.finished_good.name }}">{{ first_item.finished_good.name }}{% if show_qty %} <span class="font-normal text-stone-500">x{{ first_item.total_units|num }}</span>{% endif %}</span>
+      {% if item_count > 1 %}<span class="text-[11px] text-stone-400">+{{ item_count|add:"-1" }} more</span>{% endif %}
+    </div>
+    {% if item_count > 1 %}<button type="button" data-items-dialog-open="{{ dialog_prefix }}{{ row_pk }}" class="mt-0.5 text-xs font-medium text-[#8f172d] hover:underline">View {{ item_count }} items</button>{% endif %}
+  {% else %}<span class="text-stone-400">&mdash;</span>{% endif %}
+{% endwith %}

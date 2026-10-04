@@ -9,6 +9,7 @@ import time
 
 from django.conf import settings
 from django.db import connections
+from django.middleware.gzip import GZipMiddleware
 
 
 logger = logging.getLogger("inprofic.performance")
@@ -210,3 +211,24 @@ class PerformanceDiagnosticMiddleware:
         # Unresolved paths are reduced to a generic label rather than logging
         # user-controlled path content.
         return "unresolved"
+
+
+class TextOnlyGZipMiddleware(GZipMiddleware):
+    """Compress text responses (HTML, JSON, CSS, JS, XML, SVG, CSV) only.
+
+    Dynamic pages in this app are large (hundreds of KB of HTML), so compressing
+    them is the single biggest transfer saving on slow mobile connections.
+    Already-compressed bodies (PDF, XLSX, images, audio, zip) are left alone so
+    no CPU is wasted and downloads are untouched. WhiteNoise serves static files
+    before this middleware runs, and Django's GZipMiddleware itself skips
+    responses that already carry a Content-Encoding.
+    """
+
+    COMPRESSIBLE = ("text/", "application/json", "application/javascript", "application/xml", "image/svg+xml", "application/manifest+json")
+
+    def process_response(self, request, response):
+        content_type = (response.get("Content-Type") or "").lower()
+        if not content_type.startswith(self.COMPRESSIBLE):
+            return response
+        return super().process_response(request, response)
+

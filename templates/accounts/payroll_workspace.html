@@ -26,7 +26,7 @@
         href="{% url 'payroll_addon_checkout' %}"
         class="rounded-md bg-[#050733] px-3 py-2 text-sm font-semibold text-white"
       >
-        Payroll add-on pricing
+        Payroll add-on &amp; extra staff
       </a>
   </div>
 </div>
@@ -34,9 +34,9 @@
 <div class="mb-5 rounded-xl border {% if payroll_state.enabled %}border-emerald-200 bg-emerald-50{% else %}border-amber-200 bg-amber-50{% endif %} p-4 text-sm">
   <div class="flex flex-wrap items-center justify-between gap-2">
     <strong>{{ payroll_state.reason }}</strong>
-    {% if payroll_state.staff_limit %}<span class="rounded-full bg-white px-2.5 py-1 text-xs font-semibold">Up to {{ payroll_state.staff_limit }} active staff</span>{% endif %}
+    {% if payroll_state.enabled and payroll_state.unlimited %}<span class="rounded-full bg-white px-2.5 py-1 text-xs font-semibold">Unlimited active staff</span>{% elif payroll_state.staff_limit %}<span class="rounded-full bg-white px-2.5 py-1 text-xs font-semibold">Up to {{ payroll_state.staff_limit }} active staff{% if payroll_state.extra_staff %} ({{ payroll_state.base_limit }} + {{ payroll_state.extra_staff }} extra){% endif %}</span>{% endif %}
   </div>
-  {% if not payroll_state.enabled %}<p class="mt-2 text-xs leading-5">Your normal plan can remain active while payroll is purchased separately. Choose a Founder-configured staff tier to restore payroll access.</p>{% endif %}
+  {% if not payroll_state.enabled %}<p class="mt-2 text-xs leading-5">Your normal plan can remain active while payroll is purchased separately. Choose a Founder-configured staff package to restore payroll access.</p>{% endif %}
 </div>
 
 {% if payroll_recent_runs %}
@@ -55,7 +55,7 @@
 </section>
 {% endif %}
 
-<div class="grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(19rem,.8fr)]">
+<div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(19rem,.8fr)]">
   <section class="overflow-hidden rounded-xl border border-[#E7DFCC] bg-white">
     <div class="border-b border-[#E7DFCC] bg-[#FFFDF8] px-4 py-3"><h3 class="font-semibold">Payroll staff</h3></div>
     <div class="overflow-x-auto">

@@ -62,8 +62,12 @@ def _paystack_secret():
 
 
 def _payment_label(payment: SubscriptionPayment):
+    if payment.purpose == SubscriptionPayment.PURPOSE_PAYROLL_BATCH and payment.payroll_batch_id:
+        return f"INPROFIC Payroll extra staff · {payment.payroll_batch.label} × {payment.payroll_batch_quantity}"
     if payment.purpose == SubscriptionPayment.PURPOSE_PAYROLL_ADDON and payment.payroll_tier_id:
-        return f"INPROFIC Payroll add-on · up to {payment.payroll_tier.staff_limit} staff · {payment.get_billing_cycle_display()}"
+        label = f"INPROFIC Payroll add-on · {payment.payroll_tier.capacity_label.lower()} · {payment.get_billing_cycle_display()}"
+        extra = sum(item.get("staff_count", 0) * item.get("quantity", 1) for item in payment.payroll_batch_snapshot or [])
+        return f"{label} (+{extra} extra staff)" if extra else label
     return f"INPROFIC {payment.plan.name} {payment.get_billing_cycle_display()} subscription"
 
 
@@ -77,7 +81,10 @@ def _payment_metadata(payment: SubscriptionPayment):
     }
     if payment.payroll_tier_id:
         metadata["payroll_tier_id"] = payment.payroll_tier_id
-        metadata["payroll_staff_limit"] = payment.payroll_tier.staff_limit
+        metadata["payroll_staff_limit"] = "unlimited" if payment.payroll_tier.unlimited else payment.payroll_tier.staff_limit
+    if payment.payroll_batch_id:
+        metadata["payroll_batch_id"] = payment.payroll_batch_id
+        metadata["payroll_batch_quantity"] = payment.payroll_batch_quantity
     return metadata
 
 

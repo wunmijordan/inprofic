@@ -33,14 +33,13 @@ def build_stock_ticker(day):
     end = start + timedelta(days=1)
 
     todays = StockMovement.objects.filter(occurred_at__gte=start, occurred_at__lt=end, affects_stock=True)
-    raw_net = {
-        row["raw_material_id"]: row["net"]
-        for row in todays.filter(raw_material__isnull=False).values("raw_material_id").annotate(net=Sum("quantity"))
-    }
-    good_net = {
-        row["finished_good_id"]: row["net"]
-        for row in todays.filter(finished_good__isnull=False).values("finished_good_id").annotate(net=Sum("quantity"))
-    }
+    # One grouped query covers both raw materials and finished goods.
+    raw_net, good_net = {}, {}
+    for row in todays.values("raw_material_id", "finished_good_id").annotate(net=Sum("quantity")):
+        if row["raw_material_id"]:
+            raw_net[row["raw_material_id"]] = row["net"]
+        elif row["finished_good_id"]:
+            good_net[row["finished_good_id"]] = row["net"]
     market_net = {
         row["lot__finished_good_id"]: row["net"]
         for row in MarketStockMovement.objects.filter(date=day).values("lot__finished_good_id").annotate(net=Sum("quantity"))
@@ -55,7 +54,9 @@ def build_stock_ticker(day):
         raw.append({"id": material.pk, "name": material.name, "unit": material.usage_unit or "", **_balance(stock, net)})
 
     finished = []
-    for good in FinishedGood.objects.all().order_by("name"):
+    # Bulk-load what the stock properties read per product (its business and
+    # market lots); without this every product costs extra queries per refresh.
+    for good in FinishedGood.objects.select_related("business").prefetch_related("market_stock_lots").order_by("name"):
         store_now = good.physical_saleable_stock
         market_now = good.market_stock
         store_net, mkt_net = good_net.get(good.pk), market_net.get(good.pk)

@@ -26,7 +26,7 @@
       <tr class="border-t border-[#E7DFCC]">
         <td class="px-3 py-2 font-mono text-xs">{{ s.date }}</td>
         <td class="px-3 py-2">{{ s.customer|default:"Walk-in" }}</td>
-        <td class="px-3 py-2 text-xs text-stone-500">{% for i in s.items.all %}{{ i.finished_good.name }} x{{ i.total_units|num }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+        <td class="px-3 py-2 text-xs" style="min-width:11rem;max-width:20rem">{% include "partials/_items_summary.html" with items=s.items.all show_qty=True dialog_prefix="sale-items-" row_pk=s.pk %}</td>
         <td class="px-3 py-2 text-right font-mono">{{ s.total|money:biz.currency_symbol }}</td>
         {% if biz.is_restaurant %}<td class="px-3 py-2 text-xs">{{ s.get_service_mode_display|default:"—" }}{% if s.table_reference %}<div class="text-[10px] text-stone-400">{{ s.table_reference }}</div>{% endif %}</td>{% endif %}
         <td class="px-3 py-2">
@@ -55,5 +55,7 @@
     </tbody>
   </table>
 </div>
+{% for s in sales %}{% if s.items.all|length > 1 %}{% include "partials/_items_dialog.html" with items=s.items.all with_amount=True currency=biz.currency_symbol dialog_prefix="sale-items-" row_pk=s.pk title_prefix="Sale on " title_ref=s.date subtitle=s.customer|default:"Walk-in" total_label="Sale total" total_value=s.total|money:biz.currency_symbol %}{% endif %}{% endfor %}
+{% include "partials/_items_dialog_assets.html" %}
 {% endif %}
 {% endblock %}

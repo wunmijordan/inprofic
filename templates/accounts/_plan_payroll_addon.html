@@ -7,8 +7,9 @@
   </summary>
   <div class="border-t {% if theme == 'dark' %}border-white/10{% else %}border-[#EFE8D9]{% endif %} px-3 py-2">
     <ul class="space-y-1">
-      {% for tier in plan.payroll_tiers %}<li class="flex items-center justify-between gap-3"><span>Up to {{ tier.staff_limit }} staff</span><span class="font-mono {% if theme == 'dark' %}text-white{% else %}text-stone-800{% endif %}">{{ tier.monthly_price|money:symbol }}</span></li>{% endfor %}
+      {% for tier in plan.payroll_tiers %}<li class="flex items-center justify-between gap-3"><span>{{ tier.capacity_label }}</span><span class="font-mono {% if theme == 'dark' %}text-white{% else %}text-stone-800{% endif %}">{{ tier.monthly_price|money:symbol }}</span></li>{% endfor %}
     </ul>
+    {% if plan.payroll_batches %}<p class="mt-2 text-[11px] leading-4 {% if theme == 'dark' %}text-white/60{% else %}text-stone-500{% endif %}">Need more staff? Add extra batches without upgrading: {% for batch in plan.payroll_batches %}{{ batch.label }} for <span class="font-mono">{{ batch.monthly_price|money:symbol }}</span>/mo{% if not forloop.last %}, {% endif %}{% endfor %}.</p>{% endif %}
     <p class="mt-2 text-[11px] leading-4 {% if theme == 'dark' %}text-white/45{% else %}text-stone-500{% endif %}">{% if included %}Included free on your current access. After that, this price applies.{% else %}Included free during a trial and Founder lifetime access; billed monthly after.{% endif %}</p>
   </div>
 </details>

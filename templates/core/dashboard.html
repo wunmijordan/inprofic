@@ -1,6 +1,7 @@
 {% extends "base.html" %} 
 {% load core_extras static %} 
 {% block head_scripts %}
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.17.1/dist/cdn.min.js"></script>
 <script defer src="{% static 'core/js/dashboard-stock-ticker.js' %}"></script>
@@ -40,7 +41,6 @@
     .stock-ticker__flip { transition: none; }
   }
 </style>
-{{ stock_ticker|json_script:"stock-ticker-data" }}
 <span hidden data-stock-ticker-url="{% url 'dashboard_stock_ticker' %}"></span>
 <div x-data="{ dashboardView: new URLSearchParams(window.location.search).has('stock_item') ? 'stock' : 'overview' }">
 <header data-tour-target="dashboard" class="mb-4 flex items-end justify-between gap-4">

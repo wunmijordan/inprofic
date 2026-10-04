@@ -10,8 +10,8 @@
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
   <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}?v={{ static_asset_version }}">
   <style>
-    @font-face { font-family:'Sora'; src:url('{% static "core/fonts/Sora-Variable.ttf" %}') format('truetype'); font-weight:100 800; font-style:normal; font-display:swap; }
-    @font-face { font-family:'Fraunces'; src:url('{% static "core/fonts/Fraunces-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
+    @font-face { font-family:'Sora'; src:url('{% static "core/fonts/Sora-Variable.woff2" %}') format('woff2'), url('{% static "core/fonts/Sora-Variable.ttf" %}') format('truetype'); font-weight:100 800; font-style:normal; font-display:swap; }
+    @font-face { font-family:'Fraunces'; src:url('{% static "core/fonts/Fraunces-SemiBold.woff2" %}') format('woff2'), url('{% static "core/fonts/Fraunces-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
     :root { --brand: {{ store_business.accent_color }}; --brand-dark: {{ store_business.background_color }}; --brand-dark-contrast: {{ store_business.background_text_color|default:'#FFFFFF' }}; --tenant-button: {{ store_business.accent_color }}; --tenant-button-contrast: {{ store_business.button_text_color|default:'#FFFFFF' }}; }
     body { font-family: 'Sora', sans-serif; background: #f7f4ee; color: #211d1a; }
     .font-display { font-family: 'Fraunces', serif; }
@@ -49,13 +49,13 @@
       <nav class="flex items-center justify-between gap-4">
         <a href="{% url 'storefront' store_business.slug %}" class="flex min-w-0 items-center gap-3">
           {% if store_business.storefront_logo %}<img src="{{ store_business.storefront_logo.url }}" alt="{{ store_business.name }} logo" class="h-11 w-11 shrink-0 rounded-xl border border-white/20 bg-white/95 object-contain p-1 shadow-sm">{% endif %}
-          <span class="min-w-0"><span class="block truncate font-display text-xl font-semibold sm:text-2xl">{{ store_business.name }}</span><span class="storefront-brand-muted mt-0.5 block text-[10px] font-bold uppercase tracking-[.22em]">{{ storefront_copy.range_label }}</span></span>
+          <span class="min-w-0"><span class="block truncate font-display text-xl font-semibold sm:text-2xl">{{ store_business.name }}</span>{% if store_business.tagline %}<span class="storefront-brand-muted mt-0.5 block truncate text-[11px] font-medium leading-tight" data-store-tagline>{{ store_business.tagline }}</span>{% endif %}</span>
         </a>
         <div class="flex items-center gap-2"><button type="button" id="open-order-history" class="storefront-brand-control hidden rounded-full border px-3 py-1.5 text-[11px] font-semibold backdrop-blur transition hover:brightness-95">Track orders</button>{% if storefront_customer %}<a href="{% url 'storefront_customer_account' store_business.slug %}" class="storefront-brand-control rounded-full border px-3 py-1.5 text-[11px] font-semibold backdrop-blur transition hover:brightness-95">{{ storefront_customer.name|truncatechars:18 }}</a>{% else %}<a href="{% url 'storefront_customer_login' store_business.slug %}" class="storefront-brand-control rounded-full border px-3 py-1.5 text-[11px] font-semibold backdrop-blur transition hover:brightness-95">Sign in</a>{% endif %}<span class="storefront-brand-control rounded-full border px-3 py-1.5 text-[11px] font-semibold backdrop-blur">{% if order_now_mode %}Order now{% else %}Browse &amp; order{% endif %}</span></div>
       </nav>
       <div class="mt-8 max-w-xl sm:mt-10">
         <p class="storefront-brand-muted text-[11px] font-bold uppercase tracking-[.22em]">{{ storefront_copy.eyebrow }}</p>
-        <h1 class="mt-3 font-display text-3xl font-semibold leading-[1.08] sm:text-5xl">{{ commerce_settings.storefront_headline|default:.headline }}</h1>
+        <h1 class="mt-3 font-display text-3xl font-semibold leading-[1.08] sm:text-5xl">{{ commerce_settings.storefront_headline|default:storefront_copy.headline }}</h1>
         <p class="storefront-brand-muted mt-4 max-w-lg text-sm leading-6">{{ commerce_settings.public_note|default:storefront_copy.intro }}</p>
       </div>
     </div>

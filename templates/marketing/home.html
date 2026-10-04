@@ -1,16 +1,17 @@
 {% load core_extras static %}
 <!doctype html>
-<html lang="en">
+<html lang="en-NG">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="INPROFIC connects inventory, procurement, production, delivery, audit, POS, sales, finance and online ordering in one business workspace.">
+  <meta name="description" content="Inventory, production management, staff payroll, orders and sales software for Nigerian businesses. Run stock, recipes, POS, online ordering and payroll in naira in one workspace.">
   <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
   <link rel="canonical" href="{{ canonical_url }}">
-  <meta property="og:type" content="website"><meta property="og:site_name" content="INPROFIC"><meta property="og:title" content="INPROFIC · From stock to sale, in one place"><meta property="og:description" content="Connected inventory, procurement, production, commerce, finance and fulfilment for growing businesses."><meta property="og:url" content="{{ canonical_url }}"><meta property="og:image" content="{{ social_image_url }}">
-  <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="INPROFIC · From stock to sale, in one place"><meta name="twitter:description" content="Run stock, production, sales, commerce, finance and delivery in one connected workspace."><meta name="twitter:image" content="{{ social_image_url }}">
-  <title>INPROFIC · From stock to sale, in one place</title>
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"INPROFIC","applicationCategory":"BusinessApplication","operatingSystem":"Web","url":"{{ canonical_url|escapejs }}","description":"Connected inventory, procurement, production, commerce, finance and fulfilment for growing businesses.","publisher":{"@type":"Organization","name":"INPROFIC","url":"{{ canonical_url|escapejs }}"}}</script>
+  <link rel="alternate" hreflang="en-ng" href="{{ canonical_url }}"><link rel="alternate" hreflang="x-default" href="{{ canonical_url }}">
+  <meta property="og:type" content="website"><meta property="og:locale" content="en_NG"><meta property="og:site_name" content="INPROFIC"><meta property="og:title" content="INPROFIC · From Stock to Sale, in one place"><meta property="og:description" content="Manage inventory, production, staff payroll, orders and sales in naira, from one connected workspace built for Nigerian businesses."><meta property="og:url" content="{{ canonical_url }}"><meta property="og:image" content="{{ social_image_url }}">
+  <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="INPROFIC · From Stock to Sale, in one place"><meta name="twitter:description" content="Inventory, production, payroll, orders and sales for Nigerian businesses in one workspace."><meta name="twitter:image" content="{{ social_image_url }}">
+  <title>INPROFIC: Inventory, Production &amp; Sales Software in Nigeria</title>
+  <script type="application/ld+json">{{ json_ld|safe }}</script>
   <script>document.documentElement.classList.add('js')</script>
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
   {% include "pwa/head.html" %}
@@ -294,6 +295,36 @@
       .feature-mini-row { grid-template-columns:minmax(0,1fr) auto; }
       .feature-mini-row > span:nth-child(2) { display:none; }
     }
+    /* Header menu (four section links) */
+    .site-menu { position:relative; }
+    .site-menu-btn { display:grid; place-items:center; width:2.5rem; height:2.5rem; border-radius:999px; border:1px solid rgba(255,255,255,.22); background:transparent; color:#fff; cursor:pointer; transition:background .15s ease; }
+    .site-menu-btn:hover, .site-menu-btn[aria-expanded="true"] { background:rgba(255,255,255,.14); }
+    .site-menu-btn:focus-visible, .site-menu-panel a:focus-visible { outline:2px solid var(--gold); outline-offset:2px; }
+    .site-menu-btn svg { width:1.15rem; height:1.15rem; }
+    .site-menu-panel { position:absolute; right:0; top:calc(100% + .6rem); z-index:40; min-width:13.5rem; padding:.4rem; border-radius:1.1rem; border:1px solid rgba(255,255,255,.14); background:rgba(8,10,56,.96); backdrop-filter:blur(14px); box-shadow:0 24px 50px -20px rgba(0,0,0,.6); }
+    .site-menu-panel[hidden] { display:none; }
+    .site-menu-panel:not([hidden]) { animation:siteMenuIn .14s ease-out; }
+    .site-menu-panel a { display:block; padding:.72rem .9rem; border-radius:.8rem; color:#fff; font-size:.92rem; font-weight:600; text-decoration:none; }
+    .site-menu-panel a:hover { background:rgba(255,255,255,.1); }
+    @keyframes siteMenuIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:none} }
+    @media (max-width:479px) { header .site-nav { flex-wrap:wrap; row-gap:.75rem; } header .site-logo { width:7rem !important; } header .site-nav-actions > a { padding:.45rem .7rem; font-size:.75rem; } .site-menu-btn { width:2.25rem; height:2.25rem; } }
+    /* About section */
+    @media (min-width:640px) { section.about { padding-top:6rem; padding-bottom:6rem; } }
+    .about-kicker { display:inline-flex; align-items:center; gap:.55rem; margin:0 0 1rem; font-size:.85rem; font-weight:600; color:#6b625c; }
+    .about-kicker span { width:.55rem; height:.55rem; border-radius:999px; background:var(--accent); box-shadow:0 0 0 4px rgba(209,73,0,.14); }
+    .about h2 { margin:0; max-width:20ch; font-size:clamp(1.9rem,4.6vw,3.4rem); line-height:1.08; letter-spacing:-.02em; font-weight:600; color:var(--deep); }
+    .about-lead { margin:1.1rem 0 0; max-width:64ch; font-size:1.05rem; line-height:1.7; color:#5f5850; }
+    .about-modules { list-style:none; margin:2rem 0 0; padding:0; display:grid; gap:.6rem; grid-template-columns:repeat(2,minmax(0,1fr)); }
+    @media (min-width:880px) { .about-modules { grid-template-columns:repeat(5,minmax(0,1fr)); gap:.75rem; } }
+    .about-module { display:flex; align-items:center; gap:.65rem; min-height:3.25rem; padding:.55rem .75rem .55rem .6rem; border:1px solid #e7dfcc; border-radius:.9rem; background:#fffdf8; color:var(--deep); font-size:.82rem; font-weight:600; line-height:1.25; text-decoration:none; transition:transform .2s ease, border-color .2s ease, box-shadow .2s ease; }
+    .about-module:hover { transform:translateY(-2px); border-color:#d9cfb4; box-shadow:0 12px 26px -18px rgba(5,7,51,.4); }
+    .about-module:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+    .about-icon { flex:none; display:grid; place-items:center; width:2rem; height:2rem; border-radius:.6rem; background:rgba(5,7,51,.045); }
+    .about-icon svg { width:1.15rem; height:1.15rem; }
+    .about-module small { display:block; margin-top:.1rem; font-size:.66rem; font-weight:600; color:#8a7f73; }
+    .about-note { margin:1rem 0 0; font-size:.85rem; color:#6b625c; }
+    .about-note a { color:var(--accent); font-weight:600; text-underline-offset:2px; }
+    @media (prefers-reduced-motion:reduce) { .about-module { transition:none; } .about-module:hover { transform:none; } }
     @media (prefers-reduced-motion:reduce) { html{scroll-behavior:auto}.js [data-reveal]{opacity:1!important;transform:none!important;transition:none!important}.feature-card,.flow-step,.module-preview-overlay,.module-preview-shell{transition:none!important}.ambient-orb,.payroll-offer-sticker,.hero-preview,.bridge-card>div,.process-flow::before,.promo-stage::before,.promo-slide,.promo-copy>*,.promo-media,.promo-animation-marquee::after,.promo-progress span::after,.hero-typed-text,.hero-typecursor,.ip-demo-chart i,.ip-demo-pointer,.ip-demo-pointer-ring,.capability-grid .feature-card.is-flippable,.capability-connector-flow,.capability-stage::after,.capability-hub-mark,.capability-hub::before,.capability-hub::after,.trust-logo-track{animation:none!important;transition:none!important} }
     .plan-card { transition: transform .24s ease, box-shadow .24s ease; }
     .plan-card:hover { transform: translateY(-4px); }
@@ -320,15 +351,26 @@
     <div class="hero-grid absolute inset-0 opacity-60"></div>
     <div class="ambient-orb absolute -right-20 top-24 h-80 w-80 rounded-full bg-[#d14900]/60 blur-3xl"></div>
     <div class="ambient-orb ambient-orb-delayed absolute -left-28 bottom-0 h-72 w-72 rounded-full bg-[#e7bd65]/20 blur-3xl"></div>
-    <nav class="relative mx-auto flex max-w-7xl items-center justify-between px-5 py-6 sm:px-8">
-      <a href="{% url 'marketing_home' %}" aria-label="INPROFIC home"><img src="{% static 'core/brand/inprofic-wordmark-on-dark.png' %}" alt="INPROFIC" class="max-w-full" style="width:clamp(8.75rem,14vw,11.5rem);height:auto" width="1827" height="290"></a>
-      <div class="flex items-center gap-2">
+    <nav class="site-nav relative mx-auto flex max-w-7xl items-center justify-between px-5 py-6 sm:px-8" aria-label="Main">
+      <a href="{% url 'marketing_home' %}" aria-label="INPROFIC home"><img src="{% static 'core/brand/inprofic-wordmark-on-dark.png' %}" alt="INPROFIC" class="site-logo max-w-full" style="width:clamp(8.75rem,14vw,11.5rem);height:auto" width="1827" height="290"></a>
+      <div class="site-nav-actions flex items-center gap-2">
         {% if user.is_authenticated %}
         <a href="{% url 'dashboard' %}" class="rounded-full bg-[#d14900] px-4 py-2 text-sm font-bold text-white shadow-lg transition hover:brightness-110">Go to your Workspace</a>
         {% else %}
         <a href="{% url 'login' %}" class="rounded-full border border-white/20 px-4 py-2 text-sm font-semibold hover:bg-white/10">Sign In</a>
         <a href="{% url 'signup' %}" class="rounded-full bg-white px-4 py-2 text-sm font-bold text-[#050733] shadow-lg hover:bg-[#fff7e8]">Start Free</a>
         {% endif %}
+        <div class="site-menu" data-site-menu>
+          <button type="button" class="site-menu-btn" aria-label="Open menu" aria-haspopup="true" aria-expanded="false" aria-controls="site-menu-panel" data-site-menu-btn>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+          </button>
+          <div class="site-menu-panel" id="site-menu-panel" hidden>
+            <a href="#about">About</a>
+            <a href="#capabilities">Capabilities</a>
+            <a href="#plans">Plans</a>
+            <a href="#faq">FAQ</a>
+          </div>
+        </div>
       </div>
     </nav>
 
@@ -407,6 +449,53 @@
       </div>
     </section>
     {% endif %}
+
+    <section id="about" class="about mx-auto max-w-7xl px-5 py-16 sm:px-8" aria-labelledby="about-title">
+      <div>
+        <p class="about-kicker"><span aria-hidden="true"></span>Built for Nigerian businesses</p>
+        <h2 id="about-title" class="font-display">One connected system for buying, making and selling.</h2>
+        <p class="about-lead">INPROFIC is a production-aware commercial management system for businesses that buy materials or products, make or prepare finished goods, manage inventory, sell through multiple channels and deliver orders. It keeps payables, receivables and cash flow beside them, giving you one reliable record of what happened across the business, in naira by default.</p>
+      </div>
+      <ul class="about-modules" role="list">
+        <li><a class="about-module" href="#capabilities" title="See how Inventory works"><span class="about-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(209, 73, 0)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-building-warehouse">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M3 21v-13l9 -4l9 4v13" /><path d="M13 13h4v8h-10v-6h6" /><path d="M13 21v-9a1 1 0 0 0 -1 -1h-2a1 1 0 0 0 -1 1v3" />
+            </svg></span><span>Inventory</span></a></li>
+        <li><a class="about-module" href="#capabilities" title="See how Procurement works"><span class="about-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(0, 185, 209)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-shopping-cart">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M4 19a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+              <path d="M15 19a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" /><path d="M17 17h-11v-14h-2" /><path d="M6 5l14 1l-1 7h-13" />
+            </svg></span><span>Procurement</span></a></li>
+        <li><a class="about-module" href="#capabilities" title="See how Production works"><span class="about-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(209, 195, 0)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-whisk">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M21.015 3.035l-16.515 16.465" />
+              <path d="M3.173 17.619a4.63 4.63 0 0 0 3.284 3.26a4.67 4.67 0 0 0 4.487 -1.194c1.85 -1.836 4.07 -10.65 4.07 -10.65s-8.88 2.296 -10.639 4.132a4.59 4.59 0 0 0 -1.202 4.452" />
+            </svg></span><span>Production</span></a></li>
+        <li><a class="about-module" href="#capabilities" title="See how Sales and customers works"><span class="about-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(73, 0, 209)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-building-store">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M3 21l18 0" />
+              <path d="M3 7v1a3 3 0 0 0 6 0v-1m0 1a3 3 0 0 0 6 0v-1m0 1a3 3 0 0 0 6 0v-1h-18l2 -4h14l2 4" /><path d="M5 21l0 -10.15" />
+              <path d="M19 21l0 -10.15" /><path d="M9 21v-4a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v4" />
+            </svg></span><span>Sales & customers</span></a></li>
+        <li><a class="about-module" href="#capabilities" title="See how Finance and expenses works"><span class="about-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(0, 209, 45)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-currency-naira">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M7 18v-10.948a1.05 1.05 0 0 1 1.968 -.51l6.064 10.916a1.05 1.05 0 0 0 1.968 -.51v-10.948" />
+              <path d="M5 10h14" /><path d="M5 14h14" />
+            </svg></span><span>Finance & expenses</span></a></li>
+        <li><a class="about-module" href="#capabilities" title="See how Reports and backup works"><span class="about-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(209, 0, 63)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-file-analytics">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M14 3v4a1 1 0 0 0 1 1h4" />
+              <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /><path d="M9 17l0 -5" /><path d="M12 17l0 -1" /><path d="M15 17l0 -3" />
+            </svg></span><span>Reports & backup</span></a></li>
+        <li><a class="about-module" href="#capabilities" title="See how Delivery operations works"><span class="about-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(0, 209, 174)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-truck-delivery">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M5 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" /><path d="M15 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+              <path d="M5 17h-2v-4m-1 -8h11v12m-4 0h6m4 0h2v-6h-8m0 -5h5l3 5" /><path d="M3 9l4 0" />
+            </svg></span><span>Delivery operations</span></a></li>
+        <li><a class="about-module" href="#capabilities" title="See how Audit Workspace works"><span class="about-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(192, 0, 209)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-zoom-question">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" /><path d="M21 21l-6 -6" />
+              <path d="M10 13l0 .01" /><path d="M10 10a1.5 1.5 0 1 0 -1.14 -2.474" />
+            </svg></span><span>Audit Workspace</span></a></li>
+        <li><a class="about-module" href="#capabilities" title="See how Dedicated in-premise POS works"><span class="about-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(209, 49, 0)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-receipt">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M5 21v-16a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v16l-3 -2l-2 2l-2 -2l-2 2l-2 -2l-3 2m4 -14h6m-6 4h6m-2 4h2" />
+            </svg></span><span>Dedicated in-premise POS</span></a></li>
+        <li><a class="about-module" href="#plans" title="Staff payroll is an add-on: see it under Plans"><span class="about-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgb(0, 100, 209)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-cash"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M7 9m0 2a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2z" /><path d="M14 14m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" /><path d="M17 9v-2a2 2 0 0 0 -2 -2h-10a2 2 0 0 0 -2 2v6a2 2 0 0 0 2 2h2" /></svg></span><span>Staff payroll<small>Add-on</small></span></a></li>
+      </ul>
+      <p class="about-note">Select a module to see how it works. Staff payroll is available as an <a href="#plans">add-on</a>, priced by team size on each plan.</p>
+    </section>
 
     <section id="interactive-demo" class="marketing-demo-intro mx-auto max-w-6xl px-5 pb-4 sm:px-8">
       <div class="mb-6">
@@ -773,17 +862,17 @@
       return {nav:['Catalogue','Checkout','POS','Payments','Operations','Delivery'],steps:[
         {tab:'Publish',module:'Catalogue',scenes:[
           {eyebrow:'Product catalogue',title:'Choose what customers can see',state:'Live',channel:'External',caption:`${profile.label} storefront publishing starts from the business product catalogue.`,kpis:[['Product',profile.product],['Categories','Active'],['Online','Enabled']],rows:[[profile.product,'Public product','Live'],['Category','Customer-facing','Active'],['Physical Store price','Internal only','Protected']],actions:[{id:'edit-public-product',label:'Edit public product',primary:true,nextScene:1}],auto:['edit-public-product']},
-          {eyebrow:'Public product form',title:'Configure storefront selling',state:'Editing',channel:'External',caption:'Only Online channel prices are represented here; Physical Store pricing remains internal.',kpis:[['Channel','Online / Bulk'],['Stock','Available'],['Category','Selected']],fields:[{id:'catalog-name',label:'Product',value:profile.product},{id:'catalog-price',label:'Online price',value:'₦ configured'},{id:'catalog-category',label:'Category',value:'Featured products'},{id:'catalog-option',label:'Selling option',value:'Standard / plain option'}],actions:[{id:'publish-product',label:'Publish product',primary:true,nextScene:2}],auto:['catalog-name','catalog-price','publish-product']},
-          {eyebrow:'External storefront',title:'Product is live for customers',state:'Published',channel:'External',caption:'The public catalogue now exposes only the permitted product information and channels.',kpis:[['Product',profile.product],['Online','Live'],['Stock','Available']],rows:[[profile.product,'Public price','Published'],['Category','Featured products','Live'],['Physical Store price','Not exposed','Protected']],actions:[{id:'open-checkout',label:'Open storefront',primary:true,nextModule:'Checkout'}],auto:['module-Checkout']}
+          {eyebrow:'Public product form',title:'Configure storefront selling',state:'Editing',channel:'External',caption:'Only external-safe fields and channel prices are represented here; Physical Store pricing remains internal.',kpis:[['Channel','Online / Bulk'],['Stock','Available'],['Category','Selected']],fields:[{id:'catalog-name',label:'Product',value:profile.product},{id:'catalog-price',label:'Online price',value:'₦ configured'},{id:'catalog-category',label:'Category',value:'Featured products'},{id:'catalog-option',label:'Selling option',value:'Standard / plain option'}],actions:[{id:'publish-product',label:'Publish product',primary:true,nextScene:2}],auto:['catalog-name','catalog-price','publish-product']},
+          {eyebrow:'External storefront',title:'Product is live for customers',state:'Published',channel:'External',caption:'The public catalogue now exposes only the permitted product information and external selling modes.',kpis:[['Product',profile.product],['Online','Live'],['Stock','Available']],rows:[[profile.product,'Public price','Published'],['Category','Featured products','Live'],['Physical Store price','Not exposed','Protected']],actions:[{id:'open-checkout',label:'Open storefront',primary:true,nextModule:'Checkout'}],auto:['module-Checkout']}
         ]},
         {tab:'Web order',module:'Checkout',scenes:[
           {eyebrow:'Customer storefront',title:'Browse and choose a product',state:'Open',channel:'External',caption:'The storefront uses the same catalogue truth while remaining customer-safe.',kpis:[['Products','12'],['Delivery','Available'],['Basket','0']],rows:[[profile.product,'Available','Live'],['Plain / pack option','Available','Live'],['Category','Featured','Active']],actions:[{id:'add-to-basket',label:'Add to basket',primary:true,nextScene:1}],auto:['add-to-basket']},
           {eyebrow:'Basket',title:'Review the customer basket',state:'Ready',channel:'External',caption:'Quantity, selling option and public pricing are fixed before checkout begins.',kpis:[['Basket','2 items'],['Subtotal','Calculated'],['Mode','Online']],rows:[[profile.product,'× 2','Added'],['Selling option','Selected','Done'],['Delivery','Quote next','Next']],actions:[{id:'continue-checkout',label:'Continue to checkout',primary:true,nextScene:2}],auto:['continue-checkout']},
           {eyebrow:'Checkout form',title:'Address and delivery details',state:'Editing',channel:'External',caption:'Customer address, order mode and delivery quote are captured before payment.',kpis:[['Basket','2 items'],['Delivery','Quoted'],['Checkout','Ready']],fields:[{id:'checkout-name',label:'Customer name',value:'A. Customer'},{id:'checkout-address',label:'Delivery address',value:'Saved / mapped address'},{id:'checkout-mode',label:'Order mode',value:'Online'},{id:'checkout-delivery',label:'Delivery quote',value:'₦ calculated'}],actions:[{id:'place-order',label:'Place web order',primary:true,nextScene:3}],auto:['checkout-address','checkout-delivery','place-order']},
-          {eyebrow:'Web order created',title:'External checkout becomes an order',state:'Created',channel:'External',caption:'The Online order now exists inside INPROFIC with the channel data preserved.',kpis:[['Order','#1048'],['Payment','Pending'],['Delivery','Quoted']],rows:[[profile.product,'× 2','Ready'],['Checkout data','Saved','Done'],['Physical Store price','Never exposed','Protected']],actions:[{id:'compare-pos',label:'Compare in-premise POS',primary:true,nextModule:'POS'}],auto:['module-POS']}
+          {eyebrow:'Web order created',title:'External checkout becomes an order',state:'Created',channel:'External',caption:'The external order now exists inside INPROFIC with the customer-safe channel data preserved.',kpis:[['Order','#1048'],['Payment','Pending'],['Delivery','Quoted']],rows:[[profile.product,'× 2','Ready'],['Checkout data','Saved','Done'],['Physical Store price','Never exposed','Protected']],actions:[{id:'compare-pos',label:'Compare in-premise POS',primary:true,nextModule:'POS'}],auto:['module-POS']}
         ]},
         {tab:'Counter',module:'POS',scenes:[
-          {eyebrow:'In-premise POS',title:profile.counter,state:'Open',channel:'Internal',caption:'Counter staff see the internal direct-selling surface, including Physical Store pricing.',kpis:[['Channel','Physical Store'],['Basket','0'],['Staff','Authorised']],rows:[[profile.product,'Available','Live'],['Physical Store price','Internal','Protected'],['Distribution / bulk','Available','Live']],actions:[{id:'pos-add',label:'Add product',primary:true,nextScene:1}],auto:['pos-add']},
+          {eyebrow:'In-premise POS',title:profile.counter,state:'Open',channel:'Internal',caption:'Counter staff see the internal direct-selling surface, including Physical Store pricing that never appears externally.',kpis:[['Channel','Physical Store'],['Basket','0'],['Staff','Authorised']],rows:[[profile.product,'Available','Live'],['Physical Store price','Internal','Protected'],['Distribution / bulk','Available','Live']],actions:[{id:'pos-add',label:'Add product',primary:true,nextScene:1}],auto:['pos-add']},
           {eyebrow:'POS basket',title:'Review the counter sale',state:'Ready',channel:'Internal',caption:'The staff basket uses the same stock truth with staff-controlled settlement methods.',kpis:[['Basket','2 items'],['Channel','In-premise'],['Receipt','Pending']],rows:[[profile.product,'× 1','Added'],['Customer','Optional','Ready'],['Payment method','Staff selects','Next']],actions:[{id:'pos-pay',label:'Take payment',primary:true,nextModule:'Payments'}],auto:['module-Payments']}
         ]},
         {tab:'Pay',module:'Payments',scenes:[
@@ -791,11 +880,11 @@
           {eyebrow:'Payment confirmed',title:'Order can move to operations',state:'Verified',channel:'Internal + External',caption:'Only confirmed payment releases the order into the next operational step.',kpis:[['Payment','Verified'],['Order','Released'],['Audit','Logged']],rows:[['Payment receipt','Created','Done'],['Order state','Paid','Done'],['Handoff','Ready','Next']],actions:[{id:'handoff-order',label:'Open operational handoff',primary:true,nextModule:'Operations'}],auto:['module-Operations']}
         ]},
         {tab:'Handoff',module:'Operations',scenes:[
-          {eyebrow:'Operational handoff',title:profile.usesProduction?'Stock or production moves next':'Stock fulfilment moves next',state:'Released',channel:'Internal + External',caption:profile.usesProduction?'Stocked items deduct immediately. Made-to-order enters production under staff control.':'Procured stock is reserved/released without introducing production-only steps.',kpis:[['Stock','Checked'],['Order','Created once'],['Audit','Linked']],rows:[[profile.product,'Availability checked','Done'],[profile.usesProduction?'Production intake':'Warehouse / shop pick','Controlled','Released'],['Order history','Single source','Posted']],actions:[{id:'send-delivery',label:'Send to Delivery',primary:true,nextModule:'Delivery'}],auto:['module-Delivery']}
+          {eyebrow:'Operational handoff',title:profile.usesProduction?'Stock or production moves next':'Stock fulfilment moves next',state:'Released',channel:'Internal + External',caption:profile.usesProduction?'Stocked items deduct immediately while made-to-order demand can enter production under staff control.':'Procured stock is reserved/released without introducing production-only steps.',kpis:[['Stock','Checked'],['Order','Created once'],['Audit','Linked']],rows:[[profile.product,'Availability checked','Done'],[profile.usesProduction?'Production intake':'Warehouse / shop pick','Controlled','Released'],['Order history','Single source','Posted']],actions:[{id:'send-delivery',label:'Send to Delivery',primary:true,nextModule:'Delivery'}],auto:['module-Delivery']}
         ]},
         {tab:'Track',module:'Delivery',scenes:[
-          {eyebrow:'Delivery assignment',title:'Assign fulfilment',state:'Ready',channel:'External',caption:'The delivery workspace receives the paid order quote, address and customer context.',kpis:[['Delivery','Quoted'],['Assignment','Ready'],['Updates','Synced']],rows:[['Order','Paid','Done'],['Address','Validated','Done'],['Rider / provider','Choose next','Next']],actions:[{id:'assign-track',label:'Assign delivery',primary:true,nextScene:1}],auto:['assign-track']},
-          {eyebrow:'Customer + staff tracking',title:'Follow fulfilment to delivery',state:'On route',channel:'External',caption:'Customer tracking and staff/rider updates stay in sync with the same delivery record.',kpis:[['Delivery','Assigned'],['ETA','Visible'],['Updates','Synced']],progress:72,rows:[['Confirmed','Customer sees it','Done'],['Picked up','Staff/rider update','Done'],['Delivered','Proof + status','Next']],actions:[{id:'complete-track',label:'Complete delivery',primary:true,nextScene:2}],auto:['complete-track']},
+          {eyebrow:'Delivery assignment',title:'Assign fulfilment',state:'Ready',channel:'External',caption:'The delivery workspace receives the paid order with its quote, address and customer context intact.',kpis:[['Delivery','Quoted'],['Assignment','Ready'],['Updates','Synced']],rows:[['Order','Paid','Done'],['Address','Validated','Done'],['Rider / provider','Choose next','Next']],actions:[{id:'assign-track',label:'Assign delivery',primary:true,nextScene:1}],auto:['assign-track']},
+          {eyebrow:'Customer + staff tracking',title:'Follow fulfilment to delivery',state:'On route',channel:'External',caption:'Customer tracking and staff/rider/provider updates stay synchronized to the same delivery record.',kpis:[['Delivery','Assigned'],['ETA','Visible'],['Updates','Synced']],progress:72,rows:[['Confirmed','Customer sees it','Done'],['Picked up','Staff/rider update','Done'],['Delivered','Proof + status','Next']],actions:[{id:'complete-track',label:'Complete delivery',primary:true,nextScene:2}],auto:['complete-track']},
           {eyebrow:'Delivered',title:'The order closes cleanly',state:'Delivered',channel:'External',caption:'Proof, tracking and final fulfilment state stay available to the customer and the business.',kpis:[['Status','Delivered'],['Proof','Saved'],['Customer','Updated']],rows:[['Tracking page','Delivered','Done'],['Proof of delivery','Saved','Done'],['Order history','Complete','Posted']],actions:[{id:'replay-storefront',label:'Replay storefront flow',nextModule:'Catalogue'}],auto:['module-Catalogue']}
         ]}
       ]};
@@ -1218,5 +1307,16 @@
     <span class="marketing-whatsapp-label">Chat with us</span>
     <span class="marketing-whatsapp-icon" aria-hidden="true"><svg viewBox="0 0 32 32" role="img"><path fill="currentColor" d="M16 3a12.8 12.8 0 0 0-11 19.36L3.5 29l6.82-1.43A12.94 12.94 0 1 0 16 3Zm0 23.45a10.5 10.5 0 0 1-5.35-1.46l-.38-.22-4.05.85.87-3.94-.25-.4A10.42 10.42 0 1 1 16 26.45Zm5.74-7.82c-.31-.16-1.85-.91-2.14-1.02-.29-.11-.5-.16-.71.16-.21.31-.81 1.02-.99 1.23-.18.21-.37.24-.68.08-.31-.16-1.32-.49-2.51-1.55a9.45 9.45 0 0 1-1.74-2.17c-.18-.31-.02-.48.14-.64.14-.14.31-.37.47-.55.16-.18.21-.31.31-.52.11-.21.05-.39-.03-.55-.08-.16-.71-1.71-.97-2.34-.26-.62-.52-.54-.71-.55h-.6c-.21 0-.55.08-.84.39-.29.31-1.1 1.08-1.1 2.63s1.13 3.05 1.29 3.26c.16.21 2.22 3.39 5.38 4.75.75.32 1.34.52 1.8.66.76.24 1.44.21 1.99.13.61-.09 1.85-.76 2.11-1.49.26-.73.26-1.36.18-1.49-.08-.13-.29-.21-.6-.37Z"/></svg></span>
   </a>
+  <script>
+  (function () {
+    var root = document.querySelector('[data-site-menu]'); if (!root) return;
+    var btn = root.querySelector('[data-site-menu-btn]'), panel = root.querySelector('.site-menu-panel');
+    function set(open) { panel.hidden = !open; btn.setAttribute('aria-expanded', open ? 'true' : 'false'); btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu'); }
+    btn.addEventListener('click', function () { set(panel.hidden); });
+    panel.addEventListener('click', function (e) { if (e.target.closest('a')) set(false); });
+    document.addEventListener('pointerdown', function (e) { if (!panel.hidden && !root.contains(e.target)) set(false); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !panel.hidden) { set(false); btn.focus(); } });
+  })();
+  </script>
 </body>
 </html>

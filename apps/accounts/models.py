@@ -694,22 +694,71 @@ class BusinessFeatureAccess(models.Model):
 
 
 class PayrollAddonTier(models.Model):
-    """Founder-priced payroll capacity tier attached to one commercial plan."""
+    """Founder-priced primary payroll package attached to one commercial plan.
+
+    A tier either covers a fixed number of active staff or is ``unlimited``.
+    Businesses on a limited tier can top up capacity with ``PayrollStaffBatch``
+    purchases instead of upgrading the tier.
+    """
     plan = models.ForeignKey(SubscriptionPlan, on_delete=models.CASCADE, related_name="payroll_addon_tiers")
-    staff_limit = models.PositiveIntegerField(help_text="Maximum active payroll staff covered by this tier.")
+    staff_limit = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Maximum active payroll staff covered by this tier. Leave empty when unlimited.",
+    )
+    unlimited = models.BooleanField(default=False, help_text="Cover unlimited active payroll staff on this plan.")
     monthly_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["plan__monthly_price", "staff_limit", "id"]
+        ordering = ["plan__monthly_price", models.F("staff_limit").asc(nulls_last=True), "id"]
         constraints = [
             models.UniqueConstraint(fields=["plan", "staff_limit"], name="unique_payroll_tier_plan_staff"),
+            models.UniqueConstraint(
+                fields=["plan"], condition=models.Q(unlimited=True), name="unique_unlimited_payroll_tier_per_plan",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(unlimited=True, staff_limit__isnull=True)
+                    | models.Q(unlimited=False, staff_limit__isnull=False)
+                ),
+                name="payroll_tier_limit_matches_unlimited",
+            ),
         ]
 
+    @property
+    def capacity_label(self):
+        return "Unlimited staff" if self.unlimited else f"Up to {self.staff_limit} staff"
+
     def __str__(self):
-        return f"{self.plan.name} · up to {self.staff_limit} staff"
+        return f"{self.plan.name} · {self.capacity_label.lower()}"
+
+
+class PayrollStaffBatch(models.Model):
+    """Founder-priced block of extra payroll staff a business can add on top of
+    its primary package without changing plan. Price is per month."""
+    plan = models.ForeignKey(SubscriptionPlan, on_delete=models.CASCADE, related_name="payroll_staff_batches")
+    staff_count = models.PositiveIntegerField(help_text="Extra active payroll staff this batch adds.")
+    monthly_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["plan__monthly_price", "staff_count", "id"]
+        verbose_name_plural = "payroll staff batches"
+        constraints = [
+            models.UniqueConstraint(fields=["plan", "staff_count"], name="unique_payroll_batch_plan_staff"),
+            models.CheckConstraint(condition=models.Q(staff_count__gte=1), name="payroll_batch_staff_positive"),
+        ]
+
+    @property
+    def label(self):
+        return f"+{self.staff_count} staff"
+
+    def __str__(self):
+        return f"{self.plan.name} · {self.label}"
 
 
 class BusinessPayrollAddon(models.Model):
@@ -717,6 +766,8 @@ class BusinessPayrollAddon(models.Model):
 
     Trial and Founder-lifetime access are derived from BusinessSubscription and
     do not need a paid row here. This row only represents post-trial paid access.
+    Extra-staff batches (``BusinessPayrollBatch``) are co-terminous with
+    ``paid_until`` and renew together with the primary package.
     """
     business = models.OneToOneField(Business, on_delete=models.CASCADE, related_name="payroll_addon")
     tier = models.ForeignKey(PayrollAddonTier, on_delete=models.PROTECT, related_name="business_addons")
@@ -727,8 +778,42 @@ class BusinessPayrollAddon(models.Model):
     class Meta:
         ordering = ["business__name"]
 
+    @property
+    def extra_staff(self):
+        return sum(h.batch.staff_count * h.quantity for h in self.batches.all())
+
+    @property
+    def staff_limit(self):
+        """Total active staff covered, or None when the primary tier is unlimited."""
+        if self.tier.unlimited:
+            return None
+        return (self.tier.staff_limit or 0) + self.extra_staff
+
     def __str__(self):
         return f"{self.business} · {self.tier}"
+
+
+class BusinessPayrollBatch(models.Model):
+    """Extra-staff batches a business holds on top of its primary package."""
+    addon = models.ForeignKey(BusinessPayrollAddon, on_delete=models.CASCADE, related_name="batches")
+    batch = models.ForeignKey(PayrollStaffBatch, on_delete=models.PROTECT, related_name="holdings")
+    quantity = models.PositiveSmallIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["batch__staff_count", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["addon", "batch"], name="unique_business_payroll_batch"),
+            models.CheckConstraint(condition=models.Q(quantity__gte=1), name="business_payroll_batch_qty_positive"),
+        ]
+
+    @property
+    def staff(self):
+        return self.batch.staff_count * self.quantity
+
+    def __str__(self):
+        return f"{self.addon.business} · {self.batch.label} × {self.quantity}"
 
 
 class PayrollStaffProfile(BusinessOwnedModel):
@@ -1113,9 +1198,11 @@ class SubscriptionPayment(models.Model):
     CYCLE_CHOICES = [(CYCLE_MONTHLY, "Monthly"), (CYCLE_YEARLY, "Yearly")]
     PURPOSE_SUBSCRIPTION = "subscription"
     PURPOSE_PAYROLL_ADDON = "payroll_addon"
+    PURPOSE_PAYROLL_BATCH = "payroll_batch"
     PURPOSE_CHOICES = [
         (PURPOSE_SUBSCRIPTION, "Plan subscription"),
         (PURPOSE_PAYROLL_ADDON, "Payroll add-on"),
+        (PURPOSE_PAYROLL_BATCH, "Payroll extra-staff batch"),
     ]
 
     subscription = models.ForeignKey(BusinessSubscription, on_delete=models.CASCADE, related_name="subscription_payments")
@@ -1123,6 +1210,13 @@ class SubscriptionPayment(models.Model):
     payroll_tier = models.ForeignKey(
         PayrollAddonTier, null=True, blank=True, on_delete=models.PROTECT, related_name="subscription_payments"
     )
+    payroll_batch = models.ForeignKey(
+        PayrollStaffBatch, null=True, blank=True, on_delete=models.PROTECT, related_name="subscription_payments"
+    )
+    payroll_batch_quantity = models.PositiveSmallIntegerField(default=1)
+    # Audit trail of the extra-staff batches priced into this payment: a renewal
+    # carries every held batch, a batch purchase carries the one being bought.
+    payroll_batch_snapshot = models.JSONField(default=list, blank=True)
     plan = models.ForeignKey(SubscriptionPlan, on_delete=models.PROTECT)
     amount = models.DecimalField(max_digits=14, decimal_places=2)
     base_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)

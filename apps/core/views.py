@@ -124,7 +124,7 @@ def marketing_home(request):
 
     marketing_cache_key = None
     if not request.user.is_authenticated and not request.GET:
-        marketing_cache_key = f"marketing:home:v3:{request.get_host().lower()}"
+        marketing_cache_key = f"marketing:home:v4:{request.get_host().lower()}"
         with performance_section(request, "marketing.cache_read"):
             cached_html = cache.get(marketing_cache_key)
         if cached_html is not None:
@@ -172,6 +172,7 @@ def marketing_home(request):
             manual_trust_logos = list(MarketingTrustLogo.objects.filter(active=True))
         plan_feature_matrix = build_plan_feature_matrix(plans)
     from django.templatetags.static import static
+    from .seo import organization_graph
     canonical_url = request.build_absolute_uri(reverse("marketing_home"))
     with performance_section(request, "marketing.render"):
         response = render(request, "marketing/home.html", {
@@ -179,6 +180,7 @@ def marketing_home(request):
         "general_trial_days": max(1, int(trial_policy.general_trial_days or 30)),
         "plan_feature_matrix": plan_feature_matrix,
         "canonical_url": canonical_url,
+        "json_ld": organization_graph(canonical_url, plans),
         "social_image_url": request.build_absolute_uri(static("core/brand/inprofic-wordmark-on-dark.png")),
         "trust_strip_enabled": trust_strip_enabled,
         "trust_business_count": Business.objects.count() if trust_strip_enabled else 0,
@@ -1613,7 +1615,17 @@ def dashboard_stock_ticker(request):
     """Live daily balances for the dashboard cards (polled; no page load)."""
     from .stock_ticker import build_stock_ticker
 
-    response = JsonResponse(build_stock_ticker(today()))
+    day = today()
+    business = getattr(request, "business", None)
+    key = f"stock-ticker:{business.pk}:{day.isoformat()}" if business is not None else None
+    payload = cache.get(key) if key else None
+    if payload is None:
+        payload = build_stock_ticker(day)
+        if key:
+            # Many open tabs/users of one business share one build per few seconds;
+            # the cards still refresh well within the page's own polling interval.
+            cache.set(key, payload, timeout=8)
+    response = JsonResponse(payload)
     response["Cache-Control"] = "no-store"
     return response
 
@@ -1666,8 +1678,6 @@ def reports_full_required(view_func):
 
 @login_required
 def dashboard(request):
-    from .stock_ticker import build_stock_ticker
-
     dashboard_date = today()
     month_start = dashboard_date.replace(day=1)
     year_start = dashboard_date.replace(month=1, day=1)
@@ -1796,7 +1806,6 @@ def dashboard(request):
             stock_unit = selected_item.unit
 
     context = {
-        "stock_ticker": build_stock_ticker(dashboard_date),
         "raw_count": len(raw_materials),
         "goods_count": len(finished_goods),
         "warning_raw": warning_raw,
@@ -2241,8 +2250,11 @@ def backup_json(request):
 
 
 def robots_txt(request):
+    from .seo import APP_PREFIXES_DISALLOWED
+
     sitemap = request.build_absolute_uri(reverse("seo_sitemap"))
-    body = f"User-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /users/\nDisallow: /dashboard/\nSitemap: {sitemap}\n"
+    disallow = "".join(f"Disallow: {prefix}\n" for prefix in APP_PREFIXES_DISALLOWED)
+    body = f"User-agent: *\nAllow: /\n{disallow}Sitemap: {sitemap}\n"
     return HttpResponse(body, content_type="text/plain; charset=utf-8")
 
 

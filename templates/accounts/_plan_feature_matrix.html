@@ -7,7 +7,7 @@
     <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full {% if matrix_theme == 'dark' %}border border-white/15 bg-white/10 text-[#e7bd65]{% else %}border border-[#E7DFCC] bg-white text-[#8f172d]{% endif %} transition group-open:rotate-45" aria-hidden="true">+</span>
   </summary>
   <div class="border-t {% if matrix_theme == 'dark' %}border-white/10{% else %}border-[#E7DFCC]{% endif %}">
-    <div class="overflow-x-auto">
+    <div class="relative overflow-x-auto"><!-- relative: contains the absolutely-positioned sr-only text so it cannot widen the page on phones -->
       <table class="w-full min-w-[720px] border-collapse text-left text-sm">
         <thead>
           <tr class="{% if matrix_theme == 'dark' %}bg-white/[.04] text-white{% else %}bg-white text-stone-800{% endif %}">

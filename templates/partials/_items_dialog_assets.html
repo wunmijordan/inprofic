@@ -1,0 +1,23 @@
+<style>
+.items-dialog::backdrop{background:rgba(28,25,23,.48);backdrop-filter:blur(2px)}
+.items-dialog[open]{animation:itemsDialogIn .14s ease-out}
+@keyframes itemsDialogIn{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.items-dialog[open]{animation:none}}
+</style>
+<script>
+(() => {
+  document.addEventListener('click', (event) => {
+    const opener = event.target.closest('[data-items-dialog-open]');
+    if (opener) {
+      const dialog = document.getElementById(opener.dataset.itemsDialogOpen);
+      if (dialog) { if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', ''); }
+      return;
+    }
+    if (event.target && event.target.tagName === 'DIALOG' && event.target.classList.contains('items-dialog')) {
+      const rect = event.target.getBoundingClientRect();
+      const outside = event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom;
+      if (outside) event.target.close();
+    }
+  });
+})();
+</script>

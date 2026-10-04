@@ -109,6 +109,7 @@
         .catch(function () {})
         .then(function () { busy = false; });
     }
+    poll();                                   // first data arrives right after the page renders
     setInterval(poll, POLL_MS);
     document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
   }
