@@ -327,6 +327,14 @@ class PwaEndpointTests(TestCase):
         windows_payload = self.client.get(f'{reverse("pwa_manifest")}?theme=dark&platform=windows').json()
         self.assertEqual({icon["purpose"] for icon in windows_payload["icons"]}, {"any"})
         self.assertTrue(all("icon-mark-windows-" in icon["src"] for icon in windows_payload["icons"]))
+        # Desktop (any non-mobile platform) never gets the white splash N as an app icon.
+        for query in ("platform=windows", "platform=desktop"):
+            payload = self.client.get(f'{reverse("pwa_manifest")}?theme=dark&{query}').json()
+            self.assertFalse(any("on-dark-192" in i["src"] or "on-dark-512" in i["src"] for i in payload["icons"]), query)
+            self.assertTrue(any(i["sizes"] == "512x512" and "icon-mark-windows-512" in i["src"] for i in payload["icons"]), query)
+            self.assertTrue(any("on-dark-32" in i["src"] for i in payload["icons"]), query)  # title bar follows theme
+        # Mobile manifest is untouched: maskable launcher tile + splash + monochrome.
+        self.assertTrue(any("icon-launcher-maskable-512" in i["src"] for i in dark_payload["icons"]))
 
     def test_tenant_manifest_uses_tenant_name_and_theme_but_inprofic_icons(self):
         business = Business.objects.create(
@@ -480,6 +488,16 @@ class DashboardStockTickerTests(TestCase):
         self.assertEqual((flour["balance"], flour["opening"], flour["change"]), (100.0, 107.0, -7.0))
         self.assertNotIn("Empty", [r["name"] for r in data["raw"]])  # nothing available, no activity
 
+    def test_raw_item_carries_purchase_unit_breakdown_for_the_ticker(self):
+        D = self.Decimal
+        self.flour.stock = D("130.5")
+        self.flour.save()
+        flour = next(r for r in self.build()["raw"] if r["name"] == "Flour")
+        self.assertEqual(
+            flour["breakdown"],
+            {"whole": 2, "remainder": 30.5, "purchase_unit": "bag", "usage_unit": "kg"},
+        )
+
     def test_item_with_no_activity_opens_at_its_current_balance(self):
         flour = next(r for r in self.build()["raw"] if r["name"] == "Flour")
         self.assertEqual((flour["balance"], flour["opening"], flour["change"]), (100.0, 100.0, 0.0))
@@ -536,7 +554,7 @@ class SeoPagesTests(TestCase):
         title = html.split("<title>")[1].split("</title>")[0]
         self.assertIn("Nigeria", title)
         self.assertLessEqual(len(title), 65, "title should fit a search result")
-        self.assertIn("From stock to sale, in one place", html)   # brand line kept for social previews
+        self.assertIn("From Stock to Sale, in one place", html)   # brand line kept for social previews
         self.assertIn('rel="canonical"', html)
         self.assertIn('hreflang="en-ng"', html)
         graph = json.loads(re.search(r'<script type="application/ld\+json">(.*?)</script>', html, re.S).group(1))["@graph"]
@@ -544,6 +562,42 @@ class SeoPagesTests(TestCase):
         app = next(n for n in graph if n["@type"] == "SoftwareApplication")
         self.assertEqual(app["areaServed"]["name"], "Nigeria")
         self.assertEqual(app["featureList"], FEATURES)
+
+    def test_canonical_origin_comes_from_site_url_and_other_hosts_redirect(self):
+        import json, re
+        from django.test import override_settings
+        with override_settings(SITE_URL="https://inprofic.com.ng", ALLOWED_HOSTS=["*"]):
+            html = self.client.get("/", HTTP_HOST="inprofic.com.ng").content.decode()
+            self.assertIn('rel="canonical" href="https://inprofic.com.ng/"', html)
+            graph = json.loads(re.search(r'<script type="application/ld\+json">(.*?)</script>', html, re.S).group(1))["@graph"]
+            site = next(n for n in graph if n["@type"] == "WebSite")
+            self.assertIn("inprofic.com.ng", site["alternateName"])
+            self.assertIn("https://inprofic.com.ng/sitemap.xml", self.client.get("/robots.txt", HTTP_HOST="x.onrender.com").content.decode())
+            # Other hosts consolidate onto the canonical one (301), query string kept.
+            for host in ("inprofic-abc.onrender.com", "www.inprofic.com.ng"):
+                response = self.client.get("/?utm=1", HTTP_HOST=host)
+                self.assertEqual((response.status_code, response["Location"]), (301, "https://inprofic.com.ng/?utm=1"))
+            self.assertEqual(self.client.get("/privacy-policy/", HTTP_HOST="www.inprofic.com.ng").status_code, 301)
+            self.assertEqual(self.client.get("/sitemap.xml", HTTP_HOST="www.inprofic.com.ng").status_code, 301)
+            # Infrastructure (cron/health on the Render host) and POSTs are never redirected.
+            self.assertEqual(self.client.get("/health/", HTTP_HOST="inprofic-abc.onrender.com").status_code, 200)
+            self.assertNotEqual(self.client.post("/", HTTP_HOST="inprofic-abc.onrender.com").status_code, 301)
+            sitemap = self.client.get("/sitemap.xml", HTTP_HOST="inprofic.com.ng").content.decode()
+            self.assertNotIn("onrender", sitemap)
+            self.assertIn("<loc>https://inprofic.com.ng/</loc>", sitemap)
+
+    def test_without_site_url_nothing_redirects_and_verification_tags_are_optional(self):
+        from django.test import override_settings
+        html = self.home()
+        self.assertNotIn("google-site-verification", html)
+        with override_settings(GOOGLE_SITE_VERIFICATION="tok123", BING_SITE_VERIFICATION="bing456"):
+            self.client.cookies.clear()
+            from django.core.cache import cache
+            cache.clear()
+            html = self.home()
+        self.assertIn('name="google-site-verification" content="tok123"', html)
+        self.assertIn('name="msvalidate.01" content="bing456"', html)
+        self.assertIn("Disallow: /*?next=", self.client.get("/robots.txt").content.decode())
 
     def test_about_section_lists_every_module_with_payroll_last_as_an_addon(self):
         import re

@@ -433,6 +433,12 @@ class ProductPortionProfile(BusinessOwnedModel):
         help_text="Optional short note shown with the portion, e.g. 'serves one'.",
     )
 
+    show_public_label = models.BooleanField(
+        default=True,
+        help_text="Show the portion label (e.g. '1 pack of 4 buns') to customers on the storefront, POS and headless API. "
+                  "Pricing, stock conversion and ordering are unaffected.",
+    )
+
     class Meta:
         ordering = ["finished_good__name"]
 

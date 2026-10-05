@@ -60,10 +60,12 @@ def portion_label(good):
     """Customer portion expressed in the internal base unit, e.g. "1 pack of 4 buns".
 
     Empty unless an active Standard Portion exists and actually differs from the
-    base unit, so ordinary products show nothing extra on their cards.
+    base unit, so ordinary products show nothing extra on their cards. Also empty
+    when the business has switched the label off for this product; that only hides
+    the text, the portion's quantity conversion is untouched.
     """
     profile = standard_profile(good)
-    if not profile:
+    if not profile or not profile.show_public_label:
         return ""
     unit = (profile.customer_unit or "").strip()
     customer_qty = Decimal(profile.customer_quantity or 1)

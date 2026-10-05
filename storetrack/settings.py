@@ -59,6 +59,15 @@ CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
 # Render supplies its assigned hostname automatically. Custom domains still go
 # in ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS explicitly.
 RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip()
+
+# Public canonical origin, e.g. https://inprofic.com.ng. Canonical URLs, the sitemap and
+# structured data use it instead of whichever host the request arrived on, and anonymous
+# visitors on other hosts (the *.onrender.com address, www.) are 301-redirected to it so
+# search engines index one site. Empty = derive from the request (local dev, tests).
+SITE_URL = os.environ.get("SITE_URL", "").strip().rstrip("/")
+# Search-console ownership tokens (content of the verification <meta> tag), optional.
+GOOGLE_SITE_VERIFICATION = os.environ.get("GOOGLE_SITE_VERIFICATION", "").strip()
+BING_SITE_VERIFICATION = os.environ.get("BING_SITE_VERIFICATION", "").strip()
 if RENDER_EXTERNAL_HOSTNAME:
     ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
     CSRF_TRUSTED_ORIGINS.append(f"https://{RENDER_EXTERNAL_HOSTNAME}")

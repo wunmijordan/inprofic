@@ -359,11 +359,13 @@ class FinishedGoodForm(StyledModelForm):
 class ProductPortionProfileForm(StyledModelForm):
     class Meta:
         model = ProductPortionProfile
-        fields = ["active", "customer_quantity", "customer_unit", "base_quantity", "public_note"]
+        fields = ["active", "customer_quantity", "customer_unit", "base_quantity", "public_note", "show_public_label"]
 
     def __init__(self, *args, business=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.business = business
+        self.fields["show_public_label"].label = "Show portion label to customers"
+        self.fields["show_public_label"].widget.attrs["class"] = "sr-only peer"
         if business and not vertical_config(business)["uses_production"]:
             self.fields["active"].label = "Use a standard customer selling unit"
             self.fields["customer_quantity"].label = "Displayed quantity"

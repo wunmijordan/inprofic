@@ -9,6 +9,7 @@ from expenses import views as expense_views
 urlpatterns = [
     path("manifest.webmanifest", pwa.manifest, name="pwa_manifest"),
     path("pwa/manifest/<slug:business_slug>.webmanifest", pwa.tenant_manifest, name="pwa_manifest_tenant"),
+    path("favicon.ico", pwa.favicon, name="favicon"),
     path("service-worker.js", pwa.service_worker, name="pwa_service_worker"),
     path("pwa/offline/", pwa.offline, name="pwa_offline"),
     path("pwa/launch/<slug:business_slug>/", pwa.launch, name="pwa_launch"),

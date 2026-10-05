@@ -1919,8 +1919,8 @@ class PayrollStaffBatchTests(TestCase):
         self.admin = CustomUser.objects.create_user(username="batch-admin", password="safe-password-123", fullname="Admin")
         UserBusiness.objects.create(user=self.admin, business=self.business, role=roles[CustomUser.ROLE_BUSINESS_ADMIN])
         self.tier = PayrollAddonTier.objects.create(plan=self.plan, staff_limit=2, monthly_price=Decimal("3000.00"))
-        self.batch5 = PayrollStaffBatch.objects.create(plan=self.plan, staff_count=5, monthly_price=Decimal("1200.00"))
-        self.batch10 = PayrollStaffBatch.objects.create(plan=self.plan, staff_count=10, monthly_price=Decimal("2000.00"))
+        self.batch5 = PayrollStaffBatch.objects.create(staff_count=5, monthly_price=Decimal("1200.00"))
+        self.batch10 = PayrollStaffBatch.objects.create(staff_count=10, monthly_price=Decimal("2000.00"))
         self.subscription = BusinessSubscription.objects.create(
             primary_business=self.business, plan=self.plan, status=BusinessSubscription.STATUS_ACTIVE,
             paid_until=timezone.now() + timezone.timedelta(days=200),
@@ -2100,6 +2100,35 @@ class PayrollStaffBatchTests(TestCase):
         self.assertIn("or unlimited", row["values"][0]["sub"])
 
 
+    def test_any_active_batch_can_be_bought_on_any_plan(self):
+        """Batches are a shared catalogue, not tied to the plan the business is on."""
+        from .models import PayrollAddonTier
+        from .subscription_services import attach_payroll_tiers, create_payment_request
+        other = next(p for p in self.plans.values() if p.pk != self.plan.pk)
+        self.assertFalse(hasattr(self.batch5, "plan_id"))
+        self._buy_primary()
+        payment = create_payment_request(
+            self.subscription, self.plan, purpose=SubscriptionPayment.PURPOSE_PAYROLL_BATCH, payroll_batch=self.batch5,
+        )
+        self.assertEqual(payment.payroll_batch_id, self.batch5.pk)
+        PayrollAddonTier.objects.create(plan=other, staff_limit=3, monthly_price=Decimal("1000.00"))
+        plans = attach_payroll_tiers([self.plan, other])
+        self.assertEqual([b.pk for b in plans[0].payroll_batches], [self.batch5.pk, self.batch10.pk])
+        self.assertEqual([b.pk for b in plans[1].payroll_batches], [self.batch5.pk, self.batch10.pk])
+
+    def test_only_one_active_batch_per_size_but_retired_size_can_be_reused(self):
+        from django.db import IntegrityError, transaction
+        from .forms import PayrollStaffBatchForm
+        from .models import PayrollStaffBatch
+        dup = PayrollStaffBatchForm({"staff_count": "5", "monthly_price": "999", "active": "on"})
+        self.assertFalse(dup.is_valid())
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            PayrollStaffBatch.objects.create(staff_count=5, monthly_price=Decimal("1"))
+        self.batch5.active = False
+        self.batch5.save()
+        again = PayrollStaffBatchForm({"staff_count": "5", "monthly_price": "999", "active": "on"})
+        self.assertTrue(again.is_valid(), again.errors)
+
 class FounderPayrollPackageConfigTests(TestCase):
     def setUp(self):
         from .models import PayrollAddonTier, PayrollStaffBatch
@@ -2114,8 +2143,8 @@ class FounderPayrollPackageConfigTests(TestCase):
         tier = self.PayrollAddonTier.objects.get(plan=self.plan)
         self.assertTrue(tier.unlimited)
         self.assertIsNone(tier.staff_limit)
-        self.client.post(self.url, {"action": "add_payroll_batch", "plan": self.plan.pk, "staff_count": "5", "monthly_price": "1200", "active": "on"})
-        batch = self.PayrollStaffBatch.objects.get(plan=self.plan)
+        self.client.post(self.url, {"action": "add_payroll_batch", "staff_count": "5", "monthly_price": "1200", "active": "on"})
+        batch = self.PayrollStaffBatch.objects.get()
         self.assertEqual(batch.label, "+5 staff")
         page = self.client.get(self.url)
         self.assertContains(page, "Unlimited staff")
@@ -2124,13 +2153,13 @@ class FounderPayrollPackageConfigTests(TestCase):
     def test_limited_package_needs_a_staff_count_and_zero_batch_is_rejected(self):
         self.client.post(self.url, {"action": "add_payroll_tier", "plan": self.plan.pk, "monthly_price": "9000", "active": "on"})
         self.assertFalse(self.PayrollAddonTier.objects.exists())
-        self.client.post(self.url, {"action": "add_payroll_batch", "plan": self.plan.pk, "staff_count": "0", "monthly_price": "10", "active": "on"})
+        self.client.post(self.url, {"action": "add_payroll_batch", "staff_count": "0", "monthly_price": "10", "active": "on"})
         self.assertFalse(self.PayrollStaffBatch.objects.exists())
 
     def test_removing_a_held_batch_retires_it(self):
         from .models import BusinessPayrollAddon, BusinessPayrollBatch
         tier = self.PayrollAddonTier.objects.create(plan=self.plan, staff_limit=2, monthly_price=Decimal("1"))
-        batch = self.PayrollStaffBatch.objects.create(plan=self.plan, staff_count=3, monthly_price=Decimal("1"))
+        batch = self.PayrollStaffBatch.objects.create(staff_count=3, monthly_price=Decimal("1"))
         biz = Business.objects.create(name="Holder", slug="holder")
         addon = BusinessPayrollAddon.objects.create(business=biz, tier=tier, paid_until=timezone.now() + timezone.timedelta(days=5))
         BusinessPayrollBatch.objects.create(addon=addon, batch=batch)

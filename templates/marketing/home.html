@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Inventory, production management, staff payroll, orders and sales software for Nigerian businesses. Run stock, recipes, POS, online ordering and payroll in naira in one workspace.">
   <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+  {% if google_site_verification %}<meta name="google-site-verification" content="{{ google_site_verification }}">{% endif %}{% if bing_site_verification %}<meta name="msvalidate.01" content="{{ bing_site_verification }}">{% endif %}
   <link rel="canonical" href="{{ canonical_url }}">
   <link rel="alternate" hreflang="en-ng" href="{{ canonical_url }}"><link rel="alternate" hreflang="x-default" href="{{ canonical_url }}">
   <meta property="og:type" content="website"><meta property="og:locale" content="en_NG"><meta property="og:site_name" content="INPROFIC"><meta property="og:title" content="INPROFIC · From Stock to Sale, in one place"><meta property="og:description" content="Manage inventory, production, staff payroll, orders and sales in naira, from one connected workspace built for Nigerian businesses."><meta property="og:url" content="{{ canonical_url }}"><meta property="og:image" content="{{ social_image_url }}">
@@ -261,6 +262,14 @@
       #general-product-demo .ip-demo-window { height:440px; min-height:440px; overflow:hidden; }
       #general-product-demo .ip-demo-main { height:100%; min-height:0; overflow-y:auto; overflow-x:hidden; }
     }
+    /* Storefront walkthrough: same fixed footprint as the general demo. The mobile rules above let it grow
+       with its content (height:auto), which pushed the page down on text-heavy scenes. Keep the header and
+       window a constant size; only the inner pane scrolls. */
+    @media(max-width:780px){
+      #storefront-demo .ip-demo-head-copy { height:6.5rem; min-height:6.5rem; overflow-y:auto; overflow-x:hidden; }
+      #storefront-demo .ip-demo-window { height:455px; min-height:455px; overflow:hidden; }
+      #storefront-demo .ip-demo-main { height:100%; min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior-y:contain; }
+    }
     .marketing-whatsapp { position:fixed; right:1.15rem; bottom:1.15rem; z-index:80; display:flex; align-items:center; gap:.55rem; color:#fff; text-decoration:none; filter:drop-shadow(0 12px 24px rgba(0,0,0,.22)); }
     .marketing-whatsapp-label { border-radius:999px; background:#fff; color:#292524; padding:.62rem .78rem; font-size:.7rem; font-weight:800; box-shadow:0 8px 24px rgba(0,0,0,.12); transition:transform .2s ease,opacity .2s ease; }
     .marketing-whatsapp-icon { display:grid; place-items:center; width:3.25rem; height:3.25rem; border-radius:999px; background:#25D366; box-shadow:0 0 0 6px rgba(37,211,102,.12); animation:whatsapp-pulse 3s ease-in-out infinite; }
@@ -309,7 +318,15 @@
     @keyframes siteMenuIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:none} }
     @media (max-width:479px) { header .site-nav { flex-wrap:wrap; row-gap:.75rem; } header .site-logo { width:7rem !important; } header .site-nav-actions > a { padding:.45rem .7rem; font-size:.75rem; } .site-menu-btn { width:2.25rem; height:2.25rem; } }
     /* About section */
-    @media (min-width:640px) { section.about { padding-top:6rem; padding-bottom:6rem; } }
+    section.about { padding-bottom:1.75rem; overflow-x:clip; }
+    @media (min-width:640px) { section.about { padding-top:6rem; padding-bottom:2.25rem; } }
+    /* The demo intro's large top padding was sized for sitting directly under the hero; right under About it only stacks on the gap. */
+    .about + .marketing-demo-intro { padding-top:2.5rem; }
+    @media (min-width:1024px) { .about + .marketing-demo-intro { padding-top:3rem; } }
+    /* Module cards glide in from the right on scroll (staggered); see the .about-modules observer in the page script. */
+    .js .about-modules > li { opacity:0; transform:translate3d(3.5rem,0,0) scale(.97); transition:opacity .6s ease, transform .85s cubic-bezier(.16,1,.3,1); transition-delay:calc(var(--i,0) * 70ms); }
+    .js .about-modules:not(.is-in) > li { will-change:transform,opacity; }
+    .js .about-modules.is-in > li { opacity:1; transform:none; }
     .about-kicker { display:inline-flex; align-items:center; gap:.55rem; margin:0 0 1rem; font-size:.85rem; font-weight:600; color:#6b625c; }
     .about-kicker span { width:.55rem; height:.55rem; border-radius:999px; background:var(--accent); box-shadow:0 0 0 4px rgba(209,73,0,.14); }
     .about h2 { margin:0; max-width:20ch; font-size:clamp(1.9rem,4.6vw,3.4rem); line-height:1.08; letter-spacing:-.02em; font-weight:600; color:var(--deep); }
@@ -324,7 +341,7 @@
     .about-module small { display:block; margin-top:.1rem; font-size:.66rem; font-weight:600; color:#8a7f73; }
     .about-note { margin:1rem 0 0; font-size:.85rem; color:#6b625c; }
     .about-note a { color:var(--accent); font-weight:600; text-underline-offset:2px; }
-    @media (prefers-reduced-motion:reduce) { .about-module { transition:none; } .about-module:hover { transform:none; } }
+    @media (prefers-reduced-motion:reduce) { .about-module { transition:none; } .about-module:hover { transform:none; } .js .about-modules > li { opacity:1!important; transform:none!important; transition:none!important; } }
     @media (prefers-reduced-motion:reduce) { html{scroll-behavior:auto}.js [data-reveal]{opacity:1!important;transform:none!important;transition:none!important}.feature-card,.flow-step,.module-preview-overlay,.module-preview-shell{transition:none!important}.ambient-orb,.payroll-offer-sticker,.hero-preview,.bridge-card>div,.process-flow::before,.promo-stage::before,.promo-slide,.promo-copy>*,.promo-media,.promo-animation-marquee::after,.promo-progress span::after,.hero-typed-text,.hero-typecursor,.ip-demo-chart i,.ip-demo-pointer,.ip-demo-pointer-ring,.capability-grid .feature-card.is-flippable,.capability-connector-flow,.capability-stage::after,.capability-hub-mark,.capability-hub::before,.capability-hub::after,.trust-logo-track{animation:none!important;transition:none!important} }
     .plan-card { transition: transform .24s ease, box-shadow .24s ease; }
     .plan-card:hover { transform: translateY(-4px); }
@@ -1193,6 +1210,12 @@
     const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
     const revealTargets=[...document.querySelectorAll('main > section, #capabilities .feature-card, #plans article, #faq details')];
     revealTargets.forEach((el,i)=>{el.dataset.reveal='';el.style.setProperty('--reveal-delay',`${Math.min((i%6)*55,275)}ms`);});
+    const aboutList=document.querySelector('.about-modules');
+    if(aboutList){
+      aboutList.querySelectorAll(':scope > li').forEach((li,i)=>li.style.setProperty('--i',i));
+      if(reduced||!('IntersectionObserver'in window)){aboutList.classList.add('is-in');}
+      else{const aboutObserver=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){aboutList.classList.add('is-in');aboutObserver.disconnect();}},{threshold:.18,rootMargin:'0px 0px -6%'});aboutObserver.observe(aboutList);}
+    }
     if(reduced){revealTargets.forEach(el=>el.classList.add('is-revealed'));}else{const observer=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add('is-revealed');observer.unobserve(entry.target);}}),{threshold:.08,rootMargin:'0px 0px -7%'});revealTargets.forEach(el=>observer.observe(el));}
   })();
   </script>

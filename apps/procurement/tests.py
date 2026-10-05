@@ -268,3 +268,52 @@ class DirectProductProcurementTests(TestCase):
         self.assertContains(inventory, "Procurement · stock arrival · sale")
         self.assertContains(inventory, 'id="stock-history-flow-replay"')
         self.assertContains(inventory, "animateProductFlow")
+
+
+class ProcurementItemSummaryTests(TestCase):
+    """The PO table uses the shared item summary + dialog, not a long inline list."""
+
+    def setUp(self):
+        self.business = Business.objects.create(name="Trade Hub", slug="trade-hub", vertical=Business.VERTICAL_WHOLESALE)
+        self.user = CustomUser.objects.create_superuser(username="trade-admin", password="safe-password-123", fullname="Trade Admin")
+        self.product = FinishedGood.raw_objects.create(
+            business=self.business, created_by=self.user, name="Cooking Oil", unit="carton",
+            stock=Decimal("0"), reorder_level=Decimal("0"), selling_price=Decimal("75"),
+        )
+        self.client.force_login(self.user)
+        session = self.client.session
+        session["active_business_id"] = self.business.pk
+        session.save()
+
+    def make_po(self, item_count):
+        po = PurchaseOrder.raw_objects.create(
+            business=self.business, created_by=self.user, date=date(2026, 9, 4),
+            supplier="Main Distributor", payment_status="unpaid",
+        )
+        for n in range(item_count):
+            PurchaseOrderItem.objects.create(
+                purchase_order=po, finished_good=self.product, qty=Decimal("2") + n, unit_cost=Decimal("50"),
+            )
+        return po
+
+    def test_multi_item_po_shows_one_line_and_opens_the_shared_dialog(self):
+        po = self.make_po(3)
+        html = self.client.get(reverse("procurement_list")).content.decode()
+        self.assertIn(f'data-items-dialog-open="po-items-{po.pk}"', html)
+        self.assertIn("View 3 items", html)
+        self.assertIn("+2 more", html)
+        self.assertIn(f'id="po-items-{po.pk}"', html)
+        self.assertIn('class="items-dialog', html)
+        self.assertIn("Order total", html)
+        self.assertIn("Whole-unit cost", html)
+        # the old procurement-only dialog assets are gone
+        self.assertNotIn("data-po-items-open", html)
+        self.assertNotIn("po-items-dialog", html)
+        self.assertEqual(html.count("document.addEventListener('click'"), 1)
+
+    def test_single_item_po_has_no_dialog_or_button(self):
+        po = self.make_po(1)
+        html = self.client.get(reverse("procurement_list")).content.decode()
+        self.assertNotIn(f'id="po-items-{po.pk}"', html)
+        self.assertNotIn("View 1 item", html)
+        self.assertIn("Cooking Oil", html)

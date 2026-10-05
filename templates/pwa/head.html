@@ -45,12 +45,16 @@
       lastTheme = theme;
       const platform = navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || '';
       const windows = /win/i.test(platform);
+      // Anything that isn't a phone/tablet is a desktop install (icon set differs from mobile).
+      const ua = navigator.userAgent || '';
+      const mobile = /android|iphone|ipad|ipod|mobile/i.test(ua) || (/mac/i.test(platform) && navigator.maxTouchPoints > 1);
+      const desktopPlatform = windows ? 'windows' : (mobile ? '' : 'desktop');
       if (manifest) {
         // Installed splash/title-bar colours and icon variant are read from the
         // manifest, so request the one matching the resolved theme. Windows
         // gets the same theme-matched colours; only its icon set differs.
         const separator = manifest.dataset.baseHref.includes('?') ? '&' : '?';
-        manifest.href = `${manifest.dataset.baseHref}${separator}theme=${theme}${windows ? '&platform=windows' : ''}`;
+        manifest.href = `${manifest.dataset.baseHref}${separator}theme=${theme}${desktopPlatform ? '&platform=' + desktopPlatform : ''}`;
       }
       if (touchIcon) touchIcon.href = dark ? touchIcon.dataset.darkHref : touchIcon.dataset.lightHref;
       if ('serviceWorker' in navigator) {

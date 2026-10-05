@@ -938,3 +938,31 @@ class RunPoolWithMisfitOrdersTests(TestCase):
         self.assertEqual(pool["total"], Decimal("40"))                  # pool unchanged by the order's 50
         self.assertEqual(pool["used"], Decimal("45"))                   # counts what its products use (15), not 50
         self.assertEqual(run.base_material_quantity, Decimal("40.0000"))
+
+
+class ItemsDialogTemplateTests(TestCase):
+    """Batches and runs lists share the order list's compact item summary + dialog."""
+
+    def test_list_templates_compile_and_use_shared_assets(self):
+        from django.template.loader import get_template
+        for name in ("production/batches_list.html", "production/runs_list.html", "procurement/procurement_list.html"):
+            source = open(get_template(name).origin.name, encoding="utf8").read()
+            self.assertIn("_items_dialog_assets.html", source, name)
+        batches = open(get_template("production/batches_list.html").origin.name, encoding="utf8").read()
+        self.assertNotIn("{% for i in o.items.all %}{{ i.finished_good.name }}{% if not forloop.last %}, {% endif %}", batches)
+
+    def test_summary_partial_renders_order_and_purchase_lines(self):
+        from types import SimpleNamespace as NS
+        from django.template.loader import render_to_string
+        good = NS(name="Meat Pie")
+        order_items = [NS(finished_good=good, total_units=4), NS(finished_good=NS(name="Bun"), total_units=2)]
+        html = render_to_string("partials/_items_summary.html", {"items": order_items, "dialog_prefix": "batch-order-items-", "row_pk": 7})
+        self.assertIn("Meat Pie", html)
+        self.assertIn("+1 more", html)
+        self.assertIn('data-items-dialog-open="batch-order-items-7"', html)
+        po_items = [NS(item_name="Flour", item_category="Raw material", finished_good_id=None),
+                    NS(item_name="Sugar", item_category="Raw material", finished_good_id=None)]
+        html = render_to_string("partials/_items_summary.html", {"items": po_items, "purchase": True, "dialog_prefix": "po-items-", "row_pk": 3})
+        self.assertIn("Flour", html)
+        self.assertIn("Raw material", html)
+        self.assertIn("View 2 items", html)

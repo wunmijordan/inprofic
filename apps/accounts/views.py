@@ -946,10 +946,7 @@ def founder_subscriptions(request):
         request.POST if action == "add_payroll_tier" else None,
         plan_choices=plan_choices,
     )
-    payroll_batch_form = PayrollStaffBatchForm(
-        request.POST if action == "add_payroll_batch" else None,
-        plan_choices=plan_choices,
-    )
+    payroll_batch_form = PayrollStaffBatchForm(request.POST if action == "add_payroll_batch" else None)
     privacy_policy_form = PlatformPrivacyPolicyForm(
         request.POST if action == "save_privacy_policy" else None,
         request.FILES if action == "save_privacy_policy" else None,
@@ -1111,7 +1108,7 @@ def founder_subscriptions(request):
             return redirect(f"{reverse('founder_subscriptions')}#payroll-addon-pricing")
         if action == "add_payroll_batch" and payroll_batch_form.is_valid():
             batch = payroll_batch_form.save()
-            messages.success(request, f"Extra-staff batch saved for {batch.plan.name}: {batch.label}.")
+            messages.success(request, f"Extra-staff batch saved: {batch.label}. It is offered to businesses on every plan.")
             return redirect(f"{reverse('founder_subscriptions')}#payroll-addon-pricing")
         if action == "delete_payroll_batch":
             batch = get_object_or_404(PayrollStaffBatch, pk=request.POST.get("payroll_batch_id"))
@@ -1389,7 +1386,7 @@ def founder_subscriptions(request):
         )[:12])
         trust_logos = list(MarketingTrustLogo.objects.select_related("created_by").all())
         payroll_tiers = list(PayrollAddonTier.objects.select_related("plan"))
-        payroll_batches = list(PayrollStaffBatch.objects.select_related("plan"))
+        payroll_batches = list(PayrollStaffBatch.objects.all())
         promotions = list(
             SubscriptionPromotion.objects.select_related("plan", "created_by")
             .order_by("-active", "-starts_at", "-id")[:50]
@@ -2362,7 +2359,7 @@ def payroll_addon_checkout(request):
     # Extra staff can only be added on top of a live, limited primary package.
     batch_offers = []
     if addon and not addon.tier.unlimited:
-        for batch in PayrollStaffBatch.objects.filter(plan=subscription.plan, active=True).order_by("staff_count", "id"):
+        for batch in PayrollStaffBatch.objects.filter(active=True).order_by("staff_count", "id"):
             try:
                 due_now, days = prorated_batch_amount(batch, 1, addon.paid_until)
             except Exception:
@@ -2386,7 +2383,7 @@ def payroll_addon_checkout(request):
             return redirect("payroll_addon_checkout")
         request_kwargs = {}
         if kind == "batch":
-            batch = get_object_or_404(PayrollStaffBatch, pk=request.POST.get("batch_id"), plan=subscription.plan, active=True)
+            batch = get_object_or_404(PayrollStaffBatch, pk=request.POST.get("batch_id"), active=True)
             try:
                 quantity = int(request.POST.get("quantity") or 1)
             except (TypeError, ValueError):

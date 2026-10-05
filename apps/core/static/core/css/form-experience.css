@@ -162,6 +162,8 @@ form :is(.helptext, .help-text, [data-form-help-text]) {
   list-style: none;
   overflow-y: auto;
   overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
   border: 1px solid var(--ui-border, #e7dfcc);
   border-radius: .7rem;
   background: var(--ui-surface, #fffdf8);

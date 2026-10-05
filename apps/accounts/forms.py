@@ -750,16 +750,13 @@ class PayrollAddonTierForm(forms.ModelForm):
 class PayrollStaffBatchForm(forms.ModelForm):
     class Meta:
         model = PayrollStaffBatch
-        fields = ["plan", "staff_count", "monthly_price", "active"]
+        fields = ["staff_count", "monthly_price", "active"]
 
-    def __init__(self, *args, plan_choices=None, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["plan"].queryset = SubscriptionPlan.objects.filter(active=True).order_by("monthly_price", "id")
-        if not self.is_bound:
-            _set_static_model_choices(self.fields["plan"], plan_choices)
         self.fields["staff_count"].min_value = 1
         self.fields["staff_count"].widget.attrs["min"] = 1
-        self.fields["staff_count"].help_text = "Extra active staff this batch adds on top of the primary package."
+        self.fields["staff_count"].help_text = "Extra active staff this batch adds on top of the primary package. Batches are offered to businesses on every plan."
         self.fields["monthly_price"].help_text = "Monthly price per batch. Buyers are charged pro-rata until their next renewal."
         for field in self.fields.values():
             if isinstance(field.widget, forms.CheckboxInput):

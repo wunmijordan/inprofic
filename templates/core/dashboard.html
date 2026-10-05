@@ -14,7 +14,12 @@
   .dashboard-kpi:hover { transform: translateY(-2px); border-color: color-mix(in srgb,var(--ui-accent) 28%,var(--ui-border)); box-shadow: var(--ui-shadow-raised); }
   @media (prefers-reduced-motion: reduce) { .dashboard-kpi { transition: none; } .dashboard-kpi:hover { transform: none; } }
   /* Daily-balance ticker on the Raw materials / Products cards */
-  .stock-ticker { margin-top: .55rem; min-height: 3.6rem; overflow: hidden; border-top: 1px dashed var(--ui-border); padding-top: .45rem; }
+  /* Fixed-height slot: reserved from first paint so the card never grows when the ticker data arrives. */
+  .stock-ticker { position: relative; margin-top: .55rem; height: 5rem; overflow: hidden; border-top: 1px dashed var(--ui-border); padding-top: .45rem; }
+  .stock-ticker.is-loading::before, .stock-ticker.is-empty::before { content: ""; position: absolute; inset: .45rem 0 0 0; }
+  .stock-ticker.is-loading::before { background: linear-gradient(var(--ui-border), var(--ui-border)) 0 .1rem / 55% .55rem no-repeat, linear-gradient(var(--ui-border), var(--ui-border)) 0 1.45rem / 30% .45rem no-repeat, linear-gradient(var(--ui-border), var(--ui-border)) 0 2.35rem / 70% .8rem no-repeat, linear-gradient(var(--ui-border), var(--ui-border)) 0 3.55rem / 45% .4rem no-repeat; border-radius: .25rem; opacity: .55; animation: stk-skeleton 1.4s ease-in-out infinite; }
+  .stock-ticker.is-empty::before { content: "No stock balances to show yet"; font-size: .65rem; color: var(--ui-surface-muted-text); }
+  .stock-ticker.is-loading .stock-ticker__item, .stock-ticker.is-empty .stock-ticker__item { visibility: hidden; }
   .stock-ticker[hidden] { display: none; }
   .stock-ticker__item { transform-origin: left center; }
   .stock-ticker__item.is-in { animation: stk-scale-in .28s cubic-bezier(.2,.8,.2,1) both; }
@@ -31,14 +36,18 @@
   .stock-ticker__label { font-size: .58rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ui-accent, #8f172d); }
   .stock-ticker__val { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .95rem; font-weight: 700; color: var(--ui-surface-text); }
   .stock-ticker__unit { font-size: .65rem; color: var(--ui-surface-muted-text); }
+  .stock-ticker__line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stock-ticker__unit--bd { font-size: .75rem; font-style: italic; }
   .stock-ticker__sub { font-size: .6rem; color: var(--ui-surface-muted-text); opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   @keyframes stk-scale-in { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: scale(1); } }
   @keyframes stk-scale-out { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(.6); } }
   @keyframes stk-swipe-in { from { opacity: 0; transform: translateX(1.6rem); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes stk-skeleton { 0%, 100% { opacity: .35; } 50% { opacity: .7; } }
   @keyframes stk-pulse { 0% { color: #10b981; } 100% { color: var(--ui-surface-text); } }
   @media (prefers-reduced-motion: reduce) {
     .stock-ticker__item.is-in, .stock-ticker__item.is-out, .stock-ticker__bal.is-in, .stock-ticker__bal.is-updated .stock-ticker__val { animation: none; }
     .stock-ticker__flip { transition: none; }
+    .stock-ticker.is-loading::before { animation: none; }
   }
 </style>
 <span hidden data-stock-ticker-url="{% url 'dashboard_stock_ticker' %}"></span>
@@ -256,7 +265,7 @@
       Raw materials
     </div>
     <div class="text-2xl font-semibold mt-1 font-mono text-[#8f172d]">{{ raw_count }}</div>
-    <div class="stock-ticker" data-stock-ticker="raw" hidden role="status" aria-live="off"><div class="stock-ticker__item" data-t-item><div class="stock-ticker__name" data-t-name></div><div class="stock-ticker__bal" data-t-bal><div class="stock-ticker__flip" data-t-flip><div class="stock-ticker__face" data-t-face="a"><div class="stock-ticker__label" data-t-label></div><div><span class="stock-ticker__val" data-t-val></span><span class="stock-ticker__unit" data-t-unit></span></div><div class="stock-ticker__sub" data-t-sub></div></div><div class="stock-ticker__face" data-t-face="b"><div class="stock-ticker__label" data-t-label></div><div><span class="stock-ticker__val" data-t-val></span><span class="stock-ticker__unit" data-t-unit></span></div><div class="stock-ticker__sub" data-t-sub></div></div></div></div></div></div>
+    <div class="stock-ticker is-loading" data-stock-ticker="raw" role="status" aria-live="off"><div class="stock-ticker__item" data-t-item><div class="stock-ticker__name" data-t-name></div><div class="stock-ticker__bal" data-t-bal><div class="stock-ticker__flip" data-t-flip><div class="stock-ticker__face" data-t-face="a"><div class="stock-ticker__label" data-t-label></div><div class="stock-ticker__line" data-t-line></div><div class="stock-ticker__sub" data-t-sub></div></div><div class="stock-ticker__face" data-t-face="b"><div class="stock-ticker__label" data-t-label></div><div class="stock-ticker__line" data-t-line></div><div class="stock-ticker__sub" data-t-sub></div></div></div></div></div></div>
   </a>
   <a href="{% url 'inventory' %}#finished" class="dashboard-surface dashboard-kpi rounded-2xl p-3 md:p-4">
     <div class="text-xs flex items-center uppercase tracking-wider font-bold text-[#8f172d] block mb-1 gap-2">
@@ -266,7 +275,7 @@
       Products
     </div>
     <div class="text-2xl font-semibold mt-1 font-mono text-[#8f172d]">{{ goods_count }}</div>
-    <div class="stock-ticker" data-stock-ticker="finished" hidden role="status" aria-live="off"><div class="stock-ticker__item" data-t-item><div class="stock-ticker__name" data-t-name></div><div class="stock-ticker__bal" data-t-bal><div class="stock-ticker__flip" data-t-flip><div class="stock-ticker__face" data-t-face="a"><div class="stock-ticker__label" data-t-label></div><div><span class="stock-ticker__val" data-t-val></span><span class="stock-ticker__unit" data-t-unit></span></div><div class="stock-ticker__sub" data-t-sub></div></div><div class="stock-ticker__face" data-t-face="b"><div class="stock-ticker__label" data-t-label></div><div><span class="stock-ticker__val" data-t-val></span><span class="stock-ticker__unit" data-t-unit></span></div><div class="stock-ticker__sub" data-t-sub></div></div></div></div></div></div>
+    <div class="stock-ticker is-loading" data-stock-ticker="finished" role="status" aria-live="off"><div class="stock-ticker__item" data-t-item><div class="stock-ticker__name" data-t-name></div><div class="stock-ticker__bal" data-t-bal><div class="stock-ticker__flip" data-t-flip><div class="stock-ticker__face" data-t-face="a"><div class="stock-ticker__label" data-t-label></div><div class="stock-ticker__line" data-t-line></div><div class="stock-ticker__sub" data-t-sub></div></div><div class="stock-ticker__face" data-t-face="b"><div class="stock-ticker__label" data-t-label></div><div class="stock-ticker__line" data-t-line></div><div class="stock-ticker__sub" data-t-sub></div></div></div></div></div></div>
   </a>
   <div class="dashboard-surface dashboard-kpi rounded-2xl p-3 md:p-4">
     <div class="text-xs flex items-center uppercase tracking-wider font-bold text-[#8f172d] block mb-1 gap-2">

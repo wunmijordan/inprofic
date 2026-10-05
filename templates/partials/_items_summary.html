@@ -2,11 +2,17 @@
   Compact item list for table rows: one item, "+N more", and a button that opens
   the full list in a dialog (same behaviour as the procurement table).
   Needs: items (prefetched list), dialog_prefix, row_pk, show_qty (optional).
+  purchase=True renders purchase-order lines (item_name + category badge) instead of finished-good lines.
 {% endcomment %}{% load core_extras %}
 {% with item_count=items|length first_item=items|first %}
   {% if first_item %}
     <div class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+      {% if purchase %}
+      <span class="max-w-[14rem] truncate font-medium text-stone-700" title="{{ first_item.item_name }}">{{ first_item.item_name }}</span>
+      <span class="inline-block rounded-full border border-stone-200 px-2 py-0.5 text-[10px] font-medium text-stone-600 {% if first_item.finished_good_id %}bg-emerald-100{% else %}bg-pink-200{% endif %}">{{ first_item.item_category }}</span>
+      {% else %}
       <span class="max-w-[14rem] truncate font-medium text-stone-700" title="{{ first_item.finished_good.name }}">{{ first_item.finished_good.name }}{% if show_qty %} <span class="font-normal text-stone-500">x{{ first_item.total_units|num }}</span>{% endif %}</span>
+      {% endif %}
       {% if item_count > 1 %}<span class="text-[11px] text-stone-400">+{{ item_count|add:"-1" }} more</span>{% endif %}
     </div>
     {% if item_count > 1 %}<button type="button" data-items-dialog-open="{{ dialog_prefix }}{{ row_pk }}" class="mt-0.5 text-xs font-medium text-[#8f172d] hover:underline">View {{ item_count }} items</button>{% endif %}

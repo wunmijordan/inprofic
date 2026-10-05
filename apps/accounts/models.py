@@ -698,7 +698,7 @@ class PayrollAddonTier(models.Model):
 
     A tier either covers a fixed number of active staff or is ``unlimited``.
     Businesses on a limited tier can top up capacity with ``PayrollStaffBatch``
-    purchases instead of upgrading the tier.
+    purchases (not plan-specific) instead of upgrading the tier.
     """
     plan = models.ForeignKey(SubscriptionPlan, on_delete=models.CASCADE, related_name="payroll_addon_tiers")
     staff_limit = models.PositiveIntegerField(
@@ -737,8 +737,12 @@ class PayrollAddonTier(models.Model):
 
 class PayrollStaffBatch(models.Model):
     """Founder-priced block of extra payroll staff a business can add on top of
-    its primary package without changing plan. Price is per month."""
-    plan = models.ForeignKey(SubscriptionPlan, on_delete=models.CASCADE, related_name="payroll_staff_batches")
+    its primary package without changing plan. Price is per month.
+
+    Batches are a platform-wide catalogue: they are deliberately not attached to
+    a commercial plan, so any business holding a limited primary payroll package
+    can pick any active batch. (Primary packages, ``PayrollAddonTier``, remain
+    priced per plan.)"""
     staff_count = models.PositiveIntegerField(help_text="Extra active payroll staff this batch adds.")
     monthly_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     active = models.BooleanField(default=True)
@@ -746,10 +750,14 @@ class PayrollStaffBatch(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["plan__monthly_price", "staff_count", "id"]
+        ordering = ["staff_count", "id"]
         verbose_name_plural = "payroll staff batches"
         constraints = [
-            models.UniqueConstraint(fields=["plan", "staff_count"], name="unique_payroll_batch_plan_staff"),
+            # One offered batch per size; a retired batch may share its size with a new one.
+            models.UniqueConstraint(
+                fields=["staff_count"], condition=models.Q(active=True), name="unique_active_payroll_batch_staff",
+                violation_error_message="An active extra-staff batch of this size already exists. Retire it first to change its price.",
+            ),
             models.CheckConstraint(condition=models.Q(staff_count__gte=1), name="payroll_batch_staff_positive"),
         ]
 
@@ -758,7 +766,7 @@ class PayrollStaffBatch(models.Model):
         return f"+{self.staff_count} staff"
 
     def __str__(self):
-        return f"{self.plan.name} · {self.label}"
+        return self.label
 
 
 class BusinessPayrollAddon(models.Model):

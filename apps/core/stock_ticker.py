@@ -27,6 +27,25 @@ def _balance(current, net_today):
     return {"balance": _num(current), "opening": _num(opening), "change": _num(current - opening)}
 
 
+def _raw_breakdown(material, stock):
+    """Whole purchase units + remainder in usage units, matching the inventory
+    page's ``stock_breakdown`` display. None when the material has no distinct
+    purchase unit (or no positive stock), so the ticker falls back to the plain
+    balance."""
+    if stock <= 0 or not material.has_unit_conversion:
+        return None
+    parts = material.stock_breakdown
+    if not parts:
+        return None
+    whole, remainder = parts
+    return {
+        "whole": whole,
+        "remainder": _num(remainder),
+        "purchase_unit": material.purchase_unit,
+        "usage_unit": material.usage_unit or "",
+    }
+
+
 def build_stock_ticker(day):
     tz = timezone.get_current_timezone()
     start = timezone.make_aware(datetime.combine(day, time.min), tz)
@@ -51,7 +70,13 @@ def build_stock_ticker(day):
         stock = Decimal(material.stock or 0)
         if stock <= 0 and not net:
             continue
-        raw.append({"id": material.pk, "name": material.name, "unit": material.usage_unit or "", **_balance(stock, net)})
+        raw.append({
+            "id": material.pk,
+            "name": material.name,
+            "unit": material.usage_unit or "",
+            "breakdown": _raw_breakdown(material, stock),
+            **_balance(stock, net),
+        })
 
     finished = []
     # Bulk-load what the stock properties read per product (its business and

@@ -49,7 +49,12 @@ from expenses.models import Expense
 def privacy_policy(request):
     """Public, Founder-managed privacy policy with a cached single-row read."""
     from accounts.privacy import get_public_privacy_policy
+    from .seo import absolute_url, canonical_host_redirect
 
+    if request.GET.get("embedded") != "1":  # the embedded variant lives inside the app on any host
+        alternate_host = canonical_host_redirect(request)
+        if alternate_host:
+            return alternate_host
     policy = get_public_privacy_policy()
     effective_date = policy.get("effective_date")
     if effective_date is None and policy.get("updated_at"):
@@ -70,7 +75,7 @@ def privacy_policy(request):
         "privacy_document_url": document_url,
         "privacy_effective_date": effective_date,
         "support_email": getattr(settings, "INPROFIC_SUPPORT_EMAIL", "") or "",
-        "canonical_url": request.build_absolute_uri(reverse("privacy_policy")),
+        "canonical_url": absolute_url(request, reverse("privacy_policy")),
     }
     if request.GET.get("embedded") == "1":
         return render(request, "marketing/_privacy_policy_embedded.html", context)
@@ -109,6 +114,10 @@ def marketing_location_enrich(request):
 
 def marketing_home(request):
     """Public product overview; remembered authenticated sessions continue to the app."""
+    from .seo import canonical_host_redirect
+    alternate_host = canonical_host_redirect(request)
+    if alternate_host:
+        return alternate_host
     if not request.user.is_authenticated:
         try:
             from accounts.analytics import marketing_location_metadata, record_platform_event
@@ -172,16 +181,19 @@ def marketing_home(request):
             manual_trust_logos = list(MarketingTrustLogo.objects.filter(active=True))
         plan_feature_matrix = build_plan_feature_matrix(plans)
     from django.templatetags.static import static
-    from .seo import organization_graph
-    canonical_url = request.build_absolute_uri(reverse("marketing_home"))
+    from .seo import absolute_url, organization_graph
+    canonical_url = absolute_url(request, reverse("marketing_home"))
+    social_image_url = absolute_url(request, static("core/brand/inprofic-wordmark-on-dark.png"))
     with performance_section(request, "marketing.render"):
         response = render(request, "marketing/home.html", {
         "plans": plans, "starter_plan": starter_plan, "marketing_campaigns": marketing_campaigns,
         "general_trial_days": max(1, int(trial_policy.general_trial_days or 30)),
         "plan_feature_matrix": plan_feature_matrix,
         "canonical_url": canonical_url,
-        "json_ld": organization_graph(canonical_url, plans),
-        "social_image_url": request.build_absolute_uri(static("core/brand/inprofic-wordmark-on-dark.png")),
+        "json_ld": organization_graph(canonical_url, plans, logo_url=absolute_url(request, static("core/brand/inprofic-mark.png"))),
+        "social_image_url": social_image_url,
+        "google_site_verification": settings.GOOGLE_SITE_VERIFICATION,
+        "bing_site_verification": settings.BING_SITE_VERIFICATION,
         "trust_strip_enabled": trust_strip_enabled,
         "trust_business_count": Business.objects.count() if trust_strip_enabled else 0,
         "trusted_businesses": trusted_businesses,
@@ -2250,20 +2262,24 @@ def backup_json(request):
 
 
 def robots_txt(request):
-    from .seo import APP_PREFIXES_DISALLOWED
+    from .seo import APP_PREFIXES_DISALLOWED, DISALLOWED_PATTERNS, absolute_url
 
-    sitemap = request.build_absolute_uri(reverse("seo_sitemap"))
-    disallow = "".join(f"Disallow: {prefix}\n" for prefix in APP_PREFIXES_DISALLOWED)
+    sitemap = absolute_url(request, reverse("seo_sitemap"))
+    disallow = "".join(f"Disallow: {prefix}\n" for prefix in (*APP_PREFIXES_DISALLOWED, *DISALLOWED_PATTERNS))
     body = f"User-agent: *\nAllow: /\n{disallow}Sitemap: {sitemap}\n"
     return HttpResponse(body, content_type="text/plain; charset=utf-8")
 
 
 def seo_sitemap(request):
+    from .seo import absolute_url, canonical_host_redirect
+    alternate_host = canonical_host_redirect(request)
+    if alternate_host:
+        return alternate_host
     urls = [
-        (request.build_absolute_uri(reverse("marketing_home")), "1.0", "weekly"),
-        (request.build_absolute_uri(reverse("signup")), "0.9", "monthly"),
-        (request.build_absolute_uri(reverse("privacy_policy")), "0.5", "monthly"),
-        (request.build_absolute_uri(reverse("login")), "0.4", "monthly"),
+        (absolute_url(request, reverse("marketing_home")), "1.0", "weekly"),
+        (absolute_url(request, reverse("signup")), "0.9", "monthly"),
+        (absolute_url(request, reverse("privacy_policy")), "0.5", "monthly"),
+        (absolute_url(request, reverse("login")), "0.4", "monthly"),
     ]
     rows = "".join(f"<url><loc>{loc}</loc><changefreq>{freq}</changefreq><priority>{priority}</priority></url>" for loc, priority, freq in urls)
     return HttpResponse(f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{rows}</urlset>', content_type="application/xml")

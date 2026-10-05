@@ -13,9 +13,7 @@
       <td class="px-3 py-2 font-mono text-xs"><a href="{% url 'order_detail' o.pk %}" class="text-[#8f172d] hover:underline">#{{ o.pk }}</a></td>
       <td class="px-3 py-2 text-xs">{{ o.display_order_type }}</td>
       <td class="px-3 py-2 font-mono text-xs">{{ o.date }}</td>
-      <td class="px-3 py-2 text-xs">
-        {% for i in o.items.all %}{{ i.finished_good.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
-      </td>
+      <td class="px-3 py-2 text-xs" style="min-width:11rem;max-width:20rem">{% include "partials/_items_summary.html" with items=o.items.all dialog_prefix="batch-order-items-" row_pk=o.pk %}</td>
       <td class="px-3 py-2 text-xs">
         {% for b in o.production_batches.all %}
           <a href="{% url 'production_batch_detail' b.pk %}" class="block font-mono text-[#8f172d] hover:underline">{{ b.batch_number }}</a>
@@ -35,4 +33,6 @@
   </tbody>
 </table>
 </div>
+{% for o in orders %}{% if o.items.all|length > 1 %}{% include "partials/_items_dialog.html" with items=o.items.all dialog_prefix="batch-order-items-" row_pk=o.pk title_prefix="Order #" title_ref=o.pk subtitle=o.date total_label="Total units" total_value=o.total_units|num %}{% endif %}{% endfor %}
+{% include "partials/_items_dialog_assets.html" %}
 {% endblock %}

@@ -72,7 +72,8 @@ def attach_payroll_tiers(plans):
     """Attach each plan's active payroll packages and extra-staff batches.
 
     Sets ``plan.payroll_tiers`` (ordered by capacity, unlimited last),
-    ``plan.payroll_batches`` (extra-staff batches, smallest first) and
+    ``plan.payroll_batches`` (the shared, plan-independent extra-staff batches,
+    smallest first) and
     ``plan.payroll_from`` (cheapest monthly package price, or None when the
     Founder has not priced the add-on for that plan). Shown to every tenant and
     visitor, including trial and Founder-lifetime tenants who currently get it
@@ -80,15 +81,14 @@ def attach_payroll_tiers(plans):
     """
     plans = list(plans)
     by_plan = {plan.pk: [] for plan in plans}
-    batches_by_plan = {plan.pk: [] for plan in plans}
     ids = list(by_plan)
     for tier in PayrollAddonTier.objects.filter(plan_id__in=ids, active=True):
         by_plan[tier.plan_id].append(tier)
-    for batch in PayrollStaffBatch.objects.filter(plan_id__in=ids, active=True).order_by("staff_count", "id"):
-        batches_by_plan[batch.plan_id].append(batch)
+    # Batches are not tied to a plan: one query, shared by every plan.
+    batches = list(PayrollStaffBatch.objects.filter(active=True).order_by("staff_count", "id"))
     for plan in plans:
         plan.payroll_tiers = by_plan[plan.pk]
-        plan.payroll_batches = batches_by_plan[plan.pk]
+        plan.payroll_batches = batches
         plan.payroll_from = min((t.monthly_price for t in plan.payroll_tiers), default=None)
     return plans
 

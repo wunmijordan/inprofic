@@ -5,7 +5,7 @@
    datalist keeps working. */
 (function () {
   'use strict';
-  var GAP = 4, MIN_ROOM = 140, MAX_H = 240;
+  var GAP = 4, MIN_ROOM = 140, MAX_H = 240, TAP_SLOP = 8;
   var active = null;
 
   function vv() { return window.visualViewport || null; }
@@ -102,11 +102,30 @@
       else if (e.key === 'Enter' && !box.hidden && index >= 0) { e.preventDefault(); choose(index); }
       else if (e.key === 'Escape' || e.key === 'Tab') close();
     });
-    // pointerdown + preventDefault keeps focus on the input so the keyboard stays up
+    // Mouse: choose on pointerdown (preventDefault keeps focus on the input).
+    // Touch/pen: pointerdown is also the start of a scroll gesture, so choosing
+    // there selects whatever the finger first lands on while the user is only
+    // trying to scroll. Choose on pointerup instead, and only for a real tap
+    // (little movement, not cancelled by the browser taking over to scroll).
+    var tap = null;
+    function dropTap() { tap = null; }
     box.addEventListener('pointerdown', function (e) {
       var li = e.target.closest('li'); if (!li) return;
-      e.preventDefault(); choose(Number(li.dataset.i));
+      if (e.pointerType === 'mouse') { e.preventDefault(); choose(Number(li.dataset.i)); return; }
+      tap = {id: e.pointerId, x: e.clientX, y: e.clientY, i: Number(li.dataset.i)};
     });
+    box.addEventListener('pointermove', function (e) {
+      if (tap && tap.id === e.pointerId && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > TAP_SLOP) dropTap();
+    });
+    box.addEventListener('pointerup', function (e) {
+      if (!tap || tap.id !== e.pointerId) return;
+      var t = tap; dropTap();
+      if (Math.hypot(e.clientX - t.x, e.clientY - t.y) <= TAP_SLOP) choose(t.i);
+    });
+    box.addEventListener('pointercancel', dropTap);
+    box.addEventListener('scroll', dropTap);
+    // Touch taps still synthesize a mousedown; keep the input focused (keyboard stays up).
+    box.addEventListener('mousedown', function (e) { e.preventDefault(); });
     input.addEventListener('blur', function () { setTimeout(close, 120); });
   }
 

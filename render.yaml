@@ -37,6 +37,12 @@ services:
         value: "100"
       - key: PERF_SERVER_TIMING
         value: "True"
+      - key: SITE_URL
+        value: "https://inprofic.com.ng"
+      - key: GOOGLE_SITE_VERIFICATION
+        sync: false
+      - key: BING_SITE_VERIFICATION
+        sync: false
       - key: TRUST_PROXY_SSL_HEADER
         value: "True"
       - key: SECURE_SSL_REDIRECT

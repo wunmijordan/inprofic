@@ -742,8 +742,8 @@ def assert_can_buy_batch(business, batch, quantity):
     addon = state["addon"]
     if addon.tier.unlimited:
         raise ValidationError("Your payroll package already covers unlimited staff.")
-    if not batch.active or batch.plan_id != subscription.plan_id:
-        raise ValidationError("Choose an active extra-staff batch configured for your current plan.")
+    if not batch.active:
+        raise ValidationError("Choose an active extra-staff batch.")
     if not 1 <= int(quantity) <= MAX_BATCH_QUANTITY:
         raise ValidationError(f"Choose between 1 and {MAX_BATCH_QUANTITY} batches.")
     return addon
@@ -777,8 +777,8 @@ def activate_paid_payroll_batch(payment):
     the pro-rata charge covers the batch only until the current period ends,
     after which it renews together with the primary package."""
     batch = payment.payroll_batch
-    if not batch or batch.plan_id != payment.subscription.plan_id:
-        raise ValidationError("This payroll batch no longer matches the business's active plan.")
+    if not batch:
+        raise ValidationError("This payroll batch is no longer available.")
     addon = BusinessPayrollAddon.objects.select_for_update().select_related("tier").filter(
         business=payment.subscription.primary_business, active=True,
     ).first()

@@ -131,6 +131,17 @@ CSRF_TRUSTED_ORIGINS=https://your-domain.example,https://www.your-domain.example
 
 These two variables contain hostnames/origins only; they are not secrets.
 
+### Search visibility (SEO)
+
+Set `SITE_URL=https://your-domain.example` (no trailing slash). Canonical links, the sitemap and structured data then always use that origin, and anonymous visitors on any other host (the `*.onrender.com` address, `www.`) are 301-redirected to it so search engines index a single site. Health checks and cron endpoints on the Render hostname are never redirected. Leave it empty for local development.
+
+To get found by Google (code cannot do this part for you):
+
+1. In Google Search Console add a **Domain** property for the bare domain and verify it with the DNS TXT record (or use a URL-prefix property and put the token in `GOOGLE_SITE_VERIFICATION`). `BING_SITE_VERIFICATION` does the same for Bing Webmaster Tools.
+2. Submit `https://your-domain.example/sitemap.xml`, then use URL Inspection on the home page and press **Request indexing**.
+3. If the `*.onrender.com` address was indexed earlier, leave it redirecting; Google follows the 301 and moves the listing to the custom domain over days to weeks.
+4. A brand-new or rarely linked domain can take weeks to rank for its brand name. Links from your social profiles and any directories help.
+
 Signup welcome mail is sent after a business workspace has been created. Configure the SMTP variables above on every production front end that can accept signups. If `EMAIL_HOST` is left empty, INPROFIC deliberately uses Django's console email backend so signup remains functional without attempting an external SMTP connection.
 
 The Render process uses Django's Psycopg pool with at most two open database

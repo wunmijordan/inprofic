@@ -32,13 +32,21 @@ def _icons(theme="light", platform=""):
     """
     splash_192 = {"src": static("core/pwa/icon-mark-on-dark-192.png"), "sizes": "192x192", "type": "image/png", "purpose": "any"}
     splash_512 = {"src": static("core/pwa/icon-mark-on-dark-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "any"}
-    if platform == "windows":
+    if platform in ("windows", "desktop"):
+        # Desktop installs (Windows, macOS, Linux, ChromeOS): OS app icons sit on light
+        # surfaces, so the large "any" icons are the coloured navy + orange N, not the
+        # white splash N. Small sizes (title bar, taskbar) follow the app theme.
+        # Mobile never reaches this branch; its list below is unchanged.
         stem = "icon-mark-windows-on-dark" if theme == "dark" else "icon-mark-windows"
         small = [
             {"src": static(f"core/pwa/{stem}-{n}.png"), "sizes": f"{n}x{n}", "type": "image/png", "purpose": "any"}
             for n in (32, 48, 64)
         ]
-        return [*small, splash_192, splash_512]
+        large = [
+            {"src": static("core/pwa/icon-mark-windows-192.png"), "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": static("core/pwa/icon-mark-windows-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "any"},
+        ]
+        return [*small, *large]
     return [
         {"src": static("core/pwa/icon-launcher-maskable-192.png"), "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
         {"src": static("core/pwa/icon-launcher-maskable-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
@@ -139,6 +147,15 @@ def tenant_manifest(request, business_slug):
         },
         tenant=True,
     )
+
+
+@require_GET
+def favicon(request):
+    """Browsers request /favicon.ico regardless of <link rel=icon>. Without a route
+    every hit rendered the full 404 page (~12KB); redirect to the brand favicon."""
+    response = redirect(static("core/brand/inprofic-favicon.png"))
+    response["Cache-Control"] = "public, max-age=86400"
+    return response
 
 
 @require_GET

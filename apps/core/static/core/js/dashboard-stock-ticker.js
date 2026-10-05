@@ -8,7 +8,30 @@
   var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var nf = new Intl.NumberFormat(undefined, {maximumFractionDigits: 2});
 
+  // Same output as the `num` template filter (always 2 decimals) for the breakdown remainder.
+  var nf2 = new Intl.NumberFormat(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
   function fmt(n) { return nf.format(n); }
+  function span(cls, text) {
+    var el = document.createElement('span');
+    el.className = cls; el.textContent = text;
+    return el;
+  }
+  // "2 bags, 30.00 kg" — whole purchase units then the remainder in usage units
+  // (mirrors the Inventory page's raw-material stock breakdown).
+  function breakdownNodes(bd) {
+    var whole = Number(bd.whole);
+    return [
+      span('stock-ticker__val', String(whole)), document.createTextNode(' '),
+      span('stock-ticker__unit stock-ticker__unit--bd', bd.purchase_unit + (whole === 1 ? '' : 's')),
+      document.createTextNode(', '),
+      span('stock-ticker__val', nf2.format(Number(bd.remainder))), document.createTextNode(' '),
+      span('stock-ticker__unit stock-ticker__unit--bd', bd.usage_unit)
+    ];
+  }
+  function plainNodes(value, unit) {
+    return [span('stock-ticker__val', fmt(value)), span('stock-ticker__unit', unit)];
+  }
   function sub(b) {
     var ch = Number(b.change) || 0;
     if (!ch) return 'Opening ' + fmt(b.opening) + ' · no change yet';
@@ -28,7 +51,7 @@
     root.addEventListener('pointerleave', function () { self.paused = false; });
   }
   Ticker.prototype.faceData = function (it) {
-    if (this.kind === 'raw') return [{label: 'Balance', b: it}, null];
+    if (this.kind === 'raw') return [{label: 'Balance', b: it, bd: it.breakdown}, null];
     return [{label: 'Store', b: it.store}, it.market ? {label: 'Market', b: it.market} : null];
   };
   Ticker.prototype.paint = function (it) {
@@ -39,8 +62,9 @@
       f.hidden = !d;
       if (!d) continue;
       f.querySelector('[data-t-label]').textContent = d.label;
-      f.querySelector('[data-t-val]').textContent = fmt(d.b.balance);
-      f.querySelector('[data-t-unit]').textContent = unit;
+      var line = f.querySelector('[data-t-line]');
+      while (line.firstChild) line.removeChild(line.firstChild);
+      (d.bd ? breakdownNodes(d.bd) : plainNodes(d.b.balance, unit)).forEach(function (n) { line.appendChild(n); });
       f.querySelector('[data-t-sub]').textContent = sub(d.b);
     }
     this.hasFlip = !!data[1];
@@ -72,7 +96,9 @@
   Ticker.prototype.update = function (list) {
     var current = this.items[this.idx], prevKey = current ? JSON.stringify(current) : null;
     this.items = list || [];
-    this.root.hidden = this.items.length === 0;
+    // The slot keeps its reserved height in every state; only its contents change.
+    this.root.classList.remove('is-loading');
+    this.root.classList.toggle('is-empty', this.items.length === 0);
     if (!this.items.length) { this.clear(); this.idx = -1; return; }
     if (!current) { this.show(0, true); return; }
     var at = this.items.findIndex(function (x) { return x.id === current.id; });
@@ -107,7 +133,14 @@
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (d) { if (d) apply(d); })
         .catch(function () {})
-        .then(function () { busy = false; });
+        .then(function () {
+          busy = false;
+          // First load failed: stop the skeleton so it doesn't pulse forever.
+          Object.keys(tickers).forEach(function (k) {
+            var t = tickers[k];
+            if (t.root.classList.contains('is-loading')) { t.root.classList.remove('is-loading'); t.root.classList.add('is-empty'); }
+          });
+        });
     }
     poll();                                   // first data arrives right after the page renders
     setInterval(poll, POLL_MS);

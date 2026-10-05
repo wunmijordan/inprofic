@@ -248,6 +248,46 @@ html[data-theme="dark"] .raw-material-converter { background: var(--ui-surface-m
 html[data-theme="dark"] .raw-material-converter :where(.text-sky-800\/75,.text-sky-950) { color: #bae6fd !important; }
 html[data-theme="dark"] main img { opacity: .94; }
 
+/* ---- Dark theme: surfaces and tints the rules above did not map -------------------------------
+   Anything light that stayed light while its text colour was remapped to a light value rendered
+   unreadable (dialog headers/footers, group rows, modals, badges, gradient cards). Mapped here,
+   dark theme only, so the light theme keeps its warm palette. Lowercase hex variants are listed
+   because CSS class selectors are case-sensitive. */
+html[data-theme="dark"] main :where(.bg-\[\#fffdf8\],.bg-\[\#fffdf9\],.bg-\[\#FFFCF5\]) { --ui-local-text: var(--ui-surface-text); --ui-local-muted: var(--ui-surface-muted-text); background-color: var(--ui-surface) !important; color: var(--ui-local-text) !important; }
+html[data-theme="dark"] main :where(.bg-\[\#F8F2E4\],.bg-\[\#FAF6EA\],.bg-\[\#FAF6EF\],.bg-\[\#faf6ef\],.bg-\[\#f5efe0\],.bg-\[\#FFF8E8\],.bg-\[\#FFF4EA\],.bg-\[\#E8F0EB\]) { --ui-local-text: var(--ui-surface-text); --ui-local-muted: var(--ui-surface-muted-text); background-color: var(--ui-surface-muted) !important; color: var(--ui-local-text) !important; }
+html[data-theme="dark"] main :where(.bg-stone-200) { --ui-local-text: var(--ui-surface-text); --ui-local-muted: var(--ui-surface-muted-text); background-color: var(--ui-border) !important; }
+html[data-theme="dark"] main :where(.bg-gradient-to-br,.bg-gradient-to-r,.bg-gradient-to-b)[class*="from-[#FFFDF8]"] { --ui-local-text: var(--ui-surface-text); --ui-local-muted: var(--ui-surface-muted-text); background-image: none !important; background-color: var(--ui-surface) !important; }
+html[data-theme="dark"] main :where(.bg-amber-100,.bg-orange-100,.bg-yellow-100) { background-color: #3d3119 !important; }
+html[data-theme="dark"] main :where(.bg-emerald-100,.bg-green-100) { background-color: #1b3d2e !important; }
+html[data-theme="dark"] main :where(.bg-rose-100,.bg-red-100,.bg-pink-200) { background-color: #47202c !important; }
+html[data-theme="dark"] main :where(.bg-sky-100,.bg-blue-100) { background-color: #17384a !important; }
+html[data-theme="dark"] main :where(.bg-pink-50,.bg-pink-100) { background-color: #3a1c2c !important; }
+html[data-theme="dark"] main :where(.bg-fuchsia-50,.bg-fuchsia-100) { background-color: #351d3f !important; }
+html[data-theme="dark"] main :where(.bg-amber-50\/50,.bg-amber-50\/70,.bg-orange-50\/50,.bg-orange-50\/70) { background-color: #332a17 !important; }
+html[data-theme="dark"] main :where(.bg-emerald-50\/50,.bg-emerald-50\/60,.bg-emerald-50\/70) { background-color: #153126 !important; }
+html[data-theme="dark"] main :where(.bg-rose-50\/50,.bg-rose-50\/70) { background-color: #3a1c25 !important; }
+html[data-theme="dark"] main :where(.bg-sky-50\/50,.bg-sky-50\/70) { background-color: #132c3a !important; }
+html[data-theme="dark"] main :where(.text-fuchsia-700,.text-fuchsia-800,.text-fuchsia-900,.text-pink-700,.text-pink-800,.text-pink-900) { color: #f0abfc !important; }
+html[data-theme="dark"] main :where(.text-\[\#b61dc4\]) { color: #e879f9 !important; }
+html[data-theme="dark"] main :where(.divide-\[\#E7DFCC\],.divide-\[\#EEE7D7\]) > :not([hidden]) ~ :not([hidden]) { border-color: var(--ui-border) !important; }
+html[data-theme="dark"] main :where(.border-\[\#e7dfcc\],.border-\[\#d9cfb4\],.border-\[\#eee7d7\],.border-stone-200\/80) { border-color: var(--ui-border) !important; }
+
+/* Global alerts dock + its JS-built rows live outside <main>, so none of the main-scoped rules reach them. */
+html[data-theme="dark"] #commerce-notification-dock { --ui-local-text: var(--ui-surface-text); --ui-local-muted: var(--ui-surface-muted-text); background-color: var(--ui-surface) !important; color: var(--ui-surface-text); border-color: var(--ui-border) !important; box-shadow: var(--ui-shadow-raised) !important; }
+html[data-theme="dark"] #commerce-notification-dock :where(.bg-white,.bg-\[\#FFFDF8\]) { background-color: var(--ui-surface) !important; }
+html[data-theme="dark"] #commerce-notification-dock :where(.bg-stone-50,.bg-stone-100,.hover\:bg-stone-100:hover) { background-color: var(--ui-surface-muted) !important; }
+html[data-theme="dark"] #commerce-notification-dock :where(.text-stone-300,.text-stone-400,.text-stone-500,.text-stone-600) { color: var(--ui-surface-muted-text) !important; }
+html[data-theme="dark"] #commerce-notification-dock :where(.text-stone-700,.text-stone-800,.text-stone-900,.hover\:text-stone-900:hover) { color: var(--ui-surface-text) !important; }
+html[data-theme="dark"] #commerce-notification-dock :where(.text-\[\#8f172d\]) { color: var(--ui-accent) !important; }
+html[data-theme="dark"] #commerce-notification-dock :where(.border-stone-100,.border-stone-200,.border-stone-300) { border-color: var(--ui-border) !important; }
+html[data-theme="dark"] #commerce-notification-dock :where(.bg-amber-100) { background-color: #3d3119 !important; }
+html[data-theme="dark"] #commerce-notification-dock :where(.bg-rose-100) { background-color: #47202c !important; }
+html[data-theme="dark"] #commerce-notification-dock :where(.bg-sky-100) { background-color: #17384a !important; }
+html[data-theme="dark"] #commerce-notification-dock :where(.text-amber-800,.text-amber-900) { color: #fcd34d !important; }
+html[data-theme="dark"] #commerce-notification-dock :where(.text-rose-700,.text-rose-800) { color: #fda4af !important; }
+html[data-theme="dark"] #commerce-notification-dock :where(.text-sky-800,.text-sky-900) { color: #7dd3fc !important; }
+
+
 @media (max-width: 767px) {
   .workspace-main { padding: 1rem !important; }
   .workspace-content { padding-bottom: 1rem; }
