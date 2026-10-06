@@ -1,9 +1,7 @@
 {% load static %}
 {# Search engines need favicons in multiples of 48px (Google ignores 128x128) and a crawlable /favicon.ico. #}
 <link rel="icon" href="/favicon.ico" sizes="any">
-<link rel="icon" type="image/png" sizes="48x48" href="{% static 'core/brand/inprofic-favicon-48.png' %}">
-<link rel="icon" type="image/png" sizes="192x192" href="{% static 'core/brand/inprofic-favicon-192.png' %}">
-<link id="inprofic-favicon" rel="icon" type="image/png" href="{% static 'core/brand/inprofic-favicon-96.png' %}" data-light-href="{% static 'core/brand/inprofic-favicon-96.png' %}" data-dark-href="{% static 'core/brand/inprofic-favicon-on-dark-96.png' %}" sizes="96x96">
+<link id="inprofic-favicon" rel="icon" type="image/png" href="{% static 'core/pwa/icon-mark-192.png' %}" data-light-href="{% static 'core/pwa/icon-mark-192.png' %}" data-dark-href="{% static 'core/pwa/icon-mark-on-dark-192.png' %}" sizes="192x192">
 <script>
   // Pages without the full PWA head (storefront, privacy) still get the dark
   // favicon; pwa/head.html later refines this with the in-app theme choice.
