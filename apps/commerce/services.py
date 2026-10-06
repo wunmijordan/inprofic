@@ -22,9 +22,11 @@ logger = logging.getLogger(__name__)
 
 
 
+# Hosted storefronts, the headless API and connectors sell through the Online channel only. Bulk
+# options configured on a product ride on Online as made-to-order price options; the separate
+# Distribution / Bulk channel is reserved for the in-premise POS.
 EXTERNAL_SALES_CHANNELS = {
     CommerceIntake.CHANNEL_ONLINE,
-    CommerceIntake.CHANNEL_DISTRIBUTION,
 }
 EXTERNAL_COMMERCE_SOURCES = {
     CommerceIntake.SOURCE_STOREFRONT,
@@ -36,8 +38,8 @@ EXTERNAL_COMMERCE_SOURCES = {
 def validate_channel_for_source(source, channel):
     if source in EXTERNAL_COMMERCE_SOURCES and channel not in EXTERNAL_SALES_CHANNELS:
         raise ValidationError(
-            "External storefronts and integrations support online or distribution/bulk pricing only. "
-            "Physical-store pricing is reserved for the in-premise POS."
+            "External storefronts and integrations order through the online channel only (bulk options are "
+            "online price options). Physical-store and distribution/bulk channels are reserved for the in-premise POS."
         )
     return channel
 
@@ -238,12 +240,13 @@ def _customer_available(item, internal_available):
     )
 
 
-def _composition_scope_applies(intake, scope):
+def _composition_scope_applies(intake, scope, item=None):
     scope = (scope or "all").strip()
     if scope == "all":
         return True
     if scope == "bulk":
-        return intake.sales_channel == CommerceIntake.CHANNEL_DISTRIBUTION
+        # A bulk pack ordered through Online (external storefront/API) is still a bulk fulfilment.
+        return intake.sales_channel == CommerceIntake.CHANNEL_DISTRIBUTION or bool(item is not None and item.bulk_pack_id)
     return scope == (intake.service_mode or "").strip()
 
 
@@ -262,7 +265,7 @@ def consume_intake_item_assembly(intake, item, *, user=None):
     reference = intake.public_number
     for row in locked_item.contents_snapshot or []:
         kind = row.get("kind")
-        if kind == "base_product" or not _composition_scope_applies(intake, row.get("scope")):
+        if kind == "base_product" or not _composition_scope_applies(intake, row.get("scope"), locked_item):
             continue
         try:
             quantity = Decimal(str(row.get("total_quantity") or 0))

@@ -272,6 +272,15 @@ html[data-theme="dark"] main :where(.text-\[\#b61dc4\]) { color: #e879f9 !import
 html[data-theme="dark"] main :where(.divide-\[\#E7DFCC\],.divide-\[\#EEE7D7\]) > :not([hidden]) ~ :not([hidden]) { border-color: var(--ui-border) !important; }
 html[data-theme="dark"] main :where(.border-\[\#e7dfcc\],.border-\[\#d9cfb4\],.border-\[\#eee7d7\],.border-stone-200\/80) { border-color: var(--ui-border) !important; }
 
+/* Radio option cards (plan payment: billing cycle, payment provider). Their checked state is the Tailwind
+   variant class has-[:checked]:bg-rose-50, a different class name from bg-rose-50, so it was never remapped
+   and the checked card stayed light pink with light text. */
+html[data-theme="dark"] main label[class*="has-[:checked]:"] { background-color: var(--ui-surface) !important; border-color: var(--ui-border) !important; color: var(--ui-surface-text) !important; }
+html[data-theme="dark"] main label[class*="has-[:checked]:"]:has(:checked) { background-color: color-mix(in srgb, var(--ui-accent) 18%, var(--ui-surface)) !important; border-color: var(--ui-accent) !important; }
+html[data-theme="dark"] main label[class*="has-[:checked]:"] :where(strong, span, small, div) { color: inherit; }
+html[data-theme="dark"] main label[class*="has-[:checked]:"] :where(.text-stone-400,.text-stone-500,.text-stone-600) { color: var(--ui-surface-muted-text) !important; }
+html[data-theme="dark"] main label[class*="has-[:checked]:"] input[type="radio"] { accent-color: var(--ui-accent); }
+
 /* Global alerts dock + its JS-built rows live outside <main>, so none of the main-scoped rules reach them. */
 html[data-theme="dark"] #commerce-notification-dock { --ui-local-text: var(--ui-surface-text); --ui-local-muted: var(--ui-surface-muted-text); background-color: var(--ui-surface) !important; color: var(--ui-surface-text); border-color: var(--ui-border) !important; box-shadow: var(--ui-shadow-raised) !important; }
 html[data-theme="dark"] #commerce-notification-dock :where(.bg-white,.bg-\[\#FFFDF8\]) { background-color: var(--ui-surface) !important; }

@@ -246,7 +246,7 @@ Use decimal strings for quantity. Do not calculate financial truth with browser 
 
 ### Online fulfilment choice and readiness
 
-Treat `online` as the price channel and `fulfilment_source` as a separate per-line checkout choice. `stock` means the customer is choosing currently available Physical Store stock while still paying the Online price; `made_to_order` uses the configured readiness estimate. The product API deliberately keeps those `fulfilment_options`, but `catalogue_display.fulfilment_options_surface` is `checkout_only`: do not render stock-readiness or made-to-order-time badges on external catalogue cards. Do not expose Physical Store prices. A purchased-for-resale/procured-to-sell product with no sellable physical stock is omitted from the external catalogue entirely, including Distribution/Bulk, because it cannot be produced. Bulk/Distribution does not expose the Physical Store choice.
+Treat `online` as the external price/order mode and `fulfilment_source` as a separate per-line checkout choice. `stock` means the customer is choosing currently available Physical Store stock while still paying the Online price; `made_to_order` uses the configured readiness estimate. The product API deliberately keeps those `fulfilment_options`, but `catalogue_display.fulfilment_options_surface` is `checkout_only`: do not render stock-readiness or made-to-order-time badges on external catalogue cards. Do not expose Physical Store prices. A purchased-for-resale/procured-to-sell product with no sellable physical stock is omitted from the external catalogue entirely because it cannot be produced. Bulk packs are additional Online choices and use `made_to_order`; INPROFIC handles purchased-for-resale packs through available stock.
 
 Checkout responses include line-level and overall `estimated_ready_at`. For delivery, optionally send `requested_delivery_at`; it must not be earlier than the whole-order readiness plus the accepted delivery ETA.
 
@@ -376,7 +376,7 @@ const productsFor = (catalogue, categoryId) => catalogue.products.filter(
 
 ### 4.2 Vertical-aware sales-channel language
 
-**External-channel boundary:** never synthesize or expose a Physical Store option on a website. INPROFIC rejects `physical_store` on hosted-storefront, API and connector checkout creation even if an older/custom client submits it. This prevents a lower/different in-premise price from leaking into Online checkout. Distribution/bulk is deliberately available on both external and POS surfaces subject to the product minimum.
+**External-channel boundary:** never synthesize or expose a Physical Store option on a website. INPROFIC rejects `physical_store` on hosted-storefront, API and connector checkout creation even if an older/custom client submits it. This prevents a lower/different in-premise price from leaking into Online checkout. Headless websites receive the `online` order mode; render returned `bulk_packs[]` as additional Online purchase options when present. The `distribution` mode is reserved for the in-premise POS.
 
 The channel codes are stable integration keys, but their labels are selected
 for the tenant's business vertical. Always submit the code and display the
@@ -385,7 +385,7 @@ returned label from each product's `order_modes` array.
 | Stable code | Example labels returned by INPROFIC |
 | --- | --- |
 | `online` | Online Order, Delivery / Online Order, Online Trade Order |
-| `distribution` | Distribution Order, Catering / Bulk Order, Wholesale / Customer Order, Wholesale Order, Bulk Customer Order |
+| `distribution` | Distribution Order, Catering / Bulk Order, Wholesale / Customer Order, Wholesale Order, Bulk Customer Order (POS only) |
 
 `physical_store` is intentionally not exposed by the hosted storefront or headless API. It is reserved for INPROFIC's staff-operated in-premise POS, where the physical-store/direct price actually applies.
 
@@ -401,7 +401,7 @@ the code. Use:
 
 No image produces empty `image` and `image_url` strings. Use `image` in new code.
 
-External storefront/headless mode codes are `online` and `distribution`. Display the returned vertical-specific `label`. Distribution/Bulk is exposed only when it has an explicit Distribution channel price or active `bulk_packs[]`; it never falls back to the Standard Portion/default selling price. When bulk packs exist, the client must choose one and submit `bulk_pack_id`, and that pack's own price/minimum are authoritative (`price`/`distribution_price` is only the first pack's display price, with `price_is_from` marking multi-pack products). When there are no bulk packs, the explicit Distribution channel price and product-level `distribution_min_quantity` apply. The in-premise POS additionally supports the tenant vertical's direct/physical-store channel. Production services normally use `preorder` fulfilment for online/distribution; wholesale and retail remain stock-based and are never forced through production.
+External storefront/headless mode is `online`; `distribution` is reserved for the in-premise POS. When a product response includes `bulk_packs[]`, the headless developer must render those choices alongside the standard Online option. Each pack supplies its own `price`, `customer_unit` and `min_order_quantity`; selecting a pack must update the displayed unit/price/minimum and checkout line. Submit `order_mode: "online"`, the product UUID, selected `bulk_pack_id`, quantity and the pack's `fulfilment_source: "made_to_order"`. Do not send a Distribution mode or calculate the order total from a display-only price. INPROFIC validates pack availability and computes the authoritative total. The in-premise POS additionally supports the tenant vertical's direct/physical-store and Distribution channels.
 
 The hosted catalogue hides product counts. A headless website may similarly use `available_now` only for validation/UI disabling. INPROFIC always rechecks it during checkout.
 
@@ -1128,7 +1128,7 @@ The browser calls the website’s own API routes; the website server attaches th
 - [ ] Final business slug matches website and gateway configuration.
 - [ ] Published products return absolute working `image` URLs.
 - [ ] Active product categories are rendered from top-level `categories`, with uncategorised products handled explicitly.
-- [ ] All three applicable channel codes, labels, prices and limits are tested.
+- [ ] External catalogue tests cover Online pricing/fulfilment and any returned Bulk Pack choices; Physical Store and Distribution are tested only in the in-premise POS.
 - [ ] Customer-facing channel text uses `order_modes[].label`; checkout submits `order_modes[].code`.
 - [ ] API key exists only in website server secrets.
 - [ ] Only configured payment methods appear.
@@ -1242,6 +1242,8 @@ INPROFIC can keep a Finished Good in its operational production/stock unit while
       "customer_unit": "litre",
       "price": "9000.00",
       "min_order_quantity": "1.00",
+      "order_mode": "online",
+      "fulfilment_source": "made_to_order",
       "contents": []
     }
   ]
@@ -1250,7 +1252,7 @@ INPROFIC can keep a Finished Good in its operational production/stock unit while
 
 `contents` is intentionally presentation-safe: internal scoop/ladle/ml conversions and private material quantities are not exposed unless the business explicitly supplied a public quantity label. Raw/packaging materials included in a composed product are not published automatically.
 
-For Distribution/Bulk, active `bulk_packs[]` replace the generic product price choice rather than supplementing a Standard Portion. In that case the Distribution entry in `order_modes[]` has `requires_bulk_pack: true` and `pricing_source: "bulk_options"`. Its `price`, `unit` and `min_quantity` are a **display price taken from the first bulk pack** (the same option the in-premise POS opens on), so product cards never need to render an empty price. `price_is_from` is `true` when the product has more than one pack: prefix the price with "from" (for example "from ₦4,500.00 / tub"); when there is exactly one pack, show the price as-is. `display_bulk_pack_id` identifies the pack the display price came from. The same values are mirrored on the product as `distribution_price`, `distribution_price_is_from` and `distribution_min_quantity`. The display price is **not** an orderable standard price: render the pack records, let the customer choose, and submit the selected `bulk_pack_id`; the chosen pack's own price and minimum are authoritative. Without bulk packs, Distribution appears only when the Finished Good has an explicit Distribution channel price; then `requires_bulk_pack` is false and `distribution_min_quantity` is the editable Commerce-product minimum. Never substitute `online_price`, the default selling price, or the Standard Portion conversion for a missing Distribution price.
+Bulk Packs are additional Online purchase choices shown alongside the standard portion. The product's Online `order_modes[]` entry describes the standard choice; each `bulk_packs[]` entry carries the pack's own price, customer unit, minimum and checkout values. Render a selector or separate cards for these packs, update the displayed price/unit/minimum from the selected pack, and send its public `bulk_pack_id` with `order_mode: "online"`. Do not expect a separate external `distribution` mode, `requires_bulk_pack` flag or distribution-price aliases. The pack's own price and minimum govern checkout, and the standard Online price does not replace the selected pack price. Distribution pricing remains a POS channel.
 
 A published Finished Good can also expose `individual_options[]` without duplicating its stock or recipe. This is useful when a composed item (for example a Jollof + Chicken plate) must coexist with plain/add-on choices such as Extra Jollof Rice or Single Chicken. Each individual option returns its own public `id`, `name`, `unit`, `contents` and external `order_modes`. For renderers that want every purchasable choice already flattened, use the top-level `catalogue_items[]`; entries have `kind: "standard_product"` or `kind: "individual_option"`.
 
@@ -1284,18 +1286,18 @@ For a normal Online item, submit the existing `product_id` + `quantity`. For an 
 
 Do not submit `bulk_pack_id` on the same line as `individual_option_id`. The option is accepted only when it is enabled and priced for the selected external channel. Physical Store availability/pricing for the same option stays private to INPROFIC POS and is never returned by this API.
 
-For a Distribution/Bulk pack, submit its public `bulk_pack_id` on that line:
+For a Bulk Pack selected on a headless Online checkout, submit its public `bulk_pack_id` on that line:
 
 ```json
 {
-  "order_mode": "distribution",
+  "order_mode": "online",
   "items": [
-    {"product_id": "<product uuid>", "bulk_pack_id": "<bulk-pack uuid>", "quantity": 3}
+    {"product_id": "<product uuid>", "bulk_pack_id": "<bulk-pack uuid>", "quantity": 3, "fulfilment_source": "made_to_order"}
   ]
 }
 ```
 
-A `bulk_pack_id` is rejected outside the Distribution/Bulk channel. External storefront/headless contracts continue to expose only **Online** plus the vertical-specific Distribution/Bulk channel; `physical_store` and its price remain exclusive to the in-premise POS. Use the `order_modes[].label` value returned by INPROFIC instead of hardcoding the word “Distribution” (restaurants, for example, receive `Catering / Bulk Order`).
+A `bulk_pack_id` is an Online selling choice for external/headless checkouts; it is not a separate Distribution mode. The headless developer must implement the pack selector and send the selected ID—the API returns pack data but does not automatically add hosted-storefront UI to the integrating site. `physical_store` and its price remain exclusive to the in-premise POS. Use the `order_modes[].label` returned by INPROFIC for customer-facing Online wording.
 
 The `contents` array is informational for customers; INPROFIC separately snapshots and consumes the applicable internal package components when fulfilment occurs. Headless clients must not attempt to calculate or deduct component stock themselves.
 
@@ -1326,14 +1328,13 @@ Attribution must never be used as an authoritative financial or fulfilment field
 
 The products response includes `privacy_policy.presentation = "modal"` and a `privacy_policy.endpoint`. Fetch that endpoint only when the customer opens Privacy. Render the returned HTML/Word snapshot, or the returned PDF `document_url`, inside the website's own modal with an explicit close control. The headless privacy payload intentionally contains no link back to the INPROFIC marketing overview. This keeps the customer inside the integrating website and avoids an extra privacy-policy lookup during normal catalogue requests.
 
-### Upgrading existing websites: Distribution/Bulk display price
+### Headless Bulk-Pack UI requirement
 
-Before this change, products backed by `bulk_packs[]` returned `null` for the Distribution `price`, `unit`, `min_quantity`, `distribution_price` and `distribution_min_quantity`, which headless cards often rendered as "None".
+The headless API returns each product's `bulk_packs[]`, but it does not render the hosted storefront's selector on an integrating website. The website developer must add that UI. When packs are present:
 
-| Question | Answer |
-| --- | --- |
-| Do sites have to change configuration to receive the update? | No. The values arrive in the existing fields on the next catalogue response. There is no new endpoint, version, header or setting. Sites that simply print `price`/`distribution_price` will start showing the first-pack price automatically. |
-| What do sites have to change to show "from"? | Optional: read the new boolean `price_is_from` (on the `order_modes[]` entry) or `distribution_price_is_from` (on the product) and prefix the price. Without it the first pack's price is shown without "from". |
-| Does checkout change? | No. `requires_bulk_pack` is still `true`, `bulk_pack_id` is still required, and the chosen pack's price/minimum decide the order total. Do not use the display price to compute a basket total. |
-| What could break? | Any site that treats a non-null Distribution `price` as "orderable without a pack". Branch on `requires_bulk_pack`, not on `price !== null`. Cached catalogue responses on your side (CDN, ISR, static build) show the old null values until they refresh. |
-| What if there are no packs? | Unchanged. The explicit Distribution channel price is returned with `price_is_from: false` and `display_bulk_pack_id: null`. With neither, Distribution is not exposed. |
+1. Show the standard Online choice and the returned pack choices.
+2. On pack selection, display the pack's `price`, `customer_unit` and `min_order_quantity` and validate the entered quantity against that minimum.
+3. Submit the parent `product_id`, selected `bulk_pack_id`, `quantity`, `order_mode: "online"` and `fulfilment_source: "made_to_order"` to the existing checkout endpoint.
+4. Do not use the standard Online price to calculate a selected pack's basket total. The server recalculates and validates the authoritative amount.
+
+No new API key, endpoint or configuration is needed. Refresh any cached catalogue response after deploying the frontend change. A `bulk_pack_id` without the integrating site's selector/checkout-field wiring will not make the option visible or purchasable from that site.

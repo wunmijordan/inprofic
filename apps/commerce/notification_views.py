@@ -88,7 +88,7 @@ def notification_feed(request):
             "sound_tune": "double_ping",
             "desktop_enabled": False,
             "rider_profile": rider_only,
-            "poll_seconds": 8,
+            "poll_seconds": 15,
             "unread_count": 0,
             "notifications": [],
         })
@@ -130,7 +130,7 @@ def notification_feed(request):
         ),
         "desktop_enabled": settings.notification_desktop_enabled if settings else True,
         "rider_profile": rider_only,
-        "poll_seconds": 8,
+        "poll_seconds": 15,
         "unread_count": unread_count,
         "notifications": notifications,
     })

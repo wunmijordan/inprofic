@@ -40,6 +40,7 @@ from .attribution import attribution_model_kwargs, normalize_attribution
 from .checkout_services import (
     CheckoutAvailabilityError,
     available_physical_stock,
+    available_physical_stock_for_goods,
     create_checkout,
     cancel_unpaid_checkout,
     expire_checkout_if_needed,
@@ -433,9 +434,8 @@ def _public_products(business):
     return StorefrontProduct.raw_objects.filter(
         business=business, published=True
     ).filter(
-        Q(allow_online_order=True) | Q(allow_distribution_order=True)
+        Q(allow_online_order=True)
         | Q(finished_good__individual_sale_options__active=True, finished_good__individual_sale_options__online_enabled=True)
-        | Q(finished_good__individual_sale_options__active=True, finished_good__individual_sale_options__distribution_enabled=True)
     ).distinct().select_related(
         "finished_good__business", "finished_good__product_category", "finished_good__portion_profile"
     ).prefetch_related(
@@ -447,41 +447,18 @@ def _public_products(business):
     )
 
 
-def _distribution_display(packs, explicit_price, default_unit, default_minimum):
-    """Customer-facing Distribution/Bulk price for a product card or API row.
-
-    Mirrors the in-premise POS, which opens on the first configured bulk
-    option: with bulk packs, show the FIRST pack's price (``is_from`` is True
-    only when several packs exist, so clients can prefix "from"); otherwise use
-    the explicit Distribution channel price. Display only: ordering still
-    requires the selected ``bulk_pack_id`` whenever packs exist.
-    """
-    if packs:
-        first = packs[0]
-        return {
-            "price": first.price,
-            "unit": first.customer_unit or first.name,
-            "min_quantity": first.min_order_quantity,
-            "is_from": len(packs) > 1,
-            "pack": first,
-        }
-    return {
-        "price": explicit_price,
-        "unit": default_unit,
-        "min_quantity": default_minimum if explicit_price is not None else None,
-        "is_from": False,
-        "pack": None,
-    }
-
-
 def _public_catalog_data(business):
     from .delivery_services import delivery_available
 
     visible_products = []
-    for product in _public_products(business):
+    products = list(_public_products(business))
+    stock_by_good = available_physical_stock_for_goods(
+        [product.finished_good for product in products]
+    )
+    for product in products:
         multiplier = standard_multiplier(product.finished_good)
         product.public_stock_available = (
-            Decimal(available_physical_stock(product.finished_good)) / multiplier
+            Decimal(stock_by_good.get(product.finished_good_id, 0)) / multiplier
         ).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
         # Bought-in goods cannot be manufactured for Online or Distribution.
         # When there is no sellable physical stock, omit the whole public
@@ -500,30 +477,16 @@ def _public_catalog_data(business):
             product.allow_online_order and (product.public_stock_source_available or product.public_made_source_available)
         )
         product.public_bulk_packs = list(product.bulk_pack_options)
-        _display = _distribution_display(
-            product.public_bulk_packs,
-            product.finished_good.explicit_selling_price_for("distribution"),
-            product.finished_good.unit,
-            product.distribution_min_quantity,
-        )
-        product.public_distribution_price = _display["price"]
-        product.public_distribution_price_is_from = _display["is_from"]
-        product.public_distribution_uses_bulk_packs = bool(product.public_bulk_packs)
-        product.public_distribution_available = bool(
-            product.allow_distribution_order
-            and (product.public_distribution_uses_bulk_packs or product.public_distribution_price is not None)
-        )
-        product.public_distribution_min_quantity = (
-            min(pack.min_order_quantity for pack in product.public_bulk_packs)
-            if product.public_bulk_packs
-            else product.distribution_min_quantity
+        # Bulk options are made-to-order price options on the Online channel (there is no separate
+        # Distribution channel on hosted storefronts). Bought-in goods are fulfilled from stock.
+        product.public_bulk_online_available = bool(
+            product.allow_online_order
+            and product.public_bulk_packs
+            and (product.public_made_source_available or product.finished_good.is_purchased_for_resale)
         )
         product.public_individual_options = [
             option for option in product.individual_sale_options
-            if option.active and (
-                (option.online_enabled and option.online_price is not None)
-                or (option.distribution_enabled and option.distribution_price is not None)
-            )
+            if option.active and option.online_enabled and option.online_price is not None
         ]
         visible_products.append(product)
     products = visible_products
@@ -1072,9 +1035,8 @@ def api_products(request, business_slug):
     rows = []
     channel_labels = vertical_config(business)["commerce_channels"]
     products_qs = StorefrontProduct.raw_objects.filter(business=business, published=True).filter(
-        Q(allow_online_order=True) | Q(allow_distribution_order=True)
+        Q(allow_online_order=True)
         | Q(finished_good__individual_sale_options__active=True, finished_good__individual_sale_options__online_enabled=True)
-        | Q(finished_good__individual_sale_options__active=True, finished_good__individual_sale_options__distribution_enabled=True)
     ).distinct().select_related(
         "finished_good__business", "finished_good__product_category", "finished_good__portion_profile"
     ).prefetch_related(
@@ -1083,10 +1045,12 @@ def api_products(request, business_slug):
         "finished_good__composition_items__component_raw_material",
     )
 
-    for p in products_qs:
+    products = list(products_qs)
+    stock_by_good = available_physical_stock_for_goods([product.finished_good for product in products])
+    for p in products:
         multiplier = standard_multiplier(p.finished_good)
         stock_available = (
-            Decimal(available_physical_stock(p.finished_good)) / multiplier
+            Decimal(stock_by_good.get(p.finished_good_id, 0)) / multiplier
         ).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
 
         # Bought-in/procured-to-sell goods are stock-backed only. They are not
@@ -1095,15 +1059,12 @@ def api_products(request, business_slug):
         if p.finished_good.is_purchased_for_resale and stock_available <= 0:
             continue
 
-        bulk_packs_source = list(p.bulk_pack_options)
-        explicit_distribution_price = p.finished_good.explicit_selling_price_for("distribution")
-        distribution_display = _distribution_display(
-            bulk_packs_source, explicit_distribution_price, p.finished_good.unit, p.distribution_min_quantity,
-        )
-        distribution_enabled = bool(
-            p.allow_distribution_order
-            and (bulk_packs_source or explicit_distribution_price is not None)
-        )
+        # Bulk options are made-to-order price options on the Online order mode. The API has no
+        # separate Distribution / Bulk channel (that is reserved for the in-premise POS).
+        bulk_packs_source = list(p.bulk_pack_options) if (
+            p.allow_online_order
+            and ((business.uses_production and p.finished_good.is_made_in_house) or p.finished_good.is_purchased_for_resale)
+        ) else []
 
         order_modes = []
         if p.allow_online_order:
@@ -1141,44 +1102,6 @@ def api_products(request, business_slug):
                     "fulfilment_options": fulfilment_options,
                 })
 
-        if distribution_enabled:
-            if p.finished_good.is_purchased_for_resale:
-                distribution_fulfilment = [{
-                    "code": "stock",
-                    "label": "Prepared bulk order",
-                    "available": True,
-                    "available_now": str(stock_available),
-                    "estimated_ready_minutes": p.estimated_ready_minutes,
-                }]
-            else:
-                distribution_fulfilment = [{
-                    "code": "made_to_order",
-                    "label": "Made to order",
-                    "available": True,
-                    "estimated_ready_minutes": p.estimated_ready_minutes,
-                }]
-            order_modes.append({
-                "code": "distribution",
-                "label": channel_labels["distribution"],
-                # Display price: the FIRST bulk pack when packs exist (``price_is_from``
-                # is true when there are several), else the Distribution channel
-                # price. Standard-portion pricing never leaks into this mode.
-                # With packs, ordering still requires the chosen ``bulk_pack_id``
-                # and that pack's own price/minimum are authoritative.
-                "price": str(distribution_display["price"]),
-                "price_is_from": distribution_display["is_from"],
-                "display_bulk_pack_id": str(distribution_display["pack"].public_id) if distribution_display["pack"] else None,
-                "unit": distribution_display["unit"],
-                "min_quantity": str(distribution_display["min_quantity"]),
-                "max_quantity": str(p.max_quantity) if p.max_quantity is not None else None,
-                "pricing_source": "bulk_options" if bulk_packs_source else "channel_price",
-                "requires_bulk_pack": bool(bulk_packs_source),
-                "fulfilment_mode": "preorder",
-                "available_now": None,
-                "lead_time": p.preorder_lead_time,
-                "fulfilment_options": distribution_fulfilment,
-            })
-
         # Legacy ordering_modes remains stable for older website clients while
         # order_modes is the authoritative channel-aware contract.
         submitted_modes = []
@@ -1200,6 +1123,9 @@ def api_products(request, business_slug):
                 "customer_unit": pack.customer_unit or pack.name,
                 "price": str(pack.price),
                 "min_order_quantity": str(pack.min_order_quantity),
+                # Order it with order_mode "online" and this bulk_pack_id; always made to order.
+                "order_mode": "online",
+                "fulfilment_source": "made_to_order",
                 "contents": public_contents(p.finished_good, profile_key=pack.profile_key),
             }
             for pack in bulk_packs_source
@@ -1208,7 +1134,7 @@ def api_products(request, business_slug):
         individual_options = []
         for option in p.individual_sale_options:
             option_modes = []
-            for code, enabled in (("online", option.online_enabled), ("distribution", option.distribution_enabled)):
+            for code, enabled in (("online", option.online_enabled),):
                 price = option.price_for(code)
                 if not enabled or price is None:
                     continue
@@ -1269,9 +1195,7 @@ def api_products(request, business_slug):
                     "contents": [{"name": p.finished_good.name, "quantity_label": option.public_note or "", "kind": "base_product", "scope": "all"}],
                     "order_modes": option_modes,
                     "online_price": str(option.online_price) if option.online_enabled and option.online_price is not None else None,
-                    "distribution_price": str(option.distribution_price) if option.distribution_enabled and option.distribution_price is not None else None,
                     "online_min_quantity": str(option.online_min_quantity),
-                    "distribution_min_quantity": str(option.distribution_min_quantity),
                 })
 
         # Do not return a shell product that has no externally orderable mode or
@@ -1300,15 +1224,11 @@ def api_products(request, business_slug):
             "ordering_modes": submitted_modes,
             "online_min_quantity": str(p.preorder_min_quantity),
             "preorder_min_quantity": str(p.preorder_min_quantity),
-            "distribution_min_quantity": str(distribution_display["min_quantity"]) if distribution_enabled and distribution_display["min_quantity"] is not None else None,
-            "distribution_requires_bulk_pack": bool(bulk_packs_source and distribution_enabled),
             "max_quantity": str(p.max_quantity) if p.max_quantity is not None else None,
             "preorder_lead_time": p.preorder_lead_time,
             "estimated_ready_minutes": p.estimated_ready_minutes,
             "online_price": str(p.finished_good.selling_price_for("online")) if p.allow_online_order else None,
             "preorder_price": str(p.finished_good.selling_price_for("online")) if p.allow_online_order else None,
-            "distribution_price": str(distribution_display["price"]) if distribution_enabled and distribution_display["price"] is not None else None,
-            "distribution_price_is_from": bool(distribution_enabled and distribution_display["is_from"]),
         })
 
     visible_category_ids = {
@@ -1801,10 +1721,11 @@ def _staff_pos_products(business):
         )
         .order_by("public_name", "finished_good__name")
     )
+    stock_by_good = available_physical_stock_for_goods([row.finished_good for row in products])
     for product in products:
         multiplier = standard_multiplier(product.finished_good)
         product.pos_available = (
-            Decimal(available_physical_stock(product.finished_good)) / multiplier
+            Decimal(stock_by_good.get(product.finished_good_id, 0)) / multiplier
         ).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
         product.pos_unit = product.customer_unit
         product.pos_contents = product.standard_public_contents

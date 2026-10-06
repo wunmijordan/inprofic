@@ -131,9 +131,9 @@ def find_bulk_pack(good, public_id):
 
 
 def _component_rows(good, profile_key):
-    rows = _prefetched_or_related(good, "composition_items")
-    if rows:
-        return [row for row in rows if row.profile_key == profile_key]
+    cache = getattr(good, "_prefetched_objects_cache", {}) or {}
+    if "composition_items" in cache:
+        return [row for row in cache["composition_items"] if row.profile_key == profile_key]
     return list(
         ProductCompositionItem.objects.filter(
             finished_good=good,

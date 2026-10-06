@@ -98,11 +98,37 @@ def available_physical_stock(good, *, exclude_checkout=None, now=None):
     return max(Decimal("0"), physical - reserved)
 
 
+def available_physical_stock_for_goods(goods, *, now=None):
+    """Return available shelf stock by product without one reservation query per product."""
+    goods_by_id = {good.pk: good for good in goods}
+    if not goods_by_id:
+        return {}
+
+    business_id = next(iter(goods_by_id.values())).business_id
+    totals = dict(
+        CommerceCheckoutItem.objects.filter(
+            checkout__business_id=business_id,
+            finished_good_id__in=goods_by_id,
+            reserved_stock_quantity__gt=0,
+        )
+        .filter(_active_reservation_filter(now))
+        .values_list("finished_good_id")
+        .annotate(total=Sum("reserved_stock_quantity"))
+    )
+    return {
+        good_id: max(
+            Decimal("0"),
+            Decimal(good.physical_saleable_stock or 0) - Decimal(totals.get(good_id) or 0),
+        )
+        for good_id, good in goods_by_id.items()
+    }
+
+
 def _mode_alternatives(product, business, quantity, *, source=None, individual_option=None):
     labels = vertical_config(business)["commerce_channels"]
     alternatives = []
     codes = (
-        (CommerceIntake.CHANNEL_ONLINE, CommerceIntake.CHANNEL_DISTRIBUTION)
+        (CommerceIntake.CHANNEL_ONLINE,)
         if source in EXTERNAL_COMMERCE_SOURCES else
         (CommerceIntake.CHANNEL_PHYSICAL_STORE, CommerceIntake.CHANNEL_ONLINE, CommerceIntake.CHANNEL_DISTRIBUTION)
     )
@@ -259,8 +285,12 @@ def create_checkout(
             raise ValidationError(f"The selected individual option for {product.display_name} is unavailable for this sales channel.")
         if bulk_pack is not None and individual_option is not None:
             raise ValidationError("Choose either a bulk pack or an individual product option, not both.")
-        if bulk_pack is not None and sales_channel != CommerceIntake.CHANNEL_DISTRIBUTION:
+        # Bulk packs: Distribution/Bulk channel on the in-premise POS; for external sources (hosted
+        # storefront, API, connector) they are made-to-order price options on the Online channel.
+        bulk_via_online = source in EXTERNAL_COMMERCE_SOURCES and sales_channel == CommerceIntake.CHANNEL_ONLINE
+        if bulk_pack is not None and sales_channel != CommerceIntake.CHANNEL_DISTRIBUTION and not bulk_via_online:
             raise ValidationError("Bulk pack options are available only through the distribution / bulk channel.")
+        prepared_order = sales_channel == CommerceIntake.CHANNEL_DISTRIBUTION or bulk_pack is not None
         if individual_option is None and not _channel_allowed(product, sales_channel):
             raise ValidationError(f"{product.display_name} is not available through the selected order mode.")
         if sales_channel == CommerceIntake.CHANNEL_DISTRIBUTION and individual_option is None:
@@ -315,14 +345,14 @@ def create_checkout(
             # Older Bulk Order clients submit made_to_order for every bulk line.
             # Accept that legacy signal, but fulfil resale goods through the
             # stock-safe path because they cannot enter Production.
-            if sales_channel == CommerceIntake.CHANNEL_DISTRIBUTION:
+            if prepared_order:
                 allowed_resale_sources.add(CommerceIntakeItem.FULFILMENT_MADE_TO_ORDER)
             if requested_source and requested_source not in allowed_resale_sources:
                 raise ValidationError(
                     f"{product.display_name} is supplied from available resale stock and cannot be made to order."
                 )
             requested_source = CommerceIntakeItem.FULFILMENT_STOCK
-        elif sales_channel == CommerceIntake.CHANNEL_DISTRIBUTION:
+        elif prepared_order:
             requested_source = CommerceIntakeItem.FULFILMENT_MADE_TO_ORDER
         else:
             requested_source = requested_source or CommerceIntakeItem.FULFILMENT_MADE_TO_ORDER
@@ -335,7 +365,7 @@ def create_checkout(
         production_qty = internal_requested if requested_source == CommerceIntakeItem.FULFILMENT_MADE_TO_ORDER else Decimal("0")
         # Distribution/Bulk remains a prepared-order channel even for resale
         # inventory, so its customer-facing readiness window is never "ready now".
-        if sales_channel == CommerceIntake.CHANNEL_DISTRIBUTION:
+        if prepared_order:
             ready_minutes = max(int(product.estimated_ready_minutes or 0), 1)
         else:
             ready_minutes = 0 if stock_fulfilment else max(int(product.estimated_ready_minutes or 0), 1)

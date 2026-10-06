@@ -117,7 +117,7 @@ class CheckoutBoundaryTests(TestCase):
     def test_external_checkout_rejects_physical_store_channel(self):
         with self.assertRaises(ValidationError) as raised:
             self.make_checkout(key="external-physical-rejected", order_mode="physical_store")
-        self.assertIn("Physical-store pricing is reserved for the in-premise POS", str(raised.exception))
+        self.assertIn("reserved for the in-premise POS", str(raised.exception))
 
     def test_portion_and_bulk_pack_checkout_keep_customer_price_but_reserve_base_units(self):
         ProductPortionProfile.raw_objects.create(
@@ -134,23 +134,29 @@ class CheckoutBoundaryTests(TestCase):
             customer_quantity=2, customer_unit="litre", base_quantity=12,
             price=Decimal("3500"), min_order_quantity=1,
         )
+        # External sources (API, hosted storefront, connector) sell bulk options as made-to-order
+        # price options on the Online channel; the checkout stays on "online".
         bulk_checkout = create_checkout(
-            business=self.business, source=CommerceIntake.SOURCE_API, order_mode="distribution",
+            business=self.business, source=CommerceIntake.SOURCE_API, order_mode="online",
             customer={"name": "Ada"},
             items=[{"storefront_product": self.product, "quantity": "2", "bulk_pack_id": str(pack.public_id)}],
             idempotency_key="portion-bulk",
         )[0]
         bulk_line = bulk_checkout.items.get()
+        self.assertEqual(bulk_checkout.sales_channel, CommerceIntake.CHANNEL_ONLINE)
+        self.assertEqual(bulk_line.bulk_pack_id, pack.pk)
         self.assertEqual(bulk_line.unit_price, Decimal("3500.00"))
         self.assertEqual(bulk_line.production_quantity, Decimal("24.00"))
         self.assertEqual(bulk_checkout.amount, Decimal("7000.00"))
-        with self.assertRaises(ValidationError):
+        # ...but a separate Distribution / Bulk channel is no longer available to external sources.
+        with self.assertRaises(ValidationError) as raised:
             create_checkout(
-                business=self.business, source=CommerceIntake.SOURCE_API, order_mode="online",
+                business=self.business, source=CommerceIntake.SOURCE_API, order_mode="distribution",
                 customer={"name": "Ada"},
                 items=[{"storefront_product": self.product, "quantity": "1", "bulk_pack_id": str(pack.public_id)}],
-                idempotency_key="portion-bulk-online-rejected",
+                idempotency_key="portion-bulk-distribution-rejected",
             )
+        self.assertIn("reserved for the in-premise POS", str(raised.exception))
 
     def test_individual_option_uses_parent_stock_and_external_channel_rules(self):
         option = IndividualSaleOption.raw_objects.create(
@@ -187,7 +193,7 @@ class CheckoutBoundaryTests(TestCase):
                 idempotency_key="individual-physical-external-rejected",
             )
 
-        with self.assertRaises(ChannelMinimumError):
+        with self.assertRaises(ValidationError):
             create_checkout(
                 business=self.business, source=CommerceIntake.SOURCE_API, order_mode="distribution",
                 customer={"name": "Ada"},

@@ -27,6 +27,9 @@
     .line-clamp-2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
     .channel-filter[aria-pressed="true"], .category-filter[aria-pressed="true"] { background: var(--brand); color: var(--tenant-button-contrast); border-color: var(--brand); box-shadow: 0 8px 24px color-mix(in srgb, var(--brand) 22%, transparent); }
     .channel-price-pill { display:inline-flex; max-width:100%; overflow:hidden; border:1px solid color-mix(in srgb,var(--brand) 34%,transparent); background:color-mix(in srgb,var(--brand) 12%,transparent); color:#211d1a; box-shadow:inset 0 1px 0 rgba(255,255,255,.65); backdrop-filter:blur(10px); }
+    .channel-price-pill[data-channel-price-pill] { overflow-x:auto; overflow-y:hidden; overscroll-behavior-inline:contain; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+    .channel-price-pill[data-channel-price-pill]::-webkit-scrollbar { display:none; }
+    .channel-price-pill[data-channel-price-pill]:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
     .channel-price-pill__inner { display:flex; min-width:0; align-items:baseline; gap:.35rem; white-space:nowrap; }
     .channel-price-pill.is-changing .channel-price-pill__inner { animation:channel-price-slide .36s cubic-bezier(.2,.8,.2,1); }
     @keyframes channel-price-slide { from { opacity:0; transform:translateY(.8rem); } to { opacity:1; transform:translateY(0); } }
@@ -71,7 +74,6 @@
       <div class="mt-3 flex gap-2 overflow-x-auto pb-1 sm:mt-0 sm:pb-0" aria-label="Filter by ordering option">
         <button type="button" class="channel-filter shrink-0 rounded-xl border border-stone-200 px-3.5 py-3 text-xs font-semibold transition" data-channel="all" aria-pressed="true">{{ storefront_copy.all_label }}</button>
         <button type="button" class="channel-filter shrink-0 rounded-xl border border-stone-200 px-3.5 py-3 text-xs font-semibold transition" data-channel="online" aria-pressed="false">{{ commerce_channels.online }}</button>
-        <button type="button" class="channel-filter shrink-0 rounded-xl border border-stone-200 px-3.5 py-3 text-xs font-semibold transition" data-channel="distribution" aria-pressed="false">{{ commerce_channels.distribution }}</button>
       </div>
     </section>
 
@@ -87,21 +89,21 @@
 
       <div id="catalogue-grid" class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {% for p in products %}
-        {% if p.public_online_available or p.public_distribution_available %}<article class="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white" data-product-card data-basket-key="{{ p.public_id }}" data-product-id="{{ p.public_id }}" data-individual-option-id="" data-product-name="{{ p.display_name }}" data-category="{% if p.finished_good.product_category_id %}{{ p.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-unit="{{ p.customer_unit }}" data-search="{{ p.display_name|lower }} {{ p.description|lower }}" data-modes="{% if p.public_online_available %} online{% endif %}{% if p.public_distribution_available %} distribution{% endif %}" data-min-online="{{ p.preorder_min_quantity }}" data-min-distribution="{{ p.public_distribution_min_quantity }}" data-price-online="{{ p.preorder_price }}" data-price-distribution="{% if p.public_distribution_price != None %}{{ p.public_distribution_price }}{% endif %}" data-bulk-from="{% if p.public_distribution_price_is_from %}1{% endif %}" data-unit-online="{{ p.customer_unit }}" data-unit-distribution="{{ p.finished_good.unit }}" data-max="{% if p.max_quantity %}{{ p.max_quantity }}{% endif %}" data-stock-available="{{ p.public_stock_available }}" data-stock-source="{% if p.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if p.public_made_source_available %}1{% else %}0{% endif %}" data-procured-source="{% if p.public_procured_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ p.estimated_ready_minutes }}">
+        {% if p.public_online_available %}<article class="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white" data-product-card data-basket-key="{{ p.public_id }}" data-product-id="{{ p.public_id }}" data-individual-option-id="" data-product-name="{{ p.display_name }}" data-category="{% if p.finished_good.product_category_id %}{{ p.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-unit="{{ p.customer_unit }}" data-search="{{ p.display_name|lower }} {{ p.description|lower }}" data-modes="{% if p.public_online_available %} online{% endif %}" data-min-online="{{ p.preorder_min_quantity }}" data-price-online="{{ p.preorder_price }}" data-unit-online="{{ p.customer_unit }}" data-max="{% if p.max_quantity %}{{ p.max_quantity }}{% endif %}" data-stock-available="{{ p.public_stock_available }}" data-stock-source="{% if p.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if p.public_made_source_available %}1{% else %}0{% endif %}" data-procured-source="{% if p.public_procured_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ p.estimated_ready_minutes }}">
           <div class="relative aspect-[16/10] overflow-hidden bg-stone-100">
             {% if p.public_image_url %}<img src="{{ p.public_image_url }}" alt="{{ p.display_name }}" class="h-full w-full object-cover" loading="lazy">
             {% else %}<div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-stone-100 via-[#efe8dc] to-stone-200"><div class="flex h-20 w-20 items-center justify-center rounded-full border border-white/80 bg-white/55 shadow-inner backdrop-blur"><svg viewBox="0 0 24 24" class="h-8 w-8 fill-none stroke-stone-400" stroke-width="1.35"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg></div></div>{% endif %}
             <div class="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/45 to-transparent"></div>
             <div class="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
               {% if p.public_online_available %}<span class="rounded-full border border-white/25 bg-black/35 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">{{ commerce_channels.online }}</span>{% endif %}
-              {% if p.public_distribution_available %}<span class="rounded-full border border-white/25 bg-black/35 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">{{ commerce_channels.distribution }}</span>{% endif %}
+              {% if p.public_bulk_online_available %}<span class="rounded-full border border-white/25 bg-black/35 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">Bulk options</span>{% endif %}
             </div>
           </div>
           <div class="flex flex-1 flex-col p-4">
-            <div class="mb-2"><span class="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-500">{% if p.finished_good.product_category %}{{ p.finished_good.product_category.name }}{% else %}Uncategorised{% endif %}</span></div>
+            {% if p.finished_good.product_category %}<div class="mb-2"><span class="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-500">{{ p.finished_good.product_category.name }}</span></div>{% endif %}
             <h3 class="font-display text-lg font-semibold leading-tight text-stone-900">{{ p.display_name }}</h3>
             {% if p.portion_label %}<p class="mt-0.5 text-[11px] font-semibold text-stone-500" data-portion-label>{{ p.portion_label }}</p>{% endif %}
-            <p class="line-clamp-2 mt-1.5 min-h-[2rem] text-xs leading-4 text-stone-500">{{ p.description|default:"Choose from the ordering options below." }}</p>
+            <p class="line-clamp-2 mt-1.5 min-h-[2rem] text-xs leading-4 text-stone-500">{% if p.description %}{{ p.description }}{% elif p.public_bulk_online_available %}Choose from the bulk options below.{% else %}Choose from the ordering options below.{% endif %}</p>
             {% if p.standard_public_contents|length > 1 or p.bulk_pack_options %}
             <details class="relative mt-2" data-contents-popover>
               <summary class="inline-flex cursor-pointer list-none items-center gap-1 text-[11px] font-semibold underline decoration-stone-300 underline-offset-4" style="color:var(--brand)">What's included? <span aria-hidden="true">ⓘ</span></summary>
@@ -122,11 +124,12 @@
             </details>
             {% endif %}
             <div class="mt-3 border-y border-stone-100 py-2.5 text-[11px]">
-              <span class="channel-price-pill rounded-full px-3 py-1.5" data-channel-price-pill><span class="channel-price-pill__inner"><span data-price-channel class="font-semibold"></span><strong data-price-value></strong><span data-price-unit class="text-stone-500"></span></span></span>
+              <span class="channel-price-pill rounded-full px-3 py-1.5" data-channel-price-pill tabindex="0" aria-label="Price details; scroll horizontally to view the full price"><span class="channel-price-pill__inner"><span data-price-channel class="font-semibold"></span><strong data-price-value></strong><span data-price-unit class="text-stone-500"></span></span></span>
             </div>
-            {% if p.public_distribution_available and p.public_bulk_packs %}
-            <label class="mt-3 block text-[10px] font-bold uppercase tracking-[.14em] text-stone-400">{{ commerce_channels.distribution }} option
+            {% if p.public_bulk_online_available %}
+            <label class="mt-3 block text-[10px] font-bold uppercase tracking-[.14em] text-stone-400">Bulk option <span class="font-medium normal-case tracking-normal">(made to order)</span>
               <select data-bulk-pack-select class="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold normal-case tracking-normal text-stone-700 outline-none focus:border-stone-400">
+                <option value="">Standard · {{ p.customer_unit }}</option>
                 {% for pack in p.public_bulk_packs %}<option value="{{ pack.public_id }}" data-name="{{ pack.name }}" data-unit="{{ pack.name }}" data-price="{{ pack.price }}" data-min="{{ pack.min_order_quantity }}">{{ pack.name }} · {{ pack.price|money:store_business.currency_symbol }}{% if pack.min_order_quantity > 1 %} · min {{ pack.min_order_quantity }}{% endif %}</option>{% endfor %}
               </select>
             </label>
@@ -135,14 +138,14 @@
           </div>
         </article>{% endif %}
         {% for option in p.public_individual_options %}
-        <article class="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white" data-product-card data-basket-key="individual:{{ option.public_id }}" data-product-id="{{ p.public_id }}" data-individual-option-id="{{ option.public_id }}" data-product-name="{{ option.name }}" data-category="{% if p.finished_good.product_category_id %}{{ p.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-unit="{{ option.customer_unit|default:p.finished_good.unit }}" data-unit-online="{{ option.customer_unit|default:p.finished_good.unit }}" data-unit-distribution="{{ option.customer_unit|default:p.finished_good.unit }}" data-search="{{ option.name|lower }} {{ option.public_note|lower }} {{ p.finished_good.name|lower }}" data-modes="{% if option.online_enabled and option.online_price != None and p.public_online_available %} online{% endif %}{% if option.distribution_enabled and option.distribution_price != None %} distribution{% endif %}" data-min-online="{{ option.online_min_quantity }}" data-min-distribution="{{ option.distribution_min_quantity }}" data-price-online="{% if option.online_price != None %}{{ option.online_price }}{% endif %}" data-price-distribution="{% if option.distribution_price != None %}{{ option.distribution_price }}{% endif %}" data-max="{% if p.max_quantity %}{{ p.max_quantity }}{% endif %}" data-stock-available="{{ p.public_stock_available }}" data-stock-source="{% if p.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if p.public_made_source_available %}1{% else %}0{% endif %}" data-procured-source="{% if p.public_procured_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ p.estimated_ready_minutes }}">
+        <article class="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white" data-product-card data-basket-key="individual:{{ option.public_id }}" data-product-id="{{ p.public_id }}" data-individual-option-id="{{ option.public_id }}" data-product-name="{{ option.name }}" data-category="{% if p.finished_good.product_category_id %}{{ p.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-unit="{{ option.customer_unit|default:p.finished_good.unit }}" data-unit-online="{{ option.customer_unit|default:p.finished_good.unit }}" data-search="{{ option.name|lower }} {{ option.public_note|lower }} {{ p.finished_good.name|lower }}" data-modes="{% if option.online_enabled and option.online_price != None and p.public_online_available %} online{% endif %}" data-min-online="{{ option.online_min_quantity }}" data-price-online="{% if option.online_price != None %}{{ option.online_price }}{% endif %}" data-max="{% if p.max_quantity %}{{ p.max_quantity }}{% endif %}" data-stock-available="{{ p.public_stock_available }}" data-stock-source="{% if p.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if p.public_made_source_available %}1{% else %}0{% endif %}" data-procured-source="{% if p.public_procured_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ p.estimated_ready_minutes }}">
           <div class="relative aspect-[16/10] overflow-hidden bg-stone-100">
             {% if p.public_image_url %}<img src="{{ p.public_image_url }}" alt="{{ option.name }}" class="h-full w-full object-cover" loading="lazy">{% else %}<div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-stone-100 via-[#efe8dc] to-stone-200"><div class="flex h-20 w-20 items-center justify-center rounded-full border border-white/80 bg-white/55 shadow-inner backdrop-blur"><svg viewBox="0 0 24 24" class="h-8 w-8 fill-none stroke-stone-400" stroke-width="1.35"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg></div></div>{% endif %}
             <div class="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/45 to-transparent"></div>
-            <div class="absolute bottom-3 left-3 flex flex-wrap gap-1.5">{% if option.online_enabled and option.online_price != None %}<span class="rounded-full border border-white/25 bg-black/35 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">{{ commerce_channels.online }}</span>{% endif %}{% if option.distribution_enabled and option.distribution_price != None %}<span class="rounded-full border border-white/25 bg-black/35 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">{{ commerce_channels.distribution }}</span>{% endif %}</div>
+            <div class="absolute bottom-3 left-3 flex flex-wrap gap-1.5">{% if option.online_enabled and option.online_price != None %}<span class="rounded-full border border-white/25 bg-black/35 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">{{ commerce_channels.online }}</span>{% endif %}</div>
           </div>
           <div class="flex flex-1 flex-col p-4">
-            <div class="mb-2 flex items-center justify-between gap-2"><span class="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-500">{% if p.finished_good.product_category %}{{ p.finished_good.product_category.name }}{% else %}Uncategorised{% endif %}</span><span class="rounded-full bg-amber-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-amber-700">Individual</span></div>
+            <div class="mb-2 flex items-center gap-2">{% if p.finished_good.product_category %}<span class="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-500">{{ p.finished_good.product_category.name }}</span>{% endif %}<span class="ml-auto rounded-full bg-amber-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-amber-700">Individual</span></div>
             <h3 class="font-display text-lg font-semibold leading-tight text-stone-900">{{ option.name }}</h3>
             <p class="line-clamp-2 mt-1.5 min-h-[2rem] text-xs leading-4 text-stone-500">{{ option.public_note|default:p.finished_good.name }}</p>
             <details class="relative mt-2" data-contents-popover><summary class="inline-flex cursor-pointer list-none items-center gap-1 text-[11px] font-semibold underline decoration-stone-300 underline-offset-4" style="color:var(--brand)">What's included? <span aria-hidden="true">ⓘ</span></summary><div class="absolute left-0 top-7 z-20 w-[min(18rem,78vw)] rounded-2xl border border-stone-200 bg-white p-3.5 text-left shadow-xl"><p class="text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">Plain individual option</p><ul class="mt-2 space-y-1.5 text-xs text-stone-700"><li>{{ p.finished_good.name }}{% if option.public_note %}<span class="ml-1 text-stone-400">· {{ option.public_note }}</span>{% endif %}</li></ul></div></details>
@@ -256,7 +259,6 @@
       {% endif %}
       <div class="mt-6"><p class="text-xs font-semibold text-stone-600">Choose one ordering option for this basket</p><div class="mt-2 grid gap-2">
         <button type="submit" name="order_mode" value="online" data-checkout-mode="online" class="channel-submit flex items-center justify-between rounded-xl border border-stone-200 bg-white px-3.5 py-3 text-left text-sm shadow-sm transition hover:border-stone-400 disabled:cursor-not-allowed disabled:opacity-45"><span><strong class="block text-stone-900">{{ commerce_channels.online }}</strong><small class="mode-note text-stone-500">{% if store_business.uses_production and not p.finished_good.is_purchased_for_resale %}{{ storefront_copy.prepared_order }}{% else %}{{ storefront_copy.immediate_order }}{% endif %}</small></span><strong class="mode-total shrink-0 text-stone-900"></strong></button>
-        <button type="submit" name="order_mode" value="distribution" data-checkout-mode="distribution" class="channel-submit flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-left text-sm shadow-sm transition hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-45"><span><strong class="block text-stone-900">{{ commerce_channels.distribution }}</strong><small class="mode-note text-stone-500">{% if store_business.uses_production and not p.finished_good.is_purchased_for_resale %}{{ storefront_copy.prepared_order }}{% else %}{{ storefront_copy.immediate_order }}{% endif %}</small></span><strong class="mode-total shrink-0 text-stone-900"></strong></button>
       </div></div>
       <p class="mt-4 text-xs leading-5 text-stone-400">Prices and availability are checked again by {{ store_business.name }} before payment. An order is created only after full payment is verified.</p>
     </form>
@@ -295,7 +297,6 @@
       const basket = new Map();
       const channelLabels = {
         online: '{{ commerce_channels.online|escapejs }}',
-        distribution: '{{ commerce_channels.distribution|escapejs }}',
       };
       const basketStorageKey = 'storetrack:storefront-basket:{{ store_business.slug|escapejs }}';
       const historyStorageKey = 'storetrack:storefront-order-history:{{ store_business.slug|escapejs }}';
@@ -344,6 +345,65 @@
       }
       let priceCycleIndex = 0;
       let basketPriceCycleIndex = 0;
+      const priceAutoScrollStates = new WeakMap();
+      function updatePriceAutoScroll(pill) {
+        let state = priceAutoScrollStates.get(pill);
+        if (!state) {
+          state = {direction: 1, frame: 0, timer: 0, lastFrame: 0, edgeAt: 0, pauseUntil: 0};
+          priceAutoScrollStates.set(pill, state);
+          const pauseForManualScroll = () => { state.pauseUntil = performance.now() + 2500; };
+          pill.addEventListener('pointerdown', pauseForManualScroll, {passive: true});
+          pill.addEventListener('touchstart', pauseForManualScroll, {passive: true});
+          pill.addEventListener('wheel', pauseForManualScroll, {passive: true});
+          pill.addEventListener('keydown', pauseForManualScroll);
+        }
+        const maxScroll = pill.scrollWidth - pill.clientWidth;
+        if (maxScroll <= 1 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          if (state.frame) cancelAnimationFrame(state.frame);
+          if (state.timer) clearTimeout(state.timer);
+          state.frame = 0; state.timer = 0; state.lastFrame = 0;
+          if (maxScroll <= 1) pill.scrollLeft = 0;
+          return;
+        }
+        const start = (delay = 600) => {
+          if (state.frame || state.timer) return;
+          state.timer = window.setTimeout(() => {
+            state.timer = 0;
+            state.frame = requestAnimationFrame(tick);
+          }, delay);
+        };
+        const tick = now => {
+          state.frame = 0;
+          if (!pill.isConnected) return;
+          if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+          const currentMax = pill.scrollWidth - pill.clientWidth;
+          if (currentMax <= 1) { pill.scrollLeft = 0; state.lastFrame = 0; return; }
+          if (document.hidden || pill.matches(':focus-within') || now < state.pauseUntil) {
+            state.lastFrame = 0;
+            start(140);
+            return;
+          }
+          if (state.edgeAt && now - state.edgeAt < 700) {
+            state.frame = requestAnimationFrame(tick);
+            return;
+          }
+          const elapsed = state.lastFrame ? Math.min(now - state.lastFrame, 40) : 0;
+          state.lastFrame = now;
+          const next = pill.scrollLeft + state.direction * elapsed * 0.025;
+          if (next >= currentMax) {
+            pill.scrollLeft = currentMax; state.direction = -1; state.edgeAt = now;
+          } else if (next <= 0) {
+            pill.scrollLeft = 0; state.direction = 1; state.edgeAt = now;
+          } else {
+            pill.scrollLeft = next;
+          }
+          state.frame = requestAnimationFrame(tick);
+        };
+        start();
+      }
+      const pricePillResizeObserver = 'ResizeObserver' in window
+        ? new ResizeObserver(entries => entries.forEach(entry => updatePriceAutoScroll(entry.target)))
+        : null;
       function renderCardPrice(card, animate = false) {
         const modes = card.dataset.modes.trim().split(/\s+/).filter(Boolean);
         const mode = activeChannel === 'all' ? modes[priceCycleIndex % Math.max(modes.length, 1)] : activeChannel;
@@ -352,15 +412,19 @@
         let price = Number(card.dataset[`price${mode[0].toUpperCase()}${mode.slice(1)}`] || 0);
         let unit = card.dataset[`unit${mode[0].toUpperCase()}${mode.slice(1)}`] || card.dataset.unit;
         let fromPrefix = false;
-        if (mode === 'distribution') {
+        if (mode === 'online') {
+          // A bulk option is an Online price option (made to order); "Standard" keeps the normal price.
           const option = card.querySelector('[data-bulk-pack-select]')?.selectedOptions?.[0];
           if (option?.value) { price = Number(option.dataset.price || price); unit = option.dataset.unit || option.dataset.name || unit; }
-          // Several bulk options: until the visitor picks one, the first option's price is a "from" price.
-          fromPrefix = card.dataset.bulkFrom === '1' && !card.querySelector('[data-bulk-pack-select]')?.dataset.touched;
         }
         card.querySelector('[data-price-channel]').textContent = channelLabels[mode] || mode;
         card.querySelector('[data-price-value]').textContent = `${fromPrefix ? 'from ' : ''}{{ store_business.currency_symbol }}${price.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
         card.querySelector('[data-price-unit]').textContent = `/ ${unit}`;
+        updatePriceAutoScroll(pill);
+        if (pricePillResizeObserver && !pill.dataset.autoScrollObserved) {
+          pill.dataset.autoScrollObserved = '1';
+          pricePillResizeObserver.observe(pill);
+        }
         const shouldSlide = animate && activeChannel === 'all' && modes.length > 1;
         pill.classList.remove('is-changing');
         if (shouldSlide) { void pill.offsetWidth; pill.classList.add('is-changing'); }
@@ -422,11 +486,11 @@
         const stockSource = card.dataset.stockSource === '1'; const madeSource = card.dataset.madeSource === '1'; const procuredSource = card.dataset.procuredSource === '1';
         const defaultFulfilment = stockSource ? 'stock' : (madeSource ? 'made_to_order' : (procuredSource ? 'procured' : 'made_to_order'));
         const product = { id: card.dataset.basketKey || card.dataset.productId, productId: card.dataset.productId, individualOptionId: card.dataset.individualOptionId || '', name: card.dataset.productName, unit: card.dataset.unit, units, modes, minimums, prices, bulkPack, max: Number(card.dataset.max || 0), quantity: minimums[preferred] || 1, card, stockSource, madeSource, procuredSource, fulfilmentSource: defaultFulfilment, readyMinutes: Number(card.dataset.readyMinutes || 0) };
-        if (preferred === 'distribution' && bulkPack) product.quantity = bulkPack.minimum || 1;
+        if (bulkPack) product.quantity = bulkPack.minimum || 1;
         return product;
       }
       function modePricing(product, mode) {
-        if (mode === 'distribution' && product.bulkPack) {
+        if (mode === 'online' && product.bulkPack) {
           return {price: product.bulkPack.price, minimum: product.bulkPack.minimum, unit: product.bulkPack.unit};
         }
         return {price: Number(product.prices[mode] || 0), minimum: Number(product.minimums[mode] || 0), unit: product.units?.[mode] || product.unit};
@@ -479,7 +543,7 @@
         modeError.classList.toggle('hidden', anyAvailable);
       }
       function basketSubtotal(mode) { let total = 0; basket.forEach(product => { total += product.quantity * modePricing(product, mode).price; }); return total; }
-      function deliverySignature(mode) { return JSON.stringify({mode, area: deliveryArea?.value || '', address: deliveryAddress?.value.trim() || '', latitude: deliveryLatitude?.value || '', longitude: deliveryLongitude?.value || '', items: Array.from(basket.values()).map(p => [p.id, p.quantity, modePricing(p, mode).price, mode === 'distribution' ? (p.bulkPack?.id || '') : ''])}); }
+      function deliverySignature(mode) { return JSON.stringify({mode, area: deliveryArea?.value || '', address: deliveryAddress?.value.trim() || '', latitude: deliveryLatitude?.value || '', longitude: deliveryLongitude?.value || '', items: Array.from(basket.values()).map(p => [p.id, p.quantity, modePricing(p, mode).price, p.bulkPack?.id || ''])}); }
       function setDeliveryStatus(message, isError=false) { if (!deliveryQuoteStatus) return; deliveryQuoteStatus.textContent=message||''; deliveryQuoteStatus.classList.toggle('border-rose-200',isError); deliveryQuoteStatus.classList.toggle('bg-rose-50',isError); deliveryQuoteStatus.classList.toggle('text-rose-700',isError); deliveryQuoteStatus.classList.toggle('font-semibold',isError); deliveryQuoteStatus.classList.toggle('border-transparent',!isError); deliveryQuoteStatus.classList.toggle('bg-stone-50',!isError); deliveryQuoteStatus.classList.toggle('text-stone-500',!isError); }
       function invalidateDeliveryQuote(message, isError=false) { if (deliveryQuoteId) deliveryQuoteId.value = ''; deliveryQuoteSignature = ''; if (deliveryMethodOptions) { deliveryMethodOptions.replaceChildren(); deliveryMethodOptions.classList.add('hidden'); } if (deliverySwitchPolicy) { deliverySwitchPolicy.textContent=''; deliverySwitchPolicy.classList.add('hidden'); } if (deliveryQuoteStatus && deliveryToggle?.checked) setDeliveryStatus(message || 'Basket or destination changed. A fresh quote will be calculated at checkout.', isError); }
       if (deliveryToggle) deliveryToggle.addEventListener('change', () => { deliveryFields.classList.toggle('hidden', !deliveryToggle.checked); invalidateDeliveryQuote(deliveryToggle.checked ? 'Choose an area and ordering option to get a live quote.' : ''); });
@@ -504,8 +568,8 @@
       function renderBasket() {
         basketItems.replaceChildren();
         basket.forEach(product => {
-          const row = document.createElement('div'); row.className = 'flex items-center gap-3 p-3.5';
-          const copy = document.createElement('div'); copy.className = 'min-w-0 flex-1';
+          const row = document.createElement('div'); row.className = 'flex flex-col gap-2 p-3.5 sm:flex-row sm:items-center sm:gap-3';
+          const copy = document.createElement('div'); copy.className = 'min-w-0 w-full flex-1';
           const name = document.createElement('strong'); name.className = 'block truncate text-sm text-stone-900'; name.textContent = product.name;
           const unit = document.createElement('span'); unit.className = 'mt-0.5 block text-xs text-stone-400'; unit.textContent = product.bulkPack ? `Bulk option: ${product.bulkPack.name}` : `Measured in ${product.unit}`;
           const priceLine = document.createElement('span'); priceLine.className = 'channel-price-pill mt-1 rounded-full px-2.5 py-1 text-[10px]'; priceLine.dataset.basketPriceKey = product.id;
@@ -523,11 +587,13 @@
             if(product.procuredSource){const o=document.createElement('option');o.value='procured';o.textContent=`Procured to sell · ~${product.readyMinutes} min`;fulfil.append(o);}
             fulfil.value=product.fulfilmentSource; fulfil.addEventListener('change',()=>{product.fulfilmentSource=fulfil.value; invalidateDeliveryQuote(); saveBasket();}); fulfilWrap.append(fulfil); copy.append(fulfilWrap);
           }
-          const input = document.createElement('input'); input.type = 'number'; input.inputMode = 'decimal'; input.step = '0.01'; input.min = '0.01'; if (product.max) input.max = product.max; input.value = product.quantity; input.setAttribute('aria-label', `Quantity for ${product.name}`); input.className = 'h-10 w-24 rounded-xl border border-stone-300 px-2.5 text-sm outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100';
+          const input = document.createElement('input'); input.type = 'number'; input.inputMode = 'decimal'; input.step = '0.01'; input.min = '0.01'; if (product.max) input.max = product.max; input.value = product.quantity; input.setAttribute('aria-label', `Quantity for ${product.name}`); input.className = 'h-10 w-24 shrink-0 rounded-xl border border-stone-300 px-2.5 text-sm outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100';
           input.addEventListener('input', () => { product.quantity = Number(input.value || 0); invalidateDeliveryQuote(); saveBasket(); refreshModes(); });
           const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'flex h-9 w-9 items-center justify-center rounded-full text-lg text-stone-400 hover:bg-rose-50 hover:text-rose-700'; remove.setAttribute('aria-label', `Remove ${product.name}`); remove.textContent = '×';
           remove.addEventListener('click', () => { basket.delete(product.id); invalidateDeliveryQuote(); setAddedState(product, false); renderBasket(); if (!basket.size) dialog.close(); });
-          row.append(copy, input, remove); basketItems.append(row);
+          const controls = document.createElement('div'); controls.className = 'flex shrink-0 items-center justify-end gap-2';
+          controls.append(input, remove);
+          row.append(copy, controls); basketItems.append(row);
         });
         updateBasketPricePills(false);
         basketCount.textContent = basket.size; basketDock.classList.toggle('hidden', basket.size === 0); saveBasket(); refreshModes();
@@ -539,7 +605,7 @@
         const existing = basket.get(card.dataset.basketKey || card.dataset.productId);
         if (!existing) return;
         const replacement = productFromCard(card);
-        replacement.quantity = Math.max(existing.quantity, replacement.bulkPack?.minimum || replacement.minimums.distribution || 1);
+        replacement.quantity = Math.max(existing.quantity, replacement.bulkPack?.minimum || replacement.minimums.online || 1);
         basket.set(replacement.id, replacement);
         invalidateDeliveryQuote(); renderBasket();
       }));
@@ -562,7 +628,7 @@
         const mode = submitter.dataset.checkoutMode;
         basketForm.querySelectorAll('.generated-basket-field').forEach(field => field.remove());
         basket.forEach(product => {
-          [['product_id', product.productId], ['quantity', product.quantity], ['bulk_pack_id', mode === 'distribution' ? (product.bulkPack?.id || '') : ''], ['individual_option_id', product.individualOptionId || ''], ['fulfilment_source', mode === 'distribution' ? 'made_to_order' : (product.fulfilmentSource || 'made_to_order')]].forEach(([name, value]) => { const input = document.createElement('input'); input.type = 'hidden'; input.name = name; input.value = value; input.className = 'generated-basket-field'; basketForm.append(input); });
+          [['product_id', product.productId], ['quantity', product.quantity], ['bulk_pack_id', product.bulkPack?.id || ''], ['individual_option_id', product.individualOptionId || ''], ['fulfilment_source', product.bulkPack ? 'made_to_order' : (product.fulfilmentSource || 'made_to_order')]].forEach(([name, value]) => { const input = document.createElement('input'); input.type = 'hidden'; input.name = name; input.value = value; input.className = 'generated-basket-field'; basketForm.append(input); });
         });
         if (!deliveryToggle?.checked) { if (deliveryQuoteId) deliveryQuoteId.value = ''; return; }
         const signature = deliverySignature(mode);

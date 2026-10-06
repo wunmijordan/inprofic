@@ -88,12 +88,13 @@ class ProductionCommerceChannelTests(TestCase):
         )
         intake, _ = create_intake(
             business=business,
-            source=CommerceIntake.SOURCE_API,
+            source=CommerceIntake.SOURCE_STAFF_POS,  # Distribution / Bulk is an in-premise POS channel
             sales_channel="distribution",
             customer={"name": "Trade Customer"},
             items=[{"storefront_product": product, "quantity": "5"}],
             idempotency_key="general-distribution",
         )
+        self.assertEqual(intake.source, CommerceIntake.SOURCE_STAFF_POS)
         self.assertEqual(intake.ordering_mode, CommerceIntake.MODE_PREORDER)
         self.assertEqual(intake.total, Decimal("400"))
         accept_intake(intake)
@@ -167,10 +168,9 @@ class CommerceApiProductTests(TestCase):
         self.assertEqual(row["preorder_min_quantity"], "5.00")
         self.assertEqual(
             [mode["code"] for mode in row["order_modes"]],
-            ["online", "distribution"],
+            ["online"],  # no separate Distribution / Bulk channel on the API
         )
         self.assertNotIn("stock_price", row)
-        self.assertEqual(row["order_modes"][1]["label"], "Catering / Bulk Order")
         delivery = response.json()["delivery"]
         self.assertTrue(delivery["enabled"])
         self.assertEqual(delivery["location_url"], f"/api/v1/storefronts/{self.business.slug}/delivery/location")
@@ -185,8 +185,8 @@ class CommerceApiProductTests(TestCase):
         self.assertEqual(area["pricing"]["distance_basis"], "delivery_base_to_precise_destination")
 
     def test_product_api_exposes_customer_portion_and_bulk_packs_without_internal_conversion(self):
-        self.good.unit = "scoop"
-        self.good.units_per_batch = Decimal("120")
+        self.good.unit = "bowl"
+        self.good.units_per_batch = 12
         self.good.save(update_fields=["unit", "units_per_batch", "updated_at"])
         ProductPortionProfile.raw_objects.create(
             business=self.business, finished_good=self.good, active=True,
@@ -214,20 +214,15 @@ class CommerceApiProductTests(TestCase):
         self.assertEqual(bulk["id"], str(pack.public_id))
         self.assertEqual(bulk["name"], "2 L Bowl")
         self.assertNotIn("base_quantity", bulk)
-        distribution = next(mode for mode in row["order_modes"] if mode["code"] == "distribution")
-        self.assertTrue(distribution["requires_bulk_pack"])
-        self.assertEqual(distribution["pricing_source"], "bulk_options")
-        # Display price comes from the first bulk pack; ordering still needs the pack id.
-        self.assertEqual(distribution["price"], "9000.00")
-        self.assertFalse(distribution["price_is_from"])
-        self.assertEqual(distribution["display_bulk_pack_id"], str(pack.public_id))
-        self.assertEqual(distribution["unit"], "litre")
-        self.assertEqual(distribution["min_quantity"], "1.00")
-        self.assertEqual(row["distribution_price"], "9000.00")
-        self.assertFalse(row["distribution_price_is_from"])
-        self.assertEqual(row["distribution_min_quantity"], "1.00")
-        self.assertNotIn("physical_store", {mode["code"] for mode in row["order_modes"]})
-
+        # Bulk options are made-to-order price options on the Online mode, not a separate channel.
+        self.assertEqual(bulk["price"], "9000.00")
+        self.assertEqual(bulk["customer_unit"], "litre")
+        self.assertEqual(bulk["min_order_quantity"], "1.00")
+        self.assertEqual(bulk["order_mode"], "online")
+        self.assertEqual(bulk["fulfilment_source"], "made_to_order")
+        self.assertEqual({mode["code"] for mode in row["order_modes"]}, {"online"})
+        for key in ("distribution_price", "distribution_price_is_from", "distribution_min_quantity", "distribution_requires_bulk_pack"):
+            self.assertNotIn(key, row)
     def test_portion_label_shows_customer_quantity_in_base_unit_on_api_and_card(self):
         self.good.unit = "bun"
         self.good.save(update_fields=["unit"])
@@ -248,7 +243,7 @@ class CommerceApiProductTests(TestCase):
         row = self.client.get(f"/api/v1/storefronts/{self.business.slug}/products").json()["products"][0]
         self.assertEqual(row["portion_label"], "")
 
-    def test_multiple_bulk_packs_expose_first_pack_as_a_from_price(self):
+    def test_multiple_bulk_packs_are_all_listed_as_online_price_options(self):
         first = BulkPackProfile.raw_objects.create(
             business=self.business, finished_good=self.good, name="Small tub", sort_order=1,
             customer_quantity=1, customer_unit="tub", base_quantity=6, price=Decimal("4500"),
@@ -259,25 +254,17 @@ class CommerceApiProductTests(TestCase):
             min_order_quantity=Decimal("3"),
         )
         row = self.client.get(f"/api/v1/storefronts/{self.business.slug}/products").json()["products"][0]
-        mode = next(m for m in row["order_modes"] if m["code"] == "distribution")
-        self.assertEqual(mode["price"], "4500.00")
-        self.assertTrue(mode["price_is_from"])
-        self.assertEqual(mode["display_bulk_pack_id"], str(first.public_id))
-        self.assertTrue(mode["requires_bulk_pack"])  # ordering contract is unchanged
-        self.assertEqual(row["distribution_price"], "4500.00")
-        self.assertTrue(row["distribution_price_is_from"])
-        self.assertEqual(len(row["bulk_packs"]), 2)
-
-    def test_channel_price_is_used_when_there_are_no_bulk_packs(self):
+        self.assertEqual([p["name"] for p in row["bulk_packs"]], ["Small tub", "Large tub"])
+        self.assertEqual(row["bulk_packs"][0]["id"], str(first.public_id))
+        self.assertEqual(row["bulk_packs"][1]["min_order_quantity"], "3.00")
+        self.assertTrue(all(p["order_mode"] == "online" for p in row["bulk_packs"]))
+        self.assertNotIn("distribution", {m["code"] for m in row["order_modes"]})
+    def test_no_bulk_packs_means_no_bulk_options_and_no_distribution_mode(self):
         row = self.client.get(f"/api/v1/storefronts/{self.business.slug}/products").json()["products"][0]
-        mode = next(m for m in row["order_modes"] if m["code"] == "distribution")
-        self.assertFalse(mode["requires_bulk_pack"])
-        self.assertFalse(mode["price_is_from"])
-        self.assertIsNone(mode["display_bulk_pack_id"])
-        self.assertEqual(mode["price"], row["distribution_price"])
-        self.assertIsNotNone(row["distribution_price"])
-
-    def test_hosted_storefront_card_shows_first_pack_price_with_from_prefix(self):
+        self.assertEqual(row["bulk_packs"], [])
+        self.assertNotIn("distribution", {m["code"] for m in row["order_modes"]})
+        self.assertNotIn("distribution_price", row)
+    def test_hosted_storefront_offers_bulk_options_as_online_price_options_only(self):
         BulkPackProfile.raw_objects.create(
             business=self.business, finished_good=self.good, name="Small tub", sort_order=1,
             customer_quantity=1, customer_unit="tub", base_quantity=6, price=Decimal("4500"),
@@ -288,17 +275,20 @@ class CommerceApiProductTests(TestCase):
         )
         page = self.client.get(reverse("storefront", args=[self.business.slug]))
         self.assertEqual(page.status_code, 200)
-        self.assertContains(page, 'data-price-distribution="4500.00"')
-        self.assertContains(page, 'data-bulk-from="1"')
-
-    def test_distribution_does_not_fall_back_to_standard_selling_price(self):
+        self.assertContains(page, "data-bulk-pack-select")
+        self.assertContains(page, 'data-price="4500.00"')
+        self.assertContains(page, "(made to order)")
+        # the Distribution / Bulk channel itself is gone from hosted storefronts
+        self.assertNotContains(page, 'data-checkout-mode="distribution"')
+        self.assertNotContains(page, 'data-channel="distribution"')
+        self.assertNotContains(page, "data-price-distribution")
+    def test_distribution_is_never_offered_to_external_clients(self):
         FinishedGoodChannelPrice.objects.filter(finished_good=self.good, channel="distribution").delete()
         response = self.client.get(f"/api/v1/storefronts/{self.business.slug}/products")
         self.assertEqual(response.status_code, 200)
         row = response.json()["products"][0]
         self.assertNotIn("distribution", {mode["code"] for mode in row["order_modes"]})
-        self.assertIsNone(row["distribution_price"])
-
+        self.assertNotIn("distribution_price", row)
     def test_procured_stockout_is_omitted_from_external_catalogue_even_for_distribution(self):
         self.good.source_type = FinishedGood.SOURCE_PURCHASED_FOR_RESALE
         self.good.stock = Decimal("0")
