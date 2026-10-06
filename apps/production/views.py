@@ -15,6 +15,7 @@ from .models import (Order, OrderNumberSequence, OrderItem, OrderMaterialUsage, 
 from sales.models import CustomerProductPrice
 from inventory.models import FinishedGood, RawMaterial
 from inventory.services import (
+    default_location,
     receive_market_production,
     record_raw_material_movement,
     record_finished_good_movement,
@@ -287,6 +288,12 @@ def order_recreate(request, pk):
 _USAGE_QUANTUM = Decimal("0.0001")
 
 
+def _format_flexible_input(value):
+    """Format a central flexible quantity at its supported four-place precision."""
+    formatted = format(Decimal(value).quantize(_USAGE_QUANTUM, rounding=ROUND_HALF_UP), "f")
+    return formatted.rstrip("0").rstrip(".") if "." in formatted else formatted
+
+
 def _allocate_proportionally(total, weights, fallback_weights=None):
     """Split ``total`` across ``weights`` so the parts add up to exactly ``total``.
 
@@ -419,13 +426,15 @@ def _plan_release(orders, post_data=None, *, central=False, scope=None):
         material = group["material"]
         entries = group["entries"]
         planned_total = sum((e["planned"] for e in entries), Decimal("0"))
-        actual_total = planned_total
+        actual_total = planned_total.quantize(_USAGE_QUANTUM, rounding=ROUND_HALF_UP)
         input_name = f"flex_total_{scope}_{material_id}"
         if post_data is not None:
             raw = post_data.get(input_name)
             if raw not in (None, ""):
                 try:
-                    actual_total = Decimal(str(raw))
+                    actual_total = Decimal(str(raw)).quantize(
+                        _USAGE_QUANTUM, rounding=ROUND_HALF_UP
+                    )
                     if actual_total < 0:
                         raise ValueError
                 except Exception:
@@ -447,7 +456,7 @@ def _plan_release(orders, post_data=None, *, central=False, scope=None):
             "order": single_order,          # None when the total spans several orders (a run)
             "material": material,
             "input_name": input_name,
-            "input_value": actual_total,
+            "input_value": _format_flexible_input(actual_total),
             "planned_total": planned_total,
             "actual_total": actual_total,
             "usage_unit": material.usage_unit,
@@ -898,6 +907,7 @@ def order_approve(request, pk):
         locked_order = Order.objects.select_for_update().get(pk=order.pk)
         if locked_order.status != "pending":
             return redirect("order_detail", pk=pk)
+        movement_location = default_location(order.business)
         for entry in usage_entries:
             OrderMaterialUsage.objects.create(business=order.business, created_by=request.user, **entry)
         for mat, needed in aggregated.values():
@@ -905,6 +915,7 @@ def order_approve(request, pk):
             record_raw_material_movement(
                 mat, -needed, StockMovement.RAW_CONSUMPTION,
                 note=f"Materials released for order #{order.display_number}", reference=f"PROD-{order.pk}", unit_value=material_cost,
+                location=movement_location,
             )
         order.status = "approved"
         order.approved_date = today()
@@ -944,14 +955,13 @@ def _latest_material_cost(material, production_date):
     return material.cost_per_unit, ProductionCostLine.SOURCE_CURRENT_FALLBACK
 
 
-def _create_production_cost_snapshot(order, item, batch):
+def _create_production_cost_snapshot(order, item, batch, *, material_cost_cache=None):
     good = item.finished_good
     production_date = batch.production_date
     upb = good.units_per_batch or Decimal("1")
-    links = list(good.recipe_items.select_related("raw_material")) + list(good.production_materials.select_related("raw_material"))
     piece_factor = item.effective_production_piece_qty / upb
     total_batch_multiplier = item.effective_production_batch_qty + piece_factor
-    released_usages = list(item.material_usages.select_related("raw_material"))
+    released_usages = list(item.material_usages.all())
     total_cost = Decimal("0")
     sources = set()
     snapshot = ProductionCostSnapshot.objects.create(
@@ -959,13 +969,29 @@ def _create_production_cost_snapshot(order, item, batch):
         production_date=production_date, produced_units=batch.saleable_units,
         batch_number=batch.batch_number, expiry_date=batch.expiry_date,
     )
-    cost_rows = released_usages if released_usages else [
-        type("RecipeCostRow", (), {"raw_material": link.raw_material, "actual_quantity": link.qty_per_batch * total_batch_multiplier})
-        for link in links
-    ]
+    if released_usages:
+        cost_rows = released_usages
+    else:
+        links = list(good.recipe_items.select_related("raw_material")) + list(
+            good.production_materials.select_related("raw_material")
+        )
+        cost_rows = [
+            type("RecipeCostRow", (), {
+                "raw_material": link.raw_material,
+                "raw_material_id": link.raw_material_id,
+                "actual_quantity": link.qty_per_batch * total_batch_multiplier,
+            })
+            for link in links
+        ]
     for usage in cost_rows:
         qty = usage.actual_quantity
-        unit_cost, source = _latest_material_cost(usage.raw_material, production_date)
+        material_id = usage.raw_material_id
+        if material_cost_cache is not None and material_id in material_cost_cache:
+            unit_cost, source = material_cost_cache[material_id]
+        else:
+            unit_cost, source = _latest_material_cost(usage.raw_material, production_date)
+            if material_cost_cache is not None:
+                material_cost_cache[material_id] = (unit_cost, source)
         line_total = qty * unit_cost
         total_cost += line_total
         sources.add(source)
@@ -993,7 +1019,9 @@ def order_complete(request, pk):
     if order.status != "approved":
         return redirect("orders_list")
 
-    items = list(order.items.select_related("finished_good"))
+    items = list(order.items.select_related("finished_good").prefetch_related(
+        Prefetch("material_usages", queryset=OrderMaterialUsage.objects.select_related("raw_material"))
+    ))
     customer_order = order.is_customer_order
     market_stock_order = order.is_market_stock_order
     run_link = order.production_run_links.select_related("production_run").first()
@@ -1074,6 +1102,8 @@ def order_complete(request, pk):
 
         if valid:
             with transaction.atomic():
+                movement_location = default_location(order.business)
+                material_cost_cache = {}
                 order.completed_date = today()
                 for item, form, offcut_formset in completion_forms:
                     produced = form.cleaned_data["produced_units"]
@@ -1126,7 +1156,9 @@ def order_complete(request, pk):
                         checked_at=timezone.now() if form.cleaned_data["qc_status"] != "pending" else None,
                         notes=form.cleaned_data.get("qc_notes", ""),
                     )
-                    snapshot = _create_production_cost_snapshot(order, item, batch)
+                    snapshot = _create_production_cost_snapshot(
+                        order, item, batch, material_cost_cache=material_cost_cache
+                    )
                     good = item.finished_good
                     planned = Decimal(item.production_total_units)
                     ordered = Decimal(item.total_units)
@@ -1146,6 +1178,7 @@ def order_complete(request, pk):
                             good, -wastage, StockMovement.FG_WASTAGE,
                             note=form.cleaned_data.get("wastage_reason") or f"Production wastage for batch {batch.batch_number}",
                             reference=batch.batch_number, affects_stock=False, unit_value=snapshot.unit_cost,
+                            location=movement_location,
                         )
 
                     if destination_committed > 0:
@@ -1160,6 +1193,7 @@ def order_complete(request, pk):
                                 good, destination_committed, StockMovement.FG_PRODUCTION,
                                 note=f"Planned store production — batch {batch.batch_number}",
                                 reference=batch.batch_number, affects_stock=True, unit_value=snapshot.unit_cost,
+                                location=movement_location,
                             )
                         else:
                             record_finished_good_movement(
@@ -1168,7 +1202,7 @@ def order_complete(request, pk):
                                     f"Non-stock production ({order.non_stock_purpose}) — batch {batch.batch_number}"
                                     if order.order_type == "physical_store" and order.production_destination == "non_stock"
                                     else f"Customer-order production batch {batch.batch_number}"
-                                ),
+                                ), location=movement_location,
                                 reference=batch.batch_number, affects_stock=False, unit_value=snapshot.unit_cost,
                             )
                             if customer_order:
@@ -1179,6 +1213,7 @@ def order_complete(request, pk):
                             good, planned_surplus_stock, StockMovement.FG_PRODUCTION,
                             note=f"Uncommitted planned offcut retained in general finished-goods stock — batch {batch.batch_number}",
                             reference=batch.batch_number, affects_stock=True, unit_value=snapshot.unit_cost,
+                            location=movement_location,
                         )
 
                     offcut_sales = []
@@ -1220,6 +1255,7 @@ def order_complete(request, pk):
                                 good, quantity, StockMovement.FG_PRODUCTION,
                                 note=f"Planned offcut allocated to {customer.name} via {channel.title()} — batch {batch.batch_number}",
                                 reference=batch.batch_number, affects_stock=False, unit_value=snapshot.unit_cost,
+                                location=movement_location,
                             )
                             good.total_delivered_to_customers += quantity
 
@@ -1234,6 +1270,7 @@ def order_complete(request, pk):
                             good, excess_stock, StockMovement.FG_PRODUCTION,
                             note=f"Excess production retained in Physical Store stock — batch {batch.batch_number}",
                             reference=batch.batch_number, affects_stock=True, unit_value=snapshot.unit_cost,
+                            location=movement_location,
                         )
 
                     if excess_non_stock > 0:
@@ -1241,6 +1278,7 @@ def order_complete(request, pk):
                             good, excess_non_stock, StockMovement.FG_PRODUCTION,
                             note=f"Excess production for {batch.excess_non_stock_purpose} — batch {batch.batch_number}",
                             reference=batch.batch_number, affects_stock=False, unit_value=snapshot.unit_cost,
+                            location=movement_location,
                         )
 
                     update_fields = ["total_produced"]
