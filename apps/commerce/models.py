@@ -79,6 +79,8 @@ class CommerceSettings(BusinessOwnedModel):
         default="",
         help_text="Optional main storefront message. Leave blank to use wording tailored to your business type.",
     )
+    basket_dock_heading = models.CharField(max_length=100, blank=True, default="Review quantities and checkout")
+    basket_dock_subheading = models.CharField(max_length=180, blank=True, default="Your basket")
     storefront_hero_image = models.ImageField(
         upload_to=storefront_hero_image_upload_to,
         blank=True,
@@ -721,6 +723,10 @@ class StorefrontProduct(BusinessOwnedModel):
     @property
     def display_name(self):
         return self.public_name.strip() or self.finished_good.name
+
+    @property
+    def public_description(self):
+        return (self.finished_good.description or self.description or "").strip()
 
     @property
     def available_now(self):

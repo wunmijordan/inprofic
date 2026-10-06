@@ -14,6 +14,8 @@
         {% include "_field.html" with field=form.name %}
         {% include "_field.html" with field=form.product_category %}
       </div>
+      {% include "_field.html" with field=form.description %}
+      <div class="max-w-xl">{% include "_field.html" with field=form.variant_of %}<p class="-mt-2 mb-3 text-[11px] leading-5 text-stone-500">Variants appear as size choices on the main storefront card when both products are published and available. Each remains a separate product with its own recipe, stock and pricing.</p></div>
       <p data-form-help-text data-form-help-for="{{ form.product_category.id_for_label }}" class="-mt-1 mb-3 text-[11px] text-stone-500">Need another storefront grouping? <a href="{% url 'product_categories' %}" class="font-semibold text-[#8f172d] hover:underline">Manage product categories</a>. Category is independent from whether the product is made in-house or procured for resale.</p>
       <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
         {% include "_field.html" with field=form.unit %}
@@ -197,16 +199,13 @@
 
     {% if vertical_ui.uses_production %}
     <section class="cf-form-section {% if not show_production_fields %}hidden{% endif %}" data-production-chain>
-    <div class="mb-4 max-w-md rounded-xl border border-[#E7DFCC] bg-[#FAF8F1] p-3">
-      {% include "_field.html" with field=form.base_material %}
-    </div>
     <span id="recipe-help-anchor" class="cf-form-section-title inline-flex items-center gap-1.5 mb-1">{{ vertical_ui.recipe_label }} · quantities per batch</span>
     <p data-form-help-text data-form-help-anchor="recipe-help-anchor" class="text-[11px] text-stone-400 mb-1">Quantity is defined against the registered batch yield above and entered in each material's <strong>usage unit</strong>. Mark <strong>Flexible</strong> only where the {{ vertical_ui.recipe_label|lower }} permits an approval-time quantity adjustment.</p>
     {{ formset.management_form }}
     {% if formset.non_form_errors %}
       <div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-2">{{ formset.non_form_errors }}</div>
     {% endif %}
-    <div class="border border-[#E7DFCC] rounded-md overflow-hidden">
+    <div class="border border-[#E7DFCC] rounded-md mb-4 overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full min-w-[680px] text-sm">
           <thead class="bg-[#F0EAD9] text-stone-600 text-xs"><tr>
@@ -230,6 +229,9 @@
         </table>
       </div>
       <button type="button" onclick="addFormsetRow('recipe_items','recipe-rows')" class="w-full text-xs text-[#8f172d] font-medium py-2 hover:bg-[#F0EAD9]">+ Add {{ vertical_ui.recipe_item_label }}</button>
+    </div>
+    <div class="mb-4 max-w-md rounded-xl border border-[#E7DFCC] bg-[#FAF8F1] p-3">
+      {% include "_field.html" with field=form.base_material %}
     </div>
 
     <span id="production-inputs-help-anchor" class="cf-form-section-title inline-flex items-center gap-1.5 mb-1 mt-5">{{ vertical_ui.production_inputs_label }}</span>

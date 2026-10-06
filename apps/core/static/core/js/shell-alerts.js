@@ -511,7 +511,7 @@
           finished_warning: ['Finished good','Warning','bg-yellow-100 text-amber-950','border-yellow-300'], finished_low: ['Finished good','LOW','bg-red-100 text-red-900','border-red-300'],
         };
         const meta = palette[item.type] || ['Stock','Alert','bg-stone-100 text-stone-800','border-stone-200'];
-        const row = document.createElement('article'); row.className = `p-3 border-l-4 ${meta[3]} bg-white`;
+        const row = document.createElement('article'); row.className = `p-3 border-l-4 ${meta[3]} bg-white transition hover:bg-stone-50`;
         const badges = document.createElement('div'); badges.className = 'flex flex-wrap gap-1.5';
         const resource = document.createElement('span'); resource.className = 'rounded-full bg-stone-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-stone-700'; resource.textContent = meta[0];
         const severity = document.createElement('span'); severity.className = `rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${meta[2]}`; severity.textContent = meta[1];

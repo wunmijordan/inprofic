@@ -258,7 +258,21 @@ class RawMaterialForm(StyledModelForm):
 class FinishedGoodForm(StyledModelForm):
     class Meta:
         model = FinishedGood
-        fields = ["source_type", "name", "product_category", "unit", "units_per_batch", "base_material", "stock", "reorder_level", "selling_price"]
+        fields = ["source_type", "name", "description", "variant_of", "product_category", "unit", "units_per_batch", "base_material", "stock", "reorder_level", "selling_price"]
+
+    def clean(self):
+        cleaned = super().clean()
+        parent = cleaned.get("variant_of")
+        business = self.business or getattr(self.instance, "business", None)
+        if parent and business and parent.business_id != business.pk:
+            self.add_error("variant_of", "Choose a product from this business.")
+        if parent and parent.variant_of_id:
+            self.add_error("variant_of", "Choose a main product, not another variant.")
+        if parent and self.instance.pk and parent.pk == self.instance.pk:
+            self.add_error("variant_of", "A product cannot be a variant of itself.")
+        if parent and self.instance.pk and self.instance.variants.exists():
+            self.add_error("variant_of", "This product already has variants and cannot become a variant itself.")
+        return cleaned
 
     def clean_name(self):
         value = (self.cleaned_data.get("name") or "").strip()
@@ -281,6 +295,20 @@ class FinishedGoodForm(StyledModelForm):
         self.fields["reorder_level"].required = False
         self.fields["selling_price"].required = False
         self.fields["product_category"].required = False
+        self.fields["description"].required = False
+        self.fields["description"].label = "Product description"
+        self.fields["description"].help_text = "Optional customer-facing description used on hosted storefront product cards."
+        self.fields["variant_of"].required = False
+        self.fields["variant_of"].label = "Variant of"
+        self.fields["variant_of"].help_text = "Optional. Group this size or type under a main storefront product. Its recipe, stock and price remain separate."
+        self.fields["description"].widget = forms.Textarea(attrs={"rows": 3, "class": INPUT_CLS})
+        if business:
+            variants_qs = FinishedGood.objects.filter(business=business, variant_of__isnull=True)
+            if self.instance.pk:
+                variants_qs = variants_qs.exclude(pk=self.instance.pk)
+            self.fields["variant_of"].queryset = variants_qs.order_by("name")
+        else:
+            self.fields["variant_of"].queryset = FinishedGood.objects.none()
         if business:
             category_qs = ProductCategory.raw_objects.filter(business=business)
             current_category_id = getattr(self.instance, "product_category_id", None)

@@ -154,12 +154,12 @@
   },
   {
     "id": "commerce-storefront",
-    "name": "Hosted storefront and Order Now",
+    "name": "Hosted storefront, product variants and Order Now",
     "group": "commerce",
     "audience": "businesses selling online without a custom commerce stack",
-    "proof": "Publish tenant products with channel-safe pricing, let Online customers choose available store stock or made-to-order fulfilment without changing the Online price, show readiness before checkout, and create operational orders only after verified payment.",
-    "highlight": "",
-    "added_on": ""
+    "proof": "Publish tenant products with channel-safe pricing and group separately stocked, priced and produced size variants under one storefront card. Customers choose available stock or made-to-order fulfilment without changing the Online price, review readiness before checkout, and create operational orders only after verified payment.",
+    "highlight": "NEW",
+    "added_on": "2026-10-06"
   },
   {
     "id": "headless-api",

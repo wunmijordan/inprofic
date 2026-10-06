@@ -18,7 +18,7 @@ class CommerceSettingsForm(forms.ModelForm):
         model = CommerceSettings
         fields = [
             "enabled", "hosted_storefront_enabled", "order_now_link_enabled", "api_enabled",
-            "connector_enabled", "storefront_headline", "storefront_hero_image",
+            "connector_enabled", "storefront_headline", "basket_dock_heading", "basket_dock_subheading", "storefront_hero_image",
             "storefront_hero_image_position", "public_note",
             "notifications_enabled", "notify_order_activity",
             "notify_payment_activity", "notify_delivery_activity", "notification_sound_enabled",
@@ -40,6 +40,8 @@ class CommerceSettingsForm(forms.ModelForm):
             "api_enabled": "Connected website access",
             "connector_enabled": "Connected sales platforms",
             "storefront_headline": "Storefront headline",
+            "basket_dock_heading": "Basket dock heading",
+            "basket_dock_subheading": "Basket dock subheading",
             "storefront_hero_image": "Storefront header image",
             "storefront_hero_image_position": "Image focal point",
             "notifications_enabled": "Commerce activity alerts",

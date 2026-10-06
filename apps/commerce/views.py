@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import logging
 from collections import defaultdict
 from datetime import timedelta
 from io import BytesIO
@@ -23,6 +24,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
 from django.db.models.functions import Coalesce
+from botocore.exceptions import BotoCoreError, ClientError
 
 from accounts.services import can_use_commerce_storefront, is_business_admin
 from core.models import Business
@@ -57,6 +59,8 @@ from .payment_services import (
     serialize_payment,
     submit_bank_claim,
 )
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -345,9 +349,24 @@ def commerce_qr_code(request):
 def commerce_settings(request):
     if not is_business_admin(request.user, request.business): return render(request, "403.html", status=403)
     obj = _settings_for(request.business)
+    original_hero_image_name = obj.storefront_hero_image.name
     form = CommerceSettingsForm(request.POST or None, request.FILES or None, instance=obj)
     if request.method == "POST" and form.is_valid():
-        saved = form.save(commit=False); saved.business=request.business; saved.created_by = saved.created_by or request.user; saved.save()
+        saved = form.save(commit=False); saved.business=request.business; saved.created_by = saved.created_by or request.user
+        try:
+            saved.save()
+        except (BotoCoreError, ClientError):
+            if not request.FILES.get("storefront_hero_image"):
+                raise
+            logger.exception(
+                "Commerce settings hero image upload failed for business_id=%s; saving other settings without replacing the current image",
+                request.business.pk,
+            )
+            saved.storefront_hero_image = original_hero_image_name
+            saved.save()
+            messages.success(request, "Commerce settings saved.")
+            messages.warning(request, "The header image upload failed temporarily. Other settings were saved; please try the image upload again.")
+            return redirect("commerce_dashboard")
         messages.success(request, "Commerce settings saved.")
         return redirect("commerce_dashboard")
     return render(request, "commerce/settings.html", {"form": form})
@@ -437,7 +456,7 @@ def _public_products(business):
         Q(allow_online_order=True)
         | Q(finished_good__individual_sale_options__active=True, finished_good__individual_sale_options__online_enabled=True)
     ).distinct().select_related(
-        "finished_good__business", "finished_good__product_category", "finished_good__portion_profile"
+        "finished_good__business", "finished_good__product_category", "finished_good__portion_profile", "finished_good__variant_of"
     ).prefetch_related(
         "finished_good__channel_prices",
         "finished_good__bulk_pack_profiles",
@@ -489,7 +508,23 @@ def _public_catalog_data(business):
             if option.active and option.online_enabled and option.online_price is not None
         ]
         visible_products.append(product)
-    products = visible_products
+    # Group available child products beneath their published parent card. A
+    # child remains a distinct StorefrontProduct for checkout and stock use.
+    visible_by_good = {product.finished_good_id: product for product in visible_products}
+    grouped_children = set()
+    for product in visible_products:
+        parent_id = product.finished_good.variant_of_id
+        parent = visible_by_good.get(parent_id)
+        if parent and parent.finished_good.variant_of_id is None and parent.public_online_available:
+            if not hasattr(parent, "public_variants"):
+                parent.public_variants = []
+            parent.public_variants.append(product)
+            grouped_children.add(product.finished_good_id)
+    for product in visible_products:
+        product.public_variants = sorted(
+            getattr(product, "public_variants", []), key=lambda item: item.display_name.casefold()
+        )
+    products = [product for product in visible_products if product.finished_good_id not in grouped_children]
     category_ids = {p.finished_good.product_category_id for p in products if p.finished_good.product_category_id}
     categories = list(
         ProductCategory.raw_objects.filter(business=business, active=True, pk__in=category_ids)

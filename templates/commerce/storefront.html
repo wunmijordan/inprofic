@@ -89,7 +89,7 @@
 
       <div id="catalogue-grid" class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {% for p in products %}
-        {% if p.public_online_available %}<article class="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white" data-product-card data-basket-key="{{ p.public_id }}" data-product-id="{{ p.public_id }}" data-individual-option-id="" data-product-name="{{ p.display_name }}" data-category="{% if p.finished_good.product_category_id %}{{ p.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-unit="{{ p.customer_unit }}" data-search="{{ p.display_name|lower }} {{ p.description|lower }}" data-modes="{% if p.public_online_available %} online{% endif %}" data-min-online="{{ p.preorder_min_quantity }}" data-price-online="{{ p.preorder_price }}" data-unit-online="{{ p.customer_unit }}" data-max="{% if p.max_quantity %}{{ p.max_quantity }}{% endif %}" data-stock-available="{{ p.public_stock_available }}" data-stock-source="{% if p.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if p.public_made_source_available %}1{% else %}0{% endif %}" data-procured-source="{% if p.public_procured_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ p.estimated_ready_minutes }}">
+        {% if p.public_online_available %}<article class="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white" data-product-card data-basket-key="{{ p.public_id }}" data-product-id="{{ p.public_id }}" data-individual-option-id="" data-product-name="{{ p.display_name }}" data-category="{% if p.finished_good.product_category_id %}{{ p.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-unit="{{ p.customer_unit }}" data-search="{{ p.display_name|lower }} {{ p.public_description|lower }} {% for variant in p.public_variants %}{{ variant.display_name|lower }} {% endfor %}" data-modes="{% if p.public_online_available %} online{% endif %}" data-min-online="{{ p.preorder_min_quantity }}" data-price-online="{{ p.preorder_price }}" data-unit-online="{{ p.customer_unit }}" data-max="{% if p.max_quantity %}{{ p.max_quantity }}{% endif %}" data-stock-available="{{ p.public_stock_available }}" data-stock-source="{% if p.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if p.public_made_source_available %}1{% else %}0{% endif %}" data-procured-source="{% if p.public_procured_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ p.estimated_ready_minutes }}">
           <div class="relative aspect-[16/10] overflow-hidden bg-stone-100">
             {% if p.public_image_url %}<img src="{{ p.public_image_url }}" alt="{{ p.display_name }}" class="h-full w-full object-cover" loading="lazy">
             {% else %}<div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-stone-100 via-[#efe8dc] to-stone-200"><div class="flex h-20 w-20 items-center justify-center rounded-full border border-white/80 bg-white/55 shadow-inner backdrop-blur"><svg viewBox="0 0 24 24" class="h-8 w-8 fill-none stroke-stone-400" stroke-width="1.35"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg></div></div>{% endif %}
@@ -103,7 +103,7 @@
             {% if p.finished_good.product_category %}<div class="mb-2"><span class="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-500">{{ p.finished_good.product_category.name }}</span></div>{% endif %}
             <h3 class="font-display text-lg font-semibold leading-tight text-stone-900">{{ p.display_name }}</h3>
             {% if p.portion_label %}<p class="mt-0.5 text-[11px] font-semibold text-stone-500" data-portion-label>{{ p.portion_label }}</p>{% endif %}
-            <p class="line-clamp-2 mt-1.5 min-h-[2rem] text-xs leading-4 text-stone-500">{% if p.description %}{{ p.description }}{% elif p.public_bulk_online_available %}Choose from the bulk options below.{% else %}Choose from the ordering options below.{% endif %}</p>
+            <p class="line-clamp-2 mt-1.5 min-h-[2rem] text-xs leading-4 text-stone-500">{% if p.public_description %}{{ p.public_description }}{% elif p.public_bulk_online_available %}Choose from the bulk options below.{% else %}Choose from the ordering options below.{% endif %}</p>
             {% if p.standard_public_contents|length > 1 or p.bulk_pack_options %}
             <details class="relative mt-2" data-contents-popover>
               <summary class="inline-flex cursor-pointer list-none items-center gap-1 text-[11px] font-semibold underline decoration-stone-300 underline-offset-4" style="color:var(--brand)">What's included? <span aria-hidden="true">ⓘ</span></summary>
@@ -131,6 +131,17 @@
               <select data-bulk-pack-select class="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold normal-case tracking-normal text-stone-700 outline-none focus:border-stone-400">
                 <option value="">Standard · {{ p.customer_unit }}</option>
                 {% for pack in p.public_bulk_packs %}<option value="{{ pack.public_id }}" data-name="{{ pack.name }}" data-unit="{{ pack.name }}" data-price="{{ pack.price }}" data-min="{{ pack.min_order_quantity }}">{{ pack.name }} · {{ pack.price|money:store_business.currency_symbol }}{% if pack.min_order_quantity > 1 %} · min {{ pack.min_order_quantity }}{% endif %}</option>{% endfor %}
+              </select>
+            </label>
+            {% endif %}
+            {% if p.public_variants %}
+            <label class="mt-3 block text-[10px] font-bold uppercase tracking-[.14em] text-stone-400">Available sizes / variants
+              <select data-product-variant-select class="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold normal-case tracking-normal text-stone-700 outline-none focus:border-stone-400">
+                <option value="">Choose a size and price option</option>
+                {% for variant in p.public_variants %}
+                  <option value="{{ variant.public_id }}" data-name="{{ variant.display_name }}" data-unit="{{ variant.customer_unit }}" data-price="{{ variant.preorder_price }}" data-min="{{ variant.preorder_min_quantity }}" data-max="{% if variant.max_quantity %}{{ variant.max_quantity }}{% endif %}" data-stock-source="{% if variant.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if variant.public_made_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ variant.estimated_ready_minutes }}">{{ variant.display_name }} · Standard · {{ variant.preorder_price|money:store_business.currency_symbol }} / {{ variant.customer_unit }}</option>
+                  {% if variant.public_bulk_online_available %}{% for pack in variant.public_bulk_packs %}<option value="bulk:{{ variant.public_id }}:{{ pack.public_id }}" data-product-id="{{ variant.public_id }}" data-basket-key="bulk:{{ variant.public_id }}:{{ pack.public_id }}" data-bulk-pack-id="{{ pack.public_id }}" data-bulk-pack-name="{{ pack.name }}" data-name="{{ variant.display_name }} · {{ pack.name }}" data-unit="{{ pack.name }}" data-price="{{ pack.price }}" data-min="{{ pack.min_order_quantity }}" data-max="{% if variant.max_quantity %}{{ variant.max_quantity }}{% endif %}" data-stock-source="{% if variant.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if variant.public_made_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ variant.estimated_ready_minutes }}">{{ variant.display_name }} · {{ pack.name }} · {{ pack.price|money:store_business.currency_symbol }} / {{ pack.name }}{% if pack.min_order_quantity > 1 %} · min {{ pack.min_order_quantity }}{% endif %}</option>{% endfor %}{% endif %}
+                {% endfor %}
               </select>
             </label>
             {% endif %}
@@ -166,7 +177,7 @@
 
   <div id="basket-dock" class="pointer-events-none fixed inset-x-0 bottom-4 z-30 hidden px-4">
     <button type="button" id="open-basket" class="storefront-brand-surface pointer-events-auto mx-auto flex w-full max-w-xl items-center justify-between rounded-2xl border px-4 py-3 text-left shadow-[0_18px_55px_rgba(25,20,17,.32)] backdrop-blur" style="border-color:color-mix(in srgb,var(--brand-dark-contrast) 18%,transparent);background:color-mix(in srgb,var(--brand-dark) 94%,transparent)!important">
-      <span><strong class="block text-sm"><span id="basket-count">0</span> selected</strong><small class="storefront-brand-muted">Review quantities and checkout</small></span><span class="storefront-brand-inverse rounded-xl px-3 py-2 text-xs font-bold">View basket →</span>
+      <span><strong class="block text-sm">{{ commerce_settings.basket_dock_heading|default:"Review quantities and checkout" }}</strong><small class="storefront-brand-muted">{{ commerce_settings.basket_dock_subheading|default:"Your basket" }}.</small></span><span class="storefront-brand-inverse rounded-xl px-3 py-2 text-xs font-bold"><span id="basket-count">0</span> <span id="basket-count-label">items</span> in Basket →</span>
     </button>
   </div>
 
@@ -289,6 +300,7 @@
       const basketItems = document.getElementById('basket-items');
       const basketDock = document.getElementById('basket-dock');
       const basketCount = document.getElementById('basket-count');
+      const basketCountLabel = document.getElementById('basket-count-label');
       const modeError = document.getElementById('basket-mode-error');
       const modeButtons = Array.from(document.querySelectorAll('[data-checkout-mode]'));
       const historyButton = document.getElementById('open-order-history');
@@ -489,6 +501,32 @@
         if (bulkPack) product.quantity = bulkPack.minimum || 1;
         return product;
       }
+      function productFromVariantOption(option) {
+        const unit = option.dataset.unit || 'unit';
+        const stockSource = option.dataset.stockSource === '1';
+        const madeSource = option.dataset.madeSource === '1';
+        const bulkPack = option.dataset.bulkPackId ? {
+          id: option.dataset.bulkPackId,
+          name: option.dataset.bulkPackName || unit,
+          unit,
+          price: Number(option.dataset.price || 0),
+          minimum: Number(option.dataset.min || 1),
+        } : null;
+        const minimum = Number(option.dataset.min || 1);
+        return {
+          id: option.dataset.basketKey || option.value,
+          productId: option.dataset.productId || option.value,
+          individualOptionId: '',
+          name: option.dataset.name || option.textContent.trim(), unit,
+          units: {online: unit}, modes: ['online'],
+          minimums: {online: minimum},
+          prices: {online: Number(option.dataset.price || 0)}, bulkPack,
+          max: Number(option.dataset.max || 0), quantity: minimum,
+          card: null, stockSource, madeSource, procuredSource: false,
+          fulfilmentSource: stockSource ? 'stock' : 'made_to_order',
+          readyMinutes: Number(option.dataset.readyMinutes || 0),
+        };
+      }
       function modePricing(product, mode) {
         if (mode === 'online' && product.bulkPack) {
           return {price: product.bulkPack.price, minimum: product.bulkPack.minimum, unit: product.bulkPack.unit};
@@ -496,6 +534,7 @@
         return {price: Number(product.prices[mode] || 0), minimum: Number(product.minimums[mode] || 0), unit: product.units?.[mode] || product.unit};
       }
       function setAddedState(product, added) {
+        if (!product.card) return;
         const label = product.card.querySelector('.add-product-label');
         label.textContent = added ? 'Added to basket' : 'Add to basket';
         product.card.querySelector('.add-product').querySelector('[aria-hidden]').textContent = added ? '✓' : '+';
@@ -513,7 +552,15 @@
         saved.forEach(row => {
           const card = cards.find(item => item.dataset.productId === String(row.id || ''));
           const quantity = Number(row.quantity);
-          if (!card || !Number.isFinite(quantity) || quantity <= 0) return;
+          const variantOption = Array.from(document.querySelectorAll('[data-product-variant-select] option')).find(option => option.value === String(row.id || ''));
+          if ((!card && !variantOption) || !Number.isFinite(quantity) || quantity <= 0) return;
+          if (!card && variantOption) {
+            const product = productFromVariantOption(variantOption);
+            product.quantity = quantity;
+            if (row.fulfilmentSource) product.fulfilmentSource = row.fulfilmentSource;
+            basket.set(product.id, product);
+            return;
+          }
           const packSelect = card.querySelector('[data-bulk-pack-select]');
           if (packSelect && row.bulkPackId && Array.from(packSelect.options).some(option => option.value === String(row.bulkPackId))) packSelect.value = String(row.bulkPackId);
           const product = productFromCard(card); product.quantity = quantity; if(row.fulfilmentSource) product.fulfilmentSource=row.fulfilmentSource;
@@ -596,7 +643,9 @@
           row.append(copy, controls); basketItems.append(row);
         });
         updateBasketPricePills(false);
-        basketCount.textContent = basket.size; basketDock.classList.toggle('hidden', basket.size === 0); saveBasket(); refreshModes();
+        basketCount.textContent = basket.size;
+        basketCountLabel.textContent = basket.size === 1 ? 'item' : 'items';
+        basketDock.classList.toggle('hidden', basket.size === 0); saveBasket(); refreshModes();
       }
       document.querySelectorAll('[data-bulk-pack-select]').forEach(select => select.addEventListener('change', function () {
         select.dataset.touched = '1';
@@ -608,6 +657,15 @@
         replacement.quantity = Math.max(existing.quantity, replacement.bulkPack?.minimum || replacement.minimums.online || 1);
         basket.set(replacement.id, replacement);
         invalidateDeliveryQuote(); renderBasket();
+      }));
+      document.querySelectorAll('[data-product-variant-select]').forEach(select => select.addEventListener('change', function () {
+        const option = select.selectedOptions[0];
+        if (!option?.value) return;
+        const product = productFromVariantOption(option);
+        if (!basket.has(product.id)) basket.set(product.id, product);
+        invalidateDeliveryQuote();
+        select.value = '';
+        renderBasket();
       }));
       document.querySelectorAll('.add-product').forEach(button => button.addEventListener('click', function () {
         const card = button.closest('[data-product-card]'); const id = card.dataset.basketKey || card.dataset.productId;

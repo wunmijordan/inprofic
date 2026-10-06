@@ -32,6 +32,8 @@
       </div>
       <div class="grid gap-x-5 lg:grid-cols-2">
         {% include '_field.html' with field=form.storefront_headline %}
+        {% include '_field.html' with field=form.basket_dock_heading %}
+        {% include '_field.html' with field=form.basket_dock_subheading %}
         {% include '_field.html' with field=form.storefront_hero_image %}
         {% include '_field.html' with field=form.storefront_hero_image_position %}
         <div class="lg:col-span-2">{% include '_field.html' with field=form.public_note %}</div>

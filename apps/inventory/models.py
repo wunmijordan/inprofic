@@ -168,6 +168,11 @@ class FinishedGood(BusinessOwnedModel):
         help_text="Whether this sellable product is made by the business or bought from a supplier for resale.",
     )
     name = models.CharField(max_length=120)
+    description = models.TextField(blank=True, default="")
+    variant_of = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="variants",
+        help_text="Optional parent product for a size or other variant. Each variant keeps its own recipe, stock and pricing.",
+    )
     product_category = models.ForeignKey(
         ProductCategory, null=True, blank=True, on_delete=models.SET_NULL, related_name="products",
         help_text="Optional business-defined storefront category, e.g. Meals, Drinks, Pastries or Accessories.",
