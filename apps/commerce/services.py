@@ -357,6 +357,9 @@ def _make_production_order(intake, quantities, *, user=None):
             commercial_quantity=customer_qty,
             commercial_unit=item.customer_unit or item.finished_good.unit,
             commercial_unit_price=item.unit_price,
+            product_option_label=item.product_option_label,
+            product_option_value=item.product_option_value,
+            commerce_addon_name=item.individual_option.name if item.individual_option_id else "",
         )
         item.production_quantity = internal_qty
         item.save(update_fields=["production_quantity"])
@@ -396,6 +399,9 @@ def _make_physical_sale(intake, quantities, *, user=None):
             commercial_quantity=customer_qty,
             commercial_unit=item.customer_unit or good.unit,
             commercial_unit_price=item.unit_price,
+            product_option_label=item.product_option_label,
+            product_option_value=item.product_option_value,
+            commerce_addon_name=item.individual_option.name if item.individual_option_id else "",
         )
         record_finished_good_movement(good, -internal_qty, StockMovement.FG_SALE, note=f"Commerce stock order {intake.public_number}", reference=intake.public_number, affects_stock=True, unit_value=unit_cost)
         consume_transferred_physical_stock(good, internal_qty)

@@ -679,6 +679,7 @@ def storefront_order(request,business_slug):
         quantities = request.POST.getlist("quantity")
         bulk_pack_ids = request.POST.getlist("bulk_pack_id")
         individual_option_ids = request.POST.getlist("individual_option_id")
+        product_option_values = request.POST.getlist("product_option_value")
         fulfilment_sources = request.POST.getlist("fulfilment_source")
         if bulk_pack_ids and len(bulk_pack_ids) != len(product_ids):
             raise ValidationError("Bulk option selections do not match the submitted basket.")
@@ -688,6 +689,10 @@ def storefront_order(request,business_slug):
             bulk_pack_ids = [""] * len(product_ids)
         if not individual_option_ids:
             individual_option_ids = [""] * len(product_ids)
+        if product_option_values and len(product_option_values) != len(product_ids):
+            raise ValidationError("Product choices do not match the submitted basket.")
+        if not product_option_values:
+            product_option_values = [""] * len(product_ids)
         if fulfilment_sources and len(fulfilment_sources) != len(product_ids):
             raise ValidationError("Fulfilment selections do not match the submitted basket.")
         if not fulfilment_sources:
@@ -707,7 +712,7 @@ def storefront_order(request,business_slug):
             )
         }
         items = []
-        for product_id, quantity, bulk_pack_id, individual_option_id, fulfilment_source in zip(product_ids, quantities, bulk_pack_ids, individual_option_ids, fulfilment_sources):
+        for product_id, quantity, bulk_pack_id, individual_option_id, fulfilment_source, product_option_value in zip(product_ids, quantities, bulk_pack_ids, individual_option_ids, fulfilment_sources, product_option_values):
             product = products.get(product_id)
             if product is None:
                 raise ValidationError("One of the selected products is no longer available.")
@@ -717,6 +722,7 @@ def storefront_order(request,business_slug):
                 "bulk_pack_id": bulk_pack_id or None,
                 "individual_option_id": individual_option_id or None,
                 "fulfilment_source": fulfilment_source or None,
+                "product_option_value": product_option_value,
             })
         delivery_quote_id = request.POST.get("delivery_quote_id") or None
         if request.POST.get("request_delivery") == "on" and not delivery_quote_id:

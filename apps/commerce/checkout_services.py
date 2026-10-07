@@ -237,6 +237,7 @@ def create_checkout(
             row["storefront_product"].pk,
             str(row.get("bulk_pack_id") or getattr(row.get("bulk_pack"), "public_id", "") or ""),
             str(row.get("individual_option_id") or getattr(row.get("individual_option"), "public_id", "") or ""),
+            str(row.get("product_option_value") or "").strip(),
         )
         for row in items
     ]
@@ -273,6 +274,13 @@ def create_checkout(
             raise ValidationError("One of the selected products is not available for this storefront.")
 
         good = locked_goods[product.finished_good_id]
+        option_value = (row.get("product_option_value") or "").strip()
+        option_label = (good.storefront_option_label or "").strip()
+        configured_choices = good.storefront_option_choices
+        if option_value and (not option_label or option_value not in configured_choices):
+            raise ValidationError(f"Choose a valid {option_label or 'product'} option for {product.display_name}.")
+        if not option_value:
+            option_label = ""
         submitted_pack = row.get("bulk_pack")
         bulk_pack_id = row.get("bulk_pack_id") or getattr(submitted_pack, "public_id", None)
         bulk_pack = submitted_pack or find_bulk_pack(good, bulk_pack_id)
@@ -422,6 +430,7 @@ def create_checkout(
             product, good, qty, payable_qty, reserve_qty, production_qty, price,
             bulk_pack, individual_option, customer_unit, multiplier, contents_snapshot,
             requested_source, estimated_ready_at,
+            option_label, option_value,
         ))
 
     total = total.quantize(Decimal("0.01"))
@@ -509,12 +518,14 @@ def create_checkout(
             bulk_pack=bulk_pack,
             individual_option=individual_option,
             customer_unit=customer_unit,
+            product_option_label=option_label,
+            product_option_value=option_value,
             fulfilment_quantity_per_unit=multiplier,
             contents_snapshot=contents_snapshot,
             fulfilment_source=fulfilment_source,
             estimated_ready_at=row_ready_at,
         )
-        for product, good, qty, payable_qty, reserve_qty, production_qty, price, bulk_pack, individual_option, customer_unit, multiplier, contents_snapshot, fulfilment_source, row_ready_at in prepared
+        for product, good, qty, payable_qty, reserve_qty, production_qty, price, bulk_pack, individual_option, customer_unit, multiplier, contents_snapshot, fulfilment_source, row_ready_at, option_label, option_value in prepared
     ])
     audit(
         business, None, "commerce_checkout_create", checkout,
@@ -727,6 +738,8 @@ def materialize_paid_checkout(checkout, *, actor=None, allow_expired_recovery=Fa
             bulk_pack=row.bulk_pack,
             individual_option=row.individual_option,
             customer_unit=row.customer_unit,
+            product_option_label=row.product_option_label,
+            product_option_value=row.product_option_value,
             fulfilment_quantity_per_unit=row.fulfilment_quantity_per_unit,
             contents_snapshot=row.contents_snapshot,
             fulfilment_source=row.fulfilment_source,

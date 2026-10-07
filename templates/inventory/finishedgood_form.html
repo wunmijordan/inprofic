@@ -16,6 +16,8 @@
       </div>
       {% include "_field.html" with field=form.description %}
       <div class="max-w-xl">{% include "_field.html" with field=form.variant_of %}<p class="-mt-2 mb-3 text-[11px] leading-5 text-stone-500">Variants appear as size choices on the main storefront card when both products are published and available. Each remains a separate product with its own recipe, stock and pricing.</p></div>
+      <div class="grid gap-3 md:grid-cols-2">{% include "_field.html" with field=form.storefront_option_label %}{% include "_field.html" with field=form.storefront_option_values %}</div>
+      <p class="-mt-2 mb-3 text-[11px] leading-5 text-stone-500">Optional no-extra-cost choice such as flavor, color, or sliced / unsliced. Enter one choice per line.</p>
       <p data-form-help-text data-form-help-for="{{ form.product_category.id_for_label }}" class="-mt-1 mb-3 text-[11px] text-stone-500">Need another storefront grouping? <a href="{% url 'product_categories' %}" class="font-semibold text-[#8f172d] hover:underline">Manage product categories</a>. Category is independent from whether the product is made in-house or procured for resale.</p>
       <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
         {% include "_field.html" with field=form.unit %}
@@ -67,8 +69,8 @@
 
       <div class="mt-5 flex items-end justify-between gap-3">
         <div>
-          <p id="individual-options-help-anchor" class="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-[.14em] text-stone-500">{% if vertical_ui.uses_production %}Individual / plain selling options{% else %}Alternative selling options{% endif %}</p>
-          <p data-form-help-text data-form-help-anchor="individual-options-help-anchor" class="mt-1 max-w-3xl text-[11px] leading-5 text-stone-400">{% if vertical_ui.uses_production %}Expose this same finished product separately without the standard portion's additional sides or packaging. Each option uses the existing stock/production balance and can be priced independently by channel.{% else %}Offer the same stocked product in another customer-facing unit or pack without creating duplicate inventory. Each option draws from the same stock balance and can be priced independently by channel.{% endif %}</p>
+          <p id="individual-options-help-anchor" class="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-[.14em] text-stone-500">Add-ons / extras</p>
+          <p data-form-help-text data-form-help-anchor="individual-options-help-anchor" class="mt-1 max-w-3xl text-[11px] leading-5 text-stone-400">Optional priced extras. Customers add these separately, and each appears as its own basket line.</p>
         </div>
       </div>
       {{ individual_option_formset.management_form }}

@@ -11,7 +11,7 @@
       <span class="max-w-[14rem] truncate font-medium text-stone-700" title="{{ first_item.item_name }}">{{ first_item.item_name }}</span>
       <span class="inline-block rounded-full border border-stone-200 px-2 py-0.5 text-[10px] font-medium text-stone-600 {% if first_item.finished_good_id %}bg-emerald-100{% else %}bg-pink-200{% endif %}">{{ first_item.item_category }}</span>
       {% else %}
-      <span class="max-w-[14rem] truncate font-medium text-stone-700" title="{{ first_item.finished_good.name }}">{{ first_item.finished_good.name }}{% if show_qty %} <span class="font-normal text-stone-500">x{{ first_item.total_units|num }}</span>{% endif %}</span>
+      <span class="max-w-[14rem] truncate font-medium text-stone-700" title="{{ first_item.finished_good.name }}">{% if first_item.commerce_addon_name %}Add-on · {% endif %}{{ first_item.finished_good.name }}{% if show_qty %} <span class="font-normal text-stone-500">x{{ first_item.total_units|num }}</span>{% endif %}{% if first_item.commerce_addon_name %}<span class="text-stone-500"> ({{ first_item.commerce_addon_name }})</span>{% endif %}{% if first_item.product_option_value %}<span class="text-stone-500"> · {{ first_item.product_option_label }}: {{ first_item.product_option_value }}</span>{% endif %}</span>
       {% endif %}
       {% if item_count > 1 %}<span class="text-[11px] text-stone-400">+{{ item_count|add:"-1" }} more</span>{% endif %}
     </div>

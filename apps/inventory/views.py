@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models.deletion import ProtectedError
 from django.utils import timezone
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import HttpResponse
@@ -909,11 +910,21 @@ def finished_good_form(request, pk=None):
 
 
 @login_required
+@require_POST
 def finished_good_delete(request, pk):
-    obj = get_object_or_404(FinishedGood, pk=pk)
-    if request.method == "POST":
-        obj.delete()
-        messages.success(request, "Removed.")
+    obj = get_object_or_404(FinishedGood, pk=pk, business=request.business)
+    if obj.variants.exists():
+        messages.error(request, "This product has linked variants. Reassign or remove those variant links before deleting it.")
+    else:
+        try:
+            obj.delete()
+        except ProtectedError:
+            messages.error(
+                request,
+                "This product is linked to production, sales, or other historical records, so it was kept to preserve that history. Unpublish its storefront listing if you want to stop new online orders.",
+            )
+        else:
+            messages.success(request, "Product removed.")
     return redirect("inventory")
 
 

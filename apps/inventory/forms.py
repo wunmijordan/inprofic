@@ -258,7 +258,7 @@ class RawMaterialForm(StyledModelForm):
 class FinishedGoodForm(StyledModelForm):
     class Meta:
         model = FinishedGood
-        fields = ["source_type", "name", "description", "variant_of", "product_category", "unit", "units_per_batch", "base_material", "stock", "reorder_level", "selling_price"]
+        fields = ["source_type", "name", "description", "variant_of", "storefront_option_label", "storefront_option_values", "product_category", "unit", "units_per_batch", "base_material", "stock", "reorder_level", "selling_price"]
 
     def clean(self):
         cleaned = super().clean()
@@ -272,6 +272,18 @@ class FinishedGoodForm(StyledModelForm):
             self.add_error("variant_of", "A product cannot be a variant of itself.")
         if parent and self.instance.pk and self.instance.variants.exists():
             self.add_error("variant_of", "This product already has variants and cannot become a variant itself.")
+        label = (cleaned.get("storefront_option_label") or "").strip()
+        values = cleaned.get("storefront_option_values") or ""
+        choices = [value.strip() for value in values.splitlines() if value.strip()]
+        choices = list(dict.fromkeys(choices))
+        if bool(label) != bool(choices):
+            self.add_error("storefront_option_values" if label else "storefront_option_label", "Provide both a choice label and at least one choice, or leave both blank.")
+        if len(choices) > 30 or any(len(value) > 80 for value in choices):
+            self.add_error("storefront_option_values", "Enter up to 30 choices, each no longer than 80 characters.")
+        elif len({value.casefold() for value in choices}) != len(choices):
+            self.add_error("storefront_option_values", "Choice values must be unique.")
+        cleaned["storefront_option_label"] = label
+        cleaned["storefront_option_values"] = "\n".join(choices)
         return cleaned
 
     def clean_name(self):
@@ -298,6 +310,13 @@ class FinishedGoodForm(StyledModelForm):
         self.fields["description"].required = False
         self.fields["description"].label = "Product description"
         self.fields["description"].help_text = "Optional customer-facing description used on hosted storefront product cards."
+        self.fields["storefront_option_label"].required = False
+        self.fields["storefront_option_label"].label = "Choice label"
+        self.fields["storefront_option_label"].help_text = "For example: Flavor, Color, or Bread style."
+        self.fields["storefront_option_values"].required = False
+        self.fields["storefront_option_values"].label = "Choices"
+        self.fields["storefront_option_values"].help_text = "One option per line. These choices do not change the price."
+        self.fields["storefront_option_values"].widget = forms.Textarea(attrs={"rows": 4, "class": INPUT_CLS})
         self.fields["variant_of"].required = False
         self.fields["variant_of"].label = "Variant of"
         self.fields["variant_of"].help_text = "Optional. Group this size or type under a main storefront product. Its recipe, stock and price remain separate."

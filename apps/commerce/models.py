@@ -971,6 +971,8 @@ class CommerceIntakeItem(models.Model):
         related_name="commerce_intake_items",
     )
     customer_unit = models.CharField(max_length=100, blank=True, default="")
+    product_option_label = models.CharField(max_length=60, blank=True, default="")
+    product_option_value = models.CharField(max_length=80, blank=True, default="")
     fulfilment_quantity_per_unit = models.DecimalField(max_digits=14, decimal_places=3, default=1)
     contents_snapshot = models.JSONField(default=list, blank=True)
     assembly_consumed_at = models.DateTimeField(null=True, blank=True)
@@ -1098,6 +1100,8 @@ class CommerceCheckoutItem(models.Model):
         related_name="commerce_checkout_items",
     )
     customer_unit = models.CharField(max_length=100, blank=True, default="")
+    product_option_label = models.CharField(max_length=60, blank=True, default="")
+    product_option_value = models.CharField(max_length=80, blank=True, default="")
     fulfilment_quantity_per_unit = models.DecimalField(max_digits=14, decimal_places=3, default=1)
     contents_snapshot = models.JSONField(default=list, blank=True)
     fulfilment_source = models.CharField(

@@ -47,7 +47,7 @@
     <tbody>
       {% for i in order.items.all %}
       <tr class="border-t border-[#E7DFCC]">
-        <td class="px-2 py-1.5">{{ i.finished_good.name }}</td>
+        <td class="px-2 py-1.5">{% if i.commerce_addon_name %}<span class="text-[10px] font-bold uppercase tracking-wide text-stone-500">Add-on · </span>{% endif %}{{ i.finished_good.name }}{% if i.commerce_addon_name %}<div class="text-xs text-stone-500">{{ i.commerce_addon_name }}</div>{% endif %}{% if i.product_option_value %}<div class="text-xs text-stone-500">{{ i.product_option_label }}: {{ i.product_option_value }}</div>{% endif %}</td>
         <td class="px-2 py-1.5 text-xs">{% if order.production_basis == 'base_material' and i.finished_good.base_material %}<span class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 font-semibold text-emerald-800">Shared base pool</span><div class="mt-1 text-[10px] text-stone-500">This row uses {{ i.base_material_quantity|num }} {{ i.finished_good.base_material.usage_unit }} {{ i.finished_good.base_material.name }} from the order allocation.</div>{% elif i.production_basis == 'base_material' and i.finished_good.base_material %}<span class="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 font-semibold text-amber-800">Legacy base sizing</span><div class="mt-1 text-[10px] text-stone-500">{{ i.base_material_quantity|num }} {{ i.finished_good.base_material.usage_unit }} {{ i.finished_good.base_material.name }}</div>{% else %}<span class="rounded-full border border-stone-200 bg-stone-50 px-2 py-1 text-stone-600">Product quantity</span>{% endif %}</td>
         <td class="px-2 py-1.5 text-right font-mono">{{ i.batch_qty|num }}</td>
         <td class="px-2 py-1.5 text-right font-mono">{{ i.piece_qty|num }}</td>

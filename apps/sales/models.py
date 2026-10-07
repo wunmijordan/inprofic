@@ -185,6 +185,9 @@ class SaleItem(TimestampedModel):
         max_digits=14, decimal_places=2, null=True, blank=True,
         help_text="Exact customer-facing unit price snapshot for commerce portion/bulk sales.",
     )
+    product_option_label = models.CharField(max_length=60, blank=True, default="")
+    product_option_value = models.CharField(max_length=80, blank=True, default="")
+    commerce_addon_name = models.CharField(max_length=120, blank=True, default="")
     unit_cost = models.DecimalField(max_digits=16, decimal_places=6, null=True, blank=True,
         help_text="Product cost per unit captured at the time of sale.")
     production_batch = models.ForeignKey("production.ProductionBatch", null=True, blank=True, on_delete=models.SET_NULL, related_name="sale_items")

@@ -306,6 +306,9 @@ class OrderItem(TimestampedModel):
         max_digits=14, decimal_places=2, null=True, blank=True,
         help_text="Exact customer-facing unit price snapshot for commerce portion/bulk orders.",
     )
+    product_option_label = models.CharField(max_length=60, blank=True, default="")
+    product_option_value = models.CharField(max_length=80, blank=True, default="")
+    commerce_addon_name = models.CharField(max_length=120, blank=True, default="")
 
     def __str__(self):
         return f"{self.finished_good.name} — {self.total_units} units"

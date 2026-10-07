@@ -169,6 +169,8 @@ class FinishedGood(BusinessOwnedModel):
     )
     name = models.CharField(max_length=120)
     description = models.TextField(blank=True, default="")
+    storefront_option_label = models.CharField(max_length=60, blank=True, default="")
+    storefront_option_values = models.TextField(blank=True, default="")
     variant_of = models.ForeignKey(
         "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="variants",
         help_text="Optional parent product for a size or other variant. Each variant keeps its own recipe, stock and pricing.",
@@ -223,6 +225,10 @@ class FinishedGood(BusinessOwnedModel):
     @property
     def is_purchased_for_resale(self):
         return self.source_type == self.SOURCE_PURCHASED_FOR_RESALE
+
+    @property
+    def storefront_option_choices(self):
+        return [value.strip() for value in (self.storefront_option_values or "").splitlines() if value.strip()]
 
     @property
     def is_made_in_house(self):

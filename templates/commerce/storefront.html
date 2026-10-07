@@ -126,7 +126,15 @@
             <div class="mt-3 border-y border-stone-100 py-2.5 text-[11px]">
               <span class="channel-price-pill rounded-full px-3 py-1.5" data-channel-price-pill tabindex="0" aria-label="Price details; scroll horizontally to view the full price"><span class="channel-price-pill__inner"><span data-price-channel class="font-semibold"></span><strong data-price-value></strong><span data-price-unit class="text-stone-500"></span></span></span>
             </div>
-            {% if p.public_bulk_online_available %}
+            <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label data-product-choice-wrap class="block min-w-0 text-[10px] font-bold uppercase tracking-[.14em] text-stone-400 {% if not p.finished_good.storefront_option_choices %}hidden{% endif %}">{{ p.finished_good.storefront_option_label|default:"Option" }}
+              <select data-product-choice class="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold normal-case tracking-normal text-stone-700"><option value="">Choose {{ p.finished_good.storefront_option_label|lower }}</option>{% for choice in p.finished_good.storefront_option_choices %}<option value="{{ choice }}">{{ choice }}</option>{% endfor %}</select>
+            </label>
+            <label data-product-addon-wrap class="block min-w-0 text-[10px] font-bold uppercase tracking-[.14em] text-stone-400 {% if not p.public_individual_options %}hidden{% endif %}">Add-on
+              <select data-product-addon class="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold normal-case tracking-normal text-stone-700"><option value="">Choose an add-on</option>{% for option in p.public_individual_options %}<option value="{{ option.public_id }}" data-name="{{ option.name }}" data-unit="{{ option.customer_unit|default:p.customer_unit }}" data-price="{{ option.online_price }}" data-min="{{ option.online_min_quantity }}">{{ option.name }} · {{ option.online_price|money:store_business.currency_symbol }}</option>{% endfor %}</select>
+            </label>
+            </div>
+            {% if p.public_bulk_online_available and not p.public_variants %}
             <label class="mt-3 block text-[10px] font-bold uppercase tracking-[.14em] text-stone-400">Bulk option <span class="font-medium normal-case tracking-normal">(made to order)</span>
               <select data-bulk-pack-select class="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold normal-case tracking-normal text-stone-700 outline-none focus:border-stone-400">
                 <option value="">Standard · {{ p.customer_unit }}</option>
@@ -135,36 +143,22 @@
             </label>
             {% endif %}
             {% if p.public_variants %}
-            <label class="mt-3 block text-[10px] font-bold uppercase tracking-[.14em] text-stone-400">Available sizes / variants
+            <label class="mt-3 mb-3 block text-[10px] font-bold uppercase tracking-[.14em] text-stone-400">Available sizes / variants
               <select data-product-variant-select class="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold normal-case tracking-normal text-stone-700 outline-none focus:border-stone-400">
-                <option value="">Choose a size and price option</option>
+                <option value="">{{ p.display_name }} · Standard · {{ p.preorder_price|money:store_business.currency_symbol }} / {{ p.customer_unit }}</option>
+                {% if p.public_bulk_online_available %}{% for pack in p.public_bulk_packs %}<option value="bulk:{{ p.public_id }}:{{ pack.public_id }}" data-product-id="{{ p.public_id }}" data-bulk-pack-id="{{ pack.public_id }}" data-bulk-pack-name="{{ pack.name }}" data-name="{{ p.display_name }} · {{ pack.name }}" data-unit="{{ pack.name }}" data-price="{{ pack.price }}" data-min="{{ pack.min_order_quantity }}" data-stock-source="{% if p.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if p.public_made_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ p.estimated_ready_minutes }}">{{ p.display_name }} · {{ pack.name }} · {{ pack.price|money:store_business.currency_symbol }} / {{ pack.name }}{% if pack.min_order_quantity > 1 %} · min {{ pack.min_order_quantity }}{% endif %}</option>{% endfor %}{% endif %}
                 {% for variant in p.public_variants %}
-                  <option value="{{ variant.public_id }}" data-name="{{ variant.display_name }}" data-unit="{{ variant.customer_unit }}" data-price="{{ variant.preorder_price }}" data-min="{{ variant.preorder_min_quantity }}" data-max="{% if variant.max_quantity %}{{ variant.max_quantity }}{% endif %}" data-stock-source="{% if variant.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if variant.public_made_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ variant.estimated_ready_minutes }}">{{ variant.display_name }} · Standard · {{ variant.preorder_price|money:store_business.currency_symbol }} / {{ variant.customer_unit }}</option>
+                  <option value="{{ variant.public_id }}" data-name="{{ variant.display_name }}" data-unit="{{ variant.customer_unit }}" data-price="{{ variant.preorder_price }}" data-min="{{ variant.preorder_min_quantity }}" data-max="{% if variant.max_quantity %}{{ variant.max_quantity }}{% endif %}" data-option-label="{{ variant.finished_good.storefront_option_label }}" data-stock-source="{% if variant.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if variant.public_made_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ variant.estimated_ready_minutes }}">{{ variant.display_name }} · Standard · {{ variant.preorder_price|money:store_business.currency_symbol }} / {{ variant.customer_unit }}</option>
                   {% if variant.public_bulk_online_available %}{% for pack in variant.public_bulk_packs %}<option value="bulk:{{ variant.public_id }}:{{ pack.public_id }}" data-product-id="{{ variant.public_id }}" data-basket-key="bulk:{{ variant.public_id }}:{{ pack.public_id }}" data-bulk-pack-id="{{ pack.public_id }}" data-bulk-pack-name="{{ pack.name }}" data-name="{{ variant.display_name }} · {{ pack.name }}" data-unit="{{ pack.name }}" data-price="{{ pack.price }}" data-min="{{ pack.min_order_quantity }}" data-max="{% if variant.max_quantity %}{{ variant.max_quantity }}{% endif %}" data-stock-source="{% if variant.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if variant.public_made_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ variant.estimated_ready_minutes }}">{{ variant.display_name }} · {{ pack.name }} · {{ pack.price|money:store_business.currency_symbol }} / {{ pack.name }}{% if pack.min_order_quantity > 1 %} · min {{ pack.min_order_quantity }}{% endif %}</option>{% endfor %}{% endif %}
                 {% endfor %}
               </select>
             </label>
             {% endif %}
             <button type="button" class="add-product mt-auto flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-semibold text-white transition hover:brightness-90 focus:outline-none focus:ring-4 focus:ring-stone-200" style="background:var(--brand)"><span class="add-product-label">Add to basket</span><span aria-hidden="true">+</span></button>
+            <template data-product-config="{{ p.public_id }}"><select data-choice-source data-option-label="{{ p.finished_good.storefront_option_label }}"><option value="">Choose {{ p.finished_good.storefront_option_label|lower }}</option>{% for choice in p.finished_good.storefront_option_choices %}<option value="{{ choice }}">{{ choice }}</option>{% endfor %}</select><select data-addon-source><option value="">Choose an add-on</option>{% for option in p.public_individual_options %}<option value="{{ option.public_id }}" data-name="{{ option.name }}" data-unit="{{ option.customer_unit|default:p.customer_unit }}" data-price="{{ option.online_price }}" data-min="{{ option.online_min_quantity }}">{{ option.name }} · {{ option.online_price|money:store_business.currency_symbol }}</option>{% endfor %}</select></template>
+            {% for variant in p.public_variants %}<template data-product-config="{{ variant.public_id }}"><select data-choice-source data-option-label="{{ variant.finished_good.storefront_option_label }}"><option value="">Choose {{ variant.finished_good.storefront_option_label|lower }}</option>{% for choice in variant.finished_good.storefront_option_choices %}<option value="{{ choice }}">{{ choice }}</option>{% endfor %}</select><select data-addon-source><option value="">Choose an add-on</option>{% for option in variant.public_individual_options %}<option value="{{ option.public_id }}" data-name="{{ option.name }}" data-unit="{{ option.customer_unit|default:variant.customer_unit }}" data-price="{{ option.online_price }}" data-min="{{ option.online_min_quantity }}">{{ option.name }} · {{ option.online_price|money:store_business.currency_symbol }}</option>{% endfor %}</select></template>{% endfor %}
           </div>
         </article>{% endif %}
-        {% for option in p.public_individual_options %}
-        <article class="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white" data-product-card data-basket-key="individual:{{ option.public_id }}" data-product-id="{{ p.public_id }}" data-individual-option-id="{{ option.public_id }}" data-product-name="{{ option.name }}" data-category="{% if p.finished_good.product_category_id %}{{ p.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-unit="{{ option.customer_unit|default:p.finished_good.unit }}" data-unit-online="{{ option.customer_unit|default:p.finished_good.unit }}" data-search="{{ option.name|lower }} {{ option.public_note|lower }} {{ p.finished_good.name|lower }}" data-modes="{% if option.online_enabled and option.online_price != None and p.public_online_available %} online{% endif %}" data-min-online="{{ option.online_min_quantity }}" data-price-online="{% if option.online_price != None %}{{ option.online_price }}{% endif %}" data-max="{% if p.max_quantity %}{{ p.max_quantity }}{% endif %}" data-stock-available="{{ p.public_stock_available }}" data-stock-source="{% if p.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if p.public_made_source_available %}1{% else %}0{% endif %}" data-procured-source="{% if p.public_procured_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ p.estimated_ready_minutes }}">
-          <div class="relative aspect-[16/10] overflow-hidden bg-stone-100">
-            {% if p.public_image_url %}<img src="{{ p.public_image_url }}" alt="{{ option.name }}" class="h-full w-full object-cover" loading="lazy">{% else %}<div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-stone-100 via-[#efe8dc] to-stone-200"><div class="flex h-20 w-20 items-center justify-center rounded-full border border-white/80 bg-white/55 shadow-inner backdrop-blur"><svg viewBox="0 0 24 24" class="h-8 w-8 fill-none stroke-stone-400" stroke-width="1.35"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg></div></div>{% endif %}
-            <div class="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/45 to-transparent"></div>
-            <div class="absolute bottom-3 left-3 flex flex-wrap gap-1.5">{% if option.online_enabled and option.online_price != None %}<span class="rounded-full border border-white/25 bg-black/35 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">{{ commerce_channels.online }}</span>{% endif %}</div>
-          </div>
-          <div class="flex flex-1 flex-col p-4">
-            <div class="mb-2 flex items-center gap-2">{% if p.finished_good.product_category %}<span class="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-500">{{ p.finished_good.product_category.name }}</span>{% endif %}<span class="ml-auto rounded-full bg-amber-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-amber-700">Individual</span></div>
-            <h3 class="font-display text-lg font-semibold leading-tight text-stone-900">{{ option.name }}</h3>
-            <p class="line-clamp-2 mt-1.5 min-h-[2rem] text-xs leading-4 text-stone-500">{{ option.public_note|default:p.finished_good.name }}</p>
-            <details class="relative mt-2" data-contents-popover><summary class="inline-flex cursor-pointer list-none items-center gap-1 text-[11px] font-semibold underline decoration-stone-300 underline-offset-4" style="color:var(--brand)">What's included? <span aria-hidden="true">ⓘ</span></summary><div class="absolute left-0 top-7 z-20 w-[min(18rem,78vw)] rounded-2xl border border-stone-200 bg-white p-3.5 text-left shadow-xl"><p class="text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">Plain individual option</p><ul class="mt-2 space-y-1.5 text-xs text-stone-700"><li>{{ p.finished_good.name }}{% if option.public_note %}<span class="ml-1 text-stone-400">· {{ option.public_note }}</span>{% endif %}</li></ul></div></details>
-            <div class="mt-3 border-y border-stone-100 py-2.5 text-[11px]"><span class="channel-price-pill rounded-full px-3 py-1.5" data-channel-price-pill><span class="channel-price-pill__inner"><span data-price-channel class="font-semibold"></span><strong data-price-value></strong><span data-price-unit class="text-stone-500"></span></span></span></div>
-            <button type="button" class="add-product mt-auto flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-semibold text-white transition hover:brightness-90 focus:outline-none focus:ring-4 focus:ring-stone-200" style="background:var(--brand)"><span class="add-product-label">Add to basket</span><span aria-hidden="true">+</span></button>
-          </div>
-        </article>
-        {% endfor %}
         {% empty %}
         <div class="col-span-full rounded-2xl border border-dashed border-stone-300 bg-white/60 px-6 py-16 text-center"><p class="font-display text-xl font-semibold text-stone-700">The catalogue is being prepared.</p><p class="mt-2 text-sm text-stone-500">Please check back soon.</p></div>
         {% endfor %}
@@ -291,6 +285,16 @@
     (function () {
       const search = document.getElementById('catalogue-search');
       const cards = Array.from(document.querySelectorAll('[data-product-card]'));
+      cards.forEach(card => {
+        card.dataset.primaryProductId = card.dataset.productId;
+        card.dataset.primaryProductName = card.dataset.productName;
+        card.dataset.primaryUnit = card.dataset.unit;
+        card.dataset.primaryPriceOnline = card.dataset.priceOnline;
+        card.dataset.primaryMinOnline = card.dataset.minOnline;
+        card.dataset.primaryMax = card.dataset.max;
+        card.dataset.primaryStockSource = card.dataset.stockSource;
+        card.dataset.primaryMadeSource = card.dataset.madeSource;
+      });
       const filters = Array.from(document.querySelectorAll('.channel-filter'));
       const categoryFilters = Array.from(document.querySelectorAll('.category-filter'));
       const empty = document.getElementById('catalogue-empty');
@@ -428,6 +432,8 @@
           // A bulk option is an Online price option (made to order); "Standard" keeps the normal price.
           const option = card.querySelector('[data-bulk-pack-select]')?.selectedOptions?.[0];
           if (option?.value) { price = Number(option.dataset.price || price); unit = option.dataset.unit || option.dataset.name || unit; }
+          const variantOption = card.querySelector('[data-product-variant-select]')?.selectedOptions?.[0];
+          if (variantOption?.dataset.bulkPackId) { price = Number(variantOption.dataset.price || price); unit = variantOption.dataset.unit || unit; }
         }
         card.querySelector('[data-price-channel]').textContent = channelLabels[mode] || mode;
         card.querySelector('[data-price-value]').textContent = `${fromPrefix ? 'from ' : ''}{{ store_business.currency_symbol }}${price.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
@@ -486,10 +492,11 @@
           units[mode] = card.dataset[`unit${mode[0].toUpperCase()}${mode.slice(1)}`] || card.dataset.unit;
         });
         const packSelect = card.querySelector('[data-bulk-pack-select]');
-        const packOption = packSelect?.selectedOptions?.[0];
-        const bulkPack = packOption?.value ? {
-          id: packOption.value,
-          name: packOption.dataset.name || packOption.textContent.trim(),
+        const variantChoice = card.querySelector('[data-product-variant-select]')?.selectedOptions?.[0];
+        const packOption = variantChoice?.dataset.bulkPackId ? variantChoice : packSelect?.selectedOptions?.[0];
+        const bulkPack = packOption?.dataset.bulkPackId || (packSelect?.selectedOptions?.[0]?.value) ? {
+          id: packOption.dataset.bulkPackId || packOption.value,
+          name: packOption.dataset.bulkPackName || packOption.dataset.name || packOption.textContent.trim(),
           unit: packOption.dataset.unit || packOption.dataset.name || 'pack',
           price: Number(packOption.dataset.price || 0),
           minimum: Number(packOption.dataset.min || 1),
@@ -497,7 +504,11 @@
         const preferred = modes.includes('online') ? 'online' : modes[0];
         const stockSource = card.dataset.stockSource === '1'; const madeSource = card.dataset.madeSource === '1'; const procuredSource = card.dataset.procuredSource === '1';
         const defaultFulfilment = stockSource ? 'stock' : (madeSource ? 'made_to_order' : (procuredSource ? 'procured' : 'made_to_order'));
-        const product = { id: card.dataset.basketKey || card.dataset.productId, productId: card.dataset.productId, individualOptionId: card.dataset.individualOptionId || '', name: card.dataset.productName, unit: card.dataset.unit, units, modes, minimums, prices, bulkPack, max: Number(card.dataset.max || 0), quantity: minimums[preferred] || 1, card, stockSource, madeSource, procuredSource, fulfilmentSource: defaultFulfilment, readyMinutes: Number(card.dataset.readyMinutes || 0) };
+        const choiceSelect = card.querySelector('[data-product-choice]');
+        const optionValue = choiceSelect?.value || '';
+        const optionLabel = optionValue ? choiceSelect.closest('label').childNodes[0].textContent.trim() : '';
+        const key = [card.dataset.productId, bulkPack?.id || '', optionValue].join(':');
+        const product = { id: key, productId: card.dataset.productId, individualOptionId: '', productOptionLabel: optionLabel, productOptionValue: optionValue, name: card.dataset.productName, unit: card.dataset.unit, units, modes, minimums, prices, bulkPack, max: Number(card.dataset.max || 0), quantity: minimums[preferred] || 1, card, stockSource, madeSource, procuredSource, fulfilmentSource: defaultFulfilment, readyMinutes: Number(card.dataset.readyMinutes || 0) };
         if (bulkPack) product.quantity = bulkPack.minimum || 1;
         return product;
       }
@@ -542,7 +553,7 @@
       function saveBasket() {
         try {
           if (!basket.size) { localStorage.removeItem(basketStorageKey); return; }
-          localStorage.setItem(basketStorageKey, JSON.stringify(Array.from(basket.values()).map(product => ({ id: product.id, quantity: product.quantity, bulkPackId: product.bulkPack?.id || '', fulfilmentSource: product.fulfilmentSource || '' }))));
+          localStorage.setItem(basketStorageKey, JSON.stringify(Array.from(basket.values()).map(product => ({ id: product.productId, quantity: product.quantity, bulkPackId: product.bulkPack?.id || '', fulfilmentSource: product.fulfilmentSource || '', individualOptionId: product.individualOptionId || '', productOptionValue: product.productOptionValue || '' }))));
         } catch (error) { /* Private browsing/storage restrictions must not block checkout. */ }
       }
       function restoreBasket() {
@@ -550,19 +561,25 @@
         try { saved = JSON.parse(localStorage.getItem(basketStorageKey) || '[]'); } catch (error) { saved = []; }
         if (!Array.isArray(saved)) saved = [];
         saved.forEach(row => {
-          const card = cards.find(item => item.dataset.productId === String(row.id || ''));
+          const card = cards.find(item => item.dataset.basketKey === String(row.id || '') || item.querySelector(`template[data-product-config="${CSS.escape(String(row.id || ''))}"]`));
           const quantity = Number(row.quantity);
-          const variantOption = Array.from(document.querySelectorAll('[data-product-variant-select] option')).find(option => option.value === String(row.id || ''));
-          if ((!card && !variantOption) || !Number.isFinite(quantity) || quantity <= 0) return;
-          if (!card && variantOption) {
-            const product = productFromVariantOption(variantOption);
-            product.quantity = quantity;
-            if (row.fulfilmentSource) product.fulfilmentSource = row.fulfilmentSource;
-            basket.set(product.id, product);
-            return;
-          }
+          if (!card || !Number.isFinite(quantity) || quantity <= 0) return;
+          const variantSelect = card.querySelector('[data-product-variant-select]');
+          const variantRestoreOption = variantSelect && Array.from(variantSelect.options).find(option => row.bulkPackId ? option.dataset.bulkPackId === String(row.bulkPackId) : option.value === String(row.id));
+          if (variantRestoreOption) { variantSelect.value = variantRestoreOption.value; variantSelect.dispatchEvent(new Event('change')); }
           const packSelect = card.querySelector('[data-bulk-pack-select]');
           if (packSelect && row.bulkPackId && Array.from(packSelect.options).some(option => option.value === String(row.bulkPackId))) packSelect.value = String(row.bulkPackId);
+          const choiceSelect = card.querySelector('[data-product-choice]');
+          if (choiceSelect && row.productOptionValue && Array.from(choiceSelect.options).some(option => option.value === row.productOptionValue)) choiceSelect.value = row.productOptionValue;
+          if (row.individualOptionId) {
+            const addonSelect = card.querySelector('[data-product-addon]');
+            if (!addonSelect || !Array.from(addonSelect.options).some(option => option.value === row.individualOptionId)) return;
+            addonSelect.value = row.individualOptionId; addonSelect.dispatchEvent(new Event('change'));
+            const addon = basket.get(`addon:${row.id}:${row.individualOptionId}`);
+            if (!addon) return;
+            addon.quantity = quantity; if (row.fulfilmentSource) addon.fulfilmentSource = row.fulfilmentSource;
+            return;
+          }
           const product = productFromCard(card); product.quantity = quantity; if(row.fulfilmentSource) product.fulfilmentSource=row.fulfilmentSource;
           basket.set(product.id, product); setAddedState(product, true);
         });
@@ -625,7 +642,9 @@
           const priceValue = document.createElement('strong'); priceValue.dataset.basketPriceValue = '';
           const priceUnit = document.createElement('span'); priceUnit.dataset.basketPriceUnit = ''; priceUnit.className = 'text-stone-500';
           priceInner.append(priceChannel, priceValue, priceUnit); priceLine.append(priceInner);
-          copy.append(name, unit, priceLine);
+          copy.append(name, unit);
+          if (product.productOptionValue) { const choice = document.createElement('span'); choice.className='mt-1 block text-xs text-stone-600'; choice.textContent=`${product.productOptionLabel}: ${product.productOptionValue}`; copy.append(choice); }
+          copy.append(priceLine);
           if (product.modes.includes('online') && [product.stockSource, product.madeSource, product.procuredSource].filter(Boolean).length > 1) {
             const fulfilWrap=document.createElement('label'); fulfilWrap.className='mt-2 block text-[10px] font-bold uppercase tracking-wide text-stone-400'; fulfilWrap.textContent='Fulfilment';
             const fulfil=document.createElement('select'); fulfil.className='mt-1 w-full rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-xs font-semibold normal-case tracking-normal text-stone-700';
@@ -651,25 +670,60 @@
         select.dataset.touched = '1';
         const card = select.closest('[data-product-card]');
         renderCardPrice(card, true);
-        const existing = basket.get(card.dataset.basketKey || card.dataset.productId);
+        const existing = Array.from(basket.values()).find(item => item.productId === card.dataset.productId && !item.individualOptionId && !item.productOptionValue);
         if (!existing) return;
         const replacement = productFromCard(card);
         replacement.quantity = Math.max(existing.quantity, replacement.bulkPack?.minimum || replacement.minimums.online || 1);
+        basket.delete(existing.id);
         basket.set(replacement.id, replacement);
         invalidateDeliveryQuote(); renderBasket();
       }));
       document.querySelectorAll('[data-product-variant-select]').forEach(select => select.addEventListener('change', function () {
-        const option = select.selectedOptions[0];
+        const card = select.closest('[data-product-card]'); const option = select.selectedOptions[0];
+        const productId = option?.dataset.productId || option?.value || card.dataset.primaryProductId;
+        const parentPackSelect = card.querySelector('[data-bulk-pack-select]');
+        if (parentPackSelect) parentPackSelect.value = '';
+        const config = card.querySelector(`template[data-product-config="${CSS.escape(productId)}"]`);
+        card.dataset.productId = productId;
+        if (option?.value) {
+          card.dataset.productName = option.dataset.name || option.textContent.split(' · ')[0];
+          card.dataset.unit = option.dataset.unit || card.dataset.unit;
+          card.dataset.priceOnline = option.dataset.price || card.dataset.priceOnline;
+          card.dataset.minOnline = option.dataset.min || card.dataset.minOnline;
+          card.dataset.max = option.dataset.max || '';
+          card.dataset.stockSource = option.dataset.stockSource || '0'; card.dataset.madeSource = option.dataset.madeSource || '0';
+        } else {
+          card.dataset.productId = card.dataset.primaryProductId;
+          card.dataset.productName = card.dataset.primaryProductName;
+          card.dataset.unit = card.dataset.primaryUnit;
+          card.dataset.priceOnline = card.dataset.primaryPriceOnline;
+          card.dataset.minOnline = card.dataset.primaryMinOnline;
+          card.dataset.max = card.dataset.primaryMax;
+          card.dataset.stockSource = card.dataset.primaryStockSource; card.dataset.madeSource = card.dataset.primaryMadeSource;
+        }
+        if (config) {
+          const choice = card.querySelector('[data-product-choice]'); const choiceWrap = card.querySelector('[data-product-choice-wrap]');
+          const addon = card.querySelector('[data-product-addon]'); const addonWrap = card.querySelector('[data-product-addon-wrap]');
+          const choiceSource = config.content.querySelector('[data-choice-source]'); const addonSource = config.content.querySelector('[data-addon-source]');
+          choice.replaceChildren(...Array.from(choiceSource.options).map(item => item.cloneNode(true)));
+          addon.replaceChildren(...Array.from(addonSource.options).map(item => item.cloneNode(true)));
+          choiceWrap.firstChild.textContent = `${choiceSource.dataset.optionLabel || 'Option'} `;
+          choiceWrap.classList.toggle('hidden', choiceSource.options.length < 2);
+          addonWrap.classList.toggle('hidden', addonSource.options.length < 2);
+        }
+        renderCardPrice(card, true); invalidateDeliveryQuote();
+      }));
+      document.querySelectorAll('[data-product-addon]').forEach(select => select.addEventListener('change', function () {
+        const card = select.closest('[data-product-card]'); const option = select.selectedOptions[0];
         if (!option?.value) return;
-        const product = productFromVariantOption(option);
-        if (!basket.has(product.id)) basket.set(product.id, product);
-        invalidateDeliveryQuote();
-        select.value = '';
-        renderBasket();
+        const minimum = Number(option.dataset.min || 1); const unit = option.dataset.unit || card.dataset.unit;
+        const id = `addon:${card.dataset.productId}:${option.value}`;
+        if (!basket.has(id)) basket.set(id, {id, productId:card.dataset.productId, individualOptionId:option.value, name:`Add-on: ${option.dataset.name}`, unit, units:{online:unit}, modes:['online'], minimums:{online:minimum}, prices:{online:Number(option.dataset.price || 0)}, bulkPack:null, max:Number(card.dataset.max || 0), quantity:minimum, card:null, stockSource:card.dataset.stockSource==='1', madeSource:card.dataset.madeSource==='1', procuredSource:false, fulfilmentSource:'made_to_order', readyMinutes:Number(card.dataset.readyMinutes || 0), isAddon:true});
+        select.value=''; invalidateDeliveryQuote(); renderBasket();
       }));
       document.querySelectorAll('.add-product').forEach(button => button.addEventListener('click', function () {
-        const card = button.closest('[data-product-card]'); const id = card.dataset.basketKey || card.dataset.productId;
-        if (!basket.has(id)) { const product = productFromCard(card); basket.set(id, product); invalidateDeliveryQuote(); setAddedState(product, true); }
+        const card = button.closest('[data-product-card]'); const product = productFromCard(card); const id = product.id;
+        if (!basket.has(id)) { basket.set(id, product); invalidateDeliveryQuote(); setAddedState(product, true); }
         renderBasket();
       }));
       document.getElementById('open-basket').addEventListener('click', () => { renderBasket(); dialog.showModal(); });
@@ -686,7 +740,7 @@
         const mode = submitter.dataset.checkoutMode;
         basketForm.querySelectorAll('.generated-basket-field').forEach(field => field.remove());
         basket.forEach(product => {
-          [['product_id', product.productId], ['quantity', product.quantity], ['bulk_pack_id', product.bulkPack?.id || ''], ['individual_option_id', product.individualOptionId || ''], ['fulfilment_source', product.bulkPack ? 'made_to_order' : (product.fulfilmentSource || 'made_to_order')]].forEach(([name, value]) => { const input = document.createElement('input'); input.type = 'hidden'; input.name = name; input.value = value; input.className = 'generated-basket-field'; basketForm.append(input); });
+          [['product_id', product.productId], ['quantity', product.quantity], ['bulk_pack_id', product.bulkPack?.id || ''], ['individual_option_id', product.individualOptionId || ''], ['product_option_value', product.productOptionValue || ''], ['fulfilment_source', product.bulkPack ? 'made_to_order' : (product.fulfilmentSource || 'made_to_order')]].forEach(([name, value]) => { const input = document.createElement('input'); input.type = 'hidden'; input.name = name; input.value = value; input.className = 'generated-basket-field'; basketForm.append(input); });
         });
         if (!deliveryToggle?.checked) { if (deliveryQuoteId) deliveryQuoteId.value = ''; return; }
         const signature = deliverySignature(mode);

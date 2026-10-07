@@ -26,7 +26,7 @@
             <td class="px-3 py-2 text-right font-mono">{{ i.unit_cost|money:currency }} / {{ i.stock_unit }}</td>
             <td class="px-3 py-2 text-right font-mono font-medium">{{ i.line_total|money:currency }}</td>
             {% else %}
-            <td class="px-3 py-2 font-medium text-stone-700">{{ i.finished_good.name }}</td>
+            <td class="px-3 py-2 font-medium text-stone-700">{% if i.commerce_addon_name %}Add-on · {% endif %}{{ i.finished_good.name }}{% if i.commerce_addon_name %}<span class="block text-xs font-normal text-stone-500">{{ i.commerce_addon_name }}</span>{% endif %}{% if i.product_option_value %}<span class="block text-xs font-normal text-stone-500">{{ i.product_option_label }}: {{ i.product_option_value }}</span>{% endif %}</td>
             <td class="px-3 py-2 text-right font-mono">{{ i.total_units|num }}</td>
             {% endif %}
             {% if with_amount %}<td class="px-3 py-2 text-right font-mono">{{ i.line_total|money:currency }}</td>{% endif %}
