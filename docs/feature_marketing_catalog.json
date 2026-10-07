@@ -157,7 +157,7 @@
     "name": "Hosted storefront, product choices, variants and add-ons",
     "group": "commerce",
     "audience": "businesses selling online without a custom commerce stack",
-    "proof": "Publish tenant products with channel-safe pricing and group separately stocked, priced and produced size variants under one storefront card. Each product can offer a no-price-change choice such as flavor or color; separately priced add-ons remain their own basket lines. Customers choose available stock or made-to-order fulfilment, review readiness, and create operational orders only after verified payment.",
+    "proof": "Publish tenant products with channel-safe pricing and group separately stocked, priced and produced size variants under one storefront card. Each product can offer a no-price-change choice such as flavor or color; separately priced add-ons remain their own basket lines. Customers see item readiness, add order notes, request pickup or delivery times, and get printable checkout and payment receipts using the business profile's logo, tagline and contact details after verified payment.",
     "highlight": "NEW",
     "added_on": "2026-10-06"
   },

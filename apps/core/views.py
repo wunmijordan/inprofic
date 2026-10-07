@@ -1971,7 +1971,19 @@ def business_settings(request):
     else:
         form = BusinessForm(instance=request.business)
     modules = request.business.module_access.order_by("module")
-    return render(request, "core/business_settings.html", {"form": form, "business_modules": modules})
+    active_profile_tab = request.POST.get("active_profile_tab", "profile") if request.method == "POST" else "profile"
+    if request.method == "POST" and form.errors:
+        if set(form.errors) & {"slug", "background_color", "accent_color"}:
+            active_profile_tab = "appearance"
+        elif set(form.errors) & {"vertical", "currency_symbol", "restaurant_table_service"}:
+            active_profile_tab = "service"
+        elif set(form.errors) & {"name", "tagline", "contact_phone", "contact_email", "contact_address", "contact_website", "storefront_logo"}:
+            active_profile_tab = "profile"
+    return render(request, "core/business_settings.html", {
+        "form": form,
+        "business_modules": modules,
+        "active_profile_tab": active_profile_tab,
+    })
 
 
 @login_required

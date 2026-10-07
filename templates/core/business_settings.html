@@ -2,7 +2,7 @@
 {% block content %}
 <div class="max-w-4xl">
   <h2 class="text-xl font-semibold font-display text-[#8f172d]">Business Settings</h2>
-  <p class="text-sm text-stone-500 mt-1 mb-5">Brand this workspace and choose the vocabulary and service details that match how {{ biz.name }} operates.</p>
+  <p class="text-sm text-stone-500 mt-1 mb-5">Manage the business profile shown to customers, the workspace theme, and service details.</p>
 
   <section id="workspace-appearance" class="mb-5 rounded-lg border border-[#E7DFCC] bg-white p-4">
     <div class="flex flex-wrap items-start justify-between gap-3">
@@ -12,16 +12,28 @@
     <div class="mt-4 max-w-xl">{% include "_appearance_controls.html" %}</div>
   </section>
 
-  <form method="post" enctype="multipart/form-data" id="business-settings-form" class="cf-form-shell">
-    <div class="cf-form-header"><p class="text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">Tenant branding</p><h3 class="mt-1 font-semibold">Business identity & service</h3></div>
+  <form method="post" enctype="multipart/form-data" id="business-settings-form" class="cf-form-shell" novalidate>
+    <div class="cf-form-header"><p class="text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">Business settings</p><h3 class="mt-1 font-semibold">Profile, appearance & service</h3></div>
     <div class="cf-form-body">
     {% csrf_token %}
     {% if form.non_field_errors %}<div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-3">{{ form.non_field_errors }}</div>{% endif %}
-    <div class="grid sm:grid-cols-2 gap-x-4">
+    <input type="hidden" name="active_profile_tab" id="active-profile-tab" value="{{ active_profile_tab|default:'profile' }}">
+    <div class="mb-4 flex flex-wrap gap-2 border-stone-200 pb-3" role="tablist" aria-label="Business settings sections">
+      <button type="button" data-profile-tab="profile" aria-selected="true" class="rounded-lg border px-3 py-2 text-sm font-semibold">Profile</button>
+      <button type="button" data-profile-tab="appearance" aria-selected="false" class="rounded-lg border px-3 py-2 text-sm font-semibold">Appearance</button>
+      <button type="button" data-profile-tab="service" aria-selected="false" class="rounded-lg border px-3 py-2 text-sm font-semibold">Service & currency</button>
+    </div>
+    <div data-profile-panel="profile" role="tabpanel" class="grid sm:grid-cols-2 gap-x-4">
       {% include "_field.html" with field=form.name %}
+      {% include "_field.html" with field=form.contact_phone %}
+      {% include "_field.html" with field=form.contact_email %}
+      {% include "_field.html" with field=form.contact_address %}
+      {% include "_field.html" with field=form.contact_website %}
+      <div class="sm:col-span-2">{% include "_field.html" with field=form.tagline %}</div>
+      <div class="sm:col-span-2 rounded-md border border-[#E7DFCC] bg-white p-3 mb-3">{% include "_field.html" with field=form.storefront_logo %}</div>
+    </div>
+    <div data-profile-panel="appearance" role="tabpanel" class="hidden grid sm:grid-cols-2 gap-x-4">
       {% include "_field.html" with field=form.slug %}
-      {% include "_field.html" with field=form.vertical %}
-      {% include "_field.html" with field=form.currency_symbol %}
       {% include "_field.html" with field=form.background_color %}
       {% include "_field.html" with field=form.accent_color %}
       <div class="sm:col-span-2 rounded-md border border-[#E7DFCC] bg-white p-3 mb-3">
@@ -31,10 +43,10 @@
           <span id="theme-button-preview" class="rounded-md px-3 py-1.5 text-xs font-semibold" style="background: {{ form.accent_color.value|default:'#D14900' }}; color: {{ biz.button_text_color }}">Primary action</span>
         </div>
       </div>
-      <div class="sm:col-span-2">{% include "_field.html" with field=form.tagline %}</div>
-      <div class="sm:col-span-2 rounded-md border border-[#E7DFCC] bg-white p-3 mb-3">
-        {% include "_field.html" with field=form.storefront_logo %}
-      </div>
+    </div>
+    <div data-profile-panel="service" role="tabpanel" class="hidden grid sm:grid-cols-2 gap-x-4">
+      {% include "_field.html" with field=form.vertical %}
+      {% include "_field.html" with field=form.currency_symbol %}
       <div id="restaurant-settings" class="sm:col-span-2 rounded-xl border border-[#E7DFCC] bg-[#F5EFE0] p-3 mb-3">
         {% include "_field.html" with field=form.restaurant_table_service %}
       </div>
@@ -55,6 +67,9 @@
 </div>
 <script>
   function toggleRestaurantSettings(){const field=document.getElementById('id_vertical');const panel=document.getElementById('restaurant-settings');if(panel)panel.style.display=field?.value==='restaurant'?'block':'none';}
+  const profileTabs=[...document.querySelectorAll('[data-profile-tab]')];const profilePanels=[...document.querySelectorAll('[data-profile-panel]')];const profileValue=document.getElementById('active-profile-tab');
+  function activateProfileTab(name){const active=profilePanels.some(panel=>panel.dataset.profilePanel===name)?name:'profile';profilePanels.forEach(panel=>panel.classList.toggle('hidden',panel.dataset.profilePanel!==active));profileTabs.forEach(tab=>{const selected=tab.dataset.profileTab===active;tab.setAttribute('aria-selected',selected?'true':'false');tab.style.backgroundColor=selected?'var(--ui-accent)':'var(--ui-surface)';tab.style.color=selected?'var(--ui-accent-contrast)':'var(--ui-surface-text)';tab.style.borderColor='var(--ui-border)';});if(profileValue)profileValue.value=active;}
+  profileTabs.forEach(tab=>tab.addEventListener('click',()=>activateProfileTab(tab.dataset.profileTab)));activateProfileTab(profileValue?.value||'profile');
   document.getElementById('id_vertical')?.addEventListener('change',toggleRestaurantSettings);toggleRestaurantSettings();
   function readableThemeText(hex) {
     if (!/^#[0-9a-f]{6}$/i.test(hex || '')) return '#FFFFFF';

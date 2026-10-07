@@ -19,7 +19,7 @@
     .storefront-brand-surface { background:var(--brand-dark)!important;color:var(--brand-dark-contrast)!important; }
     .storefront-brand-muted { color:color-mix(in srgb,var(--brand-dark-contrast) 68%,transparent)!important; }
     .storefront-brand-control { color:var(--brand-dark-contrast)!important;border-color:color-mix(in srgb,var(--brand-dark-contrast) 20%,transparent)!important;background:color-mix(in srgb,var(--brand-dark) 78%,transparent)!important; }
-    .storefront-brand-inverse { background:var(--brand-dark-contrast)!important;color:var(--brand-dark)!important; }
+    .storefront-brand-inverse { background:#f5f5f4!important;color:#292524!important; }
     .product-card { box-shadow: 0 14px 42px rgba(43,36,31,.08); transition: transform .24s ease, box-shadow .24s ease; }
     .product-card:hover { transform: translateY(-4px); box-shadow: 0 22px 55px rgba(43,36,31,.14); }
     .product-card img { transition: transform .55s cubic-bezier(.2,.8,.2,1); }
@@ -31,6 +31,7 @@
     .channel-price-pill[data-channel-price-pill]::-webkit-scrollbar { display:none; }
     .channel-price-pill[data-channel-price-pill]:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
     .channel-price-pill__inner { display:flex; min-width:0; align-items:baseline; gap:.35rem; white-space:nowrap; }
+    .channel-submit .mode-note { color:var(--tenant-button-contrast); opacity:.86; }
     .channel-price-pill.is-changing .channel-price-pill__inner { animation:channel-price-slide .36s cubic-bezier(.2,.8,.2,1); }
     @keyframes channel-price-slide { from { opacity:0; transform:translateY(.8rem); } to { opacity:1; transform:translateY(0); } }
     dialog::backdrop { background: rgba(25,20,17,.68); backdrop-filter: blur(5px); }
@@ -101,12 +102,12 @@
           </div>
           <div class="flex flex-1 flex-col p-4">
             {% if p.finished_good.product_category %}<div class="mb-2"><span class="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-500">{{ p.finished_good.product_category.name }}</span></div>{% endif %}
-            <h3 class="font-display text-lg font-semibold leading-tight text-stone-900">{{ p.display_name }}</h3>
+            <div class="flex items-center gap-1.5 text-lg font-display font-semibold leading-tight text-stone-900"><h3 class="inline font-display text-lg font-semibold leading-tight text-stone-900">{{ p.display_name }}</h3>{% if p.public_readiness_items %}{% include "_help_tip.html" with help_items=p.public_readiness_items label="Product readiness" portal_bubble=True %}{% endif %}</div>
             {% if p.portion_label %}<p class="mt-0.5 text-[11px] font-semibold text-stone-500" data-portion-label>{{ p.portion_label }}</p>{% endif %}
             <p class="line-clamp-2 mt-1.5 min-h-[2rem] text-xs leading-4 text-stone-500">{% if p.public_description %}{{ p.public_description }}{% elif p.public_bulk_online_available %}Choose from the bulk options below.{% else %}Choose from the ordering options below.{% endif %}</p>
             {% if p.standard_public_contents|length > 1 or p.bulk_pack_options %}
             <details class="relative mt-2" data-contents-popover>
-              <summary class="inline-flex cursor-pointer list-none items-center gap-1 text-[11px] font-semibold underline decoration-stone-300 underline-offset-4" style="color:var(--brand)">What's included? <span aria-hidden="true">ⓘ</span></summary>
+              <summary class="inline-flex cursor-pointer list-none items-center gap-1 text-[11px] font-semibold underline decoration-stone-300 underline-offset-4" style="color:#211d1a">What's included? <span aria-hidden="true">ⓘ</span></summary>
               <div class="absolute left-0 top-7 z-20 w-[min(18rem,78vw)] rounded-2xl border border-stone-200 bg-white p-3.5 text-left shadow-xl">
                 <p class="text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">Standard portion</p>
                 <ul class="mt-2 space-y-1.5 text-xs text-stone-700">
@@ -163,7 +164,7 @@
         <div class="col-span-full rounded-2xl border border-dashed border-stone-300 bg-white/60 px-6 py-16 text-center"><p class="font-display text-xl font-semibold text-stone-700">The catalogue is being prepared.</p><p class="mt-2 text-sm text-stone-500">Please check back soon.</p></div>
         {% endfor %}
       </div>
-      <div id="catalogue-empty" class="mt-6 hidden rounded-2xl border border-dashed border-stone-300 bg-white/60 px-6 py-14 text-center"><p class="font-display text-xl font-semibold text-stone-700">No products match this search.</p><button type="button" id="catalogue-reset" class="mt-3 text-sm font-semibold underline underline-offset-4" style="color:var(--brand)">Reset filters</button></div>
+      <div id="catalogue-empty" class="mt-6 hidden rounded-2xl border border-dashed border-stone-300 bg-white/60 px-6 py-14 text-center"><p class="font-display text-xl font-semibold text-stone-700">No products match this search.</p><button type="button" id="catalogue-reset" class="mt-3 text-sm font-semibold underline underline-offset-4" style="color:#211d1a">Reset filters</button></div>
     </section>
   </main>
 
@@ -189,6 +190,8 @@
         <label class="text-xs font-semibold text-stone-600">Phone <span class="text-rose-600">*</span><input required name="phone" autocomplete="tel" inputmode="tel" value="{% if storefront_customer %}{{ storefront_customer.phone }}{% endif %}" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"></label>
         <label class="text-xs font-semibold text-stone-600 sm:col-span-2">Email <span class="font-normal text-stone-400">(optional)</span><input name="email" type="email" autocomplete="email" value="{% if storefront_customer %}{{ storefront_customer.email }}{% endif %}" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"></label>
       </div>
+      <label class="mt-4 block text-xs font-semibold text-stone-600">Preferred time <span class="font-normal text-stone-400">(optional)</span><input name="requested_delivery_at" type="datetime-local" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal"><span class="mt-1 block font-normal text-stone-500">Tell us when you need the order, whether you are collecting it or having it delivered.</span></label>
+      <label class="mt-4 block text-xs font-semibold text-stone-600">Note for the business <span class="font-normal text-stone-400">(optional)</span><textarea name="customer_note" maxlength="500" rows="3" class="mt-1.5 w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm font-normal" placeholder="Add any details that will help prepare your order"></textarea></label>
       {% if delivery_enabled %}
       <section class="mt-5 rounded-2xl border border-stone-200 bg-white p-4">
         <label class="flex cursor-pointer items-start justify-between gap-3">
@@ -235,18 +238,6 @@
             >{% if storefront_customer %}{{ storefront_customer.default_address }}{% endif %}</textarea>
           </label>
 
-          <label class="mt-3 block text-xs font-semibold text-stone-600">
-            <span class="inline-flex items-center gap-1.5">
-              <span>Preferred delivery time <span class="font-normal text-stone-400">(optional)</span></span>
-              {% include "_help_tip.html" with help_text="The earliest valid time is calculated from the slowest item plus the quoted delivery ETA." label="Preferred delivery time" %}
-            </span>
-            <input
-              name="requested_delivery_at"
-              type="datetime-local"
-              class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal"
-            >
-          </label>
-
           {% url 'storefront_delivery_location' store_business.slug as storefront_location_url %}
           {% include "commerce/delivery/_location_picker.html" with latitude_selector="#delivery-latitude" longitude_selector="#delivery-longitude" area_selector="#delivery-area" address_selector="#checkout-address" resolve_url=storefront_location_url picker_label="delivery destination" %}
 
@@ -263,7 +254,7 @@
       </section>
       {% endif %}
       <div class="mt-6"><p class="text-xs font-semibold text-stone-600">Choose one ordering option for this basket</p><div class="mt-2 grid gap-2">
-        <button type="submit" name="order_mode" value="online" data-checkout-mode="online" class="channel-submit flex items-center justify-between rounded-xl border border-stone-200 bg-white px-3.5 py-3 text-left text-sm shadow-sm transition hover:border-stone-400 disabled:cursor-not-allowed disabled:opacity-45"><span><strong class="block text-stone-900">{{ commerce_channels.online }}</strong><small class="mode-note text-stone-500">{% if store_business.uses_production and not p.finished_good.is_purchased_for_resale %}{{ storefront_copy.prepared_order }}{% else %}{{ storefront_copy.immediate_order }}{% endif %}</small></span><strong class="mode-total shrink-0 text-stone-900"></strong></button>
+        <button type="submit" name="order_mode" value="online" data-checkout-mode="online" class="channel-submit flex items-center justify-between rounded-xl border px-3.5 py-3 text-left text-sm shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-45" style="background:var(--tenant-button);color:var(--tenant-button-contrast);border-color:var(--tenant-button)"><span><strong class="block">{{ commerce_channels.online }}</strong><small class="mode-note opacity-90">{% if store_business.uses_production and not p.finished_good.is_purchased_for_resale %}{{ storefront_copy.prepared_order }}{% else %}{{ storefront_copy.immediate_order }}{% endif %}</small></span><strong class="mode-total shrink-0"></strong></button>
       </div></div>
       <p class="mt-4 text-xs leading-5 text-stone-400">Prices and availability are checked again by {{ store_business.name }} before payment. An order is created only after full payment is verified.</p>
     </form>
@@ -678,6 +669,10 @@
         basket.set(replacement.id, replacement);
         invalidateDeliveryQuote(); renderBasket();
       }));
+      document.querySelectorAll('[data-product-choice]').forEach(select => select.addEventListener('change', function () {
+        select.setCustomValidity('');
+        select.removeAttribute('aria-invalid');
+      }));
       document.querySelectorAll('[data-product-variant-select]').forEach(select => select.addEventListener('change', function () {
         const card = select.closest('[data-product-card]'); const option = select.selectedOptions[0];
         const productId = option?.dataset.productId || option?.value || card.dataset.primaryProductId;
@@ -706,6 +701,9 @@
           const addon = card.querySelector('[data-product-addon]'); const addonWrap = card.querySelector('[data-product-addon-wrap]');
           const choiceSource = config.content.querySelector('[data-choice-source]'); const addonSource = config.content.querySelector('[data-addon-source]');
           choice.replaceChildren(...Array.from(choiceSource.options).map(item => item.cloneNode(true)));
+          choice.required = choiceSource.options.length > 1;
+          choice.setCustomValidity('');
+          choice.removeAttribute('aria-invalid');
           addon.replaceChildren(...Array.from(addonSource.options).map(item => item.cloneNode(true)));
           choiceWrap.firstChild.textContent = `${choiceSource.dataset.optionLabel || 'Option'} `;
           choiceWrap.classList.toggle('hidden', choiceSource.options.length < 2);
@@ -722,7 +720,19 @@
         select.value=''; invalidateDeliveryQuote(); renderBasket();
       }));
       document.querySelectorAll('.add-product').forEach(button => button.addEventListener('click', function () {
-        const card = button.closest('[data-product-card]'); const product = productFromCard(card); const id = product.id;
+        const card = button.closest('[data-product-card]');
+        const choice = card.querySelector('[data-product-choice]');
+        const choiceWrap = card.querySelector('[data-product-choice-wrap]');
+        if (choice && choiceWrap && !choiceWrap.classList.contains('hidden') && !choice.value) {
+          const label = choiceWrap.firstChild.textContent.trim() || 'product choice';
+          choice.required = true;
+          choice.setCustomValidity(`Choose ${label.toLowerCase()} before adding this product.`);
+          choice.setAttribute('aria-invalid', 'true');
+          choice.reportValidity();
+          choice.focus();
+          return;
+        }
+        const product = productFromCard(card); const id = product.id;
         if (!basket.has(id)) { basket.set(id, product); invalidateDeliveryQuote(); setAddedState(product, true); }
         renderBasket();
       }));

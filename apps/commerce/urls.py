@@ -47,6 +47,7 @@ urlpatterns = [
     path("commerce/intakes/<uuid:public_id>/accept/", views.intake_accept, name="commerce_intake_accept"),
     path("finance/commerce-payments/", payment_views.payment_queue, name="commerce_payment_queue"),
     path("finance/commerce-payments/<uuid:public_id>/confirm/", payment_views.payment_confirm, name="commerce_payment_confirm"),
+    path("finance/commerce-payments/<uuid:public_id>/remove-expired/", payment_views.payment_remove_expired, name="commerce_payment_remove_expired"),
     path("finance/commerce-payments/<uuid:public_id>/reconcile/", payment_views.payment_reconcile, name="commerce_payment_reconcile"),
     path("finance/commerce-payment-claims/<int:claim_id>/reject/", payment_views.payment_claim_reject, name="commerce_payment_claim_reject"),
     path("finance/commerce-payment-claims/<int:claim_id>/proof/", payment_views.payment_claim_proof, name="commerce_payment_claim_proof"),

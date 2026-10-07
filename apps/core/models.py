@@ -52,6 +52,10 @@ class Business(models.Model):
         help_text="Used for persistent branded backgrounds such as the navigation area.",
     )
     tagline = models.CharField(max_length=100, blank=True, default="")
+    contact_phone = models.CharField(max_length=40, blank=True, default="")
+    contact_email = models.EmailField(blank=True, default="")
+    contact_address = models.CharField(max_length=255, blank=True, default="")
+    contact_website = models.URLField(max_length=255, blank=True, default="")
     storefront_logo = models.ImageField(
         upload_to=business_storefront_logo_upload_to,
         blank=True,

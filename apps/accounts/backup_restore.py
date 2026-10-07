@@ -61,7 +61,8 @@ SINGLETON_LABELS = {
 }
 BUSINESS_PROFILE_FIELDS = (
     "name", "currency_symbol", "vertical", "accent_color", "background_color",
-    "tagline", "restaurant_table_service",
+    "tagline", "contact_phone", "contact_email", "contact_address", "contact_website",
+    "restaurant_table_service",
 )
 
 

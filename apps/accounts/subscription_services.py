@@ -660,6 +660,11 @@ def add_service_business(subscription, *, name, service_type, actor):
         accent_color=subscription.primary_business.accent_color,
         background_color=subscription.primary_business.background_color,
         currency_symbol=subscription.primary_business.currency_symbol,
+        tagline=subscription.primary_business.tagline,
+        contact_phone=subscription.primary_business.contact_phone,
+        contact_email=subscription.primary_business.contact_email,
+        contact_address=subscription.primary_business.contact_address,
+        contact_website=subscription.primary_business.contact_website,
     )
     roles = seed_business_roles(business)
     SubscriptionService.objects.create(subscription=subscription, business=business, is_primary=False)

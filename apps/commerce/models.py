@@ -39,6 +39,13 @@ def storefront_hero_image_upload_to(instance, filename):
     return f"commerce/storefronts/business-{business_id}/{uuid.uuid4().hex}{extension}"
 
 
+def commerce_receipt_logo_upload_to(instance, filename):
+    extension = Path(filename or "").suffix.lower()
+    if extension not in {".jpeg", ".jpg", ".png", ".webp"}:
+        extension = ".png"
+    return f"commerce/receipts/business-{instance.business_id or 'unassigned'}/{uuid.uuid4().hex}{extension}"
+
+
 class CommerceSettings(BusinessOwnedModel):
     HERO_FIT_COVER = "cover"
     HERO_FIT_CONTAIN = "contain"
@@ -81,6 +88,12 @@ class CommerceSettings(BusinessOwnedModel):
     )
     basket_dock_heading = models.CharField(max_length=100, blank=True, default="Review quantities and checkout")
     basket_dock_subheading = models.CharField(max_length=180, blank=True, default="Your basket")
+    receipt_logo = models.ImageField(upload_to=commerce_receipt_logo_upload_to, blank=True)
+    receipt_tagline = models.CharField(max_length=160, blank=True, default="")
+    receipt_contact_phone = models.CharField(max_length=40, blank=True, default="")
+    receipt_contact_email = models.EmailField(blank=True, default="")
+    receipt_contact_address = models.CharField(max_length=255, blank=True, default="")
+    receipt_contact_website = models.URLField(max_length=255, blank=True, default="")
     storefront_hero_image = models.ImageField(
         upload_to=storefront_hero_image_upload_to,
         blank=True,
@@ -870,6 +883,7 @@ class CommerceIntake(BusinessOwnedModel):
     customer_phone = models.CharField(max_length=40, blank=True, default="")
     customer_email = models.EmailField(blank=True, default="")
     customer_address = models.TextField(blank=True, default="")
+    customer_note = models.CharField(max_length=500, blank=True, default="")
     service_mode = models.CharField(max_length=20, blank=True, default="")
     table_reference = models.CharField(max_length=40, blank=True, default="")
     delivery_quote = models.ForeignKey("DeliveryQuote", null=True, blank=True, on_delete=models.PROTECT, related_name="intakes")
@@ -971,6 +985,7 @@ class CommerceIntakeItem(models.Model):
         related_name="commerce_intake_items",
     )
     customer_unit = models.CharField(max_length=100, blank=True, default="")
+    preorder_lead_time = models.CharField(max_length=80, blank=True, default="")
     product_option_label = models.CharField(max_length=60, blank=True, default="")
     product_option_value = models.CharField(max_length=80, blank=True, default="")
     fulfilment_quantity_per_unit = models.DecimalField(max_digits=14, decimal_places=3, default=1)
@@ -1034,6 +1049,7 @@ class CommerceCheckoutSession(BusinessOwnedModel):
     customer_phone = models.CharField(max_length=40, blank=True, default="")
     customer_email = models.EmailField(blank=True, default="")
     customer_address = models.TextField(blank=True, default="")
+    customer_note = models.CharField(max_length=500, blank=True, default="")
     service_mode = models.CharField(max_length=20, blank=True, default="")
     table_reference = models.CharField(max_length=40, blank=True, default="")
     currency = models.CharField(max_length=3, default="NGN")
@@ -1100,6 +1116,7 @@ class CommerceCheckoutItem(models.Model):
         related_name="commerce_checkout_items",
     )
     customer_unit = models.CharField(max_length=100, blank=True, default="")
+    preorder_lead_time = models.CharField(max_length=80, blank=True, default="")
     product_option_label = models.CharField(max_length=60, blank=True, default="")
     product_option_value = models.CharField(max_length=80, blank=True, default="")
     fulfilment_quantity_per_unit = models.DecimalField(max_digits=14, decimal_places=3, default=1)

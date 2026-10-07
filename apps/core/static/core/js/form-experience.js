@@ -89,19 +89,44 @@
     el.addEventListener('blur',()=>{el.dataset.inproficDirty='1';stateFor(el,false);});
     if(el.closest('.field-has-error')){el.dataset.inproficDirty='1';wrap.classList.add('is-invalid');}
   }
+  function helpBubbleFor(tip){
+    return tip&&(tip.__inproficHelpBubble||tip.querySelector('[data-form-help-bubble]'))||null;
+  }
+  function mountPortalHelpBubble(tip){
+    if(!tip||tip.dataset.formHelpPortal!=='true')return helpBubbleFor(tip);
+    const bubble=helpBubbleFor(tip);
+    if(!bubble)return null;
+    if(!tip.__inproficHelpBubble){
+      tip.__inproficHelpMarker=document.createComment('help-tip-bubble');
+      bubble.parentNode.insertBefore(tip.__inproficHelpMarker,bubble);
+      tip.__inproficHelpBubble=bubble;
+    }
+    document.body.appendChild(bubble);
+    return bubble;
+  }
+  function restorePortalHelpBubble(tip,bubble){
+    if(!tip||tip.dataset.formHelpPortal!=='true'||!bubble)return;
+    const marker=tip.__inproficHelpMarker;
+    if(marker?.parentNode)marker.parentNode.insertBefore(bubble,marker.nextSibling);
+    else bubble.remove();
+    tip.__inproficHelpBubble=null;
+    tip.__inproficHelpMarker=null;
+  }
   function closeHelpTip(tip){
     if(!tip)return;
     const trigger=tip.querySelector('[data-form-help-trigger]');
-    const bubble=tip.querySelector('[data-form-help-bubble]');
+    const bubble=helpBubbleFor(tip);
     tip.classList.remove('is-open');
     if(trigger)trigger.setAttribute('aria-expanded','false');
     if(bubble)bubble.hidden=true;
+    restorePortalHelpBubble(tip,bubble);
   }
   function placeHelpTip(tip){
     const trigger=tip&&tip.querySelector('[data-form-help-trigger]');
-    const bubble=tip&&tip.querySelector('[data-form-help-bubble]');
+    const bubble=helpBubbleFor(tip);
     if(!trigger||!bubble)return;
-    const vp=window.visualViewport;
+    const isPortal=tip.dataset.formHelpPortal==='true';
+    const vp=isPortal?null:window.visualViewport;
     const vw=vp?vp.width:window.innerWidth, vh=vp?vp.height:window.innerHeight;
     const ox=vp?vp.offsetLeft:0, oy=vp?vp.offsetTop:0, m=8;
     bubble.style.maxWidth=(vw-m*2)+'px';
@@ -115,7 +140,7 @@
     // An ancestor with transform/filter becomes the containing block for
     // position:fixed; measure and correct so placement is still viewport-true.
     const r=bubble.getBoundingClientRect();
-    if(Math.abs(r.left-left)>1||Math.abs(r.top-top)>1){
+    if(!isPortal&&(Math.abs(r.left-left)>1||Math.abs(r.top-top)>1)){
       bubble.style.left=(left-(r.left-left))+'px';
       bubble.style.top=(top-(r.top-top))+'px';
     }
@@ -135,7 +160,7 @@
       if(other!==tip)closeHelpTip(other);
     });
     const trigger=tip.querySelector('[data-form-help-trigger]');
-    const bubble=tip.querySelector('[data-form-help-bubble]');
+    const bubble=mountPortalHelpBubble(tip);
     tip.classList.add('is-open');
     if(trigger)trigger.setAttribute('aria-expanded','true');
     if(bubble)bubble.hidden=false;
@@ -161,8 +186,16 @@
     if(!trigger||!bubble)return;
     tip.dataset.formHelpBound='1';
     retargetWrappingLabel(tip);
-    // Desktop hover/focus reveal is CSS-driven; place it once it is displayed.
-    ['mouseenter','focusin'].forEach(type=>tip.addEventListener(type,()=>requestAnimationFrame(()=>placeHelpTip(tip))));
+    if(tip.dataset.formHelpPortal==='true'){
+      tip.addEventListener('mouseenter',()=>openHelpTip(tip));
+      tip.addEventListener('mouseleave',event=>{if(!bubble.contains(event.relatedTarget)&&!trigger.matches(':focus'))closeHelpTip(tip);});
+      bubble.addEventListener('mouseleave',event=>{if(!tip.contains(event.relatedTarget)&&!trigger.matches(':focus'))closeHelpTip(tip);});
+      tip.addEventListener('focusin',()=>openHelpTip(tip));
+      tip.addEventListener('focusout',event=>{if(!tip.contains(event.relatedTarget))closeHelpTip(tip);});
+    }else{
+      // Desktop hover/focus reveal is CSS-driven; place it once it is displayed.
+      ['mouseenter','focusin'].forEach(type=>tip.addEventListener(type,()=>requestAnimationFrame(()=>placeHelpTip(tip))));
+    }
     bubble.hidden=true;
     trigger.setAttribute('aria-expanded','false');
     trigger.addEventListener('click',event=>{
@@ -320,7 +353,7 @@
   document.addEventListener('DOMContentLoaded',()=>{
     enhanceForms();
     document.addEventListener('click',event=>{
-      if(event.target.closest?.('[data-form-help-tip]'))return;
+      if(event.target.closest?.('[data-form-help-tip],[data-form-help-bubble]'))return;
       document.querySelectorAll('[data-form-help-tip].is-open').forEach(closeHelpTip);
     });
     document.addEventListener('keydown',event=>{

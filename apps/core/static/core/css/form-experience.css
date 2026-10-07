@@ -120,6 +120,9 @@ form :is(.helptext, .help-text, [data-form-help-text]) {
   white-space: normal;
 }
 
+.form-help-tip__bubble--portal { z-index: 1000; }
+.form-help-tip__bubble--portal:not([hidden]) { display: block !important; max-height: min(70vh, 24rem); overflow-y: auto; overscroll-behavior: contain; pointer-events: auto; }
+
 .form-help-tip__detail {
   display: block;
 }
@@ -129,6 +132,24 @@ form :is(.helptext, .help-text, [data-form-help-text]) {
   padding-top: .5rem;
   border-top: 1px solid color-mix(in srgb, var(--ui-border, #e7dfcc) 72%, transparent);
 }
+
+.form-help-tip__list {
+  display: grid;
+  gap: .5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.form-help-tip__list-item + .form-help-tip__list-item {
+  border-top: 1px solid color-mix(in srgb, var(--ui-border, #e7dfcc) 72%, transparent);
+  padding-top: .5rem;
+}
+
+.form-help-tip__list-title,
+.form-help-tip__list-detail { display: block; }
+.form-help-tip__list-title { color: var(--ui-surface-text, #211d1a); font-weight: 750; }
+.form-help-tip__list-detail { margin-top: .12rem; }
 
 .form-help-tip__bubble[hidden] {
   display: none !important;

@@ -32,7 +32,7 @@ def _unique_business_slug(name):
     return candidate
 
 
-def _create_business_with_unique_slug(name, vertical):
+def _create_business_with_unique_slug(name, vertical, *, contact_email="", contact_phone=""):
     """Create a tenant while letting the database arbitrate slug races."""
     for _attempt in range(10):
         slug = _unique_business_slug(name)
@@ -40,7 +40,10 @@ def _create_business_with_unique_slug(name, vertical):
             # Keep a savepoint inside signup's outer transaction so a slug
             # collision does not leave the transaction unusable for a retry.
             with transaction.atomic():
-                return Business.objects.create(name=name, slug=slug, vertical=vertical)
+                return Business.objects.create(
+                    name=name, slug=slug, vertical=vertical,
+                    contact_email=contact_email, contact_phone=contact_phone,
+                )
         except IntegrityError:
             # Retry only when another request claimed this exact slug. Other
             # integrity failures still surface instead of being misreported.
@@ -61,6 +64,8 @@ def signup(request):
                 business = _create_business_with_unique_slug(
                     name=business_name,
                     vertical=form.cleaned_data["vertical"],
+                    contact_email=form.cleaned_data["email"],
+                    contact_phone=form.cleaned_data["phone"].strip(),
                 )
                 roles = seed_business_roles(business)
                 seed_business_modules(business, source=BusinessModuleAccess.SOURCE_DEFAULT)

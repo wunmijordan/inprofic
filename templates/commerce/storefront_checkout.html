@@ -6,16 +6,20 @@
 <style>
   .checkout-price-pill{display:inline-flex;max-width:100%;overflow:hidden;border:1px solid color-mix(in srgb,var(--brand) 28%,transparent);background:color-mix(in srgb,var(--brand) 9%,transparent);box-shadow:inset 0 1px 0 rgba(255,255,255,.72);}
   .checkout-price-pill__inner{display:flex;align-items:baseline;gap:.3rem;white-space:nowrap;animation:checkout-price-slide .38s cubic-bezier(.2,.8,.2,1);}
+  @media print{body>header,body>footer,.print-hidden{display:none!important}body{background:#fff!important}.checkout-print-shell{max-width:none!important;padding:0!important}.checkout-print-card{box-shadow:none!important;border-color:#ddd!important}}
   @keyframes checkout-price-slide{from{opacity:0;transform:translateY(45%)}to{opacity:1;transform:translateY(0)}}
   @media (prefers-reduced-motion:reduce){.checkout-price-pill__inner{animation:none}}
 </style>
 {% endblock %}
 {% block content %}
 {% if checkout.status == 'materialized' %}<script>try { localStorage.removeItem('storetrack:storefront-basket:{{ store_business.slug|escapejs }}'); } catch (error) {}</script>{% endif %}
-<main id="storefront-checkout-live-root" class="mx-auto max-w-6xl px-4 py-8 sm:px-8 sm:py-12">
+<main id="storefront-checkout-live-root" class="checkout-print-shell mx-auto max-w-6xl px-4 py-8 sm:px-8 sm:py-12">
   <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(20rem,.9fr)]">
-    <section class="overflow-hidden rounded-3xl border border-stone-200/80 bg-white shadow-[0_20px_60px_rgba(43,36,31,.11)]">
+    <section class="checkout-print-card overflow-hidden rounded-3xl border border-stone-200/80 bg-white shadow-[0_20px_60px_rgba(43,36,31,.11)]">
       <div class="border-b border-stone-100 px-5 py-5 sm:px-7">
+        {% if store_business.storefront_logo %}<img src="{{ store_business.storefront_logo.url }}" alt="{{ store_business.name }} logo" class="storefront-document-logo mb-3 shrink-0 rounded-xl border border-white/20 bg-white/95 p-1 shadow-sm">{% endif %}
+        {% if store_business.tagline %}<p class="mb-2 text-sm text-stone-600">{{ store_business.tagline }}</p>{% endif %}
+        <div class="mb-3 flex flex-col items-start gap-y-1 text-xs text-stone-500">{% if store_business.contact_phone %}<span>{{ store_business.contact_phone }}</span>{% endif %}{% if store_business.contact_email %}<span>{{ store_business.contact_email }}</span>{% endif %}{% if store_business.contact_address %}<span>{{ store_business.contact_address }}</span>{% endif %}{% if store_business.contact_website %}<a href="{{ store_business.contact_website }}" class="underline">{{ store_business.contact_website }}</a>{% endif %}</div>
         <p class="text-[10px] font-bold uppercase tracking-[.2em] text-stone-400">Secure checkout</p>
         <div class="mt-1 flex flex-wrap items-center justify-between gap-3">
           <h1 class="font-display text-2xl font-semibold text-stone-900 sm:text-3xl">Your selection</h1>
@@ -28,7 +32,12 @@
           <div class="min-w-0"><h2 class="font-semibold text-stone-900">{% if item.individual_option_id %}<span class="text-xs font-bold uppercase tracking-wide text-stone-500">Add-on · </span>{% endif %}{{ item.storefront_product.display_name }}{% if item.individual_option %} — {{ item.individual_option.name }}{% endif %}</h2>{% if item.product_option_value %}<p class="mt-0.5 text-xs text-stone-500">{{ item.product_option_label }}: {{ item.product_option_value }}</p>{% endif %}<div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-stone-500"><span>{{ item.payable_quantity }} {{ item.customer_unit|default:item.finished_good.unit }}</span><span class="checkout-price-pill rounded-full px-2.5 py-1 text-[10px]"><span class="checkout-price-pill__inner"><strong>{{ checkout.currency }} {{ item.unit_price|num }}</strong><span class="text-stone-500">/ {{ item.customer_unit|default:item.finished_good.unit }}</span></span></span></div></div>
           <span class="checkout-price-pill shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold text-stone-900"><span class="checkout-price-pill__inner">{{ checkout.currency }} {{ item.line_total|num }}</span></span>
         </div>
-        {% endfor %}
+      {% endfor %}
+      </div>
+      <div class="border-t border-stone-100 bg-stone-50/60 px-5 py-4 text-sm sm:px-7">
+        {% if expected_fulfilment_at %}<p><strong class="text-stone-800">{% if checkout.delivery_quote_id %}Estimated arrival{% else %}Estimated ready{% endif %}:</strong> <span class="text-stone-700">{{ expected_fulfilment_at|date:"j M Y, g:i A" }}</span></p>{% endif %}
+        {% if checkout.requested_delivery_at %}<p class="mt-1"><strong class="text-stone-800">Preferred time:</strong> <span class="text-stone-700">{{ checkout.requested_delivery_at|date:"j M Y, g:i A" }}</span></p>{% endif %}
+        {% if checkout.customer_note %}<p class="mt-2"><strong class="text-stone-800">Customer note:</strong> <span class="text-stone-700">{{ checkout.customer_note }}</span></p>{% endif %}
       </div>
       {% if checkout_data.delivery %}
       <div class="border-t border-stone-100 px-5 py-5 sm:px-7">
@@ -63,7 +72,8 @@
       </div>
     </section>
 
-    <section class="rounded-3xl border border-stone-200/80 bg-[#fffdf9] p-5 shadow-[0_20px_60px_rgba(43,36,31,.11)] sm:p-7">
+    <section class="checkout-print-card rounded-3xl border border-stone-200/80 bg-[#fffdf9] p-5 shadow-[0_20px_60px_rgba(43,36,31,.11)] sm:p-7">
+      <button type="button" onclick="window.print()" class="print-hidden mb-4 w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-800">Download / print checkout</button>
       {% if payment_error %}<div class="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">{{ payment_error }}</div>{% endif %}
 
       {% if checkout.status == 'materialized' and checkout.materialized_intake %}
@@ -107,7 +117,6 @@
             <form method="post" enctype="multipart/form-data" action="{% url 'storefront_checkout_claim' store_business.slug checkout.public_id %}" class="mt-5 space-y-3">{% csrf_token %}
               <p class="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs leading-5 text-sky-900">Transfer the exact amount to the account above, then attach the receipt/proof generated by your bank or transfer app. Proof is required and does not itself mark the order paid.</p>
               <label class="block text-xs font-semibold text-stone-600">Name on the transfer<input name="payer_name" required value="{{ checkout.customer_name }}" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"></label>
-              <label class="block text-xs font-semibold text-stone-600">Transfer reference<input name="transfer_reference" required class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal uppercase outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"></label>
               <label class="block text-xs font-semibold text-stone-600">Payment proof (JPG, PNG, WEBP or PDF; max 10 MB)<input type="file" name="payment_proof" required accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf" class="mt-1.5 block w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm font-normal"></label>
               <button class="w-full rounded-xl px-4 py-3 text-sm font-semibold text-white" style="background:var(--brand)">Submit payment proof</button>
             </form>

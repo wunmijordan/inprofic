@@ -5,6 +5,7 @@ from decimal import InvalidOperation
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import Q
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -14,6 +15,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from accounts.services import is_business_admin, user_has_permission
 from core.models import Business
+from core.services import audit
 
 from .forms import (
     CommerceDirectTransferRouteForm,
@@ -527,6 +529,7 @@ def payment_queue(request):
         "claims__reviewed_by", "receipts__verified_by", "receipts__reversed_by",
         "gateway_events",
     )[:100])
+    now = timezone.now()
     for payment in payments:
         payment.confirmation_token = f"{payment.public_id}:{payment.updated_at.isoformat()}"
         payment.manual_transfer_claim_allowed = bool(
@@ -536,11 +539,57 @@ def payment_queue(request):
             payment.gateway_provider in {CommercePayment.GATEWAY_PAYSTACK, CommercePayment.GATEWAY_MONNIFY}
             or (not payment.gateway_provider and payment.method in {CommercePayment.METHOD_PAYSTACK, CommercePayment.METHOD_MONNIFY})
         )
+        payment.can_remove_expired = bool(
+            payment.status in {CommercePayment.STATUS_PENDING, CommercePayment.STATUS_AWAITING_CUSTOMER}
+            and (
+                (payment.expires_at and payment.expires_at <= now)
+                or (payment.checkout_id and (
+                    payment.checkout.status == CommerceCheckoutSession.STATUS_EXPIRED
+                    or (payment.checkout.reservation_expires_at and payment.checkout.reservation_expires_at <= now)
+                ))
+            )
+            and not payment.claims.all()
+            and not payment.receipts.all()
+            and not payment.gateway_events.all()
+        )
     return render(request, "commerce/payments.html", {
         "payments": payments,
         "can_verify": _can_verify(request.user, request.business),
         "can_manage_payment_settings": is_business_admin(request.user, request.business),
     })
+
+
+@login_required
+@require_POST
+def payment_remove_expired(request, public_id):
+    if not _can_verify(request.user, request.business):
+        return render(request, "403.html", status=403)
+    with transaction.atomic():
+        payment = get_object_or_404(
+            CommercePayment.objects.select_for_update().select_related("checkout"),
+            business=request.business, public_id=public_id,
+        )
+        now = timezone.now()
+        is_expired = bool(
+            (payment.expires_at and payment.expires_at <= now)
+            or (payment.checkout_id and (
+                payment.checkout.status == CommerceCheckoutSession.STATUS_EXPIRED
+                or (payment.checkout.reservation_expires_at and payment.checkout.reservation_expires_at <= now)
+            ))
+        )
+        if payment.status not in {CommercePayment.STATUS_PENDING, CommercePayment.STATUS_AWAITING_CUSTOMER} or not is_expired:
+            messages.error(request, "Only unpaid, expired payment attempts can be removed.")
+        elif payment.claims.exists() or payment.receipts.exists() or payment.gateway_events.exists():
+            messages.error(request, "This payment has claims or provider history and must be retained for audit.")
+        else:
+            reference = payment.reference
+            audit(
+                request.business, request.user, "commerce_expired_payment_remove", payment,
+                f"Removed expired, unpaid payment attempt {reference}", {"reference": reference},
+            )
+            payment.delete()
+            messages.success(request, "Expired unpaid payment attempt removed.")
+    return redirect("commerce_payment_queue")
 
 
 @login_required

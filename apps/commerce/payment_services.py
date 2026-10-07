@@ -549,8 +549,12 @@ def submit_bank_claim(*, payment, payer_name, transfer_reference, payment_proof=
         raise ValidationError("This payment no longer accepts transfer claims.")
     payer_name = (payer_name or "").strip()
     transfer_reference = (transfer_reference or "").strip().upper()
-    if not payer_name or not transfer_reference:
-        raise ValidationError("Payer name and transfer reference are required.")
+    if not payer_name:
+        raise ValidationError("Name on the transfer is required.")
+    if not transfer_reference:
+        # The customer only needs to attach proof. Keep a unique internal
+        # claim key so staff can still locate and review the evidence.
+        transfer_reference = f"PROOF-{payment.public_id}"
     if manual_transfer:
         if payment_proof is None:
             raise ValidationError("Attach the transfer payment proof before submitting.")

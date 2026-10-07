@@ -80,7 +80,6 @@ class CommerceSettingsForm(forms.ModelForm):
             raise forms.ValidationError("Upload a header image no larger than 8 MB.")
         return image
 
-
 class StorefrontProductForm(forms.ModelForm):
     class Meta:
         model = StorefrontProduct

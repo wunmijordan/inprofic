@@ -24,6 +24,9 @@
   --ui-control-height: 2.25rem;
   --ui-accent: var(--tenant-button, #d14900);
   --ui-accent-contrast: var(--tenant-button-contrast, #fff);
+  /* Tenant palette colors are reserved for fills and actions. Text and links
+     stay neutral so they remain readable on either tenant or theme surfaces. */
+  --ui-link-accent: var(--ui-surface-text);
 }
 
 html[data-theme="dark"] {
@@ -111,7 +114,8 @@ main :where(.text-stone-700,.text-stone-800,.text-stone-900,
             .text-slate-700,.text-slate-800,.text-slate-900,
             .text-neutral-700,.text-neutral-800,.text-neutral-900,
             .text-\[\#211D1A\]) { color: var(--ui-local-text, var(--ui-text)) !important; }
-main :where(.text-\[\#d14900\],.text-\[\#b94300\]) { color: var(--ui-accent) !important; }
+main :where(.text-\[\#d14900\],.text-\[\#D14900\],.text-\[\#b94300\],.text-\[\#B94300\],.text-\[\#8f172d\],.text-\[\#8F172D\],.text-\[\#050733\],.text-\[\#4D1C25\],.text-\[\#4d1c25\],.text-\[\#1E4536\]) { color: var(--ui-local-text, var(--ui-text)) !important; }
+main :where(.hover\:text-\[\#050733\]:hover,.hover\:text-\[\#4D1C25\]:hover,.hover\:text-\[\#4d1c25\]:hover,.hover\:text-\[\#8f172d\]:hover,.hover\:text-\[\#8F172D\]:hover,.hover\:text-\[\#d14900\]:hover,.hover\:text-\[\#D14900\]:hover,.hover\:text-\[\#b94300\]:hover,.hover\:text-\[\#B94300\]:hover,.hover\:text-\[\#208d63\]:hover) { color: var(--ui-local-text, var(--ui-text)) !important; }
 
 main :where(.bg-white,.bg-white\/55,.bg-white\/60,.bg-white\/70,.bg-white\/80,.bg-white\/95,.bg-\[\#FFFDF8\]) {
   --ui-local-text: var(--ui-surface-text);
@@ -171,7 +175,14 @@ main input:focus, main select:focus, main textarea:focus { border-color: var(--u
 .cf-field > span:first-child { margin-bottom: .3rem !important; color: var(--ui-local-muted, var(--ui-surface-muted-text)) !important; font-size: .68rem !important; letter-spacing: .035em !important; }
 
 main :is(button,a)[class*="bg-[#8f172d]"], main :is(button,a)[class*="bg-[#8F172D]"],
-main :is(button,a)[class*="bg-[#D14900]"] { background: var(--ui-accent) !important; color: var(--ui-accent-contrast) !important; border-color: var(--ui-accent) !important; }
+main :is(button,a)[class*="bg-[#D14900]"], main :is(button,a)[class*="bg-[#d14900]"] { background: var(--ui-accent) !important; color: var(--ui-accent-contrast) !important; border-color: var(--ui-accent) !important; }
+main :is(button,a)[class*="bg-[#8f172d]"] :where(*),
+main :is(button,a)[class*="bg-[#8F172D]"] :where(*),
+main :is(button,a)[class*="bg-[#D14900]"] :where(*),
+main :is(button,a)[class*="bg-[#d14900]"] :where(*),
+main :is(button,a)[style*="background:var(--tenant-button)"] :where(*),
+main button[type="submit"]:not([class*="rose"]):not([class*="red"]) :where(*),
+main button:not([type]):not([class*="rose"]):not([class*="red"]) :where(*) { color: inherit !important; }
 main :is(button,a)[class*="border-[#8f172d]"], main :is(button,a)[class*="border-[#8F172D]"] { border-color: var(--ui-accent) !important; color: var(--ui-accent) !important; }
 main button[type="submit"]:not([class*="rose"]):not([class*="red"]),
 main button:not([type]):not([class*="rose"]):not([class*="red"]),
@@ -287,7 +298,7 @@ html[data-theme="dark"] #commerce-notification-dock :where(.bg-white,.bg-\[\#FFF
 html[data-theme="dark"] #commerce-notification-dock :where(.bg-stone-50,.bg-stone-100,.hover\:bg-white:hover,.hover\:bg-stone-50:hover,.hover\:bg-stone-100:hover) { background-color: var(--ui-surface-muted) !important; }
 html[data-theme="dark"] #commerce-notification-dock :where(.text-stone-300,.text-stone-400,.text-stone-500,.text-stone-600) { color: var(--ui-surface-muted-text) !important; }
 html[data-theme="dark"] #commerce-notification-dock :where(.text-stone-700,.text-stone-800,.text-stone-900,.hover\:text-stone-800:hover,.hover\:text-stone-900:hover) { color: var(--ui-surface-text) !important; }
-html[data-theme="dark"] #commerce-notification-dock :where(.text-\[\#8f172d\],.text-\[\#d14900\]) { color: var(--ui-accent) !important; }
+html[data-theme="dark"] #commerce-notification-dock :where(.text-\[\#8f172d\],.text-\[\#d14900\]) { color: var(--ui-local-text, var(--ui-surface-text)) !important; }
 html[data-theme="dark"] #commerce-notification-dock :where(.border-stone-100,.border-stone-200,.border-stone-300) { border-color: var(--ui-border) !important; }
 html[data-theme="dark"] #commerce-notification-dock :where(.bg-amber-100) { background-color: #3d3119 !important; }
 html[data-theme="dark"] #commerce-notification-dock :where(.bg-rose-100) { background-color: #47202c !important; }

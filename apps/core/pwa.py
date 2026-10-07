@@ -239,10 +239,6 @@ self.addEventListener('push', (event) => {{
   try {{ data = event.data ? event.data.json() : {{}}; }} catch (_) {{ data = {{}}; }}
   if (data.type !== 'commerce.notification') return;
   event.waitUntil((async () => {{
-    const windows = await self.clients.matchAll({{ type: 'window', includeUncontrolled: true }});
-    // A visible INPROFIC page already receives the same durable notice over
-    // the Commerce WebSocket, so don't create a duplicate operating-system alert.
-    if (windows.some((client) => client.visibilityState === 'visible')) return;
     const target = new URL(data.url || '/commerce/', self.location.origin).href;
     const theme = await preferredTheme();
     const themedIcon = theme === 'dark'

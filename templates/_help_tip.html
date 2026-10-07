@@ -1,7 +1,8 @@
-{% if help_text %}
+{% if help_text or help_items %}
 <span
-  class="form-help-tip normal-case tracking-normal"
+  class="form-help-tip normal-case tracking-normal{% if portal_bubble %} form-help-tip--portal{% endif %}"
   data-form-help-tip
+  {% if portal_bubble %}data-form-help-portal="true"{% endif %}
 >
   <button
     type="button"
@@ -20,12 +21,24 @@
 
   <span
     {% if help_id %}id="{{ help_id }}"{% endif %}
-    class="form-help-tip__bubble normal-case tracking-normal"
+    class="form-help-tip__bubble normal-case tracking-normal{% if portal_bubble %} form-help-tip__bubble--portal{% endif %}"
     data-form-help-bubble
     role="tooltip"
     hidden
   >
-    {{ help_text }}
+    {% if help_items %}
+      <ul class="form-help-tip__list">
+        {% for item in help_items %}
+          <li class="form-help-tip__list-item">
+            <strong class="form-help-tip__list-title">{{ item.name }}</strong>
+            {% if item.preorder_lead_time %}<span class="form-help-tip__list-detail">Pre-order lead time: {{ item.preorder_lead_time }}</span>{% endif %}
+            {% if item.estimated_ready_minutes %}<span class="form-help-tip__list-detail">Made to order: about {{ item.estimated_ready_minutes }} minutes</span>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      {{ help_text }}
+    {% endif %}
   </span>
 </span>
 {% endif %}

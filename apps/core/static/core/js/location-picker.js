@@ -125,7 +125,7 @@
       if(mode==='address'&&address.length<4)return;
       const payload=new FormData();const csrf=csrfToken();if(csrf)payload.append('csrfmiddlewaretoken',csrf);if(areaInput?.value)payload.append('area_id',areaInput.value);
       if(mode==='address'){payload.append('address',address);setStatus('Locating the address on the map…');}
-      else{payload.append('latitude',center.lat.toFixed(7));payload.append('longitude',center.lng.toFixed(7));if(address)payload.append('address',address);setStatus('Finding the address for this map pin…');}
+      else{payload.append('latitude',center.lat.toFixed(7));payload.append('longitude',center.lng.toFixed(7));setStatus('Finding the address for this map pin…');}
       const sequence=++resolveSequence;
       if(resolveController)resolveController.abort();
       resolveController=new AbortController();

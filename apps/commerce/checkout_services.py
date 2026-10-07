@@ -199,7 +199,7 @@ def create_checkout(
     *, business, source, customer, items, idempotency_key, external_order_id="",
     order_mode=None, ordering_mode=None, service_mode="", table_reference="",
     delivery_quote_id=None, storefront_customer=None, attribution=None,
-    requested_delivery_at=None,
+    requested_delivery_at=None, customer_note="",
 ):
     """Validate and snapshot a basket without creating CommerceIntake.
 
@@ -279,6 +279,8 @@ def create_checkout(
         configured_choices = good.storefront_option_choices
         if option_value and (not option_label or option_value not in configured_choices):
             raise ValidationError(f"Choose a valid {option_label or 'product'} option for {product.display_name}.")
+        if source == CommerceIntake.SOURCE_STOREFRONT and configured_choices and not option_value:
+            raise ValidationError(f"Choose a {option_label or 'product'} option for {product.display_name} before checkout.")
         if not option_value:
             option_label = ""
         submitted_pack = row.get("bulk_pack")
@@ -429,8 +431,8 @@ def create_checkout(
         prepared.append((
             product, good, qty, payable_qty, reserve_qty, production_qty, price,
             bulk_pack, individual_option, customer_unit, multiplier, contents_snapshot,
-            requested_source, estimated_ready_at,
-            option_label, option_value,
+            requested_source, estimated_ready_at, option_label, option_value,
+            product.preorder_lead_time or "",
         ))
 
     total = total.quantize(Decimal("0.01"))
@@ -470,8 +472,9 @@ def create_checkout(
         if delivery_quote:
             earliest_delivery_at = estimated_ready_at + timedelta(minutes=delivery_quote.eta_max_minutes)
         if requested_delivery_dt < earliest_delivery_at:
+            time_label = "delivery" if delivery_quote else "order"
             raise ValidationError(
-                f"Delivery cannot be scheduled before {timezone.localtime(earliest_delivery_at).strftime('%Y-%m-%d %H:%M')}."
+                f"The preferred {time_label} time cannot be earlier than {timezone.localtime(earliest_delivery_at).strftime('%Y-%m-%d %H:%M')}."
             )
 
     attribution = normalize_attribution(attribution or {})
@@ -498,6 +501,7 @@ def create_checkout(
             reservation_expires_at=expires_at,
             requested_delivery_at=requested_delivery_dt,
             estimated_ready_at=estimated_ready_at,
+            customer_note=(customer_note or "").strip()[:500],
         )
     except IntegrityError:
         # Race-safe retry of the same idempotent request.
@@ -524,8 +528,9 @@ def create_checkout(
             contents_snapshot=contents_snapshot,
             fulfilment_source=fulfilment_source,
             estimated_ready_at=row_ready_at,
+            preorder_lead_time=preorder_lead_time,
         )
-        for product, good, qty, payable_qty, reserve_qty, production_qty, price, bulk_pack, individual_option, customer_unit, multiplier, contents_snapshot, fulfilment_source, row_ready_at, option_label, option_value in prepared
+        for product, good, qty, payable_qty, reserve_qty, production_qty, price, bulk_pack, individual_option, customer_unit, multiplier, contents_snapshot, fulfilment_source, row_ready_at, option_label, option_value, preorder_lead_time in prepared
     ])
     audit(
         business, None, "commerce_checkout_create", checkout,
@@ -619,6 +624,7 @@ def serialize_checkout(checkout):
         } if intake else None),
         "estimated_ready_at": checkout.estimated_ready_at.isoformat() if checkout.estimated_ready_at else None,
         "requested_delivery_at": checkout.requested_delivery_at.isoformat() if checkout.requested_delivery_at else None,
+        "customer_note": checkout.customer_note,
         "materialization_error": checkout.materialization_error if checkout.status == CommerceCheckoutSession.STATUS_PAID_REVIEW else "",
         "items": [
             {
@@ -637,6 +643,7 @@ def serialize_checkout(checkout):
                 "production_quantity": str((row.production_quantity / (row.fulfilment_quantity_per_unit or Decimal("1"))).quantize(Decimal("0.01"))),
                 "fulfilment_source": row.fulfilment_source,
                 "estimated_ready_at": row.estimated_ready_at.isoformat() if row.estimated_ready_at else None,
+                "preorder_lead_time": row.preorder_lead_time,
                 "unit_price": f"{row.unit_price:.2f}",
                 "line_total": f"{row.line_total:.2f}",
             }
@@ -724,6 +731,7 @@ def materialize_paid_checkout(checkout, *, actor=None, allow_expired_recovery=Fa
         payment_state=CommerceIntake.PAYMENT_CONFIRMED,
         requested_delivery_at=checkout.requested_delivery_at,
         estimated_ready_at=checkout.estimated_ready_at,
+        customer_note=checkout.customer_note,
     )
     CommerceIntakeItem.objects.bulk_create([
         CommerceIntakeItem(
@@ -744,6 +752,7 @@ def materialize_paid_checkout(checkout, *, actor=None, allow_expired_recovery=Fa
             contents_snapshot=row.contents_snapshot,
             fulfilment_source=row.fulfilment_source,
             estimated_ready_at=row.estimated_ready_at,
+            preorder_lead_time=row.preorder_lead_time,
         )
         for row in checkout.items.all()
     ])

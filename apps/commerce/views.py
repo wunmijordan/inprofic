@@ -3,7 +3,7 @@ import hmac
 import json
 import logging
 from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta
 from io import BytesIO
 from urllib.parse import urlencode
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
@@ -244,6 +244,11 @@ def commerce_dashboard(request):
         checkout_statuses = list(
             CommerceCheckoutSession.objects.values_list("status", flat=True)[:50]
         )
+        unpaid_checkouts = list(
+            CommerceCheckoutSession.objects.filter(
+                status__in=[CommerceCheckoutSession.STATUS_AWAITING_PAYMENT, CommerceCheckoutSession.STATUS_EXPIRED]
+            ).order_by("-created_at")[:20]
+        )
         is_admin = is_business_admin(request.user, request.business)
         integrations = list(CommerceIntegration.objects.all().order_by("name")) if is_admin else []
     commerce_counts = {
@@ -271,6 +276,7 @@ def commerce_dashboard(request):
         "commerce_settings": settings,
         "products": products,
         "intakes": intakes,
+        "unpaid_checkouts": unpaid_checkouts,
         "integrations": integrations,
         "commerce_counts": commerce_counts,
         "attribution_analytics": attribution_analytics,
@@ -362,10 +368,11 @@ def commerce_settings(request):
                 "Commerce settings hero image upload failed for business_id=%s; saving other settings without replacing the current image",
                 request.business.pk,
             )
-            saved.storefront_hero_image = original_hero_image_name
+            if request.FILES.get("storefront_hero_image"):
+                saved.storefront_hero_image = original_hero_image_name
             saved.save()
             messages.success(request, "Commerce settings saved.")
-            messages.warning(request, "The header image upload failed temporarily. Other settings were saved; please try the image upload again.")
+            messages.warning(request, "The storefront header image upload failed temporarily. Other settings were saved; please try the image upload again.")
             return redirect("commerce_dashboard")
         messages.success(request, "Commerce settings saved.")
         return redirect("commerce_dashboard")
@@ -524,6 +531,15 @@ def _public_catalog_data(business):
         product.public_variants = sorted(
             getattr(product, "public_variants", []), key=lambda item: item.display_name.casefold()
         )
+        product.public_readiness_items = []
+        for readiness_product in [product, *product.public_variants]:
+            lead_time = (readiness_product.preorder_lead_time or "").strip()
+            if lead_time or readiness_product.estimated_ready_minutes:
+                product.public_readiness_items.append({
+                    "name": readiness_product.display_name,
+                    "preorder_lead_time": lead_time,
+                    "estimated_ready_minutes": readiness_product.estimated_ready_minutes,
+                })
     products = [product for product in visible_products if product.finished_good_id not in grouped_children]
     category_ids = {p.finished_good.product_category_id for p in products if p.finished_good.product_category_id}
     categories = list(
@@ -626,6 +642,9 @@ def _checkout_page_context(business, checkout, **extra):
         if checkout.status == CommerceCheckoutSession.STATUS_AWAITING_PAYMENT
         else []
     )
+    expected_fulfilment_at = checkout.estimated_ready_at
+    if expected_fulfilment_at and checkout.delivery_quote_id:
+        expected_fulfilment_at += timedelta(minutes=checkout.delivery_quote.eta_max_minutes)
     context = {
         **_public_storefront_context(business),
         "checkout": checkout,
@@ -638,6 +657,7 @@ def _checkout_page_context(business, checkout, **extra):
         ),
         "payment_methods": payment_methods,
         "switch_payment_methods": _checkout_switch_payment_methods(payment_methods, payment),
+        "expected_fulfilment_at": timezone.localtime(expected_fulfilment_at) if expected_fulfilment_at else None,
     }
     context.update(extra)
     return context
@@ -745,6 +765,7 @@ def storefront_order(request,business_slug):
             storefront_customer=storefront_customer,
             attribution=_request_attribution(request),
             requested_delivery_at=request.POST.get("requested_delivery_at") or None,
+            customer_note=request.POST.get("customer_note", ""),
         )
         return redirect("storefront_checkout", business_slug=business.slug, checkout_id=checkout.public_id)
     except (ValidationError, InvalidOperation, TypeError, ValueError) as exc:
@@ -1390,6 +1411,7 @@ def api_checkouts(request, business_slug):
             delivery_quote_id=data.get("delivery_quote_id") or None,
             attribution=normalize_attribution(data.get("attribution") or {}, referrer=request.META.get("HTTP_REFERER", "")),
             requested_delivery_at=data.get("requested_delivery_at") or None,
+            customer_note=str(data.get("customer_note") or "")[:500],
         )
         payload = serialize_checkout(checkout)
         payload["created"] = created
@@ -1457,7 +1479,10 @@ def api_receipt(request, business_slug, receipt_id):
     if not ok:
         return JsonResponse({"detail": "Invalid or disabled commerce API credential."}, status=403)
     receipt = get_object_or_404(_receipt_queryset(), business=business, public_id=receipt_id)
-    return JsonResponse(_receipt_details(receipt))
+    details = _receipt_details(receipt)
+    if details["branding"]["logo_url"]:
+        details["branding"]["logo_url"] = request.build_absolute_uri(details["branding"]["logo_url"])
+    return JsonResponse(details)
 
 
 def api_order_detail(request,business_slug,public_id):
@@ -1628,13 +1653,16 @@ def _receipt_details(receipt):
     if checkout is not None:
         items = [
             {
-                "name": row.individual_option.name if row.individual_option_id else row.storefront_product.display_name,
+                "name": f"Add-on · {row.individual_option.name}" if row.individual_option_id else row.storefront_product.display_name,
+                "product_option_label": row.product_option_label,
+                "product_option_value": row.product_option_value,
                 "quantity": f"{row.payable_quantity}",
                 "unit": row.customer_unit or row.storefront_product.customer_unit,
                 "bulk_pack": row.bulk_pack.name if row.bulk_pack_id else "",
                 "individual_option": row.individual_option.name if row.individual_option_id else "",
                 "unit_price": f"{row.unit_price:.2f}",
                 "line_total": f"{row.line_total:.2f}",
+                "preorder_lead_time": row.preorder_lead_time,
             }
             for row in checkout.items.all()
         ]
@@ -1642,16 +1670,25 @@ def _receipt_details(receipt):
         customer_phone = checkout.customer_phone
         customer_email = checkout.customer_email
         delivery_fee = Decimal(checkout.delivery_fee or 0)
+        is_delivery = checkout.service_mode == "delivery"
+        requested_at = checkout.requested_delivery_at
+        ready_at = checkout.estimated_ready_at
+        customer_note = checkout.customer_note
+        if ready_at and checkout.delivery_quote_id:
+            ready_at += timedelta(minutes=checkout.delivery_quote.eta_max_minutes)
     elif intake is not None:
         items = [
             {
-                "name": row.individual_option.name if row.individual_option_id else row.finished_good.name,
+                "name": f"Add-on · {row.individual_option.name}" if row.individual_option_id else row.finished_good.name,
+                "product_option_label": row.product_option_label,
+                "product_option_value": row.product_option_value,
                 "quantity": f"{row.requested_quantity}",
                 "unit": row.customer_unit or row.finished_good.unit,
                 "bulk_pack": row.bulk_pack.name if row.bulk_pack_id else "",
                 "individual_option": row.individual_option.name if row.individual_option_id else "",
                 "unit_price": f"{row.unit_price:.2f}",
                 "line_total": f"{row.line_total:.2f}",
+                "preorder_lead_time": row.preorder_lead_time,
             }
             for row in intake.items.all()
         ]
@@ -1659,13 +1696,31 @@ def _receipt_details(receipt):
         customer_phone = intake.customer_phone
         customer_email = getattr(intake, "customer_email", "")
         delivery_fee = Decimal(intake.delivery_fee or 0)
+        is_delivery = intake.service_mode == "delivery"
+        requested_at = intake.requested_delivery_at
+        ready_at = intake.estimated_ready_at
+        customer_note = intake.customer_note
+        if ready_at and intake.delivery_quote_id:
+            ready_at += timedelta(minutes=intake.delivery_quote.eta_max_minutes)
     else:
         items, customer_name, customer_phone, customer_email = [], "", "", ""
         delivery_fee = Decimal("0.00")
+        is_delivery = False
+        requested_at = ready_at = None
+        customer_note = ""
     subtotal = sum((Decimal(row["line_total"]) for row in items), Decimal("0.00"))
+    business = receipt.business
     return {
         "receipt_id": str(receipt.public_id),
         "business_name": receipt.business.name,
+        "branding": {
+            "logo_url": business.storefront_logo.url if business.storefront_logo else "",
+            "tagline": business.tagline,
+            "phone": business.contact_phone,
+            "email": business.contact_email,
+            "address": business.contact_address,
+            "website": business.contact_website,
+        },
         "verified_at": receipt.verified_at.isoformat(),
         "reversed_at": receipt.reversed_at.isoformat() if receipt.reversed_at else None,
         "reversal_reason": receipt.reversal_reason or "",
@@ -1684,6 +1739,10 @@ def _receipt_details(receipt):
             "amount": f"{receipt.amount:.2f}",
         },
         "items": items,
+        "requested_at": requested_at.isoformat() if requested_at else None,
+        "ready_at": ready_at.isoformat() if ready_at else None,
+        "customer_note": customer_note or "",
+        "is_delivery": is_delivery,
         "subtotal": f"{subtotal:.2f}",
         "delivery_fee": f"{delivery_fee:.2f}",
         "total": f"{receipt.amount:.2f}",
@@ -1692,7 +1751,7 @@ def _receipt_details(receipt):
 
 def _receipt_queryset():
     return CommercePaymentReceipt.raw_objects.select_related(
-        "business", "account", "payment__checkout", "payment__intake"
+        "business", "account", "payment__checkout__delivery_quote", "payment__intake__delivery_quote"
     ).prefetch_related(
         "payment__checkout__items__storefront_product__finished_good",
         "payment__checkout__items__bulk_pack",
@@ -1722,6 +1781,10 @@ def storefront_receipt(request, business_slug, receipt_id):
         "customer_name": details["customer"]["name"],
         "customer_phone": details["customer"]["phone"],
         "customer_email": details["customer"]["email"],
+        "requested_at": timezone.localtime(datetime.fromisoformat(details["requested_at"])) if details["requested_at"] else None,
+        "ready_at": timezone.localtime(datetime.fromisoformat(details["ready_at"])) if details["ready_at"] else None,
+        "customer_note": details["customer_note"],
+        "is_delivery": details["is_delivery"],
         "hide_storefront_header": bool(
             (checkout is not None and checkout.source == CommerceCheckoutSession.SOURCE_STAFF_POS)
             or (intake is not None and intake.source == CommerceIntake.SOURCE_STAFF_POS)

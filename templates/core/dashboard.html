@@ -264,7 +264,7 @@
       </svg>
       Raw materials
     </div>
-    <div class="text-2xl font-semibold mt-1 font-mono text-[#8f172d]">{{ raw_count }}</div>
+    <div class="text-2xl font-semibold mt-1 font-mono text-stone-900">{{ raw_count }}</div>
     <div class="stock-ticker is-loading" data-stock-ticker="raw" role="status" aria-live="off"><div class="stock-ticker__item" data-t-item><div class="stock-ticker__name" data-t-name></div><div class="stock-ticker__bal" data-t-bal><div class="stock-ticker__flip" data-t-flip><div class="stock-ticker__face" data-t-face="a"><div class="stock-ticker__label" data-t-label></div><div class="stock-ticker__line" data-t-line></div><div class="stock-ticker__sub" data-t-sub></div></div><div class="stock-ticker__face" data-t-face="b"><div class="stock-ticker__label" data-t-label></div><div class="stock-ticker__line" data-t-line></div><div class="stock-ticker__sub" data-t-sub></div></div></div></div></div></div>
   </a>
   <a href="{% url 'inventory' %}#finished" class="dashboard-surface dashboard-kpi rounded-2xl p-3 md:p-4">
@@ -274,7 +274,7 @@
       </svg>
       Products
     </div>
-    <div class="text-2xl font-semibold mt-1 font-mono text-[#8f172d]">{{ goods_count }}</div>
+    <div class="text-2xl font-semibold mt-1 font-mono text-stone-900">{{ goods_count }}</div>
     <div class="stock-ticker is-loading" data-stock-ticker="finished" role="status" aria-live="off"><div class="stock-ticker__item" data-t-item><div class="stock-ticker__name" data-t-name></div><div class="stock-ticker__bal" data-t-bal><div class="stock-ticker__flip" data-t-flip><div class="stock-ticker__face" data-t-face="a"><div class="stock-ticker__label" data-t-label></div><div class="stock-ticker__line" data-t-line></div><div class="stock-ticker__sub" data-t-sub></div></div><div class="stock-ticker__face" data-t-face="b"><div class="stock-ticker__label" data-t-label></div><div class="stock-ticker__line" data-t-line></div><div class="stock-ticker__sub" data-t-sub></div></div></div></div></div></div>
   </a>
   <div class="dashboard-surface dashboard-kpi rounded-2xl p-3 md:p-4">
@@ -296,7 +296,7 @@
       </svg>
       {% if vertical_ui.uses_production %}Pending Orders{% else %}Open Purchase Orders{% endif %}
     </div>
-    <div class="text-2xl font-semibold mt-1 font-mono {% if vertical_ui.uses_production and pending_orders_count or not vertical_ui.uses_production and open_purchase_orders_count %}text-rose-700{% else %}text-[#8f172d]{% endif %}">{% if vertical_ui.uses_production %}{{ pending_orders_count }}{% else %}{{ open_purchase_orders_count }}{% endif %}</div>
+    <div class="text-2xl font-semibold mt-1 font-mono {% if vertical_ui.uses_production and pending_orders_count or not vertical_ui.uses_production and open_purchase_orders_count %}text-rose-700{% else %}text-stone-900{% endif %}">{% if vertical_ui.uses_production %}{{ pending_orders_count }}{% else %}{{ open_purchase_orders_count }}{% endif %}</div>
   </div>
   <div class="dashboard-surface dashboard-kpi col-span-2 rounded-2xl p-3 md:p-4 lg:col-span-1">
     <div class="text-xs flex items-center uppercase tracking-wider font-bold text-[#8f172d] block mb-1 gap-2">
@@ -306,7 +306,7 @@
       </svg>
       {% if vertical_ui.uses_production %}Today's Production{% else %}Today's Stock Arrivals{% endif %}
     </div>
-    <div class="text-2xl font-semibold mt-1 font-mono text-[#8f172d]">{% if vertical_ui.uses_production %}{{ daily_units_made|num }}{% else %}{{ daily_units_received|num }}{% endif %}</div>
+    <div class="text-2xl font-semibold mt-1 font-mono text-stone-900">{% if vertical_ui.uses_production %}{{ daily_units_made|num }}{% else %}{{ daily_units_received|num }}{% endif %}</div>
     <div class="text-xs text-stone-400 mt-0.5">{% if vertical_ui.uses_production %}Finished Goods Units{% else %}Product Units Received{% endif %}</div>
   </div>
 </div>
@@ -982,13 +982,13 @@
 
 <div class="hidden sm:grid sm:grid-cols-3 gap-3 mt-6">
   <a href="{% url 'po_add' %}" class="p-4 rounded-lg bg-[#8f172d] text-white text-center hover:bg-[#4D1C25] shadow-[0_2px_8px_#000000d2]">
-    <div class="font-medium text-sm">Log a Purchase</div><div class="text-xs text-[#D8E3DB]">Record incoming stock from a supplier</div>
+    <div class="font-medium text-sm">Log a Purchase</div><div class="text-xs opacity-80">Record incoming stock from a supplier</div>
   </a>
   {% if vertical_ui.uses_production %}<a href="{% url 'order_add' %}" class="p-4 rounded-lg bg-[#8f172d] text-white text-center hover:bg-[#4D1C25] shadow-sm">
-    <div class="font-medium text-sm">New Order</div><div class="text-xs text-[#D8E3DB]">Customer order or physical store restock</div>
-  </a>{% else %}<a href="{% url 'inventory' %}#finished" class="p-4 rounded-lg bg-[#8f172d] text-white text-center hover:bg-[#4D1C25] shadow-sm"><div class="font-medium text-sm">Review Product Stock</div><div class="text-xs text-[#D8E3DB]">See arrivals, balances and reorder status</div></a>{% endif %}
+    <div class="font-medium text-sm">New Order</div><div class="text-xs opacity-80">Customer order or physical store restock</div>
+  </a>{% else %}<a href="{% url 'inventory' %}#finished" class="p-4 rounded-lg bg-[#8f172d] text-white text-center hover:bg-[#4D1C25] shadow-sm"><div class="font-medium text-sm">Review Product Stock</div><div class="text-xs opacity-80">See arrivals, balances and reorder status</div></a>{% endif %}
   <a href="{% url 'sale_add' %}" class="p-4 rounded-lg bg-[#8f172d] text-white text-center hover:bg-[#4D1C25] shadow-[0_2px_8px_#000000d2]">
-    <div class="font-medium text-sm">Record a Sale</div><div class="text-xs text-[#D8E3DB]">Physical store stock, immediate</div>
+    <div class="font-medium text-sm">Record a Sale</div><div class="text-xs opacity-80">Physical store stock, immediate</div>
   </a>
 </div>
 </div>

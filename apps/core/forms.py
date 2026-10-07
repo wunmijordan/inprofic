@@ -10,6 +10,7 @@ class BusinessForm(forms.ModelForm):
         model = Business
         fields = [
             "name", "slug", "vertical", "currency_symbol", "background_color", "accent_color", "tagline",
+            "contact_phone", "contact_email", "contact_address", "contact_website",
             "storefront_logo",
             "restaurant_table_service",
         ]
@@ -35,9 +36,13 @@ class BusinessForm(forms.ModelForm):
         self.fields["accent_color"].label = "Button / action color"
         self.fields["storefront_logo"].label = "Storefront logo"
         self.fields["storefront_logo"].help_text = (
-            "Shown only beside your business name on the public storefront. "
+            "Shown beside your business name on the public storefront and on checkout pages and receipts. "
             "A square or compact transparent PNG/WebP works best (maximum 4 MB)."
         )
+        self.fields["contact_phone"].label = "Business phone"
+        self.fields["contact_email"].label = "Business email"
+        self.fields["contact_address"].label = "Business address"
+        self.fields["contact_website"].label = "Business website"
         self.fields["restaurant_table_service"].label = "Table service"
         self.fields["restaurant_table_service"].help_text = "Require a table or service reference for dine-in sales."
         self.fields["restaurant_table_service"].widget.attrs["class"] = "h-4 w-4 accent-[#8f172d]"
