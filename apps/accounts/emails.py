@@ -8,6 +8,7 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.contrib.staticfiles import finders
 from django.template.loader import render_to_string
+from core.email_branding import email_font_urls
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ def send_signup_welcome_email(*, user, business, subscription, workspace_url):
         "brand_name": "INPROFIC",
         "brand_logo_cid": "cid:inprofic-logo",
         "support_email": getattr(settings, "INPROFIC_SUPPORT_EMAIL", "") or "",
+        **email_font_urls(),
     }
     subject = f"Welcome to INPROFIC — {business.name} is READY!"
     text_body = render_to_string("accounts/email/welcome.txt", context)

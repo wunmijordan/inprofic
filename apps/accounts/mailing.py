@@ -15,6 +15,7 @@ from django.template import Context, Template
 from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.html import strip_tags
+from core.email_branding import email_font_urls
 
 from .models import PlatformMailCampaign, PlatformMailRecipient
 
@@ -60,6 +61,7 @@ def _build_message(row, logo_bytes):
         "cta_url": rendered_cta_url,
         "brand_logo_cid": "cid:inprofic-logo",
         "support_email": getattr(settings, "INPROFIC_SUPPORT_EMAIL", "") or "",
+        **email_font_urls(),
     }
     message = EmailMultiAlternatives(
         rendered_subject,

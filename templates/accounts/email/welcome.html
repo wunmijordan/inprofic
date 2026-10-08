@@ -4,6 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Welcome to INPROFIC</title>
+  <style>
+    {% if brand_sora_font_url %}@font-face{font-family:'Sora';src:url('{{ brand_sora_font_url }}') format('woff2');font-style:normal;font-weight:100 800;}{% endif %}
+    {% if brand_fraunces_font_url %}@font-face{font-family:'Fraunces';src:url('{{ brand_fraunces_font_url }}') format('woff2');font-style:normal;font-weight:600;}{% endif %}
+  </style>
 </head>
 <body style="margin:0;padding:0;background:#f5efe0;color:#211d1a;font-family:Sora,Arial,Helvetica,sans-serif;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#f5efe0;padding:28px 12px;">
@@ -13,14 +17,14 @@
           <tr>
             <td style="padding:30px 34px;background:#050733;color:#ffffff;">
               <img src="{{ brand_logo_cid }}" alt="INPROFIC" width="220" style="display:block;width:220px;max-width:72%;height:auto;border:0;">
-              <div style="margin-top:12px;font-size:30px;line-height:1.12;font-weight:800;">Your Workspace is READY!</div>
-              <div style="margin-top:10px;font-size:15px;line-height:1.65;color:#d9d9e7;">Buying, Making, Selling and Delivering — connected in one operational Workspace.</div>
+              <div style="margin-top:12px;font-family:'Fraunces',Georgia,serif;font-size:30px;line-height:1.12;font-weight:600;">Your Workspace is READY!</div>
+              <div style="margin-top:10px;font-family:'Sora',Arial,Helvetica,sans-serif;font-size:15px;line-height:1.65;font-weight:700;letter-spacing:-.025em;color:#d9d9e7;">Buying, Making, Selling and Delivering — connected in one operational Workspace.</div>
             </td>
           </tr>
           <tr>
             <td style="padding:32px 34px;">
-              <div style="font-size:16px;line-height:1.65;">Hi {{ user.fullname|default:user.username }},</div>
-              <div style="margin-top:12px;font-size:16px;line-height:1.7;">Welcome to <strong style="color:#8f172d;">INPROFIC</strong>. <strong>{{ business.name }}</strong> has been created and your Business Admin account is ready.</div>
+              <div style="font-family:'Sora',Arial,Helvetica,sans-serif;font-size:16px;line-height:1.65;">Hi {{ user.fullname|default:user.username }},</div>
+              <div style="margin-top:12px;font-family:'Sora',Arial,Helvetica,sans-serif;font-size:16px;line-height:1.7;">Welcome to <strong style="color:#8f172d;">INPROFIC</strong>. <strong>{{ business.name }}</strong> has been created and your Business Admin account is ready.</div>
 
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:24px;width:100%;background:#faf6ef;border:1px solid #e7dfcc;border-radius:16px;">
                 <tr>

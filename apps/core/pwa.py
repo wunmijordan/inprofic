@@ -279,13 +279,25 @@ self.addEventListener('push', (event) => {{
 
 self.addEventListener('notificationclick', (event) => {{
   event.notification.close();
-  const target = new URL(event.notification.data?.url || '/commerce/', self.location.origin).href;
+  let targetUrl;
+  try {{ targetUrl = new URL(event.notification.data?.url || '/commerce/', self.location.origin); }}
+  catch (_) {{ targetUrl = new URL('/commerce/', self.location.origin); }}
+  if (targetUrl.origin !== self.location.origin) targetUrl = new URL('/commerce/', self.location.origin);
+  const target = targetUrl.href;
   event.waitUntil((async () => {{
     const windows = await self.clients.matchAll({{ type: 'window', includeUncontrolled: true }});
     for (const client of windows) {{
-      if ('focus' in client) {{
-        try {{ if ('navigate' in client) await client.navigate(target); }} catch (_) {{}}
-        return client.focus();
+      if (!('focus' in client)) continue;
+      try {{
+        if ('navigate' in client) {{
+          const navigatedClient = await client.navigate(target);
+          if (navigatedClient && 'focus' in navigatedClient) return navigatedClient.focus();
+        }}
+        return await client.focus();
+      }} catch (_) {{
+        // If an existing app window cannot navigate, open the notification's
+        // destination in a new app window instead of leaving the user in place.
+        break;
       }}
     }}
     return self.clients.openWindow ? self.clients.openWindow(target) : undefined;
