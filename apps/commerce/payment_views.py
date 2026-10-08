@@ -1,5 +1,6 @@
 import hashlib
 import json
+import mimetypes
 from decimal import InvalidOperation
 
 from django.contrib import messages
@@ -566,7 +567,9 @@ def payment_remove_expired(request, public_id):
         return render(request, "403.html", status=403)
     with transaction.atomic():
         payment = get_object_or_404(
-            CommercePayment.objects.select_for_update().select_related("checkout"),
+            # Lock only the payment row. PostgreSQL rejects locking the nullable
+            # checkout side of the LEFT JOIN created by select_related().
+            CommercePayment.objects.select_for_update(of=("self",)).select_related("checkout"),
             business=request.business, public_id=public_id,
         )
         now = timezone.now()
@@ -599,7 +602,15 @@ def payment_claim_proof(request, claim_id):
     claim = get_object_or_404(CommercePaymentClaim, business=request.business, pk=claim_id)
     if not claim.payment_proof:
         raise Http404("No payment proof is attached to this claim.")
-    response = FileResponse(claim.payment_proof.open("rb"), as_attachment=False, filename=claim.payment_proof.name.rsplit("/", 1)[-1])
+    filename = claim.payment_proof.name.rsplit("/", 1)[-1]
+    content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    response = FileResponse(
+        claim.payment_proof.open("rb"),
+        as_attachment=False,
+        filename=filename,
+        content_type=content_type,
+    )
+    response["Content-Disposition"] = f'inline; filename="{filename.replace(chr(34), "")}"'
     response["X-Content-Type-Options"] = "nosniff"
     response["Cache-Control"] = "private, no-store"
     response["Content-Security-Policy"] = "sandbox"

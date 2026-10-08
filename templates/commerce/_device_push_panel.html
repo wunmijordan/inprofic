@@ -31,6 +31,12 @@
     const raw = atob((value + padding).replace(/-/g, '+').replace(/_/g, '/'));
     return Uint8Array.from(raw, char => char.charCodeAt(0));
   }
+  function iosHomeScreenAppRequired() {
+    const ua = navigator.userAgent || '';
+    const isIOS = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const standalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+    return isIOS && !standalone;
+  }
   async function subscription() {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
     const registration = await navigator.serviceWorker.ready;
@@ -46,7 +52,12 @@
   }
   async function refresh() {
     if (!button || !status) return;
-    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+    if (iosHomeScreenAppRequired()) {
+      button.disabled = true;
+      status.textContent = 'On iPhone or iPad, add INPROFIC to your Home Screen and open it there before enabling background alerts.';
+      return;
+    }
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window) || !('showNotification' in ServiceWorkerRegistration.prototype)) {
       button.disabled = true;
       status.textContent = 'This browser does not support Web Push. In-app alerts still work while INPROFIC is open.';
       return;
@@ -79,6 +90,7 @@
   button?.addEventListener('click', async () => {
     button.disabled = true;
     try {
+      if (iosHomeScreenAppRequired()) throw new Error('On iPhone or iPad, add INPROFIC to your Home Screen and open it there before enabling background alerts.');
       let existing = await subscription();
       if (existing) {
         await fetch(panel.dataset.unsubscribeUrl, {

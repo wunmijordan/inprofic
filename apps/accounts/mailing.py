@@ -215,6 +215,8 @@ def dispatch_queued_platform_mail(*, limit=100, campaign_id=None):
     except OSError:
         logger.warning("Platform mail logo could not be read; sending without it")
         logo_bytes = None
+    # get_connection() follows EMAIL_BACKEND, so queued campaigns share the
+    # same configured provider as signup and other application mail.
     mail_connection = get_connection(fail_silently=False)
     try:
         mail_connection.open()

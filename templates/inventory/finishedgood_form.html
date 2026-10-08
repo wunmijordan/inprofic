@@ -31,7 +31,7 @@
             {% include "_field.html" with field=form.units_per_batch %}
           </div>
         </div>
-      {% if obj %}<p class="text-[11px] text-stone-400 -mt-2 mb-3">Total made all-time: <span class="font-mono">{{ obj.total_produced|num }}</span> {{ obj.unit }} (updates automatically as orders complete)</p>{% endif %}
+      {% if obj %}<p class="text-[11px] text-stone-400 -mt-2 mb-3">Total made all-time: <span class="font-mono">{{ obj.total_produced|num }}</span> {{ obj.unit|unit_plural:obj.total_produced }} (updates automatically as orders complete)</p>{% endif %}
       {% else %}
         <p class="text-[11px] text-stone-500 -mt-1 mb-3">After setup, add stock through Procurement so each supplier arrival, quantity, and unit cost remains traceable.</p>
       {% endif %}

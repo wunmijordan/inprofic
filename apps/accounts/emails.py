@@ -35,6 +35,8 @@ def send_signup_welcome_email(*, user, business, subscription, workspace_url):
     subject = f"Welcome to INPROFIC — {business.name} is READY!"
     text_body = render_to_string("accounts/email/welcome.txt", context)
     html_body = render_to_string("accounts/email/welcome.html", context)
+    logo_path = finders.find("core/brand/inprofic-wordmark-on-dark.png")
+
     message = EmailMultiAlternatives(
         subject=subject,
         body=text_body,
@@ -42,7 +44,6 @@ def send_signup_welcome_email(*, user, business, subscription, workspace_url):
         to=[email],
     )
     message.attach_alternative(html_body, "text/html")
-    logo_path = finders.find("core/brand/inprofic-wordmark-on-dark.png")
     if logo_path:
         logo = MIMEImage(Path(logo_path).read_bytes(), _subtype="png")
         logo.add_header("Content-ID", "<inprofic-logo>")

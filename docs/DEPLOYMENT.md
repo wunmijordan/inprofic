@@ -97,12 +97,17 @@ Enter the following secret values during the first Blueprint setup. For an exist
 | `DELIVERY_GEOCODER_USER_AGENT` | Identifies this INPROFIC deployment to the geocoding service; set a real product/contact identifier for production |
 | `DELIVERY_GEOCODER_TIMEOUT_SECONDS` | Address-lookup timeout; defaults to `4`                                                     |
 | `DELIVERY_GEOCODER_CACHE_SECONDS` | Successful address-candidate cache lifetime; defaults to `86400` (24h)                     |
-| `EMAIL_HOST`             | SMTP host used for signup welcome mail; when unset, mail is written to the server console    |
+| `EMAIL_PROVIDER`         | `brevo` for Brevo's HTTPS API, `smtp` for SMTP, or `console`; defaults to SMTP when `EMAIL_HOST` is set, otherwise console |
+| `BREVO_API_KEY`          | Secret API v3 key from Brevo's **SMTP & API → API Keys** page                               |
+| `BREVO_SENDER_EMAIL`     | Verified Brevo sender address, e.g. `hello@your-domain.example`; defaults to the address in `DEFAULT_FROM_EMAIL` |
+| `BREVO_SENDER_NAME`      | Sender name shown to recipients; defaults to the display name in `DEFAULT_FROM_EMAIL`       |
+| `BREVO_API_TIMEOUT`      | Brevo HTTPS request timeout in seconds; defaults to `8`                                     |
+| `EMAIL_HOST`             | SMTP host used when `EMAIL_PROVIDER=smtp`; when unset, email uses the console backend       |
 | `EMAIL_PORT`             | SMTP port; defaults to `587`                                                                  |
 | `EMAIL_HOST_USER`        | SMTP username                                                                                  |
 | `EMAIL_HOST_PASSWORD`    | SMTP password / provider API credential                                                        |
-| `EMAIL_USE_TLS`          | `True` for STARTTLS providers; disable when using implicit SSL                                 |
-| `EMAIL_USE_SSL`          | Optional implicit SSL toggle; never enable together with `EMAIL_USE_TLS`                       |
+| `EMAIL_USE_TLS`          | `True` for STARTTLS providers (usually port `587`); disable when using implicit SSL             |
+| `EMAIL_USE_SSL`          | `True` for implicit SSL providers (usually port `465`); do not enable with `EMAIL_USE_TLS`       |
 | `DEFAULT_FROM_EMAIL`     | Branded sender, for example `INPROFIC <hello@your-domain.example>`                             |
 | `INPROFIC_SUPPORT_EMAIL` | Optional support address shown in the welcome email                                            |
 
@@ -142,7 +147,9 @@ To get found by Google (code cannot do this part for you):
 3. If the `*.onrender.com` address was indexed earlier, leave it redirecting; Google follows the 301 and moves the listing to the custom domain over days to weeks.
 4. A brand-new or rarely linked domain can take weeks to rank for its brand name. Links from your social profiles and any directories help.
 
-Signup welcome mail is sent after a business workspace has been created. Configure the SMTP variables above on every production front end that can accept signups. If `EMAIL_HOST` is left empty, INPROFIC deliberately uses Django's console email backend so signup remains functional without attempting an external SMTP connection.
+All Django-generated mail—including signup welcomes, queued platform campaigns, and payslip delivery—uses the selected `EMAIL_PROVIDER`. Set `EMAIL_PROVIDER=brevo` and configure the Brevo API key and verified sender on each production front end. INPROFIC sends its own rendered message content through Brevo's transactional email API; no Brevo template is required. With `EMAIL_PROVIDER=smtp`, configure the SMTP variables instead. If neither provider is configured, INPROFIC uses Django's console backend.
+
+Render's free web services block outbound SMTP ports `25`, `465`, and `587`. Use a paid Render instance or an email provider's HTTPS API integration if the service is on the free plan; changing TLS settings cannot bypass that network restriction. For port `465`, use implicit SSL (`EMAIL_USE_SSL=True`, `EMAIL_USE_TLS=False`); for port `587`, use STARTTLS (`EMAIL_USE_TLS=True`, `EMAIL_USE_SSL=False`).
 
 The Render process uses Django's Psycopg pool with at most two open database
 sessions. Keep `DB_CONN_MAX_AGE=0`; Django persistent connections and the

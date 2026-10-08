@@ -123,6 +123,12 @@
     const raw = atob((value + padding).replace(/-/g, '+').replace(/_/g, '/'));
     return Uint8Array.from(raw, char => char.charCodeAt(0));
   }
+  function iosHomeScreenAppRequired() {
+    const ua = navigator.userAgent || '';
+    const isIOS = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const standalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+    return isIOS && !standalone;
+  }
   async function currentPushSubscription() {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
     const registration = await navigator.serviceWorker.ready;
@@ -130,6 +136,11 @@
   }
   async function refreshPushStatus() {
     if (!permissionButton || !permissionStatus || !pushPanel) return;
+    if (iosHomeScreenAppRequired()) {
+      permissionButton.disabled = true;
+      permissionStatus.textContent = 'On iPhone or iPad, add INPROFIC to your Home Screen and open it there before enabling background alerts.';
+      return;
+    }
     if (!('Notification' in window)) {
       permissionButton.disabled = true;
       permissionStatus.textContent = 'This browser does not support notifications. The in-app unread activity list will still work.';
@@ -140,7 +151,7 @@
       pushConfig = response.ok ? await response.json() : null;
     } catch (_) { pushConfig = null; }
 
-    const pushSupported = 'serviceWorker' in navigator && 'PushManager' in window;
+    const pushSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'showNotification' in ServiceWorkerRegistration.prototype;
     const localSubscription = pushSupported ? await currentPushSubscription().catch(() => null) : null;
     const granted = Notification.permission === 'granted';
     // A PushSubscription survives logout in the browser while the server-side
@@ -183,6 +194,7 @@
       : 'Background alerts are not enabled on this device.';
   }
   async function enablePush() {
+    if (iosHomeScreenAppRequired()) throw new Error('On iPhone or iPad, add INPROFIC to your Home Screen and open it there before enabling background alerts.');
     if (Notification.permission !== 'granted') {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') return;

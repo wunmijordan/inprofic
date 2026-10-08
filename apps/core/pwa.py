@@ -244,17 +244,25 @@ self.addEventListener('push', (event) => {{
     const themedIcon = theme === 'dark'
       ? (data.icon_dark || '/static/core/pwa/icon-mark-on-dark-192.png')
       : (data.icon_light || data.icon || '/static/core/pwa/icon-mark-192.png');
-    await self.registration.showNotification(data.title || 'INPROFIC', {{
+    const title = data.title || 'INPROFIC';
+    const notificationData = {{ url: target, notificationId: data.id || '' }};
+    const options = {{
       body: data.body || '',
       icon: themedIcon,
       badge: data.badge || '/static/core/pwa/icon-mark-monochrome-192.png',
       tag: data.id ? `${{data.channel || 'commerce'}}-${{data.id}}` : `${{data.channel || 'commerce'}}-notification`,
-      renotify: true,
-      requireInteraction: true,
-      silent: false,
-      vibrate: [320, 140, 320, 140, 520],
-      data: {{ url: target, notificationId: data.id || '' }},
-    }});
+      data: notificationData,
+    }};
+    try {{
+      await self.registration.showNotification(title, options);
+    }} catch (_) {{
+      // Keep a notification visible if a platform rejects optional icon or
+      // metadata fields (some mobile implementations are stricter than desktop).
+      await self.registration.showNotification(title, {{
+        body: data.body || '',
+        data: notificationData,
+      }});
+    }}
   }})());
 }});
 

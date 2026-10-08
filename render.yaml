@@ -65,19 +65,15 @@ services:
         sync: false
       - key: WEB_PUSH_TIMEOUT_SECONDS
         value: "5"
-      - key: EMAIL_HOST
+      - key: EMAIL_PROVIDER
+        value: brevo
+      - key: BREVO_API_KEY
         sync: false
-      - key: EMAIL_PORT
-        value: "465"
-      - key: EMAIL_HOST_USER
-        sync: false
-      - key: EMAIL_HOST_PASSWORD
-        sync: false
-      - key: EMAIL_USE_TLS
-        value: "True"
-      - key: EMAIL_USE_SSL
-        value: "False"
-      - key: EMAIL_TIMEOUT
+      - key: BREVO_SENDER_EMAIL
+        value: hello@inprofic.com.ng
+      - key: BREVO_SENDER_NAME
+        value: INPROFIC
+      - key: BREVO_API_TIMEOUT
         value: "8"
       - key: DEFAULT_FROM_EMAIL
         sync: false

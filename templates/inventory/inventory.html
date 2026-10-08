@@ -53,13 +53,13 @@
           </button>
           <div class="mt-0.5">
             <span class="inline-block px-1.5 py-0.5 ring-1 ring-inset rounded-full text-[10px] font-medium border">
-            Reorder threshold: {{ m.reorder_level_purchase_units|num }} {{ m.purchase_unit }}{{ m.reorder_level_purchase_units|pluralize }}
+            Reorder threshold: {{ m.reorder_level_purchase_units|num }} {{ m.purchase_unit|unit_plural:m.reorder_level_purchase_units }}
             </span>
           </div>
         </td>
         <td class="px-3 py-2 text-middle">
           {% if m.has_unit_conversion %}
-            <span class="font-mono">{{ m.stock_breakdown.0 }}</span> <span class="text-stone-400 italic text-xs">{{ m.purchase_unit }}{{ m.stock_breakdown.0|pluralize }}</span>, <span class="font-mono">{{ m.stock_breakdown.1|num }}</span> <span class="text-stone-400 italic text-xs">{{ m.usage_unit }}</span>
+            <span class="font-mono">{{ m.stock_breakdown.0 }}</span> <span class="text-stone-400 italic text-xs">{{ m.purchase_unit|unit_plural:m.stock_breakdown.0 }}</span>, <span class="font-mono">{{ m.stock_breakdown.1|num }}</span> <span class="text-stone-400 italic text-xs">{{ m.usage_unit }}</span>
             <div class="mt-0.5">
               <span class="inventory-stock-chip inline-block px-1.5 py-0.5 rounded-full text-[10px] font-mono font-medium border
                 {% if m.is_low %}
@@ -158,7 +158,7 @@
             {{ g.name }}
           </button>
           {% if g.product_category %}<div class="mt-1"><span class="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-medium text-stone-600">{{ g.product_category.name }}</span></div>{% endif %}
-          {% if g.units_per_batch != 1 %}<div class="text-[10px] text-stone-400">{{ g.units_per_batch|num }} {{ g.unit }}/batch</div>{% endif %}
+          {% if g.units_per_batch != 1 %}<div class="text-[10px] text-stone-400">{{ g.units_per_batch|num }} {{ g.unit|unit_plural:g.units_per_batch }}/batch</div>{% endif %}
         </td>
         <td class="px-3 py-2 text-right">
           {% if not g.is_physical_store_configured and not g.transferred_market_stock %}
@@ -176,20 +176,20 @@
               {% else %}
                 inventory-stock-chip--healthy bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/10
               {% endif %}">
-              {{ g.stock|num }} {{ g.unit }}
+              {{ g.stock|num }} {{ g.unit|unit_plural:g.stock }}
             </span>
             {% if not g.is_physical_store_configured %}<div class="text-[10px] text-sky-600 mt-1">Market-transfer shelf exception</div>{% endif %}
           {% endif %}
         </td>
         {% if vertical_ui.uses_production %}<td class="px-3 py-2 text-right">
-          {% if g.market_stock > 0 %}<a href="{% url 'market_stock' %}" class="inline-block px-2 py-0.5 rounded-full text-xs font-mono font-medium border bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/10">{{ g.market_stock|num }} {{ g.unit }}</a>{% else %}<span class="text-xs text-stone-400">—</span>{% endif %}
+          {% if g.market_stock > 0 %}<a href="{% url 'market_stock' %}" class="inline-block px-2 py-0.5 rounded-full text-xs font-mono font-medium border bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/10">{{ g.market_stock|num }} {{ g.unit|unit_plural:g.market_stock }}</a>{% else %}<span class="text-xs text-stone-400">—</span>{% endif %}
           {% if g.expiring_market_stock > 0 %}<div class="text-[10px] text-amber-700 mt-1">{{ g.expiring_market_stock|num }} expires within 7 days</div>{% endif %}
           {% if g.expired_market_stock > 0 %}<div class="text-[10px] text-rose-700 mt-1">{{ g.expired_market_stock|num }} expired — blocked</div>{% endif %}
         </td>
         <td class="px-3 py-2 text-right">
           {% with offcut=g.uncommitted_planned_offcut_stock %}
           {% if offcut > 0 %}
-            <span class="inline-block px-2 py-0.5 rounded-full text-xs font-mono font-medium border bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/10" title="Planned customer-order offcut currently identifiable in general finished-goods stock. It remains available for a future sale or shortage reconciliation.">{{ offcut|num }} {{ g.unit }}</span>
+            <span class="inline-block px-2 py-0.5 rounded-full text-xs font-mono font-medium border bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/10" title="Planned customer-order offcut currently identifiable in general finished-goods stock. It remains available for a future sale or shortage reconciliation.">{{ offcut|num }} {{ g.unit|unit_plural:offcut }}</span>
           {% else %}
             <span class="text-xs text-stone-400">—</span>
           {% endif %}

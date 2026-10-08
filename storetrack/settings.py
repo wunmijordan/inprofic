@@ -394,18 +394,40 @@ DELIVERY_GEOCODER_USER_AGENT = os.environ.get(
 DELIVERY_GEOCODER_TIMEOUT_SECONDS = float(os.environ.get("DELIVERY_GEOCODER_TIMEOUT_SECONDS", "4"))
 DELIVERY_GEOCODER_CACHE_SECONDS = int(os.environ.get("DELIVERY_GEOCODER_CACHE_SECONDS", "86400"))
 
-# Transactional email. SMTP activates automatically when EMAIL_HOST is set;
-# otherwise development and unconfigured deployments write mail to the console.
+# Transactional email. Choose Brevo's HTTPS API, SMTP, or Django's console backend.
+EMAIL_PROVIDER = os.environ.get("EMAIL_PROVIDER", "").strip().lower()
+if EMAIL_PROVIDER not in {"", "brevo", "smtp", "console"}:
+    raise ImproperlyConfigured("EMAIL_PROVIDER must be brevo, smtp, or console.")
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "").strip()
+BREVO_SENDER_EMAIL = os.environ.get("BREVO_SENDER_EMAIL", "").strip()
+BREVO_SENDER_NAME = os.environ.get("BREVO_SENDER_NAME", "").strip()
+BREVO_API_TIMEOUT = float(os.environ.get("BREVO_API_TIMEOUT", "8") or "8")
 EMAIL_HOST = os.environ.get("EMAIL_HOST", "").strip()
-EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "").strip() or (
-    "django.core.mail.backends.smtp.EmailBackend"
-    if EMAIL_HOST else "django.core.mail.backends.console.EmailBackend"
-)
+if not EMAIL_PROVIDER:
+    EMAIL_PROVIDER = "smtp" if EMAIL_HOST else "console"
+EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "").strip() or {
+    "brevo": "core.email_backends.brevo.EmailBackend",
+    "smtp": "django.core.mail.backends.smtp.EmailBackend",
+    "console": "django.core.mail.backends.console.EmailBackend",
+}[EMAIL_PROVIDER]
 EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587") or "587")
 EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "").strip()
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
-EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
-EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
+_email_tls_configured = "EMAIL_USE_TLS" in os.environ
+_email_ssl_configured = "EMAIL_USE_SSL" in os.environ
+if not _email_tls_configured and not _email_ssl_configured:
+    # Port 465 conventionally uses implicit TLS; port 587 uses STARTTLS.
+    EMAIL_USE_SSL = EMAIL_PORT == 465
+    EMAIL_USE_TLS = EMAIL_PORT != 465
+else:
+    EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", EMAIL_PORT != 465)
+    EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", EMAIL_PORT == 465)
+    # Recover from the common port-465 configuration where TLS/STARTTLS was
+    # enabled instead of implicit SSL. Django otherwise waits for a plaintext
+    # SMTP greeting from a server that is waiting for a TLS handshake.
+    if EMAIL_PORT == 465 and EMAIL_USE_TLS and not EMAIL_USE_SSL:
+        EMAIL_USE_TLS = False
+        EMAIL_USE_SSL = True
 if EMAIL_USE_TLS and EMAIL_USE_SSL:
     raise ImproperlyConfigured("EMAIL_USE_TLS and EMAIL_USE_SSL cannot both be enabled.")
 EMAIL_TIMEOUT = float(os.environ.get("EMAIL_TIMEOUT", "8") or "8")
