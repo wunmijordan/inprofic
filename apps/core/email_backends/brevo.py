@@ -135,7 +135,26 @@ class EmailBackend(BaseEmailBackend):
             with urlopen(request, timeout=self.timeout) as response:
                 return 200 <= response.status < 300
         except HTTPError as exc:
-            raise BrevoEmailError(f"Brevo rejected the email (HTTP {exc.code}).") from None
+            # Keep the provider's machine-readable diagnosis without exposing
+            # request headers (which contain the API key) or logging raw bodies.
+            provider_detail = ""
+            try:
+                error_payload = json.loads(exc.read(4096).decode("utf-8", errors="replace"))
+                if isinstance(error_payload, dict):
+                    code = str(error_payload.get("code") or "")[:80]
+                    message = " ".join(str(error_payload.get("message") or "").split())[:240]
+                    details = []
+                    if code:
+                        details.append(f"code={code}")
+                    if message:
+                        details.append(f"message={message}")
+                    if details:
+                        provider_detail = f" ({'; '.join(details)})"
+            except (ValueError, UnicodeError, OSError):
+                pass
+            raise BrevoEmailError(
+                f"Brevo rejected the email (HTTP {exc.code}){provider_detail}."
+            ) from None
         except (URLError, TimeoutError, OSError) as exc:
             raise BrevoEmailError(f"Brevo email API connection failed: {exc}") from exc
 
