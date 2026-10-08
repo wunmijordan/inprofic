@@ -1594,3 +1594,29 @@ class PlatformEvent(models.Model):
 
     def __str__(self):
         return f"{self.event_type} · {self.business or 'platform'} · {self.occurred_at:%Y-%m-%d %H:%M}"
+
+
+class FounderPushSubscription(models.Model):
+    """A founder user's browser or installed-app push destination."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name="founder_push_subscriptions",
+    )
+    endpoint = models.TextField()
+    endpoint_hash = models.CharField(max_length=64, unique=True)
+    p256dh = models.CharField(max_length=255)
+    auth = models.CharField(max_length=255)
+    user_agent = models.CharField(max_length=300, blank=True, default="")
+    active = models.BooleanField(default=True)
+    failure_count = models.PositiveSmallIntegerField(default=0)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    last_failure_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-id"]
+
+    def __str__(self):
+        return f"Founder device for {self.user}"

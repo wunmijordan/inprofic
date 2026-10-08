@@ -237,7 +237,7 @@ self.addEventListener('activate', (event) => {{
 self.addEventListener('push', (event) => {{
   let data = {{}};
   try {{ data = event.data ? event.data.json() : {{}}; }} catch (_) {{ data = {{}}; }}
-  if (data.type !== 'commerce.notification') return;
+  if (data.type !== 'commerce.notification' && data.type !== 'founder.signup') return;
   event.waitUntil((async () => {{
     const target = new URL(data.url || '/commerce/', self.location.origin).href;
     const theme = await preferredTheme();
@@ -253,6 +253,17 @@ self.addEventListener('push', (event) => {{
       tag: data.id ? `${{data.channel || 'commerce'}}-${{data.id}}` : `${{data.channel || 'commerce'}}-notification`,
       data: notificationData,
     }};
+    // Keep the existing desktop interaction and vibration behavior. iOS/iPadOS
+    // web apps receive the portable options above because they control those
+    // presentation details through the operating system.
+    if (!/iPhone|iPad|iPod/i.test(self.navigator.userAgent || '')) {{
+      Object.assign(options, {{
+        renotify: true,
+        requireInteraction: true,
+        silent: false,
+        vibrate: [320, 140, 320, 140, 520],
+      }});
+    }}
     try {{
       await self.registration.showNotification(title, options);
     }} catch (_) {{

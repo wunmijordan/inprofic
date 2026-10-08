@@ -36,6 +36,14 @@ class EmailBackend(BaseEmailBackend):
     def open(self):
         if not self.api_key:
             raise ImproperlyConfigured("EMAIL_PROVIDER=brevo requires BREVO_API_KEY.")
+        if any(character in self.api_key for character in "\r\n\t"):
+            # Environment variables in Render must be entered one per row.
+            # Reject a pasted multi-line .env block before urllib can include
+            # the credential value in an Invalid header value exception/log.
+            raise ImproperlyConfigured(
+                "BREVO_API_KEY must contain only the Brevo API key. "
+                "Set each Render environment variable in its own row."
+            )
         self._opened = True
         return True
 

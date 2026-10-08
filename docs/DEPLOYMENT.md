@@ -149,6 +149,8 @@ To get found by Google (code cannot do this part for you):
 
 All Django-generated mail—including signup welcomes, queued platform campaigns, and payslip delivery—uses the selected `EMAIL_PROVIDER`. Set `EMAIL_PROVIDER=brevo` and configure the Brevo API key and verified sender on each production front end. INPROFIC sends its own rendered message content through Brevo's transactional email API; no Brevo template is required. With `EMAIL_PROVIDER=smtp`, configure the SMTP variables instead. If neither provider is configured, INPROFIC uses Django's console backend.
 
+In Render, add each setting as a separate environment-variable row. In particular, set `EMAIL_PROVIDER` to `brevo` and put only the API key itself in `BREVO_API_KEY`; do not paste a multi-line `.env` block into that value.
+
 Render's free web services block outbound SMTP ports `25`, `465`, and `587`. Use a paid Render instance or an email provider's HTTPS API integration if the service is on the free plan; changing TLS settings cannot bypass that network restriction. For port `465`, use implicit SSL (`EMAIL_USE_SSL=True`, `EMAIL_USE_TLS=False`); for port `587`, use STARTTLS (`EMAIL_USE_TLS=True`, `EMAIL_USE_SSL=False`).
 
 The Render process uses Django's Psycopg pool with at most two open database
@@ -233,7 +235,7 @@ To use PythonAnywhere as a live failover for Render rather than as a separate co
 
 Changing `DATABASE_URL` starts against a different database; it does not copy the existing SQLite records. Before accepting live traffic on Render, export the current database with `dumpdata` (excluding Django content types and permissions if appropriate), run migrations against Supabase, load the reviewed fixture, and compare tenant, stock, sales, finance, and order counts. Keep the old database as a rollback backup until the new deployment is verified.
 
-### Web Push (Commerce background notifications)
+### Web Push (background notifications)
 
 INPROFIC keeps the existing WebSocket/in-app commerce notification path for
 open pages and adds Web Push for installed/background PWAs. Push delivery is
@@ -276,8 +278,12 @@ delivery work.
 
 Users enable/disable Web Push per device from the relevant operational surface:
 Commerce settings, Inventory alert settings, or the rider's My Deliveries
-workspace. Signing out deactivates that account's server-side push subscriptions
-for privacy; the user can explicitly enable the device again on a later session.
+workspace. Founder signup alerts are separately enabled per device in the
+Founder Console; new registrations are sent best-effort to each active Founder
+device subscription. On iPhone/iPad, add INPROFIC to the Home Screen and enable
+alerts from the installed app. Signing out deactivates Commerce push
+subscriptions for that account; the user can explicitly enable the device again
+on a later session.
 INPROFIC provides synthesized foreground tones plus eight bundled audio chimes. Browser autoplay rules can require one prior interaction before custom foreground audio starts; durable Web Push remains the background/closed-app delivery path.
 When the app/browser is backgrounded or closed, Web Push is durable and repeats
 when due, but the operating system/browser controls the notification sound.

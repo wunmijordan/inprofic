@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 
 from django.contrib import messages
@@ -7,11 +8,11 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q, Window
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 from django.utils import timezone
 from django.utils.text import slugify
 from core.models import Business
@@ -112,6 +113,8 @@ def signup(request):
             if registration_event is not None:
                 from .realtime import publish_founder_signup_changed
                 publish_founder_signup_changed(registration_event.pk)
+                from .founder_push import kick_founder_signup_push
+                kick_founder_signup_push(registration_event.pk)
             from .emails import send_signup_welcome_email
             workspace_url = request.build_absolute_uri(reverse("dashboard"))
             transaction.on_commit(
@@ -867,10 +870,13 @@ def founder_signup_live_snapshot(request):
         Q(founder_lifetime=True)
         | Q(status__in=[BusinessSubscription.STATUS_ACTIVE, BusinessSubscription.STATUS_TRIAL])
     ).count()
+    business_rows = list(businesses[:50])
+    for display_number, business_row in enumerate(business_rows, start=1):
+        business_row.display_number = display_number
     return JsonResponse({
         "latest_registration_id": latest_registration_id,
         "new_signups": new_signups,
-        "businesses_html": render_to_string("accounts/_founder_business_rows.html", {"platform_businesses": businesses[:50]}, request=request),
+        "businesses_html": render_to_string("accounts/_founder_business_rows.html", {"platform_businesses": business_rows}, request=request),
         "users_html": render_to_string("accounts/_founder_user_rows.html", {"platform_users": users[:50]}, request=request),
         "contacts_html": render_to_string("accounts/_founder_signup_rows.html", {"signup_contacts": contacts[:50]}, request=request),
         "subscriptions_html": render_to_string("accounts/_founder_subscription_rows.html", {"subscriptions": subscriptions}, request=request),
@@ -887,6 +893,77 @@ def founder_signup_live_snapshot(request):
             "signup_conversion_30d": round((registrations_30d / lead_sessions_30d * 100), 1) if lead_sessions_30d else 0,
         },
     })
+
+
+@login_required
+@require_GET
+def founder_push_config(request):
+    if not request.user.is_superuser:
+        return JsonResponse({"detail": "Founder access is required."}, status=403)
+    from django.utils.cache import patch_cache_control
+    response = JsonResponse({
+        "configured": bool(
+            getattr(settings, "WEB_PUSH_VAPID_PUBLIC_KEY", "")
+            and getattr(settings, "WEB_PUSH_VAPID_PRIVATE_KEY", "")
+            and getattr(settings, "WEB_PUSH_VAPID_SUBJECT", "")
+        ),
+        "public_key": getattr(settings, "WEB_PUSH_VAPID_PUBLIC_KEY", ""),
+    })
+    patch_cache_control(response, private=True, no_store=True)
+    return response
+
+
+@login_required
+@require_POST
+def founder_push_subscribe(request):
+    if not request.user.is_superuser:
+        return JsonResponse({"detail": "Founder access is required."}, status=403)
+    from .models import FounderPushSubscription
+    from commerce.webpush import endpoint_hash
+    try:
+        payload = json.loads(request.body or b"{}")
+        endpoint = str(payload.get("endpoint") or "").strip()
+        keys = payload.get("keys") or {}
+        p256dh = str(keys.get("p256dh") or "").strip()
+        auth = str(keys.get("auth") or "").strip()
+    except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
+        return JsonResponse({"detail": "The submitted notification details are invalid."}, status=400)
+    if len(endpoint) > 4096 or not endpoint.startswith("https://") or not p256dh or not auth:
+        return JsonResponse({"detail": "A valid Web Push subscription is required."}, status=400)
+    device, _created = FounderPushSubscription.objects.update_or_create(
+        endpoint_hash=endpoint_hash(endpoint),
+        defaults={
+            "user": request.user,
+            "endpoint": endpoint,
+            "p256dh": p256dh[:255],
+            "auth": auth[:255],
+            "user_agent": request.headers.get("User-Agent", "")[:300],
+            "active": True,
+            "failure_count": 0,
+            "last_failure_at": None,
+        },
+    )
+    return JsonResponse({"subscribed": True, "subscription_id": device.pk})
+
+
+@login_required
+@require_POST
+def founder_push_unsubscribe(request):
+    if not request.user.is_superuser:
+        return JsonResponse({"detail": "Founder access is required."}, status=403)
+    from .models import FounderPushSubscription
+    from commerce.webpush import endpoint_hash
+    try:
+        payload = json.loads(request.body or b"{}")
+        endpoint = str(payload.get("endpoint") or "").strip()
+    except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
+        return JsonResponse({"detail": "The submitted notification details are invalid."}, status=400)
+    if not endpoint:
+        return JsonResponse({"detail": "A notification destination is required."}, status=400)
+    updated = FounderPushSubscription.objects.filter(
+        user=request.user, endpoint_hash=endpoint_hash(endpoint),
+    ).update(active=False)
+    return JsonResponse({"subscribed": False, "updated": updated})
 
 
 @login_required
@@ -1391,6 +1468,8 @@ def founder_subscriptions(request):
     with performance_section(request, "founder.platform_rows"):
         platform_businesses = list(businesses[:50])
         platform_users = list(users[:50])
+        for display_number, business_row in enumerate(platform_businesses, start=1):
+            business_row.display_number = display_number
     if platform_query:
         # Search narrows the list, but the headline platform counters remain
         # global just as they did before this optimization.
