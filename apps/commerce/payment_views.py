@@ -587,7 +587,7 @@ def payment_remove_expired(request, public_id):
         else:
             reference = payment.reference
             audit(
-                request.business, request.user, "commerce_expired_payment_remove", payment,
+                request.business, request.user, "payment_expired_remove", payment,
                 f"Removed expired, unpaid payment attempt {reference}", {"reference": reference},
             )
             payment.delete()
