@@ -421,5 +421,14 @@
     "proof": "Assign multiple customer orders to one rider, organise stop order before pickup, start pickup-and-en-route countdowns together, and keep each customer on a stop-adjusted ETA with active delivery messaging visible to dispatch.",
     "highlight": "NEW",
     "added_on": "2026-09-27"
+  },
+  {
+    "id": "independent-rider-dispatch",
+    "name": "Dispatcher-assigned independent riders",
+    "group": "delivery",
+    "audience": "businesses without in-house riders that book their own rides for customer orders",
+    "proof": "Keep the in-house delivery flow without riders or a courier integration: the dispatch manager enters the rider's name, phone and vehicle on the order and moves it from assigned to picked up to delivered as the ride progresses. Customers see the rider and each status update exactly as they would for an in-house rider. A dispatcher can also replace an in-house rider with an independent one, and the previous rider is told the job is no longer theirs. The same works for multi-order batches: dispatch can give a whole batch to an independent rider, save its route and mark it picked up, so every customer's ETA starts as it would for an in-house rider.",
+    "highlight": "NEW",
+    "added_on": "2026-10-09"
   }
 ]

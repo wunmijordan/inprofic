@@ -6,7 +6,7 @@
   <div id="founder-signup-live-toast" class="pointer-events-none fixed right-4 top-4 z-[190] hidden max-w-sm rounded-xl border border-emerald-200 bg-white px-4 py-3 shadow-xl" role="status" aria-live="polite"><div class="text-[10px] font-black uppercase tracking-[.16em] text-emerald-700">New business signup</div><div id="founder-signup-live-toast-copy" class="mt-1 text-sm font-semibold text-stone-800"></div></div>
 
   <div id="founder-push-panel" class="mb-5 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4" data-config-url="{% url 'founder_push_config' %}" data-subscribe-url="{% url 'founder_push_subscribe' %}" data-unsubscribe-url="{% url 'founder_push_unsubscribe' %}">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 class="text-sm font-semibold text-stone-900">Founder signup alerts on this device</h2><p class="mt-1 text-xs leading-5 text-stone-500">Enable background alerts separately on each browser or installed app where you want new signup notifications.</p></div><button type="button" data-founder-push-toggle class="shrink-0 rounded-lg border border-[#8f172d] bg-white px-3.5 py-2 text-xs font-semibold text-[#8f172d]">Enable signup alerts</button></div>
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 class="text-sm font-semibold text-stone-900">Founder signup alerts on this device</h2><p class="mt-1 text-xs leading-5 text-stone-500">This browser subscription is shared with eligible business alerts. Enable it once per browser or installed app; disabling it here or in Commerce turns off all background alerts on this device.</p></div><button type="button" data-founder-push-toggle class="shrink-0 rounded-lg border border-[#8f172d] bg-white px-3.5 py-2 text-xs font-semibold text-[#8f172d]">Enable signup alerts</button></div>
     <p data-founder-push-status class="mt-3 text-xs text-stone-500" aria-live="polite"></p>
   </div>
 
@@ -98,6 +98,12 @@
       <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4"><div class="text-xs text-stone-500">Users</div><div id="founder-stat-users" class="mt-1 font-mono text-2xl font-semibold">{{ platform_stats.users }}</div></div>
       <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4"><div class="text-xs text-stone-500">Active subscriptions</div><div id="founder-stat-active-subscriptions" class="mt-1 font-mono text-2xl font-semibold">{{ platform_stats.active_subscriptions }}</div></div>
       <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4"><div class="text-xs text-stone-500">Pending payments</div><div class="mt-1 font-mono text-2xl font-semibold">{{ platform_stats.pending_payments }}</div></div>
+    </div>
+    <div class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4"><div class="text-xs text-stone-500">Free subscriptions</div><div id="founder-stat-free" class="mt-1 font-mono text-2xl font-semibold">{{ platform_stats.subscription_mix.free_total }}</div><div id="founder-stat-free-detail" class="mt-1 text-[11px] text-stone-500">{{ platform_stats.subscription_mix.free }} free forever · {{ platform_stats.subscription_mix.trial }} on trial</div></div>
+      <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4"><div class="text-xs text-stone-500">Paid subscriptions</div><div id="founder-stat-paid" class="mt-1 font-mono text-2xl font-semibold">{{ platform_stats.subscription_mix.paid }}</div><div id="founder-stat-paid-detail" class="mt-1 text-[11px] text-stone-500">{{ platform_stats.subscription_mix.founder }} founder lifetime (complimentary) not counted</div></div>
+      <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4" title="Of trials that have ended (or were paid early), the share with at least one paid plan payment. Trials still running are left out. Trials that lapsed without leaving any record cannot be counted, so the figure may read slightly high."><div class="text-xs text-stone-500">Trial → paid conversion</div><div id="founder-stat-trial-conversion" class="mt-1 font-mono text-2xl font-semibold">{% if platform_stats.subscription_mix.conversion_rate is None %}—{% else %}{{ platform_stats.subscription_mix.conversion_rate }}%{% endif %}</div><div id="founder-stat-trial-conversion-detail" class="mt-1 text-[11px] text-stone-500">{{ platform_stats.subscription_mix.trials_converted }} of {{ platform_stats.subscription_mix.trials_decided }} concluded trials paid · {{ platform_stats.subscription_mix.trials_undecided }} still in trial</div></div>
+      <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4"><div class="text-xs text-stone-500">Expired / inactive</div><div id="founder-stat-expired" class="mt-1 font-mono text-2xl font-semibold">{{ platform_stats.subscription_mix.expired }}</div><div id="founder-stat-expired-detail" class="mt-1 text-[11px] text-stone-500">{{ platform_stats.subscription_mix.total }} subscriptions in total</div></div>
     </div>
     <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
       <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="font-semibold">Product & lead analytics</h2><p class="mt-1 text-xs text-stone-500">First-party product analytics: signup journey, registration contact details, logins, subscription milestones and throttled module usage. Passwords, payment secrets and arbitrary form contents are never captured.</p></div><span class="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">Live</span></div>
@@ -655,8 +661,8 @@
         const nativeNotice = new Notification(signups.length === 1 ? 'New INPROFIC business signup' : `${signups.length} new INPROFIC business signups`, {
           body: copy,
           tag: `inprofic-founder-signup-${latest.id || Date.now()}`,
-          icon: '/static/core/pwa/icon-mark-192.png',
-          badge: '/static/core/pwa/icon-mark-monochrome-192.png',
+          icon: window.shellAsset?.('core/pwa/icon-mark-192.png') || document.getElementById('inprofic-favicon')?.dataset.lightHref || '/static/core/pwa/icon-mark-192.png',
+          badge: window.shellAsset?.('core/pwa/icon-mark-monochrome-192.png') || '/static/core/pwa/icon-mark-monochrome-192.png',
         });
         nativeNotice.onclick = () => { window.focus(); document.querySelector('[data-founder-tab="management"]')?.click(); document.getElementById('platform-management')?.scrollIntoView({block:'start'}); nativeNotice.close(); };
       } catch (_) {}
@@ -683,6 +689,17 @@
       setText('founder-stat-businesses', stats.businesses);
       setText('founder-stat-users', stats.users);
       setText('founder-stat-active-subscriptions', stats.active_subscriptions);
+      if (stats.subscription_mix) {
+        const mix = stats.subscription_mix;
+        setText('founder-stat-free', mix.free_total);
+        setText('founder-stat-free-detail', `${mix.free} free forever · ${mix.trial} on trial`);
+        setText('founder-stat-paid', mix.paid);
+        setText('founder-stat-paid-detail', `${mix.founder} founder lifetime (complimentary) not counted`);
+        setText('founder-stat-trial-conversion', mix.conversion_rate === null ? '—' : `${mix.conversion_rate}%`);
+        setText('founder-stat-trial-conversion-detail', `${mix.trials_converted} of ${mix.trials_decided} concluded trials paid · ${mix.trials_undecided} still in trial`);
+        setText('founder-stat-expired', mix.expired);
+        setText('founder-stat-expired-detail', `${mix.total} subscriptions in total`);
+      }
       setText('founder-stat-registrations-7d', stats.registrations_7d);
       setText('founder-stat-registrations-30d', stats.registrations_30d);
       setText('founder-stat-signup-conversion', stats.signup_conversion_30d, '%');

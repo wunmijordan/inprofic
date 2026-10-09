@@ -497,6 +497,11 @@ class DeliveryAssignment(BusinessOwnedModel):
     quote = models.ForeignKey(DeliveryQuote, null=True, blank=True, on_delete=models.PROTECT, related_name="assignments")
     origin = models.ForeignKey(DeliveryOrigin, on_delete=models.PROTECT, related_name="assignments")
     driver = models.ForeignKey(DeliveryDriver, null=True, blank=True, on_delete=models.PROTECT, related_name="assignments")
+    # One-off rider details entered by dispatch without creating a rider profile
+    # or configuring an external provider connection.
+    manual_rider_name = models.CharField(max_length=120, blank=True, default="")
+    manual_rider_phone = models.CharField(max_length=40, blank=True, default="")
+    manual_rider_vehicle = models.CharField(max_length=60, blank=True, default="")
     provider = models.CharField(max_length=16, choices=DeliverySettings.PROVIDER_CHOICES, default=DeliverySettings.PROVIDER_INHOUSE)
     provider_account = models.ForeignKey("commerce.DeliveryProviderAccount", null=True, blank=True, on_delete=models.SET_NULL, related_name="assignments")
     provider_order_id = models.CharField(max_length=160, blank=True, default="")
@@ -540,6 +545,26 @@ class DeliveryAssignment(BusinessOwnedModel):
             ),
         ]
 
+    # A rider is either an in-house DeliveryDriver profile or an independent
+    # rider the dispatcher booked outside INPROFIC and typed in. These
+    # properties give every screen, API payload and export one identical view of
+    # "who is carrying this order" so customers see no difference between them.
+    @property
+    def has_independent_rider(self):
+        return bool(self.manual_rider_name and not self.driver_id)
+
+    @property
+    def rider_name(self):
+        return self.driver.name if self.driver_id else self.manual_rider_name
+
+    @property
+    def rider_phone(self):
+        return self.driver.phone if self.driver_id else self.manual_rider_phone
+
+    @property
+    def rider_vehicle(self):
+        return self.driver.vehicle_type if self.driver_id else self.manual_rider_vehicle
+
 
 class DeliveryEvent(BusinessOwnedModel):
     assignment = models.ForeignKey(DeliveryAssignment, on_delete=models.CASCADE, related_name="events")
@@ -569,11 +594,34 @@ class DeliveryBatch(BusinessOwnedModel):
     ]
 
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
-    driver = models.ForeignKey(DeliveryDriver, on_delete=models.PROTECT, related_name="batches")
+    # In-house riders own a batch through ``driver``. A batch carried by an
+    # independent rider (booked outside INPROFIC and typed in by dispatch) has no
+    # driver profile, so ``driver`` stays empty and the rider's details live in
+    # the manual_rider_* fields instead, mirroring DeliveryAssignment.
+    driver = models.ForeignKey(DeliveryDriver, null=True, blank=True, on_delete=models.PROTECT, related_name="batches")
+    manual_rider_name = models.CharField(max_length=120, blank=True, default="")
+    manual_rider_phone = models.CharField(max_length=40, blank=True, default="")
+    manual_rider_vehicle = models.CharField(max_length=60, blank=True, default="")
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_DRAFT)
     routed_at = models.DateTimeField(null=True, blank=True)
     picked_up_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+
+    @property
+    def has_independent_rider(self):
+        return bool(self.manual_rider_name and not self.driver_id)
+
+    @property
+    def rider_name(self):
+        return self.driver.name if self.driver_id else self.manual_rider_name
+
+    @property
+    def rider_phone(self):
+        return self.driver.phone if self.driver_id else self.manual_rider_phone
+
+    @property
+    def rider_vehicle(self):
+        return self.driver.vehicle_type if self.driver_id else self.manual_rider_vehicle
 
     class Meta:
         ordering = ["-created_at", "-id"]

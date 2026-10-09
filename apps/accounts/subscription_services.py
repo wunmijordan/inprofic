@@ -19,6 +19,7 @@ from .models import (
     PaidPlanTrialClaim,
     PayrollAddonTier,
     PayrollStaffBatch,
+    PlatformEvent,
     RoleModulePermission,
     SubscriptionPayment,
     SubscriptionPlan,
@@ -925,3 +926,92 @@ def mark_payment_paid(payment):
         metadata={"amount": str(payment.amount), "billing_cycle": payment.billing_cycle, "provider": payment.provider},
     )
     return payment
+
+
+def founder_subscription_mix(subscriptions, *, now=None):
+    """Free vs paid subscription counts and trial-to-paid conversion for the Founder console.
+
+    Every subscription lands in exactly one bucket:
+
+    * ``founder``  - Founder lifetime (complimentary; neither free nor paid);
+    * ``free``     - the free-forever Starter plan;
+    * ``trial``    - a trial that is still running;
+    * ``paid``     - an active term on a paid plan;
+    * ``expired``  - anything lapsed or inactive.
+
+    "Free" for the headline is ``free + trial``: workspaces not paying today.
+
+    Conversion = trials that have reached a decision and paid. A trial counts as
+    decided when it is no longer running, or when the subscription already paid
+    early; a trial still running and unpaid is undecided and left out of the
+    rate. "Paid" means at least one paid *plan* payment (payroll add-ons do not
+    count). A lapsed trial loses ``trial_ends_at``, so the trial cohort is built
+    from every durable trace instead: current trial state, a retained
+    ``trial_ends_at``, Founder trial grants, paid-plan trial claims, and the
+    signup / trial-started events. Founder-lifetime subscriptions are excluded.
+    """
+    now = now or timezone.now()
+    subscriptions = list(subscriptions)
+    mix = {"free": 0, "trial": 0, "paid": 0, "founder": 0, "expired": 0}
+    by_id = {}
+    for sub in subscriptions:
+        if sub.founder_lifetime:
+            bucket = "founder"
+        elif sub.plan.is_free_forever and sub.status == BusinessSubscription.STATUS_ACTIVE:
+            bucket = "free"
+        elif not sub.is_effectively_active:
+            bucket = "expired"
+        elif sub.status == BusinessSubscription.STATUS_TRIAL:
+            bucket = "trial"
+        elif sub.status == BusinessSubscription.STATUS_ACTIVE:
+            bucket = "paid"
+        else:
+            bucket = "expired"
+        mix[bucket] += 1
+        by_id[sub.pk] = (sub, bucket)
+
+    # --- trial cohort: every subscription that ever ran a trial -------------
+    cohort = {
+        pk for pk, (sub, bucket) in by_id.items()
+        if bucket != "founder"
+        and (sub.status == BusinessSubscription.STATUS_TRIAL or sub.trial_ends_at is not None)
+    }
+    eligible = {pk for pk, (_, bucket) in by_id.items() if bucket != "founder"}
+    cohort |= set(
+        FounderTrialGrant.objects.filter(subscription_id__in=eligible).values_list("subscription_id", flat=True)
+    )
+    cohort |= set(
+        PaidPlanTrialClaim.objects.filter(subscription_id__in=eligible).values_list("subscription_id", flat=True)
+    )
+    business_to_sub = {sub.primary_business_id: pk for pk, (sub, _) in by_id.items() if pk in eligible}
+    trial_event_businesses = set(
+        PlatformEvent.objects.filter(
+            Q(event_type=PlatformEvent.EVENT_SUBSCRIPTION_TRIAL)
+            | Q(event_type=PlatformEvent.EVENT_SUBSCRIPTION_STARTED, metadata__status=BusinessSubscription.STATUS_TRIAL),
+            business_id__in=business_to_sub.keys(),
+        ).values_list("business_id", flat=True)
+    )
+    cohort |= {business_to_sub[b] for b in trial_event_businesses}
+
+    paid_ids = set(
+        SubscriptionPayment.objects.filter(
+            subscription_id__in=cohort,
+            status=SubscriptionPayment.STATUS_PAID,
+            purpose=SubscriptionPayment.PURPOSE_SUBSCRIPTION,
+        ).values_list("subscription_id", flat=True)
+    )
+    converted = len(cohort & paid_ids)
+    undecided = sum(1 for pk in cohort - paid_ids if by_id[pk][1] == "trial")
+    lapsed = len(cohort) - converted - undecided
+    decided = converted + lapsed
+    return {
+        **mix,
+        "free_total": mix["free"] + mix["trial"],
+        "total": len(subscriptions),
+        "trials_started": len(cohort),
+        "trials_converted": converted,
+        "trials_lapsed": lapsed,
+        "trials_undecided": undecided,
+        "trials_decided": decided,
+        "conversion_rate": round(converted * 100 / decided, 1) if decided else None,
+    }

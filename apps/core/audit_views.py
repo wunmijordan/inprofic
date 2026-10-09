@@ -543,7 +543,7 @@ def audit_export_xlsx(request):
             [c.created_at.isoformat(), c.raw_material.name, float(c.conversion_ratio), c.reason, str(c.old_measurement), str(c.new_measurement)] for c in data["measurement_changes"]
         ]),
         ("Deliveries", ["Created", "Order", "Customer", "Provider", "Driver", "Status", "Fee", "External ref"], [
-            [d.created_at.isoformat(), d.intake.public_number, d.intake.customer_name, d.provider, d.driver.name if d.driver else "", d.status, float(d.intake.delivery_fee or 0), d.external_reference] for d in data["deliveries"]
+            [d.created_at.isoformat(), d.intake.public_number, d.intake.customer_name, d.provider, d.rider_name, d.status, float(d.intake.delivery_fee or 0), d.external_reference] for d in data["deliveries"]
         ]),
         ("Delivery events", ["When", "Order", "Delivery", "Status", "Note", "Metadata"], [
             [event.created_at.isoformat(), delivery.intake.public_number, str(delivery.public_id), event.status, redact_disabled_integrations(event.note), redact_disabled_integrations(str(event.metadata))]

@@ -148,3 +148,11 @@ Implementation rule: `business_has_module()` belongs at request/navigation autho
 The Founder Console owns the platform-wide **General free trial (days)** setting. New eligible paid-plan trials use this duration; free-forever STARTER remains non-expiring. The legacy `SubscriptionPlan.trial_days` values are synchronized to the Founder policy so older reporting/admin paths do not drift.
 
 The Founder can also **Grant / extend business trial** for a specific business and plan. If the business is already on an active trial, the granted days are appended after its current trial end date. If the business is expired or on a non-expiring free workspace, the granted window starts from the current time. Founder-lifetime grants and live paid terms are protected from accidental overlap. Each grant is retained in `FounderTrialGrant` with the number of days, resulting end date, Founder actor, and optional note.
+
+## Founder console: free vs paid and trial conversion
+
+Platform management shows how the subscriptions split. `founder_subscription_mix()` puts every subscription in exactly one bucket: **free** (free-forever Starter), **on trial** (a running trial), **paid** (an active term on a paid plan), **founder lifetime** (complimentary, neither free nor paid) or **expired**. The headline "Free subscriptions" is free-forever plus running trials.
+
+**Trial → paid conversion** is the share of *decided* trials that paid. A trial is decided once it is no longer running, or when the subscription already paid early; a trial still running and unpaid is left out of the rate. "Paid" means at least one paid plan payment (payroll add-on and extra-staff payments do not count). Founder-lifetime subscriptions are excluded.
+
+A lapsed trial has its `trial_ends_at` cleared, so the trial cohort is rebuilt from every durable trace: current trial state, a retained `trial_ends_at`, `FounderTrialGrant`, `PaidPlanTrialClaim`, and the signup / paid-plan-trial platform events. A trial that lapsed without leaving any of these cannot be counted, so the rate can read slightly high for history that predates those records.

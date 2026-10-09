@@ -22,9 +22,9 @@ from core.services import audit
 
 from .delivery_forms import DeliveryAreaForm, DeliveryDriverForm, DeliveryOriginForm, DeliveryProviderAccountForm, DeliveryRateBandForm, DeliverySettingsForm
 from .delivery_services import (
-    add_delivery_message, create_delivery_batch, create_delivery_quote_options, delivery_area_distance_summary,
-    delivery_available, organise_delivery_batch, pickup_delivery_batch, raise_delivery_issue,
-    resolve_delivery_location, select_delivery_quote, serialize_delivery_quote, serialize_delivery_tracking,
+    add_delivery_message, assign_delivery_batch_rider, create_delivery_batch, create_delivery_quote_options, delivery_area_distance_summary,
+    delivery_available, delivery_status_choices_for, organise_delivery_batch, pickup_delivery_batch,
+    raise_delivery_issue, resolve_delivery_location, select_delivery_quote, serialize_delivery_quote, serialize_delivery_tracking,
     switch_delivery_method, update_delivery_status,
 )
 from .notification_services import queue_commerce_notification
@@ -109,16 +109,21 @@ def delivery_dashboard(request):
     with performance_section(request, "delivery.assignments"):
         active_assignments = list(
             DeliveryAssignment.objects.exclude(status__in=terminal_statuses)
-            .select_related("intake", "driver__user", "origin", "quote", "provider_account")
+            .select_related("intake", "driver__user", "origin", "quote", "provider_account", "batch")
             .prefetch_related("events", "issues", "messages")[:160]
         )
         completed_assignments = list(
             DeliveryAssignment.objects.filter(status__in=terminal_statuses)
             .select_related("intake", "driver__user")[:60]
         )
+
     with performance_section(request, "delivery.batches"):
         active_batches = list(
             DeliveryBatch.objects.select_related("driver__user")
+            .prefetch_related(Prefetch(
+                "assignments",
+                queryset=DeliveryAssignment.objects.select_related("intake", "quote").order_by("batch_stop_sequence", "id"),
+            ))
             .annotate(order_count=Count("assignments"))
             .exclude(status__in=[DeliveryBatch.STATUS_COMPLETED, DeliveryBatch.STATUS_CANCELLED])[:40]
         )
@@ -181,6 +186,23 @@ def delivery_dashboard(request):
         can_manage_delivery = is_business_admin(request.user, request.business)
         can_update_delivery = user_has_permission(request.user, request.business, "delivery", "edit")
         can_approve_delivery_switch = _can_approve_delivery_switch(request.user, request.business)
+    has_inhouse_riders = any(row.active and row.provider == DeliveryDriver.PROVIDER_INHOUSE for row in drivers)
+    for batch in active_batches:
+        batch.rider_source_default = (
+            "independent" if batch.has_independent_rider or (not batch.driver_id and not has_inhouse_riders)
+            else "inhouse"
+        )
+    for assignment in active_assignments:
+        # Offer dispatch only the steps the delivery can actually take next, and
+        # open the rider form on the kind of rider this delivery really has. With
+        # no in-house riders at all, independent rider entry is the default.
+        assignment.status_options = delivery_status_choices_for(assignment)
+        assignment.rider_source_default = (
+            "independent" if assignment.has_independent_rider
+            or (not assignment.driver_id and not has_inhouse_riders)
+            else "inhouse"
+        )
+        assignment.batch_label = str(assignment.batch.public_id)[:8].upper() if assignment.batch_id else ""
     context = {
         "delivery_settings": settings,
         "assignments": active_assignments,
@@ -202,7 +224,7 @@ def delivery_dashboard(request):
         "can_manage_delivery": can_manage_delivery,
         "can_update_delivery": can_update_delivery,
         "glovo_webhook_path": (f"/api/v1/delivery/providers/glovo/{request.business.slug}/webhook" if integration_enabled else ""),
-        "status_choices": DeliveryAssignment.STATUS_CHOICES,
+        "has_inhouse_riders": has_inhouse_riders,
         "issue_status_choices": DeliveryIssue.STATUS_CHOICES,
         "can_approve_delivery_switch": can_approve_delivery_switch,
     }
@@ -385,17 +407,60 @@ def delivery_driver_form(request, pk=None):
     )
 
 
+def _rider_selection(request, assignment):
+    """Translate the dispatch form's rider fields into update_delivery_status arguments.
+
+    ``rider_source`` says which kind of rider dispatch is naming, so a form can
+    never submit two conflicting riders at once:
+
+    * ``inhouse``     - the chosen in-house/courier profile (blank = unassigned);
+    * ``independent`` - a rider the business booked outside INPROFIC, typed in.
+
+    Older forms that send no ``rider_source`` keep their original behaviour: the
+    rider select decides the assigned profile, and independent-rider details are
+    changed only when the form actually submitted them. A plain status update
+    therefore never wipes a rider it did not mention.
+    """
+    post = request.POST
+    source = post.get("rider_source", "")
+    driver_id = post.get("driver_id", "")
+    if source not in {"", "inhouse", "independent"}:
+        raise ValidationError("Choose a valid rider source.")
+    if source == "independent" or (not source and not driver_id and post.get("manual_rider_name")):
+        name = post.get("manual_rider_name", "").strip()
+        if not name:
+            raise ValidationError("Enter the independent rider's name, or switch to an in-house rider.")
+        return {
+            "driver": None,
+            # Release an in-house profile only if one is actually attached, so
+            # re-saving the same independent rider keeps its assignment time.
+            "clear_driver": bool(assignment.driver_id),
+            "manual_rider_name": name,
+            "manual_rider_phone": post.get("manual_rider_phone", ""),
+            "manual_rider_vehicle": post.get("manual_rider_vehicle", ""),
+        }
+    selection = {"driver": None, "clear_driver": False}
+    if driver_id:
+        selection["driver"] = get_object_or_404(
+            DeliveryDriver, pk=driver_id, business=request.business, active=True
+        )
+        # Naming an in-house rider replaces any independent rider.
+        selection.update(manual_rider_name="", manual_rider_phone="", manual_rider_vehicle="")
+    elif "driver_id" in post:
+        selection["clear_driver"] = bool(assignment.driver_id)
+        if source == "inhouse":
+            selection.update(manual_rider_name="", manual_rider_phone="", manual_rider_vehicle="")
+    return selection
+
+
 @login_required
 @require_POST
 def delivery_assignment_update(request, public_id):
     if not user_has_permission(request.user, request.business, "delivery", "edit"):
         return render(request, "403.html", status=403)
     assignment = get_object_or_404(DeliveryAssignment, public_id=public_id, business=request.business)
-    driver = None
-    driver_id = request.POST.get("driver_id")
-    if driver_id:
-        driver = get_object_or_404(DeliveryDriver, pk=driver_id, business=request.business, active=True)
     try:
+        rider = _rider_selection(request, assignment)
         requested_status = request.POST.get("status")
         if requested_status == DeliveryAssignment.STATUS_CANCELLED and assignment.provider_account_id and assignment.provider_order_id:
             from .delivery_providers import cancel_assignment_with_provider
@@ -410,12 +475,11 @@ def delivery_assignment_update(request, public_id):
             status=requested_status,
             actor=request.user,
             note=request.POST.get("note", ""),
-            driver=driver,
-            clear_driver=("driver_id" in request.POST and not driver_id),
             proof_note=request.POST.get("proof_note", ""),
             proof_reference=request.POST.get("proof_reference", ""),
             external_reference=request.POST.get("external_reference", ""),
             external_tracking_url=request.POST.get("external_tracking_url", ""),
+            **rider,
         )
         messages.success(request, "Delivery updated and added to the timeline.")
     except ValidationError as exc:
@@ -443,15 +507,50 @@ def delivery_assignment_switch(request, public_id):
     return redirect("delivery_dashboard")
 
 
+def _batch_rider_selection(request):
+    """Rider arguments for a batch from the dispatch form: in-house profile or independent rider."""
+    post = request.POST
+    if post.get("rider_source") == "independent":
+        return {
+            "driver": None,
+            "manual_rider_name": post.get("manual_rider_name", ""),
+            "manual_rider_phone": post.get("manual_rider_phone", ""),
+            "manual_rider_vehicle": post.get("manual_rider_vehicle", ""),
+        }
+    driver_id = post.get("driver_id", "")
+    if not driver_id:
+        raise ValidationError("Choose an in-house rider or enter an independent rider.")
+    return {"driver": get_object_or_404(
+        DeliveryDriver, pk=driver_id, business=request.business,
+        active=True, provider=DeliveryDriver.PROVIDER_INHOUSE,
+    )}
+
+
+def _parse_route_stops(post):
+    """Ordered ``{delivery_id, stop_minutes}`` rows from a route form (rider portal and dispatch share it)."""
+    delivery_ids = post.getlist("delivery_id")
+    stop_minutes = post.getlist("stop_minutes")
+    sequences = post.getlist("sequence")
+    if len(delivery_ids) != len(stop_minutes) or len(delivery_ids) != len(sequences):
+        raise ValidationError("Every route stop needs a route position and stop-gap timing value.")
+    try:
+        rows = [
+            {"delivery_id": delivery_id, "stop_minutes": minutes, "sequence": int(sequence)}
+            for delivery_id, minutes, sequence in zip(delivery_ids, stop_minutes, sequences)
+        ]
+    except ValueError as exc:
+        raise ValidationError("Route positions must be whole numbers.") from exc
+    rows.sort(key=lambda row: row["sequence"])
+    if len({row["sequence"] for row in rows}) != len(rows):
+        raise ValidationError("Use a different route position for every stop.")
+    return [{"delivery_id": row["delivery_id"], "stop_minutes": row["stop_minutes"]} for row in rows]
+
+
 @login_required
 @require_POST
 def delivery_batch_create_view(request):
     if not user_has_permission(request.user, request.business, "delivery", "edit"):
         return render(request, "403.html", status=403)
-    driver = get_object_or_404(
-        DeliveryDriver, pk=request.POST.get("driver_id"), business=request.business,
-        active=True, provider=DeliveryDriver.PROVIDER_INHOUSE,
-    )
     assignments = list(
         DeliveryAssignment.objects.filter(
             business=request.business, public_id__in=request.POST.getlist("delivery_id")
@@ -459,9 +558,60 @@ def delivery_batch_create_view(request):
     )
     try:
         batch = create_delivery_batch(
-            business=request.business, driver=driver, assignments=assignments, actor=request.user
+            business=request.business, assignments=assignments, actor=request.user,
+            **_batch_rider_selection(request),
         )
-        messages.success(request, f"Batch {str(batch.public_id)[:8].upper()} created. The rider must organise its route before pickup.")
+        who = "Dispatch arranges its route" if batch.has_independent_rider else "The rider must organise its route"
+        messages.success(request, f"Batch {str(batch.public_id)[:8].upper()} created. {who} before pickup.")
+    except ValidationError as exc:
+        messages.error(request, _detail(exc))
+    return redirect("delivery_dashboard")
+
+
+def _dispatch_batch(request, public_id):
+    return get_object_or_404(DeliveryBatch.raw_objects, business=request.business, public_id=public_id)
+
+
+@login_required
+@require_POST
+def delivery_batch_rider_update(request, public_id):
+    """Dispatch override: hand a whole batch to an in-house or independent rider."""
+    if not user_has_permission(request.user, request.business, "delivery", "edit"):
+        return render(request, "403.html", status=403)
+    batch = _dispatch_batch(request, public_id)
+    try:
+        assign_delivery_batch_rider(batch=batch, actor=request.user, **_batch_rider_selection(request))
+        messages.success(request, "Batch rider updated for every delivery in the batch.")
+    except ValidationError as exc:
+        messages.error(request, _detail(exc))
+    return redirect("delivery_dashboard")
+
+
+@login_required
+@require_POST
+def delivery_batch_route_update(request, public_id):
+    """Dispatch saves a batch's route for a rider who has no rider-app login."""
+    if not user_has_permission(request.user, request.business, "delivery", "edit"):
+        return render(request, "403.html", status=403)
+    batch = _dispatch_batch(request, public_id)
+    try:
+        organise_delivery_batch(batch=batch, stops=_parse_route_stops(request.POST), actor=request.user)
+        messages.success(request, "Batch route saved. Marking the batch picked up now starts the ETA countdowns.")
+    except ValidationError as exc:
+        messages.error(request, _detail(exc))
+    return redirect("delivery_dashboard")
+
+
+@login_required
+@require_POST
+def delivery_batch_pickup_update(request, public_id):
+    """Dispatch marks a routed batch as picked up on the rider's behalf."""
+    if not user_has_permission(request.user, request.business, "delivery", "edit"):
+        return render(request, "403.html", status=403)
+    batch = _dispatch_batch(request, public_id)
+    try:
+        pickup_delivery_batch(batch=batch, actor=request.user)
+        messages.success(request, "Batch picked up. Every customer ETA is now counting down from pickup.")
     except ValidationError as exc:
         messages.error(request, _detail(exc))
     return redirect("delivery_dashboard")
@@ -679,23 +829,10 @@ def delivery_rider_batch_route(request, public_id):
     if not driver:
         return render(request, "403.html", status=403)
     batch = get_object_or_404(DeliveryBatch.raw_objects, business=request.business, public_id=public_id, driver=driver)
-    delivery_ids = request.POST.getlist("delivery_id")
-    stop_minutes = request.POST.getlist("stop_minutes")
-    sequences = request.POST.getlist("sequence")
-    if len(delivery_ids) != len(stop_minutes) or len(delivery_ids) != len(sequences):
-        messages.error(request, "Every route stop needs a route position and stop-gap timing value.")
-        return redirect("delivery_rider_dashboard")
     try:
-        rows = [
-            {"delivery_id": delivery_id, "stop_minutes": minutes, "sequence": int(sequence)}
-            for delivery_id, minutes, sequence in zip(delivery_ids, stop_minutes, sequences)
-        ]
-        rows.sort(key=lambda row: row["sequence"])
-        if len({row["sequence"] for row in rows}) != len(rows):
-            raise ValidationError("Use a different route position for every stop.")
         organise_delivery_batch(
             batch=batch,
-            stops=[{"delivery_id": row["delivery_id"], "stop_minutes": row["stop_minutes"]} for row in rows],
+            stops=_parse_route_stops(request.POST),
             actor=request.user,
             rider=driver,
         )

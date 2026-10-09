@@ -44,11 +44,27 @@ def _plural(unit, quantity):
     if not unit or Decimal(quantity) == 1 or not unit.isalpha() or unit.lower().endswith("s"):
         return unit
     low = unit.lower()
+    irregular = {
+        "loaf": "loaves", "leaf": "leaves", "knife": "knives",
+        "life": "lives", "wife": "wives", "shelf": "shelves",
+        "half": "halves", "calf": "calves", "wolf": "wolves",
+        "foot": "feet", "tooth": "teeth", "person": "people",
+        "child": "children", "man": "men", "woman": "women",
+    }
+    if low in irregular:
+        plural = irregular[low]
+        return plural.capitalize() if unit.istitle() else plural.upper() if unit.isupper() else plural
     if low.endswith(("x", "z", "ch", "sh")):
-        return unit + "es"
-    if low.endswith("y") and len(low) > 1 and low[-2] not in "aeiou":
-        return unit[:-1] + "ies"
-    return unit + "s"
+        plural = unit + "es"
+    elif low.endswith("y") and len(low) > 1 and low[-2] not in "aeiou":
+        plural = unit[:-1] + "ies"
+    elif low.endswith("fe"):
+        plural = unit[:-2] + "ves"
+    elif low.endswith("f"):
+        plural = unit[:-1] + "ves"
+    else:
+        plural = unit + "s"
+    return plural.capitalize() if unit.istitle() else plural.upper() if unit.isupper() else plural
 
 
 def _clean_number(value):

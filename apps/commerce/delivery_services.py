@@ -694,8 +694,9 @@ def serialize_delivery_tracking(assignment):
                 if assignment.provider_account_id
                 else assignment.get_provider_display()
             ),
-            "driver": assignment.driver.name if assignment.driver_id else None,
-            "driver_vehicle": assignment.driver.vehicle_type if assignment.driver_id else "",
+            "driver": assignment.rider_name or None,
+            "driver_phone": assignment.rider_phone,
+            "driver_vehicle": assignment.rider_vehicle,
             "picked_up_at": pickup_at.isoformat() if pickup_at else None,
             "eta_from_pickup_min_minutes": (quote.eta_min_minutes + stop_minutes) if quote else None,
             "eta_from_pickup_max_minutes": (quote.eta_max_minutes + stop_minutes) if quote else None,
@@ -981,8 +982,33 @@ def mark_delivery_ready_if_fulfilled(intake, *, actor=None):
     return assignment
 
 
+# Single source of truth for which delivery status may follow which. The service
+# enforces it; the dispatch dashboard reads it so a dispatcher manually walking a
+# rider through the job is only offered steps that will actually be accepted.
+DELIVERY_STATUS_TRANSITIONS = {
+    DeliveryAssignment.STATUS_PENDING: {DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_READY, DeliveryAssignment.STATUS_CANCELLED},
+    DeliveryAssignment.STATUS_ASSIGNED: {DeliveryAssignment.STATUS_READY, DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_CANCELLED},
+    DeliveryAssignment.STATUS_READY: {DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_CANCELLED},
+    DeliveryAssignment.STATUS_PICKED_UP: {DeliveryAssignment.STATUS_DELIVERED, DeliveryAssignment.STATUS_FAILED, DeliveryAssignment.STATUS_RETURNED},
+    DeliveryAssignment.STATUS_FAILED: {DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_RETURNED, DeliveryAssignment.STATUS_CANCELLED},
+    DeliveryAssignment.STATUS_RETURNED: set(),
+    DeliveryAssignment.STATUS_DELIVERED: set(),
+    DeliveryAssignment.STATUS_CANCELLED: set(),
+}
+
+
+def delivery_status_choices_for(assignment):
+    """(value, label) pairs: the current status first, then every valid next step."""
+    allowed = DELIVERY_STATUS_TRANSITIONS.get(assignment.status, set())
+    return [
+        (value, label) for value, label in DeliveryAssignment.STATUS_CHOICES
+        if value == assignment.status or value in allowed
+    ]
+
+
 @transaction.atomic
 def update_delivery_status(*, assignment, status, actor=None, note="", driver=None, clear_driver=False,
+                           manual_rider_name=None, manual_rider_phone=None, manual_rider_vehicle=None,
                            proof_note="", proof_reference="", external_reference="", external_tracking_url=""):
     if status == DeliveryAssignment.STATUS_OUT_FOR_DELIVERY:
         status = DeliveryAssignment.STATUS_PICKED_UP
@@ -995,17 +1021,22 @@ def update_delivery_status(*, assignment, status, actor=None, note="", driver=No
     previous = assignment.status
     previous_driver_id = assignment.driver_id
     previous_driver_user_id = assignment.driver.user_id if assignment.driver_id and assignment.driver else None
-    transitions = {
-        DeliveryAssignment.STATUS_PENDING: {DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_READY, DeliveryAssignment.STATUS_CANCELLED},
-        DeliveryAssignment.STATUS_ASSIGNED: {DeliveryAssignment.STATUS_READY, DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_CANCELLED},
-        DeliveryAssignment.STATUS_READY: {DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_CANCELLED},
-        DeliveryAssignment.STATUS_PICKED_UP: {DeliveryAssignment.STATUS_DELIVERED, DeliveryAssignment.STATUS_FAILED, DeliveryAssignment.STATUS_RETURNED},
-        DeliveryAssignment.STATUS_FAILED: {DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_RETURNED, DeliveryAssignment.STATUS_CANCELLED},
-        DeliveryAssignment.STATUS_RETURNED: set(),
-        DeliveryAssignment.STATUS_DELIVERED: set(),
-        DeliveryAssignment.STATUS_CANCELLED: set(),
-    }
-    if status != previous and status not in transitions.get(previous, set()):
+    effective_manual_name = (
+        str(manual_rider_name or "").strip()[:120]
+        if manual_rider_name is not None
+        else assignment.manual_rider_name
+    )
+    effective_manual_phone = (
+        str(manual_rider_phone or "").strip()[:40]
+        if manual_rider_phone is not None
+        else assignment.manual_rider_phone
+    )
+    effective_manual_vehicle = (
+        str(manual_rider_vehicle or "").strip()[:60]
+        if manual_rider_vehicle is not None
+        else assignment.manual_rider_vehicle
+    )
+    if status != previous and status not in DELIVERY_STATUS_TRANSITIONS.get(previous, set()):
         raise ValidationError(
             f"Delivery cannot move from {assignment.get_status_display()} to {dict(DeliveryAssignment.STATUS_CHOICES).get(status, status)}."
         )
@@ -1021,18 +1052,38 @@ def update_delivery_status(*, assignment, status, actor=None, note="", driver=No
             raise ValidationError("Choose an in-house driver for an in-house delivery.")
         if assignment.provider == DeliverySettings.PROVIDER_THIRD_PARTY and driver.provider != DeliveryDriver.PROVIDER_THIRD_PARTY:
             raise ValidationError("Choose a third-party courier for an external-provider delivery.")
+    if driver is not None and effective_manual_name:
+        raise ValidationError("Choose an in-house rider or enter one independent rider, not both.")
+    if not effective_manual_name and (effective_manual_phone or effective_manual_vehicle):
+        raise ValidationError("Enter the rider's name before adding phone or vehicle details.")
+    if assignment.batch_id:
+        rider_change_requested = (
+            (driver is not None and driver.pk != assignment.driver_id)
+            or (clear_driver and bool(assignment.driver_id))
+            or (manual_rider_name is not None and (effective_manual_name, effective_manual_phone, effective_manual_vehicle) != (
+                assignment.manual_rider_name, assignment.manual_rider_phone, assignment.manual_rider_vehicle,
+            ))
+        )
+        if rider_change_requested:
+            raise ValidationError("This delivery is part of a rider batch, so its rider is managed with the batch. Change the rider on the batch instead.")
     effective_driver = None if clear_driver else (driver if driver is not None else assignment.driver)
     dispatch_states = {DeliveryAssignment.STATUS_ASSIGNED, DeliveryAssignment.STATUS_PICKED_UP}
     if status in dispatch_states and assignment.provider == DeliverySettings.PROVIDER_INHOUSE and not effective_driver:
-        raise ValidationError("Assign an active driver before moving an in-house delivery into dispatch.")
+        if not effective_manual_name:
+            raise ValidationError("Assign an active rider or enter the independent rider's details before dispatch.")
     effective_external_reference = (external_reference or assignment.external_reference or "").strip()
-    if status in dispatch_states and assignment.provider == DeliverySettings.PROVIDER_THIRD_PARTY and not (effective_driver or effective_external_reference or assignment.provider_order_id):
+    if status in dispatch_states and assignment.provider == DeliverySettings.PROVIDER_THIRD_PARTY and not (effective_driver or effective_manual_name or effective_external_reference or assignment.provider_order_id):
         raise ValidationError("Add a courier/provider reference before dispatch.")
     if status == DeliveryAssignment.STATUS_DELIVERED and settings and settings.require_proof_of_delivery and not (
         (proof_note or assignment.proof_note).strip() or (proof_reference or assignment.proof_reference).strip()
     ):
         raise ValidationError("Proof of delivery is required before marking this delivery as delivered.")
     now = timezone.now()
+    manual_rider_changed = (
+        effective_manual_name != assignment.manual_rider_name
+        or effective_manual_phone != assignment.manual_rider_phone
+        or effective_manual_vehicle != assignment.manual_rider_vehicle
+    )
     assignment.status = status
     assignment.status_note = (note or "")[:255]
     if clear_driver:
@@ -1042,6 +1093,14 @@ def update_delivery_status(*, assignment, status, actor=None, note="", driver=No
         assignment.driver = driver
         if driver.pk != previous_driver_id or assignment.driver_assigned_at is None:
             assignment.driver_assigned_at = now
+    if manual_rider_name is not None:
+        assignment.manual_rider_name = effective_manual_name
+        assignment.manual_rider_phone = effective_manual_phone
+        assignment.manual_rider_vehicle = effective_manual_vehicle
+        if effective_manual_name and (manual_rider_changed or assignment.driver_assigned_at is None):
+            assignment.driver_assigned_at = now
+        elif not effective_manual_name and not assignment.driver_id:
+            assignment.driver_assigned_at = None
     if external_reference:
         assignment.external_reference = external_reference[:160]
     if external_tracking_url:
@@ -1072,18 +1131,28 @@ def update_delivery_status(*, assignment, status, actor=None, note="", driver=No
         assignment.delivered_at = now
     assignment.save()
     assignment.refresh_from_db()
+    rider_changed = assignment.driver_id != previous_driver_id or manual_rider_changed
     DeliveryEvent.raw_objects.create(
         business=assignment.business,
         created_by=actor,
         assignment=assignment,
         status=status,
         note=assignment.status_note,
-        metadata={"previous_status": previous, "driver_id": assignment.driver_id, "external_reference": assignment.external_reference, "proof_reference": assignment.proof_reference},
+        metadata={
+            "previous_status": previous, "driver_id": assignment.driver_id,
+            "manual_rider_assigned": assignment.has_independent_rider,
+            "rider": assignment.rider_name or None, "rider_changed": rider_changed,
+            "external_reference": assignment.external_reference, "proof_reference": assignment.proof_reference,
+        },
     )
     audit(
         assignment.business, actor, "delivery_status", assignment,
         f"Delivery {assignment.public_id} changed from {previous} to {status}",
-        {"previous_status": previous, "status": status, "note": assignment.status_note},
+        {
+            "previous_status": previous, "status": status, "note": assignment.status_note,
+            "rider": assignment.rider_name or None, "independent_rider": assignment.has_independent_rider,
+            "rider_changed": rider_changed,
+        },
     )
     if status in {DeliveryAssignment.STATUS_DELIVERED, DeliveryAssignment.STATUS_RETURNED, DeliveryAssignment.STATUS_CANCELLED} and assignment.batch_id:
         terminal = {DeliveryAssignment.STATUS_DELIVERED, DeliveryAssignment.STATUS_RETURNED, DeliveryAssignment.STATUS_CANCELLED}
@@ -1092,7 +1161,9 @@ def update_delivery_status(*, assignment, status, actor=None, note="", driver=No
             DeliveryBatch.raw_objects.filter(pk=assignment.batch_id, business=assignment.business).update(
                 status=DeliveryBatch.STATUS_COMPLETED, completed_at=now, updated_at=now
             )
-    if assignment.driver_id and assignment.driver_id != previous_driver_id:
+    if assignment.driver_id != previous_driver_id:
+        # Covers assigning, reassigning and releasing an in-house rider, so a rider
+        # who is overridden by an independent rider is told the job is no longer theirs.
         assignment = DeliveryAssignment.raw_objects.select_related("driver__user", "intake", "quote").get(pk=assignment.pk)
         _notify_rider_assignment(assignment, previous_driver_id=previous_driver_id)
     if status != previous:
@@ -1283,10 +1354,30 @@ def raise_delivery_issue(*, assignment, driver, category, details, actor=None):
     )
     return issue
 
+def _batch_rider(business, driver, manual_rider_name, manual_rider_phone, manual_rider_vehicle):
+    """Validate who carries a batch: exactly one in-house rider or one independent rider.
+
+    Returns ``(driver, name, phone, vehicle)`` with the independent-rider fields
+    blank whenever an in-house rider is chosen, so a batch never holds both.
+    """
+    name = str(manual_rider_name or "").strip()[:120]
+    phone = str(manual_rider_phone or "").strip()[:40]
+    vehicle = str(manual_rider_vehicle or "").strip()[:60]
+    if driver is not None and name:
+        raise ValidationError("Choose an in-house rider or enter one independent rider, not both.")
+    if driver is None and not name:
+        raise ValidationError("Choose an in-house rider or enter the independent rider's name.")
+    if driver is not None:
+        if driver.business_id != business.pk or not driver.active or driver.provider != DeliveryDriver.PROVIDER_INHOUSE:
+            raise ValidationError("Choose an active in-house rider from this business.")
+        return driver, "", "", ""
+    return None, name, phone, vehicle
+
+
 @transaction.atomic
-def create_delivery_batch(*, business, driver, assignments, actor=None):
-    if driver.business_id != business.pk or not driver.active or driver.provider != DeliveryDriver.PROVIDER_INHOUSE:
-        raise ValidationError("Choose an active in-house rider from this business.")
+def create_delivery_batch(*, business, assignments, driver=None, actor=None,
+                          manual_rider_name="", manual_rider_phone="", manual_rider_vehicle=""):
+    driver, name, phone, vehicle = _batch_rider(business, driver, manual_rider_name, manual_rider_phone, manual_rider_vehicle)
     assignment_ids = [row.pk for row in assignments]
     if len(set(assignment_ids)) < 2:
         raise ValidationError("Select at least two customer deliveries for a batch pickup.")
@@ -1302,17 +1393,25 @@ def create_delivery_batch(*, business, driver, assignments, actor=None):
             raise ValidationError(f"{assignment.intake.public_number} cannot be added to a new batch.")
         if assignment.provider != DeliverySettings.PROVIDER_INHOUSE:
             raise ValidationError("Only in-house deliveries can be combined into a rider batch.")
-    batch = DeliveryBatch.raw_objects.create(business=business, created_by=actor, driver=driver)
+    batch = DeliveryBatch.raw_objects.create(
+        business=business, created_by=actor, driver=driver,
+        manual_rider_name=name, manual_rider_phone=phone, manual_rider_vehicle=vehicle,
+    )
+    rider_user_id = driver.user_id if driver else None
     for sequence, assignment in enumerate(sorted(locked, key=lambda row: row.created_at), 1):
         assignment.batch = batch
         assignment.batch_stop_sequence = sequence
         assignment.batch_stop_minutes = 0
         assignment.driver = driver
+        assignment.manual_rider_name = name
+        assignment.manual_rider_phone = phone
+        assignment.manual_rider_vehicle = vehicle
         assignment.driver_assigned_at = batch.created_at or timezone.now()
         if assignment.status == DeliveryAssignment.STATUS_PENDING:
             assignment.status = DeliveryAssignment.STATUS_ASSIGNED
         assignment.save(update_fields=[
             "batch", "batch_stop_sequence", "batch_stop_minutes", "driver",
+            "manual_rider_name", "manual_rider_phone", "manual_rider_vehicle",
             "driver_assigned_at", "status", "updated_at",
         ])
         DeliveryEvent.raw_objects.create(
@@ -1321,15 +1420,82 @@ def create_delivery_batch(*, business, driver, assignments, actor=None):
             metadata={
                 "batch_id": str(batch.public_id),
                 "sequence": sequence,
-                "driver_id": driver.pk,
+                "driver_id": driver.pk if driver else None,
+                "rider": batch.rider_name or None,
+                "manual_rider_assigned": batch.has_independent_rider,
             },
         )
         transaction.on_commit(
-            lambda business_id=business.pk, delivery_id=assignment.public_id, rider_id=driver.user_id: publish_delivery_changed(
+            lambda business_id=business.pk, delivery_id=assignment.public_id, rider_id=rider_user_id: publish_delivery_changed(
                 business_id, delivery_id, reason="batch", rider_user_ids=(rider_id,) if rider_id else ()
             )
         )
-    audit(business, actor, "delivery_batch_create", batch, f"Created rider batch with {len(locked)} deliveries", {"driver_id": driver.pk})
+    audit(
+        business, actor, "delivery_batch_create", batch, f"Created rider batch with {len(locked)} deliveries",
+        {"driver_id": driver.pk if driver else None, "independent_rider": batch.has_independent_rider, "rider": batch.rider_name},
+    )
+    return batch
+
+
+@transaction.atomic
+def assign_delivery_batch_rider(*, batch, driver=None, manual_rider_name="", manual_rider_phone="",
+                                manual_rider_vehicle="", actor=None):
+    """Dispatch override: change who carries a whole batch, in-house or independent.
+
+    Every delivery still on the road in the batch moves to the new rider together,
+    so customers, the timeline and the rider app stay consistent. An in-house rider
+    who is replaced is told the jobs are no longer theirs.
+    """
+    batch = DeliveryBatch.raw_objects.select_for_update().select_related("driver__user").get(pk=batch.pk, business=batch.business)
+    if batch.status in {DeliveryBatch.STATUS_COMPLETED, DeliveryBatch.STATUS_CANCELLED}:
+        raise ValidationError("This batch is already finished, so its rider can no longer be changed.")
+    driver, name, phone, vehicle = _batch_rider(batch.business, driver, manual_rider_name, manual_rider_phone, manual_rider_vehicle)
+    if (driver.pk if driver else None) == batch.driver_id and (name, phone, vehicle) == (
+        batch.manual_rider_name, batch.manual_rider_phone, batch.manual_rider_vehicle,
+    ):
+        return batch  # nothing to change
+    previous_driver_id = batch.driver_id
+    previous_user_id = batch.driver.user_id if batch.driver_id else None
+    batch.driver = driver
+    batch.manual_rider_name, batch.manual_rider_phone, batch.manual_rider_vehicle = name, phone, vehicle
+    batch.save(update_fields=["driver", "manual_rider_name", "manual_rider_phone", "manual_rider_vehicle", "updated_at"])
+    now = timezone.now()
+    finished = {DeliveryAssignment.STATUS_DELIVERED, DeliveryAssignment.STATUS_RETURNED, DeliveryAssignment.STATUS_CANCELLED}
+    moved = list(
+        DeliveryAssignment.raw_objects.select_for_update().select_related("intake", "quote")
+        .filter(business=batch.business, batch=batch).exclude(status__in=finished)
+    )
+    new_user_id = driver.user_id if driver else None
+    for assignment in moved:
+        assignment.driver = driver
+        assignment.manual_rider_name, assignment.manual_rider_phone, assignment.manual_rider_vehicle = name, phone, vehicle
+        assignment.driver_assigned_at = now
+        assignment.save(update_fields=[
+            "driver", "manual_rider_name", "manual_rider_phone", "manual_rider_vehicle",
+            "driver_assigned_at", "updated_at",
+        ])
+        DeliveryEvent.raw_objects.create(
+            business=batch.business, created_by=actor, assignment=assignment, status=assignment.status,
+            metadata={
+                "batch_id": str(batch.public_id), "driver_id": driver.pk if driver else None,
+                "manual_rider_assigned": batch.has_independent_rider, "rider": batch.rider_name or None,
+                "rider_changed": True,
+            },
+        )
+        if assignment.driver_id != previous_driver_id:
+            _notify_rider_assignment(assignment, previous_driver_id=previous_driver_id)
+        transaction.on_commit(
+            lambda business_id=batch.business_id, delivery_id=assignment.public_id,
+            rider_ids=tuple(uid for uid in {previous_user_id, new_user_id} if uid): publish_delivery_changed(
+                business_id, delivery_id, reason="batch-rider", rider_user_ids=rider_ids
+            )
+        )
+    audit(
+        batch.business, actor, "delivery_batch_rider", batch,
+        f"Batch rider changed to {batch.rider_name}",
+        {"driver_id": driver.pk if driver else None, "independent_rider": batch.has_independent_rider,
+         "rider": batch.rider_name, "deliveries": len(moved)},
+    )
     return batch
 
 
@@ -1368,7 +1534,7 @@ def organise_delivery_batch(*, batch, stops, actor=None, rider=None):
     audit(batch.business, actor, "delivery_batch_route", batch, "Delivery batch route organised", {"stops": stops})
     for assignment in assignments.values():
         transaction.on_commit(
-            lambda business_id=batch.business_id, delivery_id=assignment.public_id, rider_id=batch.driver.user_id: publish_delivery_changed(
+            lambda business_id=batch.business_id, delivery_id=assignment.public_id, rider_id=batch.driver.user_id if batch.driver_id else None: publish_delivery_changed(
                 business_id, delivery_id, reason="batch-route", rider_user_ids=(rider_id,) if rider_id else ()
             )
         )
@@ -1411,7 +1577,7 @@ def pickup_delivery_batch(*, batch, actor=None, rider=None):
             metadata={"batch_id": str(batch.public_id), "sequence": assignment.batch_stop_sequence},
         )
         transaction.on_commit(
-            lambda business_id=batch.business_id, delivery_id=assignment.public_id, rider_id=batch.driver.user_id: publish_delivery_changed(
+            lambda business_id=batch.business_id, delivery_id=assignment.public_id, rider_id=batch.driver.user_id if batch.driver_id else None: publish_delivery_changed(
                 business_id, delivery_id, reason="batch-pickup", rider_user_ids=(rider_id,) if rider_id else ()
             )
         )

@@ -185,8 +185,8 @@ def push_config(request):
 def push_subscribe(request):
     if not _push_authorized(request):
         return JsonResponse({"detail": "Operational notification access is unavailable."}, status=403)
-    from .models import CommercePushSubscription
-    from .webpush import configured, endpoint_hash, kick_push_dispatcher
+    from .webpush import configured, kick_push_dispatcher
+    from .push_subscriptions import sync_device_subscription
 
     if not configured():
         return JsonResponse({"detail": "Web Push is not configured on this deployment."}, status=503)
@@ -203,30 +203,17 @@ def push_subscribe(request):
     if len(p256dh) > 255 or len(auth) > 255:
         return JsonResponse({"detail": "The PushSubscription keys are invalid."}, status=400)
 
-    digest = endpoint_hash(endpoint)
-    # A browser PushSubscription belongs to one origin/device. If another user
-    # signs into the same browser and explicitly enables alerts, transfer that
-    # endpoint to the current account instead of leaking the previous user's
-    # tenant notifications to the shared device.
-    CommercePushSubscription.objects.filter(endpoint_hash=digest).exclude(user=request.user).update(active=False)
-    subscription, _created = CommercePushSubscription.objects.update_or_create(
-        business=request.business,
+    sync_device_subscription(
         user=request.user,
-        endpoint_hash=digest,
-        defaults={
-            "endpoint": endpoint,
-            "p256dh": p256dh,
-            "auth": auth,
-            "user_agent": request.headers.get("User-Agent", "")[:300],
-            "active": True,
-            "failure_count": 0,
-            "last_failure_at": None,
-        },
+        endpoint=endpoint,
+        p256dh=p256dh,
+        auth=auth,
+        user_agent=request.headers.get("User-Agent", ""),
     )
     # If notifications were created moments before this device subscribed,
     # let the durable dispatcher reconcile pending work without blocking here.
     kick_push_dispatcher()
-    return JsonResponse({"subscribed": True, "subscription_id": subscription.pk})
+    return JsonResponse({"subscribed": True})
 
 
 @never_cache
@@ -234,8 +221,7 @@ def push_subscribe(request):
 def push_unsubscribe(request):
     if not _push_authorized(request):
         return JsonResponse({"detail": "Operational notification access is unavailable."}, status=403)
-    from .models import CommercePushSubscription
-    from .webpush import endpoint_hash
+    from .push_subscriptions import disable_device_subscription
 
     try:
         payload = json.loads(request.body or b"{}")
@@ -244,8 +230,5 @@ def push_unsubscribe(request):
         return JsonResponse({"detail": "The submitted notification details are invalid."}, status=400)
     if not endpoint:
         return JsonResponse({"detail": "A notification destination is required."}, status=400)
-    updated = CommercePushSubscription.objects.filter(
-        user=request.user,
-        endpoint_hash=endpoint_hash(endpoint),
-    ).update(active=False)
+    updated = disable_device_subscription(user=request.user, endpoint=endpoint)
     return JsonResponse({"subscribed": False, "updated": updated})

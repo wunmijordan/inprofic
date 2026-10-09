@@ -688,6 +688,8 @@ Example shape:
     "fallback_poll_seconds": 10
   }
 }
+
+`delivery.driver` (with `driver_phone` and `driver_vehicle`) is the rider carrying the order. It is populated the same way whether the rider is an in-house profile or an independent rider a dispatcher entered by hand after booking a ride outside INPROFIC, so integrations never need to tell them apart.
 ```
 
 Hosted INPROFIC tracking uses a customer-safe WebSocket wake-up channel. A `delivery.changed` message is intentionally only a signal that something changed; it does **not** carry customer/order data. The page immediately re-fetches the authoritative status snapshot and redraws status, pickup-based ETA and timeline. Dispatcher, rider and supported provider/webhook status changes publish the same signal, so open Delivery Console, Rider and customer tracking surfaces update without a full page reload.

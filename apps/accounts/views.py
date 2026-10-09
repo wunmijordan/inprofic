@@ -838,7 +838,9 @@ def founder_signup_live_snapshot(request):
         })
 
     contacts = founder_signup_contacts(include_deleted=True)
+    from .subscription_services import founder_subscription_mix
     subscriptions = BusinessSubscription.objects.select_related("primary_business", "plan", "founder_granted_by").prefetch_related("services__business")
+    subscription_mix = founder_subscription_mix(subscriptions)  # evaluates once; rows below reuse the cache
     recent_events = PlatformEvent.objects.select_related("business", "user").order_by("-occurred_at", "-id")[:30]
     new_events = list(
         PlatformEvent.objects.filter(
@@ -885,6 +887,7 @@ def founder_signup_live_snapshot(request):
             "businesses": Business.objects.count(),
             "users": CustomUser.objects.count(),
             "active_subscriptions": active_subscriptions,
+            "subscription_mix": subscription_mix,
             "signup_contacts": len([row for row in contacts if not row["deleted"]]),
             "registrations_7d": PlatformEvent.objects.filter(
                 event_type=PlatformEvent.EVENT_REGISTRATION, occurred_at__gte=now - timedelta(days=7)
@@ -918,8 +921,7 @@ def founder_push_config(request):
 def founder_push_subscribe(request):
     if not request.user.is_superuser:
         return JsonResponse({"detail": "Founder access is required."}, status=403)
-    from .models import FounderPushSubscription
-    from commerce.webpush import endpoint_hash
+    from commerce.push_subscriptions import sync_device_subscription
     try:
         payload = json.loads(request.body or b"{}")
         endpoint = str(payload.get("endpoint") or "").strip()
@@ -930,20 +932,14 @@ def founder_push_subscribe(request):
         return JsonResponse({"detail": "The submitted notification details are invalid."}, status=400)
     if len(endpoint) > 4096 or not endpoint.startswith("https://") or not p256dh or not auth:
         return JsonResponse({"detail": "A valid Web Push subscription is required."}, status=400)
-    device, _created = FounderPushSubscription.objects.update_or_create(
-        endpoint_hash=endpoint_hash(endpoint),
-        defaults={
-            "user": request.user,
-            "endpoint": endpoint,
-            "p256dh": p256dh[:255],
-            "auth": auth[:255],
-            "user_agent": request.headers.get("User-Agent", "")[:300],
-            "active": True,
-            "failure_count": 0,
-            "last_failure_at": None,
-        },
+    sync_device_subscription(
+        user=request.user,
+        endpoint=endpoint,
+        p256dh=p256dh,
+        auth=auth,
+        user_agent=request.headers.get("User-Agent", ""),
     )
-    return JsonResponse({"subscribed": True, "subscription_id": device.pk})
+    return JsonResponse({"subscribed": True})
 
 
 @login_required
@@ -951,8 +947,7 @@ def founder_push_subscribe(request):
 def founder_push_unsubscribe(request):
     if not request.user.is_superuser:
         return JsonResponse({"detail": "Founder access is required."}, status=403)
-    from .models import FounderPushSubscription
-    from commerce.webpush import endpoint_hash
+    from commerce.push_subscriptions import disable_device_subscription
     try:
         payload = json.loads(request.body or b"{}")
         endpoint = str(payload.get("endpoint") or "").strip()
@@ -960,9 +955,7 @@ def founder_push_unsubscribe(request):
         return JsonResponse({"detail": "The submitted notification details are invalid."}, status=400)
     if not endpoint:
         return JsonResponse({"detail": "A notification destination is required."}, status=400)
-    updated = FounderPushSubscription.objects.filter(
-        user=request.user, endpoint_hash=endpoint_hash(endpoint),
-    ).update(active=False)
+    updated = disable_device_subscription(user=request.user, endpoint=endpoint)
     return JsonResponse({"subscribed": False, "updated": updated})
 
 
@@ -980,7 +973,7 @@ def founder_subscriptions(request):
     )
     from .subscription_services import (
         ensure_default_plans, grant_founder_lifetime, grant_founder_trial_extension,
-        mark_payment_paid, start_trial_for_business,
+        founder_subscription_mix, mark_payment_paid, start_trial_for_business,
     )
     from .backup_restore import BackupRestoreError, analyze_backup, restore_backup
     if not request.user.is_superuser:
@@ -1535,6 +1528,7 @@ def founder_subscriptions(request):
                 or subscription.status in {BusinessSubscription.STATUS_ACTIVE, BusinessSubscription.STATUS_TRIAL}
             ),
             "pending_payments": len(pending_payments),
+            "subscription_mix": founder_subscription_mix(subscriptions),
         },
         "platform_query": platform_query,
         "platform_businesses": platform_businesses,

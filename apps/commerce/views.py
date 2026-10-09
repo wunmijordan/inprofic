@@ -815,7 +815,7 @@ def _delivery_payload(intake):
         "status": assignment.status,
         "status_label": assignment.get_status_display(),
         "provider": assignment.provider,
-        "driver": assignment.driver.name if assignment.driver_id else None,
+        "driver": assignment.rider_name or None,
         "picked_up_at": pickup_at.isoformat() if pickup_at else None,
         # eta_at is retained for backwards compatibility and now represents the
         # upper bound of the pickup-anchored window.
