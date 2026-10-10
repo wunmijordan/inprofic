@@ -50,6 +50,7 @@
 </aside>
 
 {{ tracking_payload|json_script:"delivery-tracking-data" }}
+{% include "commerce/delivery/_vehicle_icon_defs.html" %}
 <script>
 (() => {
   const initial = JSON.parse(document.getElementById('delivery-tracking-data').textContent);
@@ -87,14 +88,15 @@
   const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
   const fmt = (value, withDate = true) => value ? new Intl.DateTimeFormat(undefined, withDate ? {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'} : {hour:'numeric', minute:'2-digit'}).format(new Date(value)) : '';
 
+  let currentVehicleMode = 'motorbike';
   function icon(status) {
     const common = 'h-5 w-5 fill-none stroke-current';
+    if (status === 'picked_up') return window.vehicleIcon(currentVehicleMode, 'h-5 w-5').outerHTML;
     const icons = {
       confirmed: `<svg viewBox="0 0 24 24" class="${common}" stroke-width="1.9"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>`,
       pending: `<svg viewBox="0 0 24 24" class="${common}" stroke-width="1.9"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`,
       assigned: `<svg viewBox="0 0 24 24" class="${common}" stroke-width="1.9"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.6-3 2.3-5 5.5-5s4.9 2 5.5 5M16 7h5M18.5 4.5v5"/></svg>`,
       ready: `<svg viewBox="0 0 24 24" class="${common}" stroke-width="1.9"><path d="m4 8 8-4 8 4-8 4-8-4Z"/><path d="M4 8v8l8 4 8-4V8M12 12v8"/></svg>`,
-      picked_up: `<svg viewBox="0 0 24 24" class="${common}" stroke-width="1.8"><circle cx="6" cy="17" r="2.5"/><circle cx="18" cy="17" r="2.5"/><path d="M8.5 17h5l2-6h-5l-2-4h3M15.5 11h3l2 3M4 12h4"/></svg>`,
       delivered: `<svg viewBox="0 0 24 24" class="${common}" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></svg>`,
       failed: `<svg viewBox="0 0 24 24" class="${common}" stroke-width="1.9"><path d="M12 3 2.8 20h18.4L12 3Z"/><path d="M12 9v5M12 17h.01"/></svg>`,
       returned: `<svg viewBox="0 0 24 24" class="${common}" stroke-width="1.9"><path d="m9 7-5 5 5 5"/><path d="M4 12h10a6 6 0 0 1 6 6"/></svg>`,
@@ -152,7 +154,15 @@
     };
     renderEta();
     if (delivery.picked_up_at && delivery.eta_max_at && !terminal) countdownTimer = setInterval(renderEta, 1000);
-    driverEl.textContent = delivery.driver ? `${delivery.driver}${delivery.driver_vehicle ? ' · ' + delivery.driver_vehicle : ''}` : delivery.provider_label;
+    currentVehicleMode = delivery.vehicle_mode === 'car' ? 'car' : 'motorbike';
+    driverEl.replaceChildren();
+    if (delivery.vehicle_mode) {
+      const chip = document.createElement('span');
+      chip.className = 'mr-2 inline-flex items-center gap-1 rounded-full border border-white/25 px-2 py-0.5 text-xs font-semibold text-white';
+      chip.append(window.vehicleIcon(delivery.vehicle_mode, 'h-4 w-4'), delivery.vehicle_label || '');
+      driverEl.append(chip);
+    }
+    driverEl.append(delivery.driver ? `${delivery.driver}${delivery.driver_vehicle ? ' \u00b7 ' + delivery.driver_vehicle : ''}` : delivery.provider_label);
     if (delivery.external_tracking_url) {
       providerLink.href = delivery.external_tracking_url;
       providerLink.classList.remove('hidden');

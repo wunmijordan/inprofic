@@ -137,16 +137,17 @@ def _sync_inventory_push_notices():
             alerts = feed.get("alerts") or []
             if not feed.get("enabled") or not alerts:
                 continue
-            raw_count = int(feed.get("raw_count") or 0)
-            finished_count = int(feed.get("finished_count") or 0)
+            raw_count = int(feed.get("raw_total", feed.get("raw_count")) or 0)
+            finished_count = int(feed.get("finished_total", feed.get("finished_count")) or 0)
             parts = []
             if raw_count:
                 parts.append(f"{raw_count} raw material{'s' if raw_count != 1 else ''}")
             if finished_count:
                 parts.append(f"{finished_count} finished good{'s' if finished_count != 1 else ''}")
-            low_count = sum(1 for row in alerts if row.get("severity") == "low")
+            low_count = int(feed.get("low_total", 0) or sum(1 for row in alerts if row.get("severity") == "low"))
+            total_count = raw_count + finished_count
             title = "Inventory stock needs attention"
-            message = f"{', '.join(parts)} need attention" + (f" · {low_count} low-stock" if low_count else "") + "."
+            message = f"{' and '.join(parts)} {'needs' if total_count == 1 else 'need'} attention" + (f" · {low_count} low-stock" if low_count else "") + "."
             notice, created = CommerceNotification.raw_objects.get_or_create(
                 business=business, recipient_user=user, dedupe_key="inventory-alert-summary",
                 defaults={

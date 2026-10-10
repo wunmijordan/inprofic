@@ -2,7 +2,10 @@ from django.contrib.auth import get_user_model
 from django import forms
 
 from accounts.platform_integrations import glovo_platform_enabled
-from .models import DeliveryArea, DeliveryDriver, DeliveryOrigin, DeliveryProviderAccount, DeliveryRateBand, DeliverySettings
+from .models import (
+    VEHICLE_CAR, VEHICLE_MOTORBIKE, DeliveryArea, DeliveryDriver, DeliveryOrigin, DeliveryProviderAccount,
+    DeliveryRateBand, DeliverySettings,
+)
 
 INPUT = "w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 focus:border-[#8f172d]"
 
@@ -29,6 +32,7 @@ class DeliverySettingsForm(StyledModelForm):
             self.fields["default_provider_account"].queryset = DeliveryProviderAccount.objects.none()
         hints = {
             "enabled": "Turn this on only after the delivery base and pricing are ready. It immediately exposes delivery on eligible hosted, POS and API checkout surfaces.",
+            "car_enabled": "Car delivery is offered at checkout wherever an active Car price band applies, so customers can choose Motorbike or Car at their own prices. Untick to pause car delivery without deleting its price bands.",
             "default_provider": "Choose who normally carries new deliveries. Hybrid keeps in-house and the selected partner available under the routing policy below.",
             "default_provider_account": "Required for external-provider delivery and for Hybrid policies that compare or offer both methods.",
             "hybrid_routing_policy": "Controls whether the customer, dispatcher, or INPROFIC selects the delivery method before payment.",
@@ -68,7 +72,7 @@ class DeliverySettingsForm(StyledModelForm):
     class Meta:
         model = DeliverySettings
         fields = [
-            "enabled", "default_provider", "default_provider_account",
+            "enabled", "car_enabled", "default_provider", "default_provider_account",
             "hybrid_routing_policy", "hybrid_switch_policy", "customer_switch_policy_note",
             "quote_valid_minutes", "customer_tracking_enabled", "require_proof_of_delivery",
             "rider_alert_sound_enabled", "rider_alert_sound_repeat_minutes", "rider_alert_sound_tune",
@@ -256,6 +260,7 @@ class DeliveryRateBandForm(StyledModelForm):
         self.fields["max_distance_km"].label = "Fallback maximum distance (km)"
         hints = {
             "name": "Use a recognizable pricing name, such as Nearby Zone Pricing.",
+            "vehicle_mode": "Which vehicle this price band is for. Existing bands are Motorbike. Create separate Car bands to price car delivery.",
             "min_distance_km": "Used only for map-only/direct-coordinate quotes that do not select a named destination area. Named areas use their mapped centre and radius for coverage.",
             "max_distance_km": "Used only for map-only/direct-coordinate quotes. A named area's radius (plus optional diagonal extensions) is its authoritative maximum coverage boundary.",
             "base_fee": "Fixed amount charged whenever this pricing band applies.",
@@ -272,7 +277,7 @@ class DeliveryRateBandForm(StyledModelForm):
     class Meta:
         model = DeliveryRateBand
         fields = [
-            "name", "min_distance_km", "max_distance_km", "base_fee", "per_km_fee",
+            "name", "vehicle_mode", "min_distance_km", "max_distance_km", "base_fee", "per_km_fee",
             "minimum_order", "eta_min_minutes", "eta_max_minutes", "sort_order", "active",
         ]
 
@@ -302,15 +307,18 @@ class DeliveryAreaForm(StyledModelForm):
         fields = [
             "name", "code", "latitude", "longitude", "radius_km",
             "extension_ne_km", "extension_se_km", "extension_sw_km", "extension_nw_km",
-            "rate_band", "active", "notes",
+            "rate_band", "car_rate_band", "active", "notes",
         ]
 
     def __init__(self, *args, business=None, **kwargs):
         super().__init__(*args, **kwargs)
-        if business:
-            self.fields["rate_band"].queryset = DeliveryRateBand.objects.filter(business=business, active=True)
-        else:
-            self.fields["rate_band"].queryset = DeliveryRateBand.objects.none()
+        bands = DeliveryRateBand.objects.filter(business=business, active=True) if business else DeliveryRateBand.objects.none()
+        self.fields["rate_band"].queryset = bands.filter(vehicle_mode=VEHICLE_MOTORBIKE)
+        self.fields["car_rate_band"].queryset = bands.filter(vehicle_mode=VEHICLE_CAR)
+        self.fields["rate_band"].required = False
+        self.fields["car_rate_band"].required = False
+        self.fields["car_rate_band"].label = "Delivery price band (car)"
+        self.fields["car_rate_band"].help_text = "Used when a customer chooses car delivery to this destination. Optional if this destination is motorbike-only."
         self.fields["name"].label = "Delivery destination / zone name"
         self.fields["name"].widget.attrs["placeholder"] = "e.g. Victoria Island"
         self.fields["latitude"].label = "Destination centre latitude"
@@ -325,12 +333,12 @@ class DeliveryAreaForm(StyledModelForm):
         for name, label in extension_labels.items():
             self.fields[name].label = label
             self.fields[name].help_text = "Optional distance beyond the main radius in this diagonal direction. Leave at 0 for a circle."
-        self.fields["rate_band"].label = "Delivery price band"
+        self.fields["rate_band"].label = "Delivery price band (motorbike)"
         self.fields["code"].help_text = "Optional stable short code for website or staff reference, for example victoria-island."
         self.fields["latitude"].help_text = "Place the pin at the centre of this zone. The coverage circle is measured from this point."
         self.fields["longitude"].help_text = "Filled together with latitude by the map picker."
         self.fields["radius_km"].help_text = "Drag the radius handle on the map or enter the maximum distance from the zone centre."
-        self.fields["rate_band"].help_text = "Links this named destination to its customer-facing fee, minimum order and ETA rules."
+        self.fields["rate_band"].help_text = "Optional if this destination is car-only. At least one of the motorbike or car bands is required for an active destination."
         self.fields["active"].help_text = "Only active destinations appear on hosted, POS and API storefronts."
 
     def clean(self):
@@ -339,8 +347,10 @@ class DeliveryAreaForm(StyledModelForm):
             raise forms.ValidationError("Enter both latitude and longitude for a delivery area.")
         if cleaned.get("active") and (cleaned.get("latitude") is None or cleaned.get("longitude") is None):
             raise forms.ValidationError("An active delivery destination needs a mapped centre point.")
-        if cleaned.get("active") and not cleaned.get("rate_band"):
-            self.add_error("rate_band", "Choose the pricing band used for this active delivery destination.")
+        if cleaned.get("active") and not cleaned.get("rate_band") and not cleaned.get("car_rate_band"):
+            message = "Choose a motorbike or car price band for this active delivery destination."
+            self.add_error("rate_band", message)
+            self.add_error("car_rate_band", message)
         return cleaned
 
 
@@ -363,7 +373,9 @@ class DeliveryDriverForm(StyledModelForm):
         self.fields["phone"].label = "Contact phone"
         self.fields["email"].label = "Contact email"
         self.fields["provider"].help_text = "In-house riders can use My Deliveries. Third-party entries are manual courier contacts, not provider API accounts."
-        self.fields["vehicle_type"].help_text = "Optional operational detail, such as Bike, Car or Van."
+        self.fields["vehicle_mode"].label = "Vehicle category"
+        self.fields["vehicle_mode"].help_text = "Whether this rider carries Motorbike or Car deliveries. Dispatch sees it beside the rider when assigning."
+        self.fields["vehicle_type"].help_text = "Optional operational detail, such as the bike model or Van."
         self.fields["vehicle_registration"].help_text = "Optional plate or fleet identifier shown to dispatch staff."
         self.fields["active"].help_text = "Inactive riders remain on historical deliveries but cannot receive new assignments."
 
@@ -382,4 +394,4 @@ class DeliveryDriverForm(StyledModelForm):
 
     class Meta:
         model = DeliveryDriver
-        fields = ["user", "name", "phone", "email", "provider", "vehicle_type", "vehicle_registration", "active"]
+        fields = ["user", "name", "phone", "email", "provider", "vehicle_mode", "vehicle_type", "vehicle_registration", "active"]

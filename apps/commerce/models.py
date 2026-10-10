@@ -167,6 +167,18 @@ class CommerceSettings(BusinessOwnedModel):
         return f"{self.business} commerce"
 
 
+# How an order is carried. Motorbike is the original delivery setup and stays the
+# default everywhere; Car is a second, separately priced mode with the same
+# configuration (price bands, riders, independent riders, batches).
+VEHICLE_MOTORBIKE = "motorbike"
+VEHICLE_CAR = "car"
+VEHICLE_MODE_CHOICES = [(VEHICLE_MOTORBIKE, "Motorbike"), (VEHICLE_CAR, "Car")]
+
+
+def vehicle_mode_label(mode):
+    return dict(VEHICLE_MODE_CHOICES).get(mode, "Motorbike")
+
+
 class DeliverySettings(BusinessOwnedModel):
     PROVIDER_INHOUSE = "inhouse"
     PROVIDER_THIRD_PARTY = "third_party"
@@ -205,6 +217,13 @@ class DeliverySettings(BusinessOwnedModel):
     ]
 
     enabled = models.BooleanField(default=False)
+    car_enabled = models.BooleanField(
+        default=True,
+        help_text=(
+            "Car delivery is offered at checkout wherever an active Car price band applies. "
+            "Untick to pause car delivery without deleting its price bands."
+        ),
+    )
     default_provider = models.CharField(max_length=16, choices=PROVIDER_CHOICES, default=PROVIDER_INHOUSE)
     default_provider_account = models.ForeignKey("commerce.DeliveryProviderAccount", null=True, blank=True, on_delete=models.SET_NULL, related_name="default_for_settings", help_text="Optional configured delivery-partner account. Leave blank for in-house dispatch.")
     hybrid_routing_policy = models.CharField(max_length=24, choices=HYBRID_ROUTE_CHOICES, default=HYBRID_ROUTE_DISPATCHER, help_text="When Hybrid is enabled, decide who/what chooses between in-house delivery and the configured provider.")
@@ -348,6 +367,7 @@ class DeliveryOrigin(BusinessOwnedModel):
 
 class DeliveryRateBand(BusinessOwnedModel):
     name = models.CharField(max_length=100)
+    vehicle_mode = models.CharField(max_length=12, choices=VEHICLE_MODE_CHOICES, default=VEHICLE_MOTORBIKE)
     min_distance_km = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     max_distance_km = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     base_fee = models.DecimalField(max_digits=14, decimal_places=2, default=0)
@@ -363,6 +383,10 @@ class DeliveryRateBand(BusinessOwnedModel):
 
     def __str__(self):
         return self.name
+
+    @property
+    def vehicle_label(self):
+        return vehicle_mode_label(self.vehicle_mode)
 
 
 class DeliveryArea(BusinessOwnedModel):
@@ -382,6 +406,10 @@ class DeliveryArea(BusinessOwnedModel):
     extension_sw_km = models.DecimalField(max_digits=8, decimal_places=2, default=0, validators=[MinValueValidator(0), MaxValueValidator(500)])
     extension_nw_km = models.DecimalField(max_digits=8, decimal_places=2, default=0, validators=[MinValueValidator(0), MaxValueValidator(500)])
     rate_band = models.ForeignKey(DeliveryRateBand, null=True, blank=True, on_delete=models.PROTECT, related_name="areas")
+    car_rate_band = models.ForeignKey(
+        DeliveryRateBand, null=True, blank=True, on_delete=models.PROTECT, related_name="car_areas",
+        help_text="Price band used when a customer chooses car delivery to this destination.",
+    )
     active = models.BooleanField(default=True)
     notes = models.CharField(max_length=255, blank=True, default="")
 
@@ -411,6 +439,7 @@ class DeliveryDriver(BusinessOwnedModel):
     provider = models.CharField(max_length=16, choices=PROVIDER_CHOICES, default=PROVIDER_INHOUSE)
     vehicle_type = models.CharField(max_length=60, blank=True, default="")
     vehicle_registration = models.CharField(max_length=60, blank=True, default="")
+    vehicle_mode = models.CharField(max_length=12, choices=VEHICLE_MODE_CHOICES, default=VEHICLE_MOTORBIKE)
     active = models.BooleanField(default=True)
 
     class Meta:
@@ -425,6 +454,10 @@ class DeliveryDriver(BusinessOwnedModel):
 
     def __str__(self):
         return self.name
+
+    @property
+    def vehicle_label(self):
+        return vehicle_mode_label(self.vehicle_mode)
 
 
 class DeliveryQuote(BusinessOwnedModel):
@@ -447,6 +480,7 @@ class DeliveryQuote(BusinessOwnedModel):
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     quote_group_id = models.UUIDField(default=uuid.uuid4, db_index=True, editable=False)
     selection_source = models.CharField(max_length=12, choices=SELECT_CHOICES, default=SELECT_PLATFORM)
+    vehicle_mode = models.CharField(max_length=12, choices=VEHICLE_MODE_CHOICES, default=VEHICLE_MOTORBIKE)
     origin = models.ForeignKey(DeliveryOrigin, on_delete=models.PROTECT, related_name="quotes")
     area = models.ForeignKey(DeliveryArea, null=True, blank=True, on_delete=models.PROTECT, related_name="quotes")
     destination_address = models.CharField(max_length=255)
@@ -468,6 +502,10 @@ class DeliveryQuote(BusinessOwnedModel):
     class Meta:
         ordering = ["-created_at", "-id"]
         indexes = [models.Index(fields=["business", "status", "expires_at"], name="delivery_quote_active_idx")]
+
+    @property
+    def vehicle_label(self):
+        return vehicle_mode_label(self.vehicle_mode)
 
 
 class DeliveryAssignment(BusinessOwnedModel):
@@ -502,6 +540,7 @@ class DeliveryAssignment(BusinessOwnedModel):
     manual_rider_name = models.CharField(max_length=120, blank=True, default="")
     manual_rider_phone = models.CharField(max_length=40, blank=True, default="")
     manual_rider_vehicle = models.CharField(max_length=60, blank=True, default="")
+    vehicle_mode = models.CharField(max_length=12, choices=VEHICLE_MODE_CHOICES, default=VEHICLE_MOTORBIKE)
     provider = models.CharField(max_length=16, choices=DeliverySettings.PROVIDER_CHOICES, default=DeliverySettings.PROVIDER_INHOUSE)
     provider_account = models.ForeignKey("commerce.DeliveryProviderAccount", null=True, blank=True, on_delete=models.SET_NULL, related_name="assignments")
     provider_order_id = models.CharField(max_length=160, blank=True, default="")
@@ -549,6 +588,10 @@ class DeliveryAssignment(BusinessOwnedModel):
     # rider the dispatcher booked outside INPROFIC and typed in. These
     # properties give every screen, API payload and export one identical view of
     # "who is carrying this order" so customers see no difference between them.
+    @property
+    def vehicle_label(self):
+        return vehicle_mode_label(self.vehicle_mode)
+
     @property
     def has_independent_rider(self):
         return bool(self.manual_rider_name and not self.driver_id)
@@ -602,10 +645,15 @@ class DeliveryBatch(BusinessOwnedModel):
     manual_rider_name = models.CharField(max_length=120, blank=True, default="")
     manual_rider_phone = models.CharField(max_length=40, blank=True, default="")
     manual_rider_vehicle = models.CharField(max_length=60, blank=True, default="")
+    vehicle_mode = models.CharField(max_length=12, choices=VEHICLE_MODE_CHOICES, default=VEHICLE_MOTORBIKE)
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_DRAFT)
     routed_at = models.DateTimeField(null=True, blank=True)
     picked_up_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+
+    @property
+    def vehicle_label(self):
+        return vehicle_mode_label(self.vehicle_mode)
 
     @property
     def has_independent_rider(self):

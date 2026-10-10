@@ -36,6 +36,10 @@ from .models import (
     DeliveryQuote,
     DeliveryRateBand,
     DeliverySettings,
+    VEHICLE_CAR,
+    VEHICLE_MODE_CHOICES,
+    VEHICLE_MOTORBIKE,
+    vehicle_mode_label,
 )
 from .notification_services import queue_commerce_notification
 from .realtime import publish_delivery_changed
@@ -145,14 +149,25 @@ def delivery_available(business):
     return bool(settings and settings.enabled)
 
 
+def delivery_vehicle_modes(settings):
+    """Vehicle modes customers may choose, motorbike first (the original setup)."""
+    return [VEHICLE_MOTORBIKE, VEHICLE_CAR] if settings and settings.car_enabled else [VEHICLE_MOTORBIKE]
+
+
 def public_delivery_config(business):
     """Return the tenant's customer-safe delivery discovery contract."""
     enabled = delivery_available(business)
     areas = []
+    vehicle_modes = []
     if enabled:
+        vehicle_modes = delivery_vehicle_modes(DeliverySettings.raw_objects.filter(business=business).first())
+        if VEHICLE_CAR in vehicle_modes and not DeliveryRateBand.raw_objects.filter(
+            business=business, active=True, vehicle_mode=VEHICLE_CAR
+        ).exists():
+            vehicle_modes = [VEHICLE_MOTORBIKE]  # car switched on but no Car price band yet: nothing to offer
         for area in DeliveryArea.raw_objects.filter(
             business=business, active=True
-        ).select_related("rate_band").order_by("name", "id"):
+        ).select_related("rate_band", "car_rate_band").order_by("name", "id"):
             extensions = {
                 "ne": str(area.extension_ne_km), "se": str(area.extension_se_km),
                 "sw": str(area.extension_sw_km), "nw": str(area.extension_nw_km),
@@ -178,9 +193,19 @@ def public_delivery_config(business):
                     "distance_basis": "delivery_base_to_precise_destination",
                     "coverage_boundary_basis": "destination_centre_radius",
                 } if area.rate_band_id and area.rate_band.active else None,
+                "car_pricing": {
+                    "band": area.car_rate_band.name,
+                    "base_fee": str(area.car_rate_band.base_fee),
+                    "per_km_fee": str(area.car_rate_band.per_km_fee),
+                    "minimum_order": str(area.car_rate_band.minimum_order),
+                    "eta_min_minutes": area.car_rate_band.eta_min_minutes,
+                    "eta_max_minutes": area.car_rate_band.eta_max_minutes,
+                } if VEHICLE_CAR in vehicle_modes and area.car_rate_band_id and area.car_rate_band.active else None,
             })
     return {
         "enabled": enabled,
+        "vehicle_modes": vehicle_modes,
+        "vehicle_labels": {mode: vehicle_mode_label(mode) for mode in vehicle_modes},
         "quote_required_before_checkout": enabled,
         "destination_area_supported": enabled,
         "destination_address_required": enabled,
@@ -200,12 +225,15 @@ def _default_origin(business):
     return origin or DeliveryOrigin.raw_objects.filter(business=business, active=True).first()
 
 
-def _rate_band(business, distance, area=None):
-    if area and area.rate_band_id and area.rate_band.active:
-        return area.rate_band
+def _rate_band(business, distance, area=None, vehicle=VEHICLE_MOTORBIKE):
+    if area:
+        area_band = area.car_rate_band if vehicle == VEHICLE_CAR else area.rate_band
+        if area_band and area_band.active:
+            return area_band
     return DeliveryRateBand.raw_objects.filter(
         business=business,
         active=True,
+        vehicle_mode=vehicle,
         min_distance_km__lte=distance,
     ).filter(
         Q(max_distance_km__isnull=True) | Q(max_distance_km__gte=distance)
@@ -373,14 +401,16 @@ def _destination(*, business, origin, address, area_id=None, latitude=None, long
     return area, latitude_value, longitude_value, validation_source
 
 
-def _native_quote_data(*, business, origin, area, latitude, longitude, subtotal):
+def _native_quote_data(*, business, origin, area, latitude, longitude, subtotal, vehicle=VEHICLE_MOTORBIKE):
     if origin.latitude is None or origin.longitude is None:
         raise ValidationError("Configure coordinates on the delivery origin before using INPROFIC distance rates.")
     if latitude is None or longitude is None:
         raise ValidationError("Choose a configured area or provide destination coordinates.")
     distance = _haversine_km(origin.latitude, origin.longitude, latitude, longitude)
-    band = _rate_band(business, distance, area=area)
+    band = _rate_band(business, distance, area=area, vehicle=vehicle)
     if not band:
+        if vehicle == VEHICLE_CAR:
+            raise ValidationError("Car delivery is not available for this destination.")
         raise ValidationError("This destination is outside the configured delivery coverage.")
     if subtotal < band.minimum_order:
         raise ValidationError(
@@ -392,7 +422,7 @@ def _native_quote_data(*, business, origin, area, latitude, longitude, subtotal)
         "fee": fee,
         "eta_min": band.eta_min_minutes,
         "eta_max": band.eta_max_minutes,
-        "payload": {"pricing": "inprofic_distance_band", "rate_band_id": band.pk},
+        "payload": {"pricing": "inprofic_distance_band", "rate_band_id": band.pk, "vehicle_mode": vehicle},
     }
 
 
@@ -412,9 +442,12 @@ def _glovo_quote_data(*, account, destination_address, latitude, longitude, subt
         )
     except ProviderDispatchError:
         return None
-    if area and area.rate_band_id and subtotal < area.rate_band.minimum_order:
+    # Live partner quotes are motorbike-only; apply the motorbike band's minimum
+    # (destination band, else the distance-range fallback) like the native path.
+    band = _rate_band(account.business, Decimal(str(result["distance_km"])), area=area, vehicle=VEHICLE_MOTORBIKE)
+    if band and subtotal < band.minimum_order:
         raise ValidationError(
-            f"Minimum order for this delivery area is {account.business.currency_symbol}{area.rate_band.minimum_order:,.2f}."
+            f"Minimum order for this delivery area is {account.business.currency_symbol}{band.minimum_order:,.2f}."
         )
     return {
         "distance": result["distance_km"],
@@ -428,7 +461,8 @@ def _glovo_quote_data(*, account, destination_address, latitude, longitude, subt
 
 
 def _persist_quote(*, business, actor, group_id, selection_source, origin, area, address, latitude, longitude,
-                   subtotal, provider, provider_account, data, expires_at, validation_source, settings):
+                   subtotal, provider, provider_account, data, expires_at, validation_source, settings,
+                   vehicle_mode=VEHICLE_MOTORBIKE):
     provider_payload = dict(data.get("payload") or {})
     provider_payload["destination_validation"] = validation_source
     # Snapshot customer-facing Hybrid policy beside the quote so the final
@@ -443,6 +477,7 @@ def _persist_quote(*, business, actor, group_id, selection_source, origin, area,
         created_by=actor,
         quote_group_id=group_id,
         selection_source=selection_source,
+        vehicle_mode=vehicle_mode,
         origin=origin,
         area=area,
         destination_address=address[:255],
@@ -463,7 +498,7 @@ def _persist_quote(*, business, actor, group_id, selection_source, origin, area,
 
 
 def create_delivery_quote_options(*, business, subtotal, destination_address, area_id=None, latitude=None, longitude=None,
-                                  location_source=None, actor=None):
+                                  location_source=None, actor=None, vehicle_mode=None):
     """Create the delivery methods currently available for one destination.
 
     Hybrid is a routing mode, never a courier. Every persisted option resolves
@@ -494,26 +529,41 @@ def create_delivery_quote_options(*, business, subtotal, destination_address, ar
     options = []
     errors = []
 
+    vehicles = delivery_vehicle_modes(settings)
+    requested_vehicle = str(vehicle_mode or "").strip().lower() or None
+    if requested_vehicle:
+        # A client (or customer) that already knows which vehicle it wants gets just that vehicle.
+        if requested_vehicle not in dict(VEHICLE_MODE_CHOICES):
+            raise ValidationError("Choose Motorbike or Car for the delivery vehicle.")
+        if requested_vehicle not in vehicles:
+            raise ValidationError("Car delivery is not offered by this business.")
+        vehicles = [requested_vehicle]
+
     def add_inhouse(selection_source):
-        try:
-            data = _native_quote_data(
-                business=business, origin=origin, area=area, latitude=lat, longitude=lon, subtotal=subtotal
-            )
-        except ValidationError as exc:
-            errors.extend(exc.messages)
-            return
-        options.append(_persist_quote(
-            business=business, actor=actor, group_id=group_id, selection_source=selection_source,
-            origin=origin, area=area, address=address, latitude=lat, longitude=lon, subtotal=subtotal,
-            provider=DeliverySettings.PROVIDER_INHOUSE, provider_account=None, data=data, expires_at=base_expires,
-            validation_source=validation_source, settings=settings,
-        ))
+        # One separately priced quote per vehicle the business offers; the
+        # customer later picks the one they want.
+        for vehicle in vehicles:
+            try:
+                data = _native_quote_data(
+                    business=business, origin=origin, area=area, latitude=lat, longitude=lon,
+                    subtotal=subtotal, vehicle=vehicle,
+                )
+            except ValidationError as exc:
+                errors.extend(exc.messages)
+                continue
+            options.append(_persist_quote(
+                business=business, actor=actor, group_id=group_id, selection_source=selection_source,
+                origin=origin, area=area, address=address, latitude=lat, longitude=lon, subtotal=subtotal,
+                provider=DeliverySettings.PROVIDER_INHOUSE, provider_account=None, data=data, expires_at=base_expires,
+                validation_source=validation_source, settings=settings, vehicle_mode=vehicle,
+            ))
 
     def add_external(selection_source):
         account = settings.default_provider_account
         if not account or not account.active:
             errors.append("The external delivery provider is not configured.")
             return
+        candidates = []  # (quote data, vehicle mode)
         if account.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO:
             if not glovo_platform_enabled():
                 errors.append("The external delivery provider is not currently available.")
@@ -524,23 +574,32 @@ def create_delivery_quote_options(*, business, subtotal, destination_address, ar
             if not data:
                 errors.append("Glovo could not provide a live quote for this destination.")
                 return
+            # Live partner quotes carry no vehicle choice, so they stay motorbike.
+            if requested_vehicle and requested_vehicle != VEHICLE_MOTORBIKE:
+                errors.append("The external delivery provider offers motorbike delivery only.")
+                return
+            candidates.append((data, VEHICLE_MOTORBIKE))
         else:
             # Provider-neutral/manual couriers can still use the tenant's own
             # customer-facing rate bands until that plug-in supplies live rates.
-            try:
-                data = _native_quote_data(
-                    business=business, origin=origin, area=area, latitude=lat, longitude=lon, subtotal=subtotal
-                )
-            except ValidationError as exc:
-                errors.extend(exc.messages)
-                return
-            data["payload"] = {**data.get("payload", {}), "provider": account.provider_code, "live_quote": False}
-        options.append(_persist_quote(
-            business=business, actor=actor, group_id=group_id, selection_source=selection_source,
-            origin=origin, area=area, address=address, latitude=lat, longitude=lon, subtotal=subtotal,
-            provider=DeliverySettings.PROVIDER_THIRD_PARTY, provider_account=account, data=data, expires_at=base_expires,
-            validation_source=validation_source, settings=settings,
-        ))
+            for vehicle in vehicles:
+                try:
+                    data = _native_quote_data(
+                        business=business, origin=origin, area=area, latitude=lat, longitude=lon,
+                        subtotal=subtotal, vehicle=vehicle,
+                    )
+                except ValidationError as exc:
+                    errors.extend(exc.messages)
+                    continue
+                data["payload"] = {**data.get("payload", {}), "provider": account.provider_code, "live_quote": False}
+                candidates.append((data, vehicle))
+        for data, vehicle in candidates:
+            options.append(_persist_quote(
+                business=business, actor=actor, group_id=group_id, selection_source=selection_source,
+                origin=origin, area=area, address=address, latitude=lat, longitude=lon, subtotal=subtotal,
+                provider=DeliverySettings.PROVIDER_THIRD_PARTY, provider_account=account, data=data, expires_at=base_expires,
+                validation_source=validation_source, settings=settings, vehicle_mode=vehicle,
+            ))
 
     if settings.default_provider == DeliverySettings.PROVIDER_INHOUSE:
         add_inhouse(DeliveryQuote.SELECT_PLATFORM)
@@ -585,6 +644,31 @@ def select_delivery_quote(settings, options):
     return inhouse or external
 
 
+def delivery_quote_choices(settings, options):
+    """Return ``(selected_quote_or_None, options)`` for a quote request.
+
+    The tenant's routing policy still picks the delivery *method*. When that
+    method offers more than one vehicle, the vehicle is always the customer's
+    choice, so nothing is selected for them and only that method's vehicle
+    quotes are offered. Hybrid customer-choice offers everything.
+    """
+    if len(options) == 1:
+        return options[0], options
+    if len({row.vehicle_mode for row in options}) <= 1:
+        return select_delivery_quote(settings, options), options
+    baseline = [row for row in options if row.vehicle_mode == VEHICLE_MOTORBIKE] or options
+    chosen = select_delivery_quote(settings, baseline)
+    if chosen is None:
+        return None, options
+    same_method = [
+        row for row in options
+        if row.provider == chosen.provider and row.provider_account_id == chosen.provider_account_id
+    ]
+    if len(same_method) == 1:
+        return same_method[0], options
+    return None, same_method
+
+
 def create_delivery_quote(**kwargs):
     """Backward-compatible single quote API for non-interactive callers."""
     settings, options = create_delivery_quote_options(**kwargs)
@@ -608,6 +692,8 @@ def serialize_delivery_quote(quote):
         "provider": quote.provider,
         "provider_label": provider_label,
         "selection_source": quote.selection_source,
+        "vehicle_mode": quote.vehicle_mode,
+        "vehicle_label": vehicle_mode_label(quote.vehicle_mode),
         "routing_policy": snapshot.get("routing_policy"),
         "switch_policy": snapshot.get("switch_policy"),
         "switch_policy_text": snapshot.get("switch_policy_text", ""),
@@ -697,6 +783,8 @@ def serialize_delivery_tracking(assignment):
             "driver": assignment.rider_name or None,
             "driver_phone": assignment.rider_phone,
             "driver_vehicle": assignment.rider_vehicle,
+            "vehicle_mode": assignment.vehicle_mode,
+            "vehicle_label": vehicle_mode_label(assignment.vehicle_mode),
             "picked_up_at": pickup_at.isoformat() if pickup_at else None,
             "eta_from_pickup_min_minutes": (quote.eta_min_minutes + stop_minutes) if quote else None,
             "eta_from_pickup_max_minutes": (quote.eta_max_minutes + stop_minutes) if quote else None,
@@ -873,6 +961,7 @@ def ensure_delivery_assignment(intake, *, actor=None):
         origin=quote.origin,
         provider=quote.provider,
         provider_account=quote.provider_account,
+        vehicle_mode=quote.vehicle_mode,
         status=(DeliveryAssignment.STATUS_READY if intake.fulfilment_state == intake.FULFIL_COMPLETE else DeliveryAssignment.STATUS_PENDING),
         # Customer ETA begins when the parcel is actually picked up, not when
         # the paid order first creates a dispatch assignment.
@@ -1198,10 +1287,14 @@ def _method_quote_for_assignment(assignment, target_provider):
         longitude=quote.destination_longitude if quote else None,
         actor=None,
     )
-    target = next((row for row in options if row.provider == target_provider), None)
+    target = next(
+        (row for row in options if row.provider == target_provider and row.vehicle_mode == assignment.vehicle_mode), None
+    )
     if not target:
         label = "In-house" if target_provider == DeliverySettings.PROVIDER_INHOUSE else "delivery partner"
-        raise ValidationError(f"{label} delivery is not currently available for this destination.")
+        raise ValidationError(
+            f"{label} {vehicle_mode_label(assignment.vehicle_mode).lower()} delivery is not currently available for this destination."
+        )
     return settings, target
 
 
@@ -1393,8 +1486,11 @@ def create_delivery_batch(*, business, assignments, driver=None, actor=None,
             raise ValidationError(f"{assignment.intake.public_number} cannot be added to a new batch.")
         if assignment.provider != DeliverySettings.PROVIDER_INHOUSE:
             raise ValidationError("Only in-house deliveries can be combined into a rider batch.")
+    modes = {assignment.vehicle_mode for assignment in locked}
+    if len(modes) > 1:
+        raise ValidationError("A batch can only combine deliveries that use the same vehicle (all motorbike or all car).")
     batch = DeliveryBatch.raw_objects.create(
-        business=business, created_by=actor, driver=driver,
+        business=business, created_by=actor, driver=driver, vehicle_mode=modes.pop(),
         manual_rider_name=name, manual_rider_phone=phone, manual_rider_vehicle=vehicle,
     )
     rider_user_id = driver.user_id if driver else None

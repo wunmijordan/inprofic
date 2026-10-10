@@ -22,13 +22,14 @@ from core.services import audit
 
 from .delivery_forms import DeliveryAreaForm, DeliveryDriverForm, DeliveryOriginForm, DeliveryProviderAccountForm, DeliveryRateBandForm, DeliverySettingsForm
 from .delivery_services import (
-    add_delivery_message, assign_delivery_batch_rider, create_delivery_batch, create_delivery_quote_options, delivery_area_distance_summary,
+    add_delivery_message, assign_delivery_batch_rider, create_delivery_batch, create_delivery_quote_options, delivery_area_distance_summary, delivery_quote_choices,
     delivery_available, delivery_status_choices_for, organise_delivery_batch, pickup_delivery_batch,
-    raise_delivery_issue, resolve_delivery_location, select_delivery_quote, serialize_delivery_quote, serialize_delivery_tracking,
+    raise_delivery_issue, resolve_delivery_location, serialize_delivery_quote, serialize_delivery_tracking,
     switch_delivery_method, update_delivery_status,
 )
 from .notification_services import queue_commerce_notification
 from .models import (
+    VEHICLE_CAR,
     CommerceIntegration, CommerceNotification, CommerceSettings,
     DeliveryArea,
     DeliveryAssignment,
@@ -220,6 +221,11 @@ def delivery_dashboard(request):
             "dispatch_ready": dispatch_ready,
             "provider_ready": provider_ready,
             "public_ready": public_ready,
+            # Car is offered at checkout when it is not paused and an active Car price band exists.
+            "car_bands": sum(1 for band in rate_bands if band.active and band.vehicle_mode == VEHICLE_CAR),
+            "car_offered": bool(settings.car_enabled) and any(
+                band.active and band.vehicle_mode == VEHICLE_CAR for band in rate_bands
+            ),
         },
         "can_manage_delivery": can_manage_delivery,
         "can_update_delivery": can_update_delivery,
@@ -253,12 +259,14 @@ def delivery_settings(request):
 def _model_form_view(
     request, *, model, form_class, title, success, pk=None,
     business_kw=False, location_label="", include_user_directory=False,
-    intro="", setup_tip="", radius_selector=False, form_notice="", form_notice_scope="",
+    intro="", setup_tip="", radius_selector=False, form_notice="", form_notice_scope="", initial=None,
 ):
     if not is_business_admin(request.user, request.business):
         return render(request, "403.html", status=403)
     obj = get_object_or_404(model, pk=pk, business=request.business) if pk else None
     kwargs = {"instance": obj}
+    if initial and not obj:
+        kwargs["initial"] = initial
     if business_kw:
         kwargs["business"] = request.business
     form = form_class(request.POST or None, **kwargs)
@@ -379,6 +387,7 @@ def delivery_origin_form(request, pk=None):
 def delivery_rate_band_form(request, pk=None):
     return _model_form_view(
         request, model=DeliveryRateBand, form_class=DeliveryRateBandForm,
+        initial={"vehicle_mode": VEHICLE_CAR} if request.GET.get("vehicle") == VEHICLE_CAR and not pk else None,
         title="Delivery price band", success="Delivery price band saved.", pk=pk,
         intro="Define the fee, per-kilometre rate, minimum basket and ETA used by one or more destination areas. INPROFIC prices the real distance from the delivery base to the validated customer destination.",
         setup_tip="For named destination areas, the area's mapped radius is the coverage boundary; the min/max distance fields remain only as a fallback for map-only quotes with no selected area.",
@@ -930,15 +939,16 @@ def storefront_delivery_quote(request, business_slug):
             latitude=request.POST.get("latitude") or None,
             longitude=request.POST.get("longitude") or None,
             location_source=request.POST.get("location_source") or None,
+            vehicle_mode=request.POST.get("vehicle_mode") or None,
         )
-        selected = select_delivery_quote(settings, options)
+        selected, presented = delivery_quote_choices(settings, options)
         return JsonResponse({
             "quote_id": str(selected.public_id) if selected else None,
             "selection_required": selected is None,
             "routing_policy": settings.hybrid_routing_policy if settings.default_provider == DeliverySettings.PROVIDER_HYBRID else None,
             "switch_policy": settings.hybrid_switch_policy if settings.default_provider == DeliverySettings.PROVIDER_HYBRID else None,
             "switch_policy_text": settings.customer_switch_policy_text if settings.default_provider == DeliverySettings.PROVIDER_HYBRID else "",
-            "options": [serialize_delivery_quote(row) for row in options],
+            "options": [serialize_delivery_quote(row) for row in presented],
             **(serialize_delivery_quote(selected) if selected else {}),
         })
     except (ValidationError, InvalidOperation, TypeError, ValueError) as exc:
@@ -962,16 +972,16 @@ def api_delivery_quote(request, business_slug):
         settings, options = create_delivery_quote_options(
             business=business, subtotal=data.get("subtotal"), destination_address=data.get("address", ""),
             area_id=data.get("area_id"), latitude=data.get("latitude"), longitude=data.get("longitude"),
-            location_source=data.get("location_source"),
+            location_source=data.get("location_source"), vehicle_mode=data.get("vehicle_mode"),
         )
-        selected = select_delivery_quote(settings, options)
+        selected, presented = delivery_quote_choices(settings, options)
         return JsonResponse({
             "quote_id": str(selected.public_id) if selected else None,
             "selection_required": selected is None,
             "routing_policy": settings.hybrid_routing_policy if settings.default_provider == DeliverySettings.PROVIDER_HYBRID else None,
             "switch_policy": settings.hybrid_switch_policy if settings.default_provider == DeliverySettings.PROVIDER_HYBRID else None,
             "switch_policy_text": settings.customer_switch_policy_text if settings.default_provider == DeliverySettings.PROVIDER_HYBRID else "",
-            "options": [serialize_delivery_quote(row) for row in options],
+            "options": [serialize_delivery_quote(row) for row in presented],
             **(serialize_delivery_quote(selected) if selected else {}),
         }, status=201)
     except (json.JSONDecodeError, ValidationError, InvalidOperation, TypeError, ValueError) as exc:

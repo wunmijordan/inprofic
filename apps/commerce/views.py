@@ -815,6 +815,8 @@ def _delivery_payload(intake):
         "status": assignment.status,
         "status_label": assignment.get_status_display(),
         "provider": assignment.provider,
+        "vehicle_mode": assignment.vehicle_mode,
+        "vehicle_label": assignment.vehicle_label,
         "driver": assignment.rider_name or None,
         "picked_up_at": pickup_at.isoformat() if pickup_at else None,
         # eta_at is retained for backwards compatibility and now represents the
@@ -1109,6 +1111,7 @@ def api_products(request, business_slug):
 
     products = list(products_qs)
     stock_by_good = available_physical_stock_for_goods([product.finished_good for product in products])
+    product_id_by_good = {product.finished_good_id: str(product.public_id) for product in products}
     for p in products:
         multiplier = standard_multiplier(p.finished_good)
         stock_available = (
@@ -1268,6 +1271,9 @@ def api_products(request, business_slug):
         rows.append({
             "id": str(p.public_id),
             "name": p.display_name,
+            # Variant links (resolved after every row exists, below).
+            "variant_of": product_id_by_good.get(p.finished_good.variant_of_id) if p.finished_good.variant_of_id else None,
+            "variants": [],
             "category": ({
                 "id": p.finished_good.product_category_id,
                 "name": p.finished_good.product_category.name,
@@ -1292,6 +1298,19 @@ def api_products(request, business_slug):
             "online_price": str(p.finished_good.selling_price_for("online")) if p.allow_online_order else None,
             "preorder_price": str(p.finished_good.selling_price_for("online")) if p.allow_online_order else None,
         })
+
+    # A variant is itself an orderable product row (order it by its own id). Link each to its parent card so
+    # a client can group them and show the selected variant's name as the product name. A variant whose
+    # parent is not offered is listed as a standalone product.
+    rows_by_id = {row["id"]: row for row in rows}
+    for row in rows:
+        parent = rows_by_id.get(row["variant_of"]) if row["variant_of"] else None
+        if parent and not parent["variant_of"]:
+            parent["variants"].append({"id": row["id"], "name": row["name"]})
+        else:
+            row["variant_of"] = None
+    for row in rows:
+        row["variants"].sort(key=lambda item: item["name"].casefold())
 
     visible_category_ids = {
         row["category"]["id"] for row in rows if row.get("category") and row["category"].get("id")
@@ -1346,6 +1365,18 @@ def api_products(request, business_slug):
         "catalogue_display": {
             "fulfilment_badges": False,
             "fulfilment_options_surface": "checkout_only",
+        },
+        # Kept apart from catalogue_display, whose exact shape is a pinned contract. When a customer
+        # selects a variant, show that variant's name as the product name (its own options and
+        # add-ons keep applying); clearing it restores the primary product.
+        "product_display": {"selected_variant_replaces_name": True},
+        "checkout_flow": {
+            "order_button_label": "Place order",
+            "delivery_quote_button_label": "Calculate delivery",
+            "delivery_quote_required": delivery["enabled"],
+            # The quote is calculated first, then the customer reviews it (choosing a vehicle when
+            # several are offered) and presses Place order. Never place the order automatically.
+            "auto_submit_after_quote": False,
         },
         "privacy_policy": {"presentation": "modal", "endpoint": f"/api/v1/storefronts/{business.slug}/privacy-policy"},
         "categories": categories,

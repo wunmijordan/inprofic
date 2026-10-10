@@ -156,6 +156,16 @@ For a custom delivery partner, INPROFIC remains the control engine: customer pri
 
 Glovo LaaS v2 is an optional built-in adapter only when the Founder enables it platform-wide. It stays inactive until the business completes its own approved Glovo account/API setup (base URL, client credentials, quote/order endpoints, Address Book pickup ID and webhook secret). INPROFIC does not provide or resell Glovo accounts. When the Founder switch is off, Glovo is omitted from tenant/customer/API-facing software surfaces while saved configuration remains dormant for possible later re-enable. Provider and payment webhooks point directly to INPROFIC, not through the customer website.
 
+#### Car delivery (optional second vehicle)
+
+Besides Motorbike, a business can offer Car delivery at its own prices. Setup mirrors Motorbike:
+
+1. Add a price band and set its **Vehicle** to Car (the dashboard's *Add car price band* shortcut pre-selects it). Set its fee, per-kilometre fee, minimum order and ETA.
+2. Optionally link that band as the **Car price band** on each destination area. Without a link, Car falls back to Car bands whose distance range covers the destination.
+3. Mark riders as Motorbike or Car. Independent riders and rider batches work for Car exactly as for Motorbike; a batch can only combine deliveries of the same vehicle.
+
+Car is offered at checkout automatically wherever an active Car price band applies. *Delivery settings > Car delivery* only pauses it without deleting the bands.
+
 The Delivery dashboard shows whether the public checkout prerequisites are
 ready. Turning Delivery off removes it from new public/POS/API checkouts without
 rewriting historical orders or assignments. Existing provider callbacks remain synchronization writes for already-created deliveries, so a plan upgrade can reveal complete status history.
@@ -425,6 +435,12 @@ The response also includes a top-level presentation hint:
 
 To match the hosted storefront, render one compact price pill for the selected channel. In a Full menu/all-channels view, rotate vertically through only the item's available prices every two seconds; use the same compact treatment in checkout/basket summaries. Do **not** place `stock` readiness or `made_to_order` time tags on product cards. Keep `order_modes[].fulfilment_options` for the checkout selector only. Treat this as presentation metadata; checkout remains authoritative for price and readiness.
 
+### 4.3 Variants, the selected-variant name and the order button
+
+Each product row carries `variant_of` and `variants` so a headless UI can group variants under their parent card. A variant is an ordinary orderable product: order it by its own `id`, with its own price, order modes, options and add-ons. When the customer selects a variant, show **that variant's `name`** as the product name on the card (`product_display.selected_variant_replaces_name` is `true`) and restore the parent's name when the variant is cleared. A variant whose parent is not offered has `variant_of: null` and is just a product.
+
+`checkout_flow` describes the order button: it reads `order_button_label` (**Place order**); when delivery is requested and no quote is locked it reads `delivery_quote_button_label` (**Calculate delivery**) and requests the quote first. `auto_submit_after_quote` is `false`: after the quote (and the customer's vehicle choice, if any) the customer presses **Place order** themselves.
+
 ## 5. Delivery discovery and quote
 
 Read the top-level `delivery` object from the product response on every
@@ -496,6 +512,7 @@ Rules:
   JavaScript—proxy it through the website server;
 - a basket, order-mode or destination change invalidates the quote;
 - a quote expires at `expires_at` and may belong to only one live checkout.
+- optionally send `vehicle_mode` (`"motorbike"` or `"car"`) to quote just that vehicle (see *Vehicle choice* below); an unknown value, or `car` when the business does not offer it, returns HTTP 400.
 
 When tenant policy chooses the method automatically, the response has a
 top-level `quote_id`:
@@ -505,6 +522,8 @@ top-level `quote_id`:
   "quote_id": "1e75ac66-66b1-4f31-91ec-2238c7bc0be0",
   "selection_required": false,
   "provider": "inhouse",
+  "vehicle_mode": "motorbike",
+  "vehicle_label": "Motorbike",
   "provider_label": "In-house delivery",
   "distance_km": "4.30",
   "fee": "1500.00",
@@ -524,6 +543,8 @@ top-level `quote_id`:
     {
       "quote_id": "1e75ac66-66b1-4f31-91ec-2238c7bc0be0",
       "provider": "inhouse",
+      "vehicle_mode": "motorbike",
+      "vehicle_label": "Motorbike",
       "provider_label": "In-house delivery",
       "distance_km": "4.30",
       "fee": "1500.00",
@@ -541,6 +562,23 @@ top-level `quote_id` is `null`. Render every object in `options`, let the
 customer choose, and submit that option's `quote_id`. Display
 `switch_policy_text` near the options when present. Never infer the provider or
 replace the returned fee.
+
+### Vehicle choice (Motorbike / Car)
+
+When the business offers Car delivery (`delivery.vehicle_modes` is `["motorbike", "car"]` in the product response), each option carries `vehicle_mode` and `vehicle_label` and its own `fee`, `total` and ETA. If the chosen delivery method offers both vehicles, `selection_required` is `true`, the top-level `quote_id` is `null`, and `options` holds one quote per vehicle:
+
+```json
+{
+  "quote_id": null,
+  "selection_required": true,
+  "options": [
+    {"quote_id": "1e75...", "vehicle_mode": "motorbike", "vehicle_label": "Motorbike", "provider": "inhouse", "provider_label": "In-house delivery", "fee": "1500.00", "total": "3500.00", "eta_min_minutes": 25, "eta_max_minutes": 50},
+    {"quote_id": "9b21...", "vehicle_mode": "car", "vehicle_label": "Car", "provider": "inhouse", "provider_label": "In-house delivery", "fee": "3000.00", "total": "5000.00", "eta_min_minutes": 20, "eta_max_minutes": 40}
+  ]
+}
+```
+
+Show a motorbike or car icon with each option, let the customer choose, and let them switch until they place the order. Submit the chosen option's `quote_id` to checkout. The order button follows `checkout_flow`: **Calculate delivery** (quote the destination) -> choose a vehicle if offered -> **Place order**. Do not place the order automatically after quoting. To skip the choice, request one vehicle with `"vehicle_mode": "car"`; that vehicle is returned as the selected quote. Live external-partner quotes are motorbike only, and the customer's vehicle is kept on the order's delivery.
 
 If quoting fails, do not create a delivery checkout or start payment. Let the
 customer correct the destination, refresh the basket, choose pickup, or contact
@@ -568,6 +606,8 @@ After checkout creation, use the checkout response itself as the final source of
   "delivery": {
     "quote_id": "1e75ac66-66b1-4f31-91ec-2238c7bc0be0",
     "provider": "inhouse",
+    "vehicle_mode": "motorbike",
+    "vehicle_label": "Motorbike",
     "provider_label": "In-house delivery",
     "selection_source": "platform",
     "routing_policy": "fastest_eta",
@@ -698,6 +738,8 @@ HTTP `201` means created; `200` means an idempotent retry returned the existing 
   "delivery": {
     "quote_id": "1e75ac66-66b1-4f31-91ec-2238c7bc0be0",
     "provider": "inhouse",
+    "vehicle_mode": "motorbike",
+    "vehicle_label": "Motorbike",
     "provider_label": "In-house delivery",
     "selection_source": "platform",
     "routing_policy": null,
@@ -1124,6 +1166,9 @@ The browser calls the website’s own API routes; the website server attaches th
 - [ ] The website keeps precise address and map pin synchronized in both directions through its server-side proxy to `delivery/location`, and offers map-pin fallback when INPROFIC cannot locate typed text.
 - [ ] Delivery quote is requested server-side after basket/order-mode selection and refreshed after any basket or destination change.
 - [ ] Customer-choice Hybrid renders the returned options and switch-policy text.
+- [ ] If the business offers Car delivery, the website shows each option's `vehicle_label` and a car/motorbike icon, lets the customer choose, and never places the order automatically after the quote.
+- [ ] The order button follows `checkout_flow`: Calculate delivery, then Place order.
+- [ ] Variant selection shows the selected variant's `name` on the product card and orders the variant by its own `id`.
 - [ ] Selected `delivery_quote_id` is included in checkout and returned subtotal, delivery fee and amount are displayed before payment.
 - [ ] Final business slug matches website and gateway configuration.
 - [ ] Published products return absolute working `image` URLs.
@@ -1175,6 +1220,8 @@ Delivery Rider is a purpose-specific staff access surface: rider-only users can 
 For delivery UI, do not let the address textbox and map pin drift apart. Use `POST /api/v1/storefronts/{business_slug}/delivery/location` in both directions: send `area_id + address` to obtain validated coordinates and move/zoom the map pin; send `area_id + latitude + longitude` to reverse-geocode a manually placed pin and update the address field. For typed addresses, wait until the customer has stopped editing for **2 seconds**; every correction resets the debounce window, and an older request/result must be cancelled or ignored after the text changes. Because this endpoint requires `X-INPROFIC-Key`, the browser should call the website's own backend/serverless proxy; that proxy calls INPROFIC and returns only the normalized location result. Never expose the tenant API key in browser JavaScript. Then send the synchronized address, coordinates and returned `location_source` to `/delivery/quote`. Coverage and minimum-order errors returned by INPROFIC should be displayed as red customer-facing validation text. See `COMMERCE_INTEGRATION.md` for the complete payload/response contract.
 
 ## 18. Live delivery status, customer updates and pickup-based ETA
+
+The tracking payload's `delivery` object (and the order detail `delivery`) carries `vehicle_mode` (`motorbike` or `car`) and `vehicle_label`; show the matching icon beside the status. `driver`, `driver_phone` and `driver_vehicle` describe the rider whether they are an in-house rider or an independent rider entered by dispatch; they are populated identically.
 
 Once a paid delivery order exists, store the returned delivery UUID alongside the order UUID. Fetch the current customer-safe delivery state from the website server:
 

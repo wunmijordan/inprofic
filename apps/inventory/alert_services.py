@@ -121,6 +121,7 @@ def inventory_alert_feed(*, business, user, performance_request=None):
             "enabled": False, "poll_seconds": settings.poll_seconds,
             "sound_enabled": False, "sound_repeat_minutes": 0, "sound_tune": settings.sound_tune,
             "alerts": [], "count": 0, "raw_count": 0, "finished_count": 0,
+            "raw_total": 0, "finished_total": 0, "low_total": 0,
         }
 
     current = _condition_rows(business, performance_request=performance_request)
@@ -198,6 +199,15 @@ def inventory_alert_feed(*, business, user, performance_request=None):
             if is_due:
                 visible.append(_serialize(alert_type, item, state))
 
+    # Totals cover every enabled stock condition, including ones the user has
+    # snoozed in-app, so a device notification reports the real number of items.
+    enabled_current = [
+        (alert_type, item) for alert_type, item in current
+        if getattr(settings, ALERT_META[alert_type]["settings_enabled"])
+    ]
+    raw_total = sum(1 for alert_type, _ in enabled_current if ALERT_META[alert_type]["resource"] == "raw_material")
+    finished_total = sum(1 for alert_type, _ in enabled_current if ALERT_META[alert_type]["resource"] == "finished_good")
+    low_total = sum(1 for alert_type, _ in enabled_current if ALERT_META[alert_type]["severity"] == "low")
     raw_count = sum(1 for row in visible if row["resource"] == "raw_material")
     finished_count = sum(1 for row in visible if row["resource"] == "finished_good")
     return {
@@ -210,6 +220,9 @@ def inventory_alert_feed(*, business, user, performance_request=None):
         "count": len(visible),
         "raw_count": raw_count,
         "finished_count": finished_count,
+        "raw_total": raw_total,
+        "finished_total": finished_total,
+        "low_total": low_total,
     }
 
 

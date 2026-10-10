@@ -560,6 +560,21 @@ POST /api/v1/connectors/{business_slug}/{integration_id}/orders
 
 A website may use `coverage_polygon` directly with Leaflet, MapLibre, Google Maps or a similar client-side map. It should not attempt to reproduce INPROFIC's diagonal-extension interpolation itself. The polygon is the visual guide; the server remains authoritative for coverage validation.
 
+`GET /products` also returns `checkout_flow`, which tells a headless UI how the order button should behave:
+
+```json
+"checkout_flow": {
+  "order_button_label": "Place order",
+  "delivery_quote_button_label": "Calculate delivery",
+  "delivery_quote_required": true,
+  "auto_submit_after_quote": false
+}
+```
+
+The order button reads **Place order**. When the customer asks for delivery and no quote is locked yet, it reads **Calculate delivery** and requests the quote first. If several vehicles are offered, the customer then chooses one; the button reads **Place order** again once a quote is locked, and the customer presses it to continue to payment. Never place the order automatically after a quote. Changing the basket or destination clears the quote and the button returns to **Calculate delivery**.
+
+**Variants.** A variant is an ordinary orderable product row (order it by its own `id`; it keeps its own price, order modes, options and add-ons). Each row now carries `variant_of` (the parent product `id`, or `null`) and `variants` (`[{"id", "name"}]` on a parent, sorted by name, empty otherwise). A variant whose parent is not offered is listed as a standalone product (`variant_of: null`). `product_display.selected_variant_replaces_name` is `true`: when the customer selects a variant on a product card, show that variant's `name` as the product name, so they can see which variant they picked, and restore the parent's name when the variant is cleared or the page reloads. The selected variant's own options and add-ons apply as normal.
+
 ### Required two-way address and map synchronization
 
 Headless websites should keep the precise-address field and map pin synchronized exactly as INPROFIC's hosted storefront and POS do.
@@ -635,6 +650,15 @@ Use `location_source: "map_pin"` when the customer chose the point directly. INP
 
 A Hybrid tenant may return `selection_required: true` plus `options[]`. Present those choices and submit the selected option's `quote_id`. Otherwise use the top-level selected `quote_id`. The quote snapshot is what must be passed into checkout; do not recompute the delivery fee after the quote is returned.
 
+**Vehicle choice (Motorbike / Car).** Delivery can be priced per vehicle. A business sets up Car delivery exactly like Motorbike delivery: its own price bands (set the band's *vehicle* to Car), an optional Car price band on each destination area, riders marked Motorbike or Car, and independent riders and batches work the same way. **Car is offered automatically wherever an active Car price band applies; no separate switch is needed** (a *Car delivery* setting exists only to pause it without deleting the bands). Businesses without a Car band are unchanged: one motorbike quote and `selection_required: false`.
+
+- `delivery/config` (inside `GET /products` as `delivery`) lists `vehicle_modes` (`["motorbike"]` or `["motorbike", "car"]`; `car` appears only when it can actually be priced), `vehicle_labels`, and each area's `car_pricing` (or `null`).
+- Every quote option, and the top-level selected quote, carries `vehicle_mode` (`motorbike` or `car`) and `vehicle_label`, each at its own `fee`, `total` and ETA.
+- When the chosen delivery method offers more than one vehicle, the response has `selection_required: true` and `options[]` with one quote per vehicle. Show them with their prices, let the customer choose, and submit the chosen option's `quote_id`. The customer may switch vehicle until the order is placed.
+- To skip the choice, send `"vehicle_mode": "motorbike"` or `"car"` in the quote request: only that vehicle is quoted and it is selected automatically. An unknown value, or `car` when the business does not offer it, returns HTTP 400.
+- Live external-partner quotes (Glovo) are motorbike only. The vehicle the customer chose is stored on the order's delivery and cannot be changed by switching delivery method.
+- The checkout snapshot (`delivery` on a checkout), the order detail `delivery`, and the tracking payload all carry `vehicle_mode` and `vehicle_label`. Show a car or motorbike icon from them on selection, review and tracking screens.
+
 ### Final pre-payment review contract
 
 A headless checkout should display, at minimum, product name, selected quantity, the INPROFIC unit price for the chosen `order_mode`, line total, products subtotal, delivery fee (when present), and final checkout total. Unit price should remain visible in the review step so the customer can verify how each line was calculated.
@@ -673,6 +697,8 @@ Example shape:
     "status": "picked_up",
     "status_label": "Picked up · en route",
     "provider_label": "In-house delivery",
+    "vehicle_mode": "motorbike",
+    "vehicle_label": "Motorbike",
     "driver": "Rider name",
     "picked_up_at": "2026-09-18T13:24:00Z",
     "eta_min_at": "2026-09-18T13:49:00Z",
@@ -689,7 +715,7 @@ Example shape:
   }
 }
 
-`delivery.driver` (with `driver_phone` and `driver_vehicle`) is the rider carrying the order. It is populated the same way whether the rider is an in-house profile or an independent rider a dispatcher entered by hand after booking a ride outside INPROFIC, so integrations never need to tell them apart.
+`delivery.vehicle_mode` / `vehicle_label` say whether the customer chose Motorbike or Car. `delivery.driver` (with `driver_phone` and `driver_vehicle`) is the rider carrying the order. It is populated the same way whether the rider is an in-house profile or an independent rider a dispatcher entered by hand after booking a ride outside INPROFIC, so integrations never need to tell them apart.
 ```
 
 Hosted INPROFIC tracking uses a customer-safe WebSocket wake-up channel. A `delivery.changed` message is intentionally only a signal that something changed; it does **not** carry customer/order data. The page immediately re-fetches the authoritative status snapshot and redraws status, pickup-based ETA and timeline. Dispatcher, rider and supported provider/webhook status changes publish the same signal, so open Delivery Console, Rider and customer tracking surfaces update without a full page reload.

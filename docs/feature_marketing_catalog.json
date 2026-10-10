@@ -430,5 +430,14 @@
     "proof": "Keep the in-house delivery flow without riders or a courier integration: the dispatch manager enters the rider's name, phone and vehicle on the order and moves it from assigned to picked up to delivered as the ride progresses. Customers see the rider and each status update exactly as they would for an in-house rider. A dispatcher can also replace an in-house rider with an independent one, and the previous rider is told the job is no longer theirs. The same works for multi-order batches: dispatch can give a whole batch to an independent rider, save its route and mark it picked up, so every customer's ETA starts as it would for an in-house rider.",
     "highlight": "NEW",
     "added_on": "2026-10-09"
+  },
+  {
+    "id": "delivery-vehicle-choice",
+    "name": "Choose car or motorbike delivery",
+    "group": "delivery",
+    "audience": "customers ordering delivery, and businesses that want to offer both motorbike and car delivery",
+    "proof": "Businesses can offer car delivery beside motorbike delivery just by adding a car price band, with the same riders, independent-rider and batch options. At checkout the customer presses Calculate delivery, sees Motorbike and Car with their own prices and ETAs, picks the one they want, then presses Place order; tracking, rider and dispatch screens show a car or motorbike icon throughout the delivery.",
+    "highlight": "NEW",
+    "added_on": "2026-10-09"
   }
 ]
