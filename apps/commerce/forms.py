@@ -1,5 +1,7 @@
 from django import forms
 
+from .opening_hours import DEFAULT_CLOSE, DEFAULT_OPEN, WEEKDAYS
+
 from core.models import CashAccount
 from inventory.models import FinishedGood
 from .models import (
@@ -24,6 +26,7 @@ class CommerceSettingsForm(forms.ModelForm):
             "notify_payment_activity", "notify_delivery_activity", "notification_sound_enabled",
             "notification_sound_repeat_minutes", "notification_sound_tune", "notification_desktop_enabled", "insufficient_stock_policy",
             "checkout_reservation_minutes",
+            "opening_hours_enabled", "closed_scheduling_enabled", "closed_scheduling_window_minutes",
         ]
         widgets = {
             "public_note": forms.Textarea(attrs={"rows": 2}),
@@ -62,10 +65,60 @@ class CommerceSettingsForm(forms.ModelForm):
             "While unread Commerce alerts remain, repeat the in-app sound at this interval. "
             "Use 0 to sound only when a new alert first appears."
         )
+        labels.update({
+            "opening_hours_enabled": "Show opening hours",
+            "closed_scheduling_enabled": "Allow scheduling for the next opening day",
+            "closed_scheduling_window_minutes": "Earliest scheduled time after opening (minutes)",
+        })
+        self.fields["closed_scheduling_window_minutes"].widget.attrs.update({"min": 0, "max": 1440})
+        self.fields["closed_scheduling_window_minutes"].help_text = (
+            "Scheduled and preferred times cannot be earlier than this many minutes after opening, and cannot be later "
+            "than closing. For example, with 60 and a 9:00 AM opening, the earliest scheduled time is 10:00 AM. "
+            "Use 0 to allow scheduling from opening time."
+        )
+        saved_hours = (self.instance.opening_hours or {}) if self.instance else {}
+        self.hours_rows = []
+        for key, short, day_name in WEEKDAYS:
+            entry = saved_hours.get(key) or {}
+            on = forms.BooleanField(required=False, initial=bool(entry), label=f"{day_name} open")
+            opens = forms.TimeField(required=False, initial=entry.get("open") or DEFAULT_OPEN,
+                                    widget=forms.TimeInput(attrs={"type": "time"}, format="%H:%M"), label=f"{day_name} opens")
+            closes = forms.TimeField(required=False, initial=entry.get("close") or DEFAULT_CLOSE,
+                                     widget=forms.TimeInput(attrs={"type": "time"}, format="%H:%M"), label=f"{day_name} closes")
+            self.fields[f"hours_{short}_on"], self.fields[f"hours_{short}_open"], self.fields[f"hours_{short}_close"] = on, opens, closes
         for name, f in self.fields.items():
             if name in labels: f.label = labels[name]
             if isinstance(f.widget, forms.CheckboxInput): f.widget.attrs["class"]="sr-only peer"
             else: f.widget.attrs["class"] = CLS
+        for key, short, day_name in WEEKDAYS:
+            self.fields[f"hours_{short}_on"].widget.attrs["class"] = "h-4 w-4 rounded border-stone-300 accent-[#8f172d]"
+            self.hours_rows.append({
+                "name": day_name,
+                "on": self[f"hours_{short}_on"], "open": self[f"hours_{short}_open"], "close": self[f"hours_{short}_close"],
+            })
+
+    def clean(self):
+        cleaned = super().clean()
+        hours = {}
+        for key, short, day_name in WEEKDAYS:
+            if not cleaned.get(f"hours_{short}_on"):
+                continue
+            opens, closes = cleaned.get(f"hours_{short}_open"), cleaned.get(f"hours_{short}_close")
+            if not opens or not closes:
+                self.add_error(f"hours_{short}_open", f"{day_name}: set both an opening and a closing time.")
+                continue
+            if opens == closes:
+                self.add_error(f"hours_{short}_close", f"{day_name}: opening and closing time cannot be the same.")
+                continue
+            hours[key] = {"open": opens.strftime("%H:%M"), "close": closes.strftime("%H:%M")}
+        if cleaned.get("opening_hours_enabled") and not hours and not self.errors:
+            self.add_error("opening_hours_enabled", "Tick at least one day as open, or turn opening hours off.")
+        self._cleaned_hours = hours
+        return cleaned
+
+    def save(self, commit=True):
+        self.instance.opening_hours = getattr(self, "_cleaned_hours", self.instance.opening_hours or {})
+        return super().save(commit=commit)
 
 
     def clean_notification_sound_repeat_minutes(self):

@@ -20,8 +20,9 @@
     .storefront-brand-muted { color:color-mix(in srgb,var(--brand-dark-contrast) 68%,transparent)!important; }
     .storefront-brand-control { color:var(--brand-dark-contrast)!important;border-color:color-mix(in srgb,var(--brand-dark-contrast) 20%,transparent)!important;background:color-mix(in srgb,var(--brand-dark) 78%,transparent)!important; }
     .storefront-brand-inverse { background:#f5f5f4!important;color:#292524!important; }
-    .product-card { box-shadow: 0 14px 42px rgba(43,36,31,.08); transition: transform .24s ease, box-shadow .24s ease; }
-    .product-card:hover { transform: translateY(-4px); box-shadow: 0 22px 55px rgba(43,36,31,.14); }
+    :root { --ui-shadow: 0 4px 8px #000000d2; --ui-shadow-raised: 0 6px 10px #000000d2; }
+    .product-card { box-shadow: var(--ui-shadow-raised); transition: transform .24s ease, box-shadow .24s ease; }
+    .product-card:hover { transform: translateY(-4px); box-shadow: var(--ui-shadow-raised); }
     .product-card img { transition: transform .55s cubic-bezier(.2,.8,.2,1); }
     .product-card:hover img { transform: scale(1.045); }
     .line-clamp-2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
@@ -61,6 +62,13 @@
         <p class="storefront-brand-muted text-[11px] font-bold uppercase tracking-[.22em]">{{ storefront_copy.eyebrow }}</p>
         <h1 class="mt-3 font-display text-3xl font-semibold leading-[1.08] sm:text-5xl">{{ commerce_settings.storefront_headline|default:storefront_copy.headline }}</h1>
         <p class="storefront-brand-muted mt-4 max-w-lg text-sm leading-6">{{ commerce_settings.public_note|default:storefront_copy.intro }}</p>
+        {% if hours_status.enabled %}
+        <div class="mt-4 inline-flex items-center gap-1.5 rounded-full bg-white p-1.5 pl-3.5 pr-2.5 text-xs font-semibold {% if hours_status.is_open %}text-emerald-700{% else %}text-red-600{% endif %}" data-opening-hours style="box-shadow:var(--ui-shadow)">
+          {% if hours_status.is_open %}<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-building-store h-4 w-4 shrink-0" aria-hidden="true"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M3 21l18 0" /><path d="M3 7v1a3 3 0 0 0 6 0v-1m0 1a3 3 0 0 0 6 0v-1m0 1a3 3 0 0 0 6 0v-1h-18l2 -4h14l2 4" /><path d="M5 21l0 -10.15" /><path d="M19 21l0 -10.15" /><path d="M9 21v-4a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v4" /></svg>{% else %}<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-x-mark h-4 w-4 shrink-0" aria-hidden="true"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M12 16l3.644 3.644a1.21 1.21 0 0 0 1.712 0l2.288 -2.288a1.21 1.21 0 0 0 0 -1.712l-3.644 -3.644l3.644 -3.644a1.21 1.21 0 0 0 0 -1.712l-2.288 -2.288a1.21 1.21 0 0 0 -1.712 0l-3.644 3.644l-3.644 -3.644a1.21 1.21 0 0 0 -1.712 0l-2.288 2.288a1.21 1.21 0 0 0 0 1.712l3.644 3.644l-3.644 3.644a1.21 1.21 0 0 0 0 1.712l2.288 2.288a1.21 1.21 0 0 0 1.712 0l3.644 -3.644" /></svg>{% endif %}
+          {{ hours_status.headline }}
+          {% include "_help_tip.html" with help_hours=hours_status.weekly label="opening hours" portal_bubble=True %}
+        </div>
+        {% endif %}
       </div>
     </div>
   </header>
@@ -190,7 +198,29 @@
         <label class="text-xs font-semibold text-stone-600">Phone <span class="text-rose-600">*</span><input required name="phone" autocomplete="tel" inputmode="tel" value="{% if storefront_customer %}{{ storefront_customer.phone }}{% endif %}" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"></label>
         <label class="text-xs font-semibold text-stone-600 sm:col-span-2">Email <span class="font-normal text-stone-400">(optional)</span><input name="email" type="email" autocomplete="email" value="{% if storefront_customer %}{{ storefront_customer.email }}{% endif %}" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100"></label>
       </div>
+      {% if hours_status.enabled and not hours_status.is_open %}
+      <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900" data-closed-notice><strong>{{ store_business.name }} is closed.</strong> {{ hours_status.headline }}. {{ hours_status.detail }}</div>
+      {% endif %}
+      {% if hours_status.enabled and hours_status.scheduling_allowed %}
+      <label class="mt-4 block text-xs font-semibold text-stone-600">{% if hours_status.is_open %}Preferred time <span class="font-normal text-stone-400">(optional)</span>{% else %}Scheduled time <span class="font-normal text-rose-600">(required)</span>{% endif %}<input name="requested_delivery_at" type="datetime-local" {% if not hours_status.is_open %}required value="{{ hours_status.schedule_min }}" {% endif %}min="{{ hours_status.schedule_min }}" max="{{ hours_status.schedule_max }}" data-opening-slots='[{% for slot in hours_status.slots %}["{{ slot.min_input }}","{{ slot.max_input }}"]{% if not forloop.last %},{% endif %}{% endfor %}]' data-opening-hint="{{ hours_status.schedule_hint }}" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal"><span class="mt-1 block font-normal text-stone-500">Choose a time {{ hours_status.schedule_hint }}. Scheduled times start {{ hours_status.window_minutes }} minute{{ hours_status.window_minutes|pluralize }} after opening and cannot be later than closing time.</span></label>
+      <script>
+        (function () {
+          const input = document.querySelector('input[data-opening-slots]');
+          if (!input) return;
+          const slots = JSON.parse(input.dataset.openingSlots || '[]');
+          const check = function () {
+            const value = input.value;
+            const ok = !value || slots.some(function (slot) { return value >= slot[0] && value <= slot[1]; });
+            input.setCustomValidity(ok ? '' : 'Choose a time ' + input.dataset.openingHint + '.');
+          };
+          input.addEventListener('input', check); input.addEventListener('change', check); check();
+        })();
+      </script>
+      {% elif hours_status.enabled and not hours_status.is_open %}
+      <input type="hidden" data-store-closed value="1">
+      {% else %}
       <label class="mt-4 block text-xs font-semibold text-stone-600">Preferred time <span class="font-normal text-stone-400">(optional)</span><input name="requested_delivery_at" type="datetime-local" class="mt-1.5 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-normal"><span class="mt-1 block font-normal text-stone-500">Tell us when you need the order, whether you are collecting it or having it delivered.</span></label>
+      {% endif %}
       <label class="mt-4 block text-xs font-semibold text-stone-600">Note for the business <span class="font-normal text-stone-400">(optional)</span><textarea name="customer_note" maxlength="500" rows="3" class="mt-1.5 w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm font-normal" placeholder="Add any details that will help prepare your order"></textarea></label>
       {% if delivery_enabled %}
       <section class="mt-5 rounded-2xl border border-stone-200 bg-white p-4">
@@ -258,6 +288,20 @@
       </div></div>
       <p class="mt-4 text-xs leading-5 text-stone-400">Prices and availability are checked again by {{ store_business.name }} before payment. An order is created only after full payment is verified.</p>
     </form>
+    {% if hours_status.enabled and not hours_status.is_open and not hours_status.scheduling_allowed %}
+    <script>
+      (function () {
+        const form = document.getElementById('basket-form');
+        if (!form) return;
+        form.querySelectorAll('.channel-submit').forEach(function (button) { button.setAttribute('data-closed', '1'); });
+        form.addEventListener('submit', function (event) { event.preventDefault(); event.stopImmediatePropagation(); }, true);
+        new MutationObserver(function () {
+          form.querySelectorAll('.channel-submit').forEach(function (button) { if (!button.disabled) button.disabled = true; });
+        }).observe(form, { subtree: true, attributes: true, attributeFilter: ['disabled'] });
+        form.querySelectorAll('.channel-submit').forEach(function (button) { button.disabled = true; });
+      })();
+    </script>
+    {% endif %}
   </dialog>
 
   <dialog id="order-history-dialog" class="m-auto max-h-[86dvh] w-[min(94vw,34rem)] overflow-y-auto rounded-3xl border-0 bg-[#fffdf9] p-0 shadow-2xl">

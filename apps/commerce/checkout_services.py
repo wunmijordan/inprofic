@@ -28,6 +28,7 @@ from .models import (
 )
 from .notification_services import queue_commerce_notification
 from .attribution import attribution_model_kwargs, normalize_attribution
+from .opening_hours import validate_order_time
 
 logger = logging.getLogger(__name__)
 from .services import (
@@ -476,6 +477,11 @@ def create_checkout(
             raise ValidationError(
                 f"The preferred {time_label} time cannot be earlier than {timezone.localtime(earliest_delivery_at).strftime('%Y-%m-%d %H:%M')}."
             )
+
+    # Opening hours apply to customer-facing sources only; staff POS orders are
+    # taken by the team and are never blocked by the schedule.
+    if source != CommerceCheckoutSession.SOURCE_STAFF_POS:
+        validate_order_time(settings, requested_delivery_dt, business_name=business.name, now=now)
 
     attribution = normalize_attribution(attribution or {})
     try:

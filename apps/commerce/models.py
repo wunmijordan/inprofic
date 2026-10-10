@@ -158,6 +158,22 @@ class CommerceSettings(BusinessOwnedModel):
         default=15, validators=[MinValueValidator(5), MaxValueValidator(120)],
         help_text="How long Physical Store stock is held while a customer completes payment.",
     )
+    opening_hours_enabled = models.BooleanField(
+        default=False,
+        help_text="Show opening hours on the hosted storefront and apply the closed-hours ordering rules below.",
+    )
+    opening_hours = models.JSONField(
+        default=dict, blank=True,
+        help_text="Weekly schedule keyed by weekday (0 = Monday). A missing day means closed all day.",
+    )
+    closed_scheduling_enabled = models.BooleanField(
+        default=True,
+        help_text="Let customers schedule an order for the next opening day, not only for the rest of today.",
+    )
+    closed_scheduling_window_minutes = models.PositiveIntegerField(
+        default=60, validators=[MaxValueValidator(1440)],
+        help_text="Scheduled and preferred times cannot be earlier than this many minutes after opening time, and cannot be later than closing time.",
+    )
 
     class Meta:
         verbose_name_plural = "commerce settings"

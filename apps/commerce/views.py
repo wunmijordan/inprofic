@@ -33,6 +33,7 @@ from core.verticals import vertical_config
 from inventory.models import FinishedGood, ProductCategory
 from inventory.portioning import public_contents, standard_multiplier
 from .forms import CommerceIntegrationForm, CommerceSettingsForm, StorefrontProductForm
+from .opening_hours import opening_status
 from .models import (
     CommerceCheckoutSession, CommerceIntegration, CommerceIntake, CommerceIntakeItem, CommercePayment,
     CommercePaymentReceipt, CommerceSettings, StorefrontAttributionVisit, StorefrontCustomer, StorefrontProduct, DeliveryArea, DeliveryAssignment, DeliverySettings,
@@ -571,6 +572,7 @@ def _public_catalog(request, business, settings, *, order_now_mode=False, attrib
         "storefront_customer": _storefront_customer(request, business),
         "checkout_key": uuid4().hex,
         "attribution": attribution or _request_attribution(request),
+        "hours_status": opening_status(settings),
     })
 
 
@@ -780,6 +782,7 @@ def storefront_order(request,business_slug):
             "order_error":_validation_message(exc),
             "checkout_key":uuid4().hex,
             "attribution": _request_attribution(request),
+            "hours_status": opening_status(settings),
         },status=400)
 
 

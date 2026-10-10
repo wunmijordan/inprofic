@@ -1,4 +1,4 @@
-{% if help_text or help_items %}
+{% if help_text or help_items or help_hours %}
 <span
   class="form-help-tip normal-case tracking-normal{% if portal_bubble %} form-help-tip--portal{% endif %}"
   data-form-help-tip
@@ -26,7 +26,13 @@
     role="tooltip"
     hidden
   >
-    {% if help_items %}
+    {% if help_hours %}
+      <ul class="form-help-tip__list">
+        {% for day in help_hours %}
+          <li class="form-help-tip__list-item"><strong class="form-help-tip__list-title">{{ day.name }}{% if day.today %} (today){% endif %}</strong><span class="form-help-tip__list-detail">{% if day.closed %}Closed{% else %}{{ day.open_label }} – {{ day.close_label }}{% endif %}</span></li>
+        {% endfor %}
+      </ul>
+    {% elif help_items %}
       <ul class="form-help-tip__list">
         {% for item in help_items %}
           <li class="form-help-tip__list-item">
