@@ -20,7 +20,7 @@
       <div><p class="text-xs text-stone-400">Customer</p><p class="mt-1 font-semibold text-stone-900">{{ customer_name|default:"Customer" }}</p>{% if customer_phone %}<p class="text-stone-500">{{ customer_phone }}</p>{% endif %}{% if customer_email %}<p class="text-stone-500">{{ customer_email }}</p>{% endif %}{% if customer_note %}<p class="mt-2 text-stone-700"><strong>Note:</strong> {{ customer_note }}</p>{% endif %}</div>
       <div class="sm:text-right"><p class="text-xs text-stone-400">Verified</p><p class="mt-1 font-semibold text-stone-900">{{ receipt.verified_at|date:"j M Y, g:i A" }}</p><p class="text-stone-500">{{ payment.get_method_display }}{% if payment.gateway_provider %} · {{ payment.gateway_provider|title }}{% endif %}</p></div>
     </div>
-    {% if requested_at or ready_at %}<div class="border-b border-stone-100 px-6 py-4 text-sm sm:px-8">{% if ready_at %}<p><strong class="text-stone-800">{% if is_delivery %}Estimated arrival{% else %}Estimated ready{% endif %}:</strong> <span class="text-stone-700">{{ ready_at|date:"j M Y, g:i A" }}</span></p>{% endif %}{% if requested_at %}<p class="mt-1"><strong class="text-stone-800">Preferred time:</strong> <span class="text-stone-700">{{ requested_at|date:"j M Y, g:i A" }}</span></p>{% endif %}</div>{% endif %}
+    {% if requested_at %}<div class="border-b border-stone-100 px-6 py-4 text-sm sm:px-8">{% if requested_at %}<p class="mt-1"><strong class="text-stone-800">Preferred time:</strong> <span class="text-stone-700">{{ requested_at|date:"j M Y, g:i A" }}</span></p>{% endif %}</div>{% endif %}
     <div class="divide-y divide-stone-100 px-6 sm:px-8">
       {% for item in receipt_items %}
       <div class="flex items-start justify-between gap-5 py-4">

@@ -35,7 +35,6 @@
       {% endfor %}
       </div>
       <div class="border-t border-stone-100 bg-stone-50/60 px-5 py-4 text-sm sm:px-7">
-        {% if expected_fulfilment_at %}<p><strong class="text-stone-800">{% if checkout.delivery_quote_id %}Estimated arrival{% else %}Estimated ready{% endif %}:</strong> <span class="text-stone-700">{{ expected_fulfilment_at|date:"j M Y, g:i A" }}</span></p>{% endif %}
         {% if checkout.requested_delivery_at %}<p class="mt-1"><strong class="text-stone-800">Preferred time:</strong> <span class="text-stone-700">{{ checkout.requested_delivery_at|date:"j M Y, g:i A" }}</span></p>{% endif %}
         {% if checkout.customer_note %}<p class="mt-2"><strong class="text-stone-800">Customer note:</strong> <span class="text-stone-700">{{ checkout.customer_note }}</span></p>{% endif %}
       </div>

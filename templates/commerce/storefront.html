@@ -157,7 +157,7 @@
                 <option value="">{{ p.display_name }} · Standard · {{ p.preorder_price|money:store_business.currency_symbol }} / {{ p.customer_unit }}</option>
                 {% if p.public_bulk_online_available %}{% for pack in p.public_bulk_packs %}<option value="bulk:{{ p.public_id }}:{{ pack.public_id }}" data-product-id="{{ p.public_id }}" data-bulk-pack-id="{{ pack.public_id }}" data-bulk-pack-name="{{ pack.name }}" data-name="{{ p.display_name }} · {{ pack.name }}" data-unit="{{ pack.name }}" data-price="{{ pack.price }}" data-min="{{ pack.min_order_quantity }}" data-stock-source="{% if p.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if p.public_made_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ p.estimated_ready_minutes }}">{{ p.display_name }} · {{ pack.name }} · {{ pack.price|money:store_business.currency_symbol }} / {{ pack.name }}{% if pack.min_order_quantity > 1 %} · min {{ pack.min_order_quantity }}{% endif %}</option>{% endfor %}{% endif %}
                 {% for variant in p.public_variants %}
-                  <option value="{{ variant.public_id }}" data-name="{{ variant.display_name }}" data-unit="{{ variant.customer_unit }}" data-price="{{ variant.preorder_price }}" data-min="{{ variant.preorder_min_quantity }}" data-max="{% if variant.max_quantity %}{{ variant.max_quantity }}{% endif %}" data-option-label="{{ variant.finished_good.storefront_option_label }}" data-stock-source="{% if variant.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if variant.public_made_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ variant.estimated_ready_minutes }}">{{ variant.display_name }} · Standard · {{ variant.preorder_price|money:store_business.currency_symbol }} / {{ variant.customer_unit }}</option>
+                  <option value="{{ variant.public_id }}" data-name="{{ variant.display_name }}" data-unit="{{ variant.customer_unit }}" data-price="{{ variant.preorder_price }}" data-min="{{ variant.preorder_min_quantity }}" data-max="{% if variant.max_quantity %}{{ variant.max_quantity }}{% endif %}" data-option-label="{{ variant.finished_good.storefront_option_label }}" data-stock-available="{{ variant.public_stock_available }}" data-stock-source="{% if variant.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if variant.public_made_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ variant.estimated_ready_minutes }}">{{ variant.display_name }} · Standard · {{ variant.preorder_price|money:store_business.currency_symbol }} / {{ variant.customer_unit }}</option>
                   {% if variant.public_bulk_online_available %}{% for pack in variant.public_bulk_packs %}<option value="bulk:{{ variant.public_id }}:{{ pack.public_id }}" data-product-id="{{ variant.public_id }}" data-basket-key="bulk:{{ variant.public_id }}:{{ pack.public_id }}" data-bulk-pack-id="{{ pack.public_id }}" data-bulk-pack-name="{{ pack.name }}" data-name="{{ variant.display_name }} · {{ pack.name }}" data-unit="{{ pack.name }}" data-price="{{ pack.price }}" data-min="{{ pack.min_order_quantity }}" data-max="{% if variant.max_quantity %}{{ variant.max_quantity }}{% endif %}" data-stock-source="{% if variant.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if variant.public_made_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ variant.estimated_ready_minutes }}">{{ variant.display_name }} · {{ pack.name }} · {{ pack.price|money:store_business.currency_symbol }} / {{ pack.name }}{% if pack.min_order_quantity > 1 %} · min {{ pack.min_order_quantity }}{% endif %}</option>{% endfor %}{% endif %}
                 {% endfor %}
               </select>
@@ -328,7 +328,7 @@
         card.dataset.primaryPriceOnline = card.dataset.priceOnline;
         card.dataset.primaryMinOnline = card.dataset.minOnline;
         card.dataset.primaryMax = card.dataset.max;
-        card.dataset.primaryStockSource = card.dataset.stockSource;
+        card.dataset.primaryStockSource = card.dataset.stockSource; card.dataset.primaryStockAvailable = card.dataset.stockAvailable;
         card.dataset.primaryMadeSource = card.dataset.madeSource;
       });
       const filters = Array.from(document.querySelectorAll('.channel-filter'));
@@ -555,7 +555,7 @@
         const optionValue = choiceSelect?.value || '';
         const optionLabel = optionValue ? choiceSelect.closest('label').childNodes[0].textContent.trim() : '';
         const key = [card.dataset.productId, bulkPack?.id || '', optionValue].join(':');
-        const product = { id: key, productId: card.dataset.productId, individualOptionId: '', productOptionLabel: optionLabel, productOptionValue: optionValue, name: card.dataset.productName, unit: card.dataset.unit, units, modes, minimums, prices, bulkPack, max: Number(card.dataset.max || 0), quantity: minimums[preferred] || 1, card, stockSource, madeSource, procuredSource, fulfilmentSource: defaultFulfilment, readyMinutes: Number(card.dataset.readyMinutes || 0) };
+        const product = { id: key, productId: card.dataset.productId, individualOptionId: '', productOptionLabel: optionLabel, productOptionValue: optionValue, name: card.dataset.productName, unit: card.dataset.unit, units, modes, minimums, prices, bulkPack, max: Number(card.dataset.max || 0), quantity: minimums[preferred] || 1, card, stockSource, madeSource, procuredSource, fulfilmentSource: defaultFulfilment, readyMinutes: Number(card.dataset.readyMinutes || 0), stockAvailable: Number(card.dataset.stockAvailable || 0) };
         if (bulkPack) product.quantity = bulkPack.minimum || 1;
         return product;
       }
@@ -582,7 +582,7 @@
           max: Number(option.dataset.max || 0), quantity: minimum,
           card: null, stockSource, madeSource, procuredSource: false,
           fulfilmentSource: stockSource ? 'stock' : 'made_to_order',
-          readyMinutes: Number(option.dataset.readyMinutes || 0),
+          readyMinutes: Number(option.dataset.readyMinutes || 0), stockAvailable: Number(option.dataset.stockAvailable || 0),
         };
       }
       function modePricing(product, mode) {
@@ -676,6 +676,37 @@
           if (animate && product.modes.length > 1) { void pill.offsetWidth; pill.classList.add('is-changing'); }
         });
       }
+      function exceedsStock(product) {
+        return !product.bulkPack && !product.individualOptionId && product.stockSource
+          && product.fulfilmentSource === 'stock' && Number(product.quantity) > Number(product.stockAvailable || 0);
+      }
+      function updateStockNote(product) {
+        const note = product.stockNoteEl; if (!note) return;
+        if (!exceedsStock(product)) { note.classList.add('hidden'); note.replaceChildren(); return; }
+        const available = Number(product.stockAvailable || 0);
+        const amount = Number.isInteger(available) ? String(available) : available.toFixed(2);
+        const message = document.createElement('p');
+        message.textContent = available > 0
+          ? `Only ${amount} ${product.unit} ${available === 1 ? 'is' : 'are'} available right now, but you chose ${product.quantity}.`
+          : `${product.name} is not available from stock right now.`;
+        const actions = document.createElement('div'); actions.className = 'mt-2 flex flex-wrap gap-2';
+        const buttonClass = 'rounded-lg border px-2.5 py-1.5 text-xs font-semibold';
+        if (product.madeSource) {
+          const preorder = document.createElement('button'); preorder.type = 'button'; preorder.className = buttonClass + ' border-amber-700 bg-amber-700 text-white';
+          preorder.textContent = `Pre-order ${product.quantity} instead · ~${product.readyMinutes} min`;
+          preorder.addEventListener('click', () => { product.fulfilmentSource = 'made_to_order'; invalidateDeliveryQuote(); saveBasket(); renderBasket(); });
+          actions.append(preorder);
+        }
+        const minimum = Number(product.minimums?.online || 0);
+        if (available > 0 && available >= minimum) {
+          const reduce = document.createElement('button'); reduce.type = 'button'; reduce.className = buttonClass + ' border-amber-300 bg-white text-amber-900';
+          reduce.textContent = `Order ${amount} only`;
+          reduce.addEventListener('click', () => { product.quantity = available; invalidateDeliveryQuote(); saveBasket(); renderBasket(); });
+          actions.append(reduce);
+        }
+        if (!product.madeSource && !actions.children.length) { const none = document.createElement('p'); none.className = 'mt-1 font-semibold'; none.textContent = 'Please remove it or choose another option.'; actions.append(none); }
+        note.replaceChildren(message, actions); note.classList.remove('hidden');
+      }
       function renderBasket() {
         basketItems.replaceChildren();
         basket.forEach(product => {
@@ -692,7 +723,24 @@
           copy.append(name, unit);
           if (product.productOptionValue) { const choice = document.createElement('span'); choice.className='mt-1 block text-xs text-stone-600'; choice.textContent=`${product.productOptionLabel}: ${product.productOptionValue}`; copy.append(choice); }
           copy.append(priceLine);
-          if (product.modes.includes('online') && [product.stockSource, product.madeSource, product.procuredSource].filter(Boolean).length > 1) {
+          const fulfilmentSources = [product.stockSource, product.madeSource, product.procuredSource].filter(Boolean).length;
+          if (product.modes.includes('online') && fulfilmentSources <= 1) {
+            // Only one way to fulfil this item, so there is no dropdown: show it as a badge instead.
+            const badge = document.createElement('span');
+            badge.className = 'mt-2 inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide';
+            if (product.stockSource) {
+              badge.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
+              badge.textContent = 'From store stock · ready now';
+            } else if (product.procuredSource) {
+              badge.classList.add('border-sky-200', 'bg-sky-50', 'text-sky-800');
+              badge.textContent = product.readyMinutes ? `Procured to sell · ~${product.readyMinutes} min` : 'Procured to sell';
+            } else {
+              badge.classList.add('border-amber-200', 'bg-amber-50', 'text-amber-900');
+              badge.textContent = product.readyMinutes ? `Made to order · ~${product.readyMinutes} min` : 'Made to order';
+            }
+            const badgeRow = document.createElement('div'); badgeRow.append(badge); copy.append(badgeRow);
+          }
+          if (product.modes.includes('online') && fulfilmentSources > 1) {
             const fulfilWrap=document.createElement('label'); fulfilWrap.className='mt-2 block text-[10px] font-bold uppercase tracking-wide text-stone-400'; fulfilWrap.textContent='Fulfilment';
             const fulfil=document.createElement('select'); fulfil.className='mt-1 w-full rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-xs font-semibold normal-case tracking-normal text-stone-700';
             if(product.stockSource){const o=document.createElement('option');o.value='stock';o.textContent='From available store stock · ready now';fulfil.append(o);}
@@ -700,13 +748,16 @@
             if(product.procuredSource){const o=document.createElement('option');o.value='procured';o.textContent=`Procured to sell · ~${product.readyMinutes} min`;fulfil.append(o);}
             fulfil.value=product.fulfilmentSource; fulfil.addEventListener('change',()=>{product.fulfilmentSource=fulfil.value; invalidateDeliveryQuote(); saveBasket();}); fulfilWrap.append(fulfil); copy.append(fulfilWrap);
           }
+          const stockNote = document.createElement('div'); stockNote.className = 'mt-2 hidden rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs leading-5 text-amber-900'; stockNote.dataset.stockNote = '';
+          copy.append(stockNote); product.stockNoteEl = stockNote;
           const input = document.createElement('input'); input.type = 'number'; input.inputMode = 'decimal'; input.step = '0.01'; input.min = '0.01'; if (product.max) input.max = product.max; input.value = product.quantity; input.setAttribute('aria-label', `Quantity for ${product.name}`); input.className = 'h-10 w-24 shrink-0 rounded-xl border border-stone-300 px-2.5 text-sm outline-none focus:border-stone-500 focus:ring-4 focus:ring-stone-100';
-          input.addEventListener('input', () => { product.quantity = Number(input.value || 0); invalidateDeliveryQuote(); saveBasket(); refreshModes(); });
+          input.addEventListener('input', () => { product.quantity = Number(input.value || 0); invalidateDeliveryQuote(); saveBasket(); refreshModes(); updateStockNote(product); });
           const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'flex h-9 w-9 items-center justify-center rounded-full text-lg text-stone-400 hover:bg-rose-50 hover:text-rose-700'; remove.setAttribute('aria-label', `Remove ${product.name}`); remove.textContent = '×';
           remove.addEventListener('click', () => { basket.delete(product.id); invalidateDeliveryQuote(); setAddedState(product, false); renderBasket(); if (!basket.size) dialog.close(); });
           const controls = document.createElement('div'); controls.className = 'flex shrink-0 items-center justify-end gap-2';
           controls.append(input, remove);
           row.append(copy, controls); basketItems.append(row);
+          updateStockNote(product);
         });
         updateBasketPricePills(false);
         basketCount.textContent = basket.size;
@@ -742,7 +793,7 @@
           card.dataset.priceOnline = option.dataset.price || card.dataset.priceOnline;
           card.dataset.minOnline = option.dataset.min || card.dataset.minOnline;
           card.dataset.max = option.dataset.max || '';
-          card.dataset.stockSource = option.dataset.stockSource || '0'; card.dataset.madeSource = option.dataset.madeSource || '0';
+          card.dataset.stockSource = option.dataset.stockSource || '0'; card.dataset.madeSource = option.dataset.madeSource || '0'; card.dataset.stockAvailable = option.dataset.stockAvailable || '0';
         } else {
           card.dataset.productId = card.dataset.primaryProductId;
           card.dataset.productName = card.dataset.primaryProductName;
@@ -750,7 +801,7 @@
           card.dataset.priceOnline = card.dataset.primaryPriceOnline;
           card.dataset.minOnline = card.dataset.primaryMinOnline;
           card.dataset.max = card.dataset.primaryMax;
-          card.dataset.stockSource = card.dataset.primaryStockSource; card.dataset.madeSource = card.dataset.primaryMadeSource;
+          card.dataset.stockSource = card.dataset.primaryStockSource; card.dataset.madeSource = card.dataset.primaryMadeSource; card.dataset.stockAvailable = card.dataset.primaryStockAvailable;
         }
         // Show the selected variant as the card's product name so the customer can see what they picked
         // (clearing the variant restores the primary product). A reload starts from the primary again.
@@ -807,6 +858,8 @@
       basketForm.addEventListener('submit', async function (event) {
         const submitter = event.submitter;
         if (!basket.size || !submitter || submitter.disabled) { event.preventDefault(); return; }
+        const overStock = Array.from(basket.values()).find(exceedsStock);
+        if (overStock) { event.preventDefault(); updateStockNote(overStock); overStock.stockNoteEl?.scrollIntoView({block: 'center', behavior: 'smooth'}); return; }
         const mode = submitter.dataset.checkoutMode;
         basketForm.querySelectorAll('.generated-basket-field').forEach(field => field.remove());
         basket.forEach(product => {

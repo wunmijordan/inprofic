@@ -245,12 +245,30 @@ self.addEventListener('push', (event) => {{
       ? (data.icon_dark || '/static/core/pwa/icon-mark-on-dark-192.png')
       : (data.icon_light || data.icon || '/static/core/pwa/icon-mark-192.png');
     const title = data.title || 'INPROFIC';
-    const notificationData = {{ url: target, notificationId: data.id || '' }};
+    // One stacked notification per channel: a new (or repeated) alert replaces the
+    // current stack, lists the latest items together and is raised to the top of
+    // the tray by renotify, instead of scattering separate notifications.
+    const channel = data.channel || 'commerce';
+    const stackTag = `${{channel}}-stack`;
+    const entry = {{ id: data.id || '', title, body: data.body || '', url: target }};
+    let previous = [];
+    try {{
+      const open = await self.registration.getNotifications({{ tag: stackTag }});
+      previous = ((open[0] && open[0].data && open[0].data.items) || []).filter((item) => item && item.id !== entry.id);
+    }} catch (_) {{ previous = []; }}
+    const items = [entry, ...previous].slice(0, 6);
+    const clip = (text) => (text.length > 90 ? text.slice(0, 87) + '…' : text);
+    const stackTitle = items.length > 1 ? `${{items.length}} notifications · ${{data.business || 'INPROFIC'}}` : title;
+    const stackBody = items.length > 1
+      ? items.map((item) => '• ' + clip(item.title + (item.body ? ': ' + item.body : ''))).join('\\n')
+      : (data.body || '');
+    const notificationData = {{ url: target, notificationId: data.id || '', items }};
     const options = {{
-      body: data.body || '',
+      body: stackBody,
       icon: themedIcon,
       badge: data.badge || '/static/core/pwa/icon-mark-monochrome-192.png',
-      tag: data.id ? `${{data.channel || 'commerce'}}-${{data.id}}` : `${{data.channel || 'commerce'}}-notification`,
+      tag: stackTag,
+      timestamp: Date.now(),
       data: notificationData,
     }};
     // Keep the existing desktop interaction and vibration behavior. iOS/iPadOS
@@ -265,12 +283,13 @@ self.addEventListener('push', (event) => {{
       }});
     }}
     try {{
-      await self.registration.showNotification(title, options);
+      await self.registration.showNotification(stackTitle, options);
     }} catch (_) {{
       // Keep a notification visible if a platform rejects optional icon or
       // metadata fields (some mobile implementations are stricter than desktop).
-      await self.registration.showNotification(title, {{
-        body: data.body || '',
+      await self.registration.showNotification(stackTitle, {{
+        body: stackBody,
+        tag: stackTag,
         data: notificationData,
       }});
     }}

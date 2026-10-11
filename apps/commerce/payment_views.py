@@ -604,13 +604,14 @@ def payment_claim_proof(request, claim_id):
         raise Http404("No payment proof is attached to this claim.")
     filename = claim.payment_proof.name.rsplit("/", 1)[-1]
     content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    # Delivered as a download, never rendered in the browser tab: the device then
+    # opens it with its native image/PDF viewer or asks which app to use.
     response = FileResponse(
         claim.payment_proof.open("rb"),
-        as_attachment=False,
+        as_attachment=True,
         filename=filename,
         content_type=content_type,
     )
-    response["Content-Disposition"] = f'inline; filename="{filename.replace(chr(34), "")}"'
     response["X-Content-Type-Options"] = "nosniff"
     response["Cache-Control"] = "private, no-store"
     response["Content-Security-Policy"] = "sandbox"

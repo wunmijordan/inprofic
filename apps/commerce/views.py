@@ -478,6 +478,7 @@ def _public_catalog_data(business):
     from .delivery_services import delivery_available
 
     visible_products = []
+    sold_out = []
     products = list(_public_products(business))
     stock_by_good = available_physical_stock_for_goods(
         [product.finished_good for product in products]
@@ -491,6 +492,7 @@ def _public_catalog_data(business):
         # When there is no sellable physical stock, omit the whole public
         # catalogue item rather than leaving an unusable Bulk/Distribution card.
         if product.finished_good.is_purchased_for_resale and product.public_stock_available <= 0:
+            sold_out.append(product)
             continue
         product.public_stock_source_available = bool(product.allow_online_order and product.public_stock_available > 0)
         product.public_made_source_available = bool(
@@ -524,10 +526,28 @@ def _public_catalog_data(business):
         parent_id = product.finished_good.variant_of_id
         parent = visible_by_good.get(parent_id)
         if parent and parent.finished_good.variant_of_id is None and parent.public_online_available:
+            if not product.public_online_available:
+                # An unavailable variant is never offered, and does not become a card of its own.
+                grouped_children.add(product.finished_good_id)
+                continue
             if not hasattr(parent, "public_variants"):
                 parent.public_variants = []
             parent.public_variants.append(product)
             grouped_children.add(product.finished_good_id)
+    # A sold-out primary product must not be offered. When it has in-stock
+    # variants, the first of them (in the same order the variants are listed)
+    # takes its place on the card and the rest stay selectable beneath it.
+    sold_out_ids = {product.finished_good_id for product in sold_out if product.finished_good.variant_of_id is None}
+    orphans = {}
+    for product in visible_products:
+        parent_id = product.finished_good.variant_of_id
+        if parent_id in sold_out_ids and product.public_online_available and product.finished_good_id not in grouped_children:
+            orphans.setdefault(parent_id, []).append(product)
+    for group in orphans.values():
+        group.sort(key=lambda item: item.display_name.casefold())
+        replacement, remaining = group[0], group[1:]
+        replacement.public_variants = list(getattr(replacement, "public_variants", [])) + remaining
+        grouped_children.update(item.finished_good_id for item in remaining)
     for product in visible_products:
         product.public_variants = sorted(
             getattr(product, "public_variants", []), key=lambda item: item.display_name.casefold()
