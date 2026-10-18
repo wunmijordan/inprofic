@@ -66,9 +66,9 @@
 
   <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg overflow-hidden">
     <div class="px-4 py-3 bg-[#F0EAD9]"><div class="font-semibold text-stone-700">Calculated raw-material release</div><div class="text-xs text-stone-500 mt-0.5">Combined proportional requirement from all member order items.</div></div>
-    <table class="w-full text-sm"><thead><tr><th class="px-3 py-2 text-left">Material</th><th class="px-3 py-2 text-right">Quantity</th></tr></thead><tbody>
+    <div class="max-w-full overflow-x-auto overscroll-x-contain"><table class="w-full min-w-[480px] text-sm"><thead><tr><th class="px-3 py-2 text-left">Material</th><th class="px-3 py-2 text-right">Quantity</th></tr></thead><tbody>
       {% for s in material_summary %}<tr class="border-t border-[#E7DFCC]"><td class="px-3 py-2">{{ s.material.name }}</td><td class="px-3 py-2 text-right font-mono font-semibold">{{ s.quantity|num }} {{ s.material.usage_unit }}</td></tr>{% empty %}<tr class="border-t border-[#E7DFCC]"><td colspan="2" class="px-3 py-4 text-center text-stone-400">{% if run.status == 'draft' %}Attach orders to calculate requirements.{% else %}Material release was recorded at approval.{% endif %}</td></tr>{% endfor %}
-    </tbody></table>
+    </tbody></table></div>
   </div>
 </div>
 

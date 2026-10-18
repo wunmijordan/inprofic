@@ -30,9 +30,10 @@
 </div>
 
 <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-4 mb-6">
-  <div class="bg-white border border-[#E7DFCC] rounded-xl shadow-[0_2px_8px_#000000d2] overflow-hidden">
-    <div class="px-4 py-3 border-b border-[#E7DFCC] font-semibold flex justify-between"><span>Statement</span><span class="text-xs text-stone-400 font-normal">% of revenue</span></div>
-    <table class="w-full text-sm"><tbody class="divide-y divide-[#EFE7D2]">
+  <div class="min-w-0 bg-white border border-[#E7DFCC] rounded-xl shadow-[0_2px_8px_#000000d2] overflow-hidden">
+    <div class="px-4 py-3 border-b border-[#E7DFCC] font-semibold flex items-center justify-between gap-3"><span>Statement</span><span class="shrink-0 text-xs text-stone-400 font-normal">% of revenue</span></div>
+    <div class="max-w-full overflow-x-auto overscroll-x-contain">
+    <table class="w-full min-w-[480px] text-sm"><tbody class="divide-y divide-[#EFE7D2]">
       {% for line in lines %}
       <tr class="{% if line.kind == 'net' %}bg-[#F5EFE0] font-semibold{% elif line.kind == 'subtotal' %}bg-stone-50 font-semibold{% elif line.kind == 'total' %}font-semibold{% endif %}">
         <td class="px-4 py-2.5 {% if line.indent %}pl-9 text-stone-600{% endif %}">{{ line.label }}</td>
@@ -41,6 +42,7 @@
       </tr>
       {% endfor %}
     </tbody></table>
+    </div>
   </div>
   <div class="space-y-4">
     <div class="bg-white border border-[#E7DFCC] rounded-xl shadow-[0_2px_8px_#000000d2] overflow-hidden">
