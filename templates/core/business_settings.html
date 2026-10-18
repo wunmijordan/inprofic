@@ -45,6 +45,13 @@
       </div>
     </div>
     <div data-profile-panel="service" role="tabpanel" class="hidden grid sm:grid-cols-2 gap-x-4">
+      <div id="fiscal-period" class="sm:col-span-2 rounded-md border border-[#E7DFCC] bg-white p-3 mb-3">
+        <div class="text-[10px] uppercase tracking-wider font-bold text-stone-400 mb-2">Profit &amp; loss reporting</div>
+        <div class="grid gap-3 sm:grid-cols-2">
+          {% include "_field.html" with field=form.fiscal_year_start_month %}
+          {% include "_field.html" with field=form.profit_period %}
+        </div>
+      </div>
       {% include "_field.html" with field=form.vertical %}
       {% include "_field.html" with field=form.currency_symbol %}
       <div id="restaurant-settings" class="sm:col-span-2 rounded-xl border border-[#E7DFCC] bg-[#F5EFE0] p-3 mb-3">

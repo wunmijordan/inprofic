@@ -1,7 +1,44 @@
 {% extends "base.html" %}
 {% load core_extras %}
 {% block content %}
-<div class="delivery-workspace">
+<style>
+  /* Dashboard layout. Colours come from the workspace theme tokens, so light and dark both follow. */
+  .dlv-tabs{display:flex;gap:.25rem;padding:.25rem;margin-bottom:1rem;width:max-content;max-width:100%;overflow-x:auto;border-radius:.8rem;
+    border:1px solid var(--ui-border,#E7DFCC);background:var(--ui-surface-muted,#F0EAD9)}
+  .dlv-tab{display:inline-flex;align-items:center;gap:.45rem;border-radius:.6rem;padding:.5rem .95rem;font-size:.85rem;font-weight:600;white-space:nowrap;
+    color:var(--ui-surface-text,#57534e);transition:background .15s,color .15s}
+  .dlv-tab:hover{background:color-mix(in srgb,var(--ui-surface,#fff) 60%,transparent)}
+  .dlv-tab[aria-selected="true"]{background:var(--tenant-button,#8f172d);color:#fff}
+  .dlv-tab .dlv-dot{width:.5rem;height:.5rem;border-radius:9999px;background:#d97706}
+  .dlv-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr));gap:.75rem;margin-bottom:1rem}
+  .dlv-kpi{border:1px solid var(--ui-border,#E7DFCC);background:var(--ui-surface,#fff);color:var(--ui-surface-text,#292524);border-radius:.75rem;padding:.8rem 1rem}
+  .dlv-kpi small{display:block;font-size:.72rem;font-weight:600;color:var(--ui-muted,#78716c)}
+  .dlv-kpi b{display:block;margin-top:.15rem;font-size:1.5rem;font-weight:700;line-height:1.1}
+  .dlv-kpi--warn{border-color:#d97706;box-shadow:inset 3px 0 0 #d97706}
+  .dlv-chips{display:flex;flex-wrap:wrap;gap:.4rem;padding:.65rem 1rem;border-bottom:1px solid var(--ui-border,#E7DFCC)}
+  .dlv-chip{display:inline-flex;align-items:center;gap:.4rem;border-radius:9999px;padding:.3rem .75rem;font-size:.75rem;font-weight:600;
+    border:1px solid var(--ui-border,#E7DFCC);color:var(--ui-surface-text,#57534e);background:var(--ui-surface,#fff)}
+  .dlv-chip b{font-weight:700;opacity:.75}
+  .dlv-chip[aria-pressed="true"]{background:var(--tenant-button,#8f172d);border-color:var(--tenant-button,#8f172d);color:#fff}
+  .dlv-chip--warn:not([aria-pressed="true"]){border-color:#d97706}
+  .dlv-builder>summary{list-style:none}.dlv-builder>summary::-webkit-details-marker{display:none}
+  .dlv-queue-scroll{height:min(70vh,44rem);min-height:18rem;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;touch-action:pan-y;scrollbar-gutter:stable;scroll-padding-block:1rem}
+  [data-delivery-card]>summary{list-style:none}
+  [data-delivery-card]>summary::-webkit-details-marker{display:none}
+  [data-delivery-card]>summary::after{content:"+";flex:none;margin-left:auto;color:var(--tenant-button,#8f172d);font-weight:800}
+  [data-delivery-card][open]>summary::after{content:"−"}
+  .dlv-builder>summary::before{content:"+";display:inline-block;width:1.1rem;color:var(--tenant-button,#8f172d);font-weight:800}
+  .dlv-builder[open]>summary::before{content:"–"}
+  .dlv-setup-grid{display:grid;gap:.75rem}
+  /* Tab and filter state live on the workspace element, so live refreshes of the queue never reset them. */
+  .delivery-workspace[data-tab="live"] [data-tab-panel]:not([data-tab-panel~="live"]),
+  .delivery-workspace[data-tab="closed"] [data-tab-panel]:not([data-tab-panel~="closed"]),
+  .delivery-workspace[data-tab="setup"] [data-tab-panel]:not([data-tab-panel~="setup"]){display:none}
+  .delivery-workspace[data-filter="awaiting"] [data-delivery-card]:not([data-group="awaiting"]),
+  .delivery-workspace[data-filter="road"] [data-delivery-card]:not([data-group="road"]),
+  .delivery-workspace[data-filter="attention"] [data-delivery-card]:not([data-group="attention"]){display:none}
+</style>
+<div class="delivery-workspace" data-delivery-tabs data-tab="{% if can_manage_delivery and not delivery_settings.enabled and not assignments %}setup{% else %}live{% endif %}" data-filter="all">
 <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
   <div>
     <p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Last-mile operations</p>
@@ -11,39 +48,29 @@
   {% if can_manage_delivery %}<div class="flex flex-wrap gap-2"><a href="{% url 'delivery_settings' %}" class="rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm text-stone-600">Settings</a><a href="{% url 'delivery_provider_account_add' %}" class="rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm text-stone-600">+ Provider</a><a href="{% url 'delivery_origin_add' %}" class="rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm text-stone-600">+ Delivery base</a><a href="{% url 'delivery_rate_band_add' %}" class="rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm text-stone-600">+ Price band</a><a href="{% url 'delivery_area_add' %}" class="rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm text-stone-600">+ Destination</a><a href="{% url 'delivery_driver_add' %}" class="rounded-md bg-[#8f172d] px-3 py-2 text-sm font-semibold text-white">+ Rider / Courier</a></div>{% endif %}
 </div>
 
-<div class="mb-5 grid gap-3 md:grid-cols-4">
-  <div class="rounded-xl border border-[#E7DFCC] bg-white p-4"><div class="text-xs text-stone-400">Delivery status</div><div class="mt-1 font-semibold {% if delivery_settings.enabled %}text-emerald-700{% else %}text-stone-500{% endif %}">{% if delivery_settings.enabled %}Enabled{% else %}Disabled{% endif %}</div><div class="mt-1 text-[11px] text-stone-400">{{ delivery_settings.get_default_provider_display }}</div></div>
-  <div class="rounded-xl border border-[#E7DFCC] bg-white p-4"><div class="text-xs text-stone-400">Bases / destinations</div><div class="mt-1 text-xl font-semibold">{{ origins|length }} / {{ areas|length }}</div></div>
-  <div class="rounded-xl border border-[#E7DFCC] bg-white p-4"><div class="text-xs text-stone-400">Riders / providers</div><div class="mt-1 text-xl font-semibold">{{ drivers|length }} / {{ provider_accounts|length }}</div></div>
-  <div class="rounded-xl border border-[#E7DFCC] bg-white p-4"><div class="text-xs text-stone-400">Hybrid routing</div><div class="mt-1 text-sm font-semibold">{% if delivery_settings.default_provider == 'hybrid' %}{{ delivery_settings.get_hybrid_routing_policy_display|integration_safe_text }}{% else %}Not active{% endif %}</div></div>
+<div class="dlv-tabs" role="tablist" aria-label="Delivery sections">
+  <button type="button" role="tab" class="dlv-tab" data-tab-target="live" aria-selected="true">Live queue</button>
+  <button type="button" role="tab" class="dlv-tab" data-tab-target="closed" aria-selected="false">Closed deliveries</button>
+  {% if can_manage_delivery %}<button type="button" role="tab" class="dlv-tab" data-tab-target="setup" aria-selected="false">Setup &amp; partners{% if not delivery_settings.enabled %}<span class="dlv-dot" title="Delivery is not published yet"></span>{% endif %}</button>{% endif %}
 </div>
-{% if delivery_settings.default_provider == 'hybrid' %}<div class="mb-5 rounded-xl border border-sky-200 bg-sky-50 p-4 text-xs leading-5 text-sky-900"><strong>Customer-visible switch policy:</strong> {{ delivery_settings.customer_switch_policy_text }}</div>{% endif %}
-
-{% if can_manage_delivery %}<section class="mb-5 rounded-xl border border-[#E7DFCC] bg-white p-4">
-  <div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">Setup guide</p><h3 class="mt-1 font-semibold text-stone-800">Ready for customer delivery checkout</h3><p class="mt-1 text-xs leading-5 text-stone-500">Hosted storefront, in-premise POS and website API all use this same tenant setup and quote engine.</p></div><span class="rounded-full px-3 py-1.5 text-xs font-semibold {% if delivery_setup.public_ready %}bg-emerald-100 text-emerald-800{% else %}bg-amber-100 text-amber-900{% endif %}">{% if delivery_setup.public_ready %}Public checkout ready{% else %}Setup needs attention{% endif %}</span></div>
-  <div class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-    <a href="{% url 'delivery_origin_add' %}" class="rounded-lg border p-3 text-xs {% if delivery_setup.base_ready %}border-emerald-200 bg-emerald-50 text-emerald-900{% else %}border-amber-200 bg-amber-50 text-amber-900{% endif %}"><strong class="block">1. Pickup base {% if delivery_setup.base_ready %}✓{% endif %}</strong><span class="mt-1 block opacity-75">Add an active base with an accurate map pin.</span></a>
-    <a href="{% url 'delivery_rate_band_add' %}" class="rounded-lg border p-3 text-xs {% if delivery_setup.pricing_ready %}border-emerald-200 bg-emerald-50 text-emerald-900{% else %}border-amber-200 bg-amber-50 text-amber-900{% endif %}"><strong class="block">2. Price bands {% if delivery_setup.pricing_ready %}✓{% endif %}</strong><span class="mt-1 block opacity-75">Set distance fees, order minimums and ETA.</span></a>
-    <a href="{% url 'delivery_area_add' %}" class="rounded-lg border p-3 text-xs {% if delivery_setup.destinations_ready %}border-emerald-200 bg-emerald-50 text-emerald-900{% else %}border-stone-200 bg-stone-50 text-stone-700{% endif %}"><strong class="block">3. Destinations {% if delivery_setup.destinations_ready %}✓{% endif %}</strong><span class="mt-1 block opacity-75">Recommended shortcuts for customers and staff.</span></a>
-    <a href="{% url 'delivery_driver_add' %}" class="rounded-lg border p-3 text-xs {% if delivery_setup.dispatch_ready and delivery_setup.provider_ready %}border-emerald-200 bg-emerald-50 text-emerald-900{% else %}border-stone-200 bg-stone-50 text-stone-700{% endif %}"><strong class="block">4. Dispatch {% if delivery_setup.dispatch_ready and delivery_setup.provider_ready %}✓{% endif %}</strong><span class="mt-1 block opacity-75">Add riders, finish the provider, or enter an independent rider on each order.</span></a>
-    <a href="{% url 'delivery_settings' %}" class="rounded-lg border p-3 text-xs {% if delivery_settings.enabled %}border-emerald-200 bg-emerald-50 text-emerald-900{% else %}border-stone-200 bg-stone-50 text-stone-700{% endif %}"><strong class="block">5. Publish {% if delivery_settings.enabled %}✓{% endif %}</strong><span class="mt-1 block opacity-75">Enable delivery when quoting is ready.</span></a>
-  </div>
-  <div class="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs {% if delivery_setup.car_offered %}border-emerald-200 bg-emerald-50 text-emerald-900{% else %}border-stone-200 bg-stone-50 text-stone-700{% endif %}">
-    <span class="inline-flex items-center gap-2">{% include "commerce/delivery/_vehicle_icon.html" with mode="car" size="h-5 w-5" %}<span><strong>Car delivery:</strong> {% if delivery_setup.car_offered %}on. Customers choose Motorbike or Car at checkout, each at its own price.{% elif delivery_setup.car_bands and not delivery_settings.car_enabled %}paused in Delivery settings. Your car price bands are kept.{% else %}not offered yet. Add a Car price band and customers can choose it at checkout.{% endif %}</span></span>
-    <a href="{% url 'delivery_rate_band_add' %}?vehicle=car" class="font-semibold text-[#8f172d]">Add car price band</a>
-  </div>
-</section>{% endif %}
 
 <div id="delivery-live-root">
+  <div class="dlv-kpis" data-tab-panel="live closed">
+    <div class="dlv-kpi"><small>Awaiting pickup</small><b>{{ delivery_kpis.awaiting }}</b></div>
+    <div class="dlv-kpi"><small>On the road</small><b>{{ delivery_kpis.on_road }}</b></div>
+    <div class="dlv-kpi{% if delivery_kpis.attention %} dlv-kpi--warn{% endif %}"><small>Needs attention</small><b>{{ delivery_kpis.attention }}</b></div>
+    <div class="dlv-kpi"><small>Active batches</small><b>{{ delivery_kpis.batches }}</b></div>
+  </div>
+  <div data-tab-panel="live">
 {% if can_update_delivery and assignments %}
-<section class="mb-4 rounded-xl border border-[#E7DFCC] bg-white p-4">
-  <div class="flex flex-wrap items-start justify-between gap-3"><div><h3 class="font-semibold text-stone-800">Create multi-order rider batch</h3><p class="mt-1 text-xs text-stone-500">Choose two or more active in-house deliveries and one rider: an in-house rider, or an independent rider you booked outside INPROFIC. In-house riders arrange their own route; for an independent rider, dispatch saves the route and marks pickup from the batch below.</p></div></div>
+<details class="dlv-builder mb-4 rounded-xl border border-[#E7DFCC] bg-white p-4"><summary class="cursor-pointer font-semibold text-stone-800">Create a multi-order rider batch <span class="ml-1 text-xs font-normal text-stone-500">· group two or more deliveries for one rider</span></summary>
+  <div class="mt-3 flex flex-wrap items-start justify-between gap-3"><div><p class="mt-1 text-xs text-stone-500">Choose two or more active in-house deliveries and one rider: an in-house rider, or an independent rider you booked outside INPROFIC. In-house riders arrange their own route; for an independent rider, dispatch saves the route and marks pickup from the batch below.</p></div></div>
   <form method="post" action="{% url 'delivery_batch_create' %}" class="mt-3 grid gap-2 md:grid-cols-[1fr_16rem_auto]">{% csrf_token %}
     <select name="delivery_id" multiple size="4" required class="rounded-lg border border-[#D9CFB4] bg-white px-3 py-2 text-xs">{% for d in assignments %}{% if d.provider == 'inhouse' and not d.batch_id and d.status != 'picked_up' and d.status != 'failed' %}<option value="{{ d.public_id }}">[{{ d.vehicle_label }}] {{ d.intake.public_number }} · {{ d.intake.customer_name }} · {{ d.get_status_display }}</option>{% endif %}{% endfor %}</select>
     <div class="grid gap-2"><select name="rider_source" data-rider-source aria-label="Rider source" class="rounded-md border border-[#D9CFB4] bg-white px-2 py-2 text-xs"><option value="inhouse" {% if has_inhouse_riders %}selected{% endif %}>In-house rider</option><option value="independent" {% if not has_inhouse_riders %}selected{% endif %}>Independent rider (booked outside)</option></select><div data-rider-pane="inhouse" style="display:{% if has_inhouse_riders %}contents{% else %}none{% endif %}"><select name="driver_id" class="rounded-md border border-[#D9CFB4] bg-white px-2 py-2 text-xs"><option value="">Choose in-house rider</option>{% for driver in drivers %}{% if driver.active and driver.provider == 'inhouse' %}<option value="{{ driver.pk }}" {% if 0 == driver.pk %}selected{% endif %}>{{ driver.name }} ({{ driver.vehicle_label }})</option>{% endif %}{% endfor %}</select></div><div data-rider-pane="independent" style="display:{% if has_inhouse_riders %}none{% else %}contents{% endif %}"><input name="manual_rider_name" value="" maxlength="120" placeholder="Rider name" aria-label="Independent rider name" class="rounded-md border border-[#D9CFB4] bg-white px-2 py-2 text-xs"><input name="manual_rider_phone" value="" maxlength="40" placeholder="Rider phone" aria-label="Independent rider phone" class="rounded-md border border-[#D9CFB4] bg-white px-2 py-2 text-xs"><input name="manual_rider_vehicle" value="" maxlength="60" placeholder="Vehicle / plate" aria-label="Independent rider vehicle" class="rounded-md border border-[#D9CFB4] bg-white px-2 py-2 text-xs"></div></div>
     <button class="rounded-lg bg-[#8f172d] px-4 py-2 text-xs font-semibold text-white">Create batch</button>
   </form>
-</section>
+</details>
 {% endif %}
 {% if active_batches %}<section class="mb-4 rounded-xl border border-sky-200 bg-sky-50 p-4"><h3 class="text-sm font-semibold text-sky-900">Active delivery batches</h3><div class="mt-2 grid gap-2 md:grid-cols-2">{% for batch in active_batches %}<div class="rounded-lg bg-white p-3 text-xs">
   <div class="font-semibold">{% include "commerce/delivery/_vehicle_icon.html" with mode=batch.vehicle_mode size="h-4 w-4" %} Batch {{ batch.public_id|stringformat:'s'|slice:':8'|upper }} · {{ batch.get_status_display }}</div>
@@ -78,7 +105,23 @@
 </div>{% endfor %}</div></section>{% endif %}
 <section class="rounded-xl border border-[#E7DFCC] bg-white overflow-hidden">
   <div class="border-b border-[#E7DFCC] bg-[#FAF8F1] px-4 py-3"><div class="flex items-center justify-between gap-3"><h3 class="font-semibold text-stone-800">Dispatch queue</h3><span class="text-[10px] font-semibold uppercase tracking-wider text-emerald-600">Live</span></div><p class="mt-0.5 text-xs text-stone-500">Dispatcher means the staff member coordinating the order — not the rider. Without in-house riders, book a ride yourself and enter the rider\'s details on the order; customers see them exactly like an in-house rider. Every method/status/issue change is written to the delivery timeline.</p></div>
-  {% if assignments %}<div class="divide-y divide-[#EEE7D7]">{% for d in assignments %}<article class="p-4">
+  {% if assignments %}<div class="dlv-chips" role="group" aria-label="Filter the queue">
+    <button type="button" class="dlv-chip" data-dlv-filter="all" aria-pressed="true">All <b>{{ assignments|length }}</b></button>
+    <button type="button" class="dlv-chip" data-dlv-filter="awaiting" aria-pressed="false">Awaiting pickup <b>{{ delivery_kpis.awaiting }}</b></button>
+    <button type="button" class="dlv-chip" data-dlv-filter="road" aria-pressed="false">On the road <b>{{ delivery_kpis.on_road }}</b></button>
+    {% if delivery_kpis.attention %}<button type="button" class="dlv-chip dlv-chip--warn" data-dlv-filter="attention" aria-pressed="false">Needs attention <b>{{ delivery_kpis.attention }}</b></button>{% endif %}
+  </div>{% endif %}
+{% if assignments %}<div class="dlv-queue-scroll p-3 sm:p-4"><div class="space-y-3">{% for d in assignments %}<details name="delivery-assignment" class="rounded-xl border border-[#E7DFCC] bg-white p-4 shadow-sm" data-delivery-card data-group="{% if d.status == 'picked_up' or d.status == 'out_for_delivery' %}road{% elif d.status == 'failed' %}attention{% else %}awaiting{% endif %}">
+    <summary class="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#8f172d]">
+      <span class="font-mono font-bold text-[#8f172d]">{{ d.intake.public_number }}</span>
+      <span class="font-semibold">{{ d.intake.customer_name }}</span>
+      <span class="rounded-full px-2 py-1 font-semibold {% if d.status == 'failed' %}bg-rose-100 text-rose-800{% elif d.status == 'picked_up' or d.status == 'out_for_delivery' %}bg-sky-100 text-sky-800{% elif d.status == 'delivered' %}bg-emerald-100 text-emerald-800{% else %}bg-white text-stone-700{% endif %}">{{ d.get_status_display }}</span>
+      <span class="text-stone-500">{{ d.intake.customer_phone }}</span>
+      <span>{% include "commerce/delivery/_vehicle_icon.html" with mode=d.vehicle_mode size="h-4 w-4" %} {{ d.vehicle_label }}{% if d.rider_name %} · {{ d.rider_name }}{% else %} · rider unassigned{% endif %}</span>
+      {% if d.quote %}<span class="font-semibold text-stone-700">Fee {{ request.business.currency_symbol }}{{ d.intake.delivery_fee|num }}</span>{% endif %}
+      {% if d.eta_at %}<span class="font-semibold text-emerald-700">ETA {{ d.eta_at|date:"g:i A" }}</span>{% endif %}
+      {% if d.issues.all %}<span class="font-semibold text-amber-700">Needs attention</span>{% endif %}
+    </summary>
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0 flex-1"><div class="flex flex-wrap items-center gap-2"><span class="font-mono text-sm font-semibold text-[#8f172d]">{{ d.intake.public_number }}</span><span class="inline-flex items-center gap-1 rounded-full bg-stone-100 text-stone-700 px-2 py-1 text-[10px] font-semibold">{% include "commerce/delivery/_vehicle_icon.html" with mode=d.vehicle_mode size="h-4 w-4" %}{{ d.vehicle_label }}</span><span class="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-stone-600">{{ d.get_status_display }}</span><span class="text-xs text-stone-400">{{ d.get_provider_display }}{% if d.provider_account %} · {{ d.provider_account.get_provider_code_display|integration_safe_text }}{% endif %}{% if d.method_switch_count %} · switched {{ d.method_switch_count }}×{% endif %}</span></div><div class="mt-1 break-words text-sm text-stone-700">{{ d.intake.customer_name }} · {{ d.intake.customer_phone }}</div><div class="mt-1 break-words text-xs text-stone-500">
           <strong>Destination:</strong>
@@ -126,15 +169,20 @@
     </div>
 
     {% if can_update_delivery %}<div class="mt-3 grid gap-3 xl:grid-cols-[2fr_1fr]">
-      <form class="grid gap-2 rounded-lg bg-[#FAF8F1] p-3 md:grid-cols-2 xl:grid-cols-4" method="post" action="{% url 'delivery_assignment_update' d.public_id %}">{% csrf_token %}
-        <select name="status" class="rounded-md border border-[#D9CFB4] bg-white px-2 py-2 text-xs">{% for value,label in d.status_options %}<option value="{{ value }}" {% if d.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
-        {% if d.batch_id %}<p class="text-xs text-sky-700">Rider is set by batch {{ d.batch_label }}. Change it under Active delivery batches.</p>{% else %}<select name="rider_source" data-rider-source aria-label="Rider source" class="rounded-md border border-[#D9CFB4] bg-white px-2 py-2 text-xs"><option value="inhouse" {% if d.rider_source_default == 'inhouse' %}selected{% endif %}>In-house rider</option><option value="independent" {% if d.rider_source_default == 'independent' %}selected{% endif %}>Independent rider (booked outside)</option></select><div data-rider-pane="inhouse" style="display:{% if d.rider_source_default == 'inhouse' %}contents{% else %}none{% endif %}"><select name="driver_id" class="rounded-md border border-[#D9CFB4] bg-white px-2 py-2 text-xs"><option value="">Unassigned driver</option>{% for driver in drivers %}{% if driver.active %}<option value="{{ driver.pk }}" {% if d.driver_id == driver.pk %}selected{% endif %}>{{ driver.name }} ({{ driver.vehicle_label }}) · {{ driver.get_provider_display }}{% if driver.user %} · app{% endif %}</option>{% endif %}{% endfor %}</select></div><div data-rider-pane="independent" style="display:{% if d.rider_source_default == 'independent' %}contents{% else %}none{% endif %}"><input name="manual_rider_name" value="{{ d.manual_rider_name }}" maxlength="120" placeholder="Rider name" aria-label="Independent rider name" class="rounded-md border border-[#D9CFB4] bg-white px-2 py-2 text-xs"><input name="manual_rider_phone" value="{{ d.manual_rider_phone }}" maxlength="40" placeholder="Rider phone" aria-label="Independent rider phone" class="rounded-md border border-[#D9CFB4] bg-white px-2 py-2 text-xs"><input name="manual_rider_vehicle" value="{{ d.manual_rider_vehicle }}" maxlength="60" placeholder="Vehicle / plate" aria-label="Independent rider vehicle" class="rounded-md border border-[#D9CFB4] bg-white px-2 py-2 text-xs"></div>{% endif %}
-        <input name="note" value="{{ d.status_note }}" placeholder="Status note" class="rounded-md border border-[#D9CFB4] bg-white px-2 py-2 text-xs">
-        <button class="rounded-md bg-[#8f172d] px-3 py-2 text-xs font-semibold text-white">Update status</button>
-        <input name="external_reference" value="{{ d.external_reference }}" placeholder="Provider ref" class="rounded-md border border-[#D9CFB4] bg-white px-2 py-2 text-xs">
-        <input name="external_tracking_url" value="{{ d.external_tracking_url }}" placeholder="Provider tracking URL" class="rounded-md border border-[#D9CFB4] bg-white px-2 py-2 text-xs">
-        <input name="proof_note" value="{{ d.proof_note }}" placeholder="Proof / delivery note" class="rounded-md border border-[#D9CFB4] bg-white px-2 py-2 text-xs">
-        <input name="proof_reference" value="{{ d.proof_reference }}" placeholder="POD reference / URL" class="rounded-md border border-[#D9CFB4] bg-white px-2 py-2 text-xs">
+      <form class="grid gap-3 rounded-lg bg-[#FAF8F1] p-4" method="post" action="{% url 'delivery_assignment_update' d.public_id %}">{% csrf_token %}
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <label class="grid gap-1 text-[11px] font-medium text-stone-600">Delivery status<select name="status" class="w-full rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm">{% for value,label in d.status_options %}<option value="{{ value }}" {% if d.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+          {% if d.batch_id %}<p class="self-end text-xs text-sky-700 sm:col-span-2 xl:col-span-3">Rider is set by batch {{ d.batch_label }}. Change it under Active delivery batches.</p>{% else %}
+          <label class="grid gap-1 text-[11px] font-medium text-stone-600">Rider assignment<select name="rider_source" data-rider-source class="w-full rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm"><option value="inhouse" {% if d.rider_source_default == 'inhouse' %}selected{% endif %}>In-house rider</option><option value="independent" {% if d.rider_source_default == 'independent' %}selected{% endif %}>Independent rider</option></select></label>
+          <div data-rider-pane="inhouse" class="grid gap-1" style="display:{% if d.rider_source_default == 'inhouse' %}grid{% else %}none{% endif %}"><label class="grid gap-1 text-[11px] font-medium text-stone-600">In-house rider<select name="driver_id" class="w-full rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm"><option value="">Unassigned</option>{% for driver in drivers %}{% if driver.active %}<option value="{{ driver.pk }}" {% if d.driver_id == driver.pk %}selected{% endif %}>{{ driver.name }} ({{ driver.vehicle_label }}) · {{ driver.get_provider_display }}{% if driver.user %} · app{% endif %}</option>{% endif %}{% endfor %}</select></label></div>
+          <div data-rider-pane="independent" class="grid gap-3 sm:col-span-2 xl:col-span-2 sm:grid-cols-2" style="display:{% if d.rider_source_default == 'independent' %}grid{% else %}none{% endif %}"><label class="grid gap-1 text-[11px] font-medium text-stone-600">Rider name<input name="manual_rider_name" value="{{ d.manual_rider_name }}" maxlength="120" class="w-full rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm"></label><label class="grid gap-1 text-[11px] font-medium text-stone-600">Rider phone<input name="manual_rider_phone" value="{{ d.manual_rider_phone }}" maxlength="40" class="w-full rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm"></label><label class="grid gap-1 text-[11px] font-medium text-stone-600 sm:col-span-2">Vehicle / plate<input name="manual_rider_vehicle" value="{{ d.manual_rider_vehicle }}" maxlength="60" class="w-full rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm"></label></div>{% endif %}
+          <label class="grid gap-1 text-[11px] font-medium text-stone-600">Status note<input name="note" value="{{ d.status_note }}" placeholder="Optional update" class="w-full rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm"></label>
+          <label class="grid gap-1 text-[11px] font-medium text-stone-600">Provider reference<input name="external_reference" value="{{ d.external_reference }}" placeholder="Optional reference" class="w-full rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm"></label>
+          <label class="grid gap-1 text-[11px] font-medium text-stone-600">Provider tracking URL<input name="external_tracking_url" value="{{ d.external_tracking_url }}" placeholder="https://…" class="w-full rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm"></label>
+          <label class="grid gap-1 text-[11px] font-medium text-stone-600">Delivery proof note<input name="proof_note" value="{{ d.proof_note }}" placeholder="Optional proof note" class="w-full rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm"></label>
+          <label class="grid gap-1 text-[11px] font-medium text-stone-600">Proof reference / URL<input name="proof_reference" value="{{ d.proof_reference }}" placeholder="Optional POD link" class="w-full rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm"></label>
+          <button class="self-end rounded-md bg-[#8f172d] px-4 py-2.5 text-sm font-semibold text-white">Save delivery update</button>
+        </div>
       </form>
       {% if delivery_settings.default_provider == 'hybrid' and d.status != 'picked_up' and d.status != 'delivered' and d.status != 'returned' and d.status != 'cancelled' %}<form method="post" action="{% url 'delivery_assignment_switch' d.public_id %}" class="rounded-lg border border-sky-200 bg-sky-50 p-3">{% csrf_token %}<p class="text-xs font-semibold text-sky-900">Switch delivery method</p><p class="mt-1 text-[11px] leading-4 text-sky-800">Customer fee never increases. Current policy: {{ delivery_settings.get_hybrid_switch_policy_display }}.</p><select name="target_provider" class="mt-2 w-full rounded-md border border-sky-200 bg-white px-2 py-2 text-xs"><option value="inhouse" {% if d.provider == 'inhouse' %}disabled{% endif %}>In-house</option><option value="third_party" {% if d.provider == 'third_party' %}disabled{% endif %}>{{ delivery_settings.default_provider_account.name|default:"Delivery partner"|integration_safe_text }}</option></select>{% if can_approve_delivery_switch and delivery_settings.hybrid_switch_policy == 'approval_absorbs' %}<label class="mt-2 flex cursor-pointer items-center justify-between gap-3 text-[11px] text-sky-900">
   <span class="inline-flex items-center gap-1.5">
@@ -155,10 +203,12 @@
     <details class="mt-3 rounded-lg border border-stone-200 bg-stone-50 p-3"><summary class="cursor-pointer text-xs font-semibold text-stone-700">Customer ↔ rider conversation ({{ d.messages.count }})</summary><div class="mt-2 max-h-44 space-y-2 overflow-y-auto">{% for msg in d.messages.all %}<div class="rounded-md bg-white px-2 py-1.5 text-xs"><span class="font-semibold uppercase tracking-wide text-stone-400">{% if msg.sender_type == 'staff' %}Dispatch{% else %}{{ msg.get_sender_type_display }}{% endif %}</span><span class="ml-2 text-stone-400">{{ msg.created_at|date:"M j, g:i A" }}</span><div class="mt-0.5 text-stone-700">{{ msg.body }}</div></div>{% empty %}<div class="text-xs text-stone-400">No messages yet.</div>{% endfor %}</div>{% if can_update_delivery and d.picked_up_at %}<form method="post" action="{% url 'delivery_staff_message' d.public_id %}" class="mt-2 flex gap-2">{% csrf_token %}<input name="body" maxlength="500" required placeholder="Reply as dispatch" class="min-w-0 flex-1 rounded border border-stone-200 bg-white px-2 py-1.5 text-xs"><button class="rounded bg-stone-800 px-3 py-1.5 text-xs font-semibold text-white">Send</button></form>{% elif can_update_delivery %}<p class="mt-2 text-[11px] text-stone-400">Messaging opens when this order is picked up.</p>{% endif %}</details>
 
     {% if d.events.all %}<details class="mt-2"><summary class="cursor-pointer text-xs text-stone-500">Timeline ({{ d.events.count }})</summary><div class="mt-2 space-y-1 border-l-2 border-[#E7DFCC] pl-3">{% for e in d.events.all %}<div class="text-xs text-stone-600"><span class="font-medium">{{ e.get_status_display }}</span> · {{ e.created_at|date:"M j, g:i A" }}{% if e.note %} — {{ e.note|integration_safe_text }}{% endif %}</div>{% endfor %}</div></details>{% endif %}
-  </article>{% endfor %}</div>{% else %}<div class="p-10 text-center text-sm text-stone-400">No deliveries yet. Paid checkouts using a valid delivery quote will appear here automatically.</div>{% endif %}
+  </details>{% endfor %}</div></div>{% else %}<div class="p-10 text-center text-sm text-stone-400">No deliveries yet. Paid checkouts using a valid delivery quote will appear here automatically.</div>{% endif %}
 </section>
+  </div>
+  <div data-tab-panel="closed">
 {% if completed_assignments %}
-<section class="mt-4 rounded-xl border border-[#E7DFCC] bg-white p-4">
+<section class="rounded-xl border border-[#E7DFCC] bg-white p-4">
   <div class="flex items-center justify-between gap-3">
     <div>
       <h3 class="font-semibold text-stone-800">Completed / closed deliveries</h3>
@@ -195,40 +245,79 @@
     {% endfor %}
   </div>
 </section>
-{% endif %}
+{% endif %}{% if not completed_assignments %}<div class="rounded-xl border border-[#E7DFCC] bg-white p-8 text-center text-sm text-stone-500">No closed deliveries yet. Delivered, returned and cancelled orders appear here.</div>{% endif %}
+  </div>
 </div>
 
-{% if can_manage_delivery %}<section class="delivery-config-grid mt-5 grid gap-3">
+{% if can_manage_delivery %}<div class="dlv-setup-grid" data-tab-panel="setup">
+<div class="grid gap-3 md:grid-cols-4">
+  <div class="rounded-xl border border-[#E7DFCC] bg-white p-4"><div class="text-xs text-stone-400">Delivery status</div><div class="mt-1 font-semibold {% if delivery_settings.enabled %}text-emerald-700{% else %}text-stone-500{% endif %}">{% if delivery_settings.enabled %}Enabled{% else %}Disabled{% endif %}</div><div class="mt-1 text-[11px] text-stone-400">{{ delivery_settings.get_default_provider_display }}</div></div>
+  <div class="rounded-xl border border-[#E7DFCC] bg-white p-4"><div class="text-xs text-stone-400">Bases / destinations</div><div class="mt-1 text-xl font-semibold">{{ origins|length }} / {{ areas|length }}</div></div>
+  <div class="rounded-xl border border-[#E7DFCC] bg-white p-4"><div class="text-xs text-stone-400">Riders / providers</div><div class="mt-1 text-xl font-semibold">{{ drivers|length }} / {{ provider_accounts|length }}</div></div>
+  <div class="rounded-xl border border-[#E7DFCC] bg-white p-4"><div class="text-xs text-stone-400">Hybrid routing</div><div class="mt-1 text-sm font-semibold">{% if delivery_settings.default_provider == 'hybrid' %}{{ delivery_settings.get_hybrid_routing_policy_display|integration_safe_text }}{% else %}Not active{% endif %}</div></div>
+</div>
+{% if delivery_settings.default_provider == 'hybrid' %}<div class="rounded-xl border border-sky-200 bg-sky-50 p-4 text-xs leading-5 text-sky-900"><strong>Customer-visible switch policy:</strong> {{ delivery_settings.customer_switch_policy_text }}</div>{% endif %}
+{% if can_manage_delivery %}<section class="rounded-xl border border-[#E7DFCC] bg-white p-4">
+  <div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">Setup guide</p><h3 class="mt-1 font-semibold text-stone-800">Ready for customer delivery checkout</h3><p class="mt-1 text-xs leading-5 text-stone-500">Hosted storefront, in-premise POS and website API all use this same tenant setup and quote engine.</p></div><span class="rounded-full px-3 py-1.5 text-xs font-semibold {% if delivery_setup.public_ready %}bg-emerald-100 text-emerald-800{% else %}bg-amber-100 text-amber-900{% endif %}">{% if delivery_setup.public_ready %}Public checkout ready{% else %}Setup needs attention{% endif %}</span></div>
+  <div class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+    <a href="{% url 'delivery_origin_add' %}" class="rounded-lg border p-3 text-xs {% if delivery_setup.base_ready %}border-emerald-200 bg-emerald-50 text-emerald-900{% else %}border-amber-200 bg-amber-50 text-amber-900{% endif %}"><strong class="block">1. Pickup base {% if delivery_setup.base_ready %}✓{% endif %}</strong><span class="mt-1 block opacity-75">Add an active base with an accurate map pin.</span></a>
+    <a href="{% url 'delivery_rate_band_add' %}" class="rounded-lg border p-3 text-xs {% if delivery_setup.pricing_ready %}border-emerald-200 bg-emerald-50 text-emerald-900{% else %}border-amber-200 bg-amber-50 text-amber-900{% endif %}"><strong class="block">2. Price bands {% if delivery_setup.pricing_ready %}✓{% endif %}</strong><span class="mt-1 block opacity-75">Set distance fees, order minimums and ETA.</span></a>
+    <a href="{% url 'delivery_area_add' %}" class="rounded-lg border p-3 text-xs {% if delivery_setup.destinations_ready %}border-emerald-200 bg-emerald-50 text-emerald-900{% else %}border-stone-200 bg-stone-50 text-stone-700{% endif %}"><strong class="block">3. Destinations {% if delivery_setup.destinations_ready %}✓{% endif %}</strong><span class="mt-1 block opacity-75">Recommended shortcuts for customers and staff.</span></a>
+    <a href="{% url 'delivery_driver_add' %}" class="rounded-lg border p-3 text-xs {% if delivery_setup.dispatch_ready and delivery_setup.provider_ready %}border-emerald-200 bg-emerald-50 text-emerald-900{% else %}border-stone-200 bg-stone-50 text-stone-700{% endif %}"><strong class="block">4. Dispatch {% if delivery_setup.dispatch_ready and delivery_setup.provider_ready %}✓{% endif %}</strong><span class="mt-1 block opacity-75">Add riders, finish the provider, or enter an independent rider on each order.</span></a>
+    <a href="{% url 'delivery_settings' %}" class="rounded-lg border p-3 text-xs {% if delivery_settings.enabled %}border-emerald-200 bg-emerald-50 text-emerald-900{% else %}border-stone-200 bg-stone-50 text-stone-700{% endif %}"><strong class="block">5. Publish {% if delivery_settings.enabled %}✓{% endif %}</strong><span class="mt-1 block opacity-75">Enable delivery when quoting is ready.</span></a>
+  </div>
+  <div class="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs {% if delivery_setup.car_offered %}border-emerald-200 bg-emerald-50 text-emerald-900{% else %}border-stone-200 bg-stone-50 text-stone-700{% endif %}">
+    <span class="inline-flex items-center gap-2">{% include "commerce/delivery/_vehicle_icon.html" with mode="car" size="h-5 w-5" %}<span><strong>Car delivery:</strong> {% if delivery_setup.car_offered %}on. Customers choose Motorbike or Car at checkout, each at its own price.{% elif delivery_setup.car_bands and not delivery_settings.car_enabled %}paused in Delivery settings. Your car price bands are kept.{% else %}not offered yet. Add a Car price band and customers can choose it at checkout.{% endif %}</span></span>
+    <a href="{% url 'delivery_rate_band_add' %}?vehicle=car" class="font-semibold text-[#8f172d]">Add car price band</a>
+  </div>
+</section>{% endif %}
+{% if can_manage_delivery %}<section class="delivery-config-grid grid gap-3">
   <div class="rounded-xl border border-[#E7DFCC] bg-white p-3">
     <div class="flex items-center justify-between gap-3"><h3 class="font-semibold">Delivery partners</h3><span class="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold text-stone-500">{{ provider_accounts|length }}</span></div>
     <p class="mt-1 text-[11px] leading-4 text-stone-500">Add any courier without giving up delivery control. INPROFIC keeps the quote, routing, assignment and customer timeline; partner automation stays optional.</p>
     {% for provider in provider_accounts %}
       <div class="mt-2 rounded-lg border border-stone-200 p-2 text-xs">
         <div class="delivery-config-row flex justify-between gap-2">
-          <span class="delivery-config-copy font-medium">{{ provider.name|integration_safe_text }}{% if provider.provider_code == 'generic' %}<span class="text-stone-400"> · custom partner</span>{% elif glovo_platform_enabled %}<span class="text-stone-400"> · {{ provider.get_provider_code_display }}</span>{% endif %}{% if provider.auto_dispatch %}<span class="text-emerald-700"> · auto-dispatch</span>{% else %}<span class="text-stone-400"> · manual</span>{% endif %}{% if glovo_platform_enabled and provider.provider_code == 'glovo' and provider.use_live_quotes %}<span class="text-sky-700"> · live quote</span>{% endif %}{% if not provider.is_configured_for_dispatch %}<span class="text-amber-700"> · setup needed</span>{% endif %}</span>
+          <span class="delivery-config-copy font-medium">{{ provider.name|integration_safe_text }}{% if provider.provider_code == 'generic' %}<span class="text-stone-400"> · custom partner</span>{% elif shipbubble_platform_enabled %}<span class="text-stone-400"> · {{ provider.get_provider_code_display }}</span>{% endif %}{% if provider.auto_dispatch %}<span class="text-emerald-700"> · auto-dispatch</span>{% else %}<span class="text-stone-400"> · manual</span>{% endif %}{% if shipbubble_platform_enabled and provider.provider_code == 'shipbubble' and provider.use_live_quotes %}<span class="text-sky-700"> · live quote</span>{% endif %}{% if not provider.is_configured_for_dispatch %}<span class="text-amber-700"> · setup needed</span>{% endif %}</span>
           <a class="delivery-config-action text-[#8f172d]" href="{% url 'delivery_provider_account_edit' provider.pk %}">Configure</a>
         </div>
         {% if provider.provider_code == 'generic' %}
           <div class="delivery-config-copy mt-1 text-[11px] leading-4 text-stone-500">Uses INPROFIC price bands. {% if provider.auto_dispatch %}{% if provider.is_configured_for_automatic_dispatch %}API adapter ready{% else %}<span class="text-amber-700">automatic dispatch needs endpoint/auth configuration</span>{% endif %}.{% else %}Dispatch and status can be managed by staff; API automation can be added later.{% endif %}</div>
           {% if provider.health_endpoint %}<form method="post" action="{% url 'delivery_provider_test_custom_connection' provider.pk %}" class="mt-2">{% csrf_token %}<button class="w-full rounded border border-[#D9CFB4] bg-[#FAF8F1] px-2 py-1.5 text-[11px] font-semibold text-stone-700">Test connection</button></form>{% endif %}
           {% if provider.webhook_path %}<div class="mt-2 rounded bg-stone-50 p-2 text-[10px] text-stone-500"><span class="font-semibold">Status callback</span><code class="delivery-config-code mt-0.5">{{ provider.webhook_path }}</code>{% if not provider.webhook_secret %}<span class="mt-1 block text-amber-700">Set a webhook secret before accepting callbacks.</span>{% endif %}</div>{% endif %}
-        {% elif glovo_platform_enabled %}
-          <div class="delivery-config-copy mt-1 text-[11px] leading-4 text-stone-500">LaaS v2 · OAuth credentials{% if provider.address_book_id %} · pickup {{ provider.address_book_id }}{% endif %}</div>
-          <form method="post" action="{% url 'delivery_provider_register_glovo_webhooks' provider.pk %}" class="mt-2">{% csrf_token %}<button class="w-full rounded border border-[#D9CFB4] bg-[#FAF8F1] px-2 py-1.5 text-[11px] font-semibold text-stone-700">Register / verify webhooks</button></form>
+        {% elif shipbubble_platform_enabled %}
+          <div class="delivery-config-copy mt-1 text-[11px] leading-4 text-stone-500">Live courier rates{% if provider.address_book_id %} · pickup code {{ provider.address_book_id }}{% else %} · pickup address is validated on first use{% endif %}{% if not provider.api_key %} · <span class="text-amber-700">add your API key</span>{% endif %}</div>
         {% endif %}
       </div>
     {% empty %}
       <p class="mt-2 text-xs text-stone-400">No external delivery partner configured yet.</p>
     {% endfor %}
-    {% if glovo_platform_enabled and glovo_webhook_path %}<div class="mt-2 rounded-lg bg-stone-50 p-2 text-[11px] text-stone-500"><span class="font-medium">Built-in provider webhook path</span><code class="delivery-config-code mt-0.5">{{ glovo_webhook_path }}</code></div>{% endif %}
+    {% if shipbubble_platform_enabled and shipbubble_webhook_path %}<div class="mt-2 rounded-lg bg-stone-50 p-2 text-[11px] text-stone-500"><span class="font-medium">Shipbubble status webhook</span><code class="delivery-config-code mt-0.5">{{ shipbubble_webhook_path }}</code></div>{% endif %}
   </div>
   <div class="rounded-xl border border-[#E7DFCC] bg-white p-3"><div class="flex items-center justify-between gap-3"><h3 class="font-semibold">Delivery / office bases</h3><span class="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold text-stone-500">{{ origins|length }}</span></div>{% for o in origins %}<div class="delivery-config-row mt-2 flex justify-between gap-2 border-t border-stone-100 pt-2 text-xs"><span class="delivery-config-copy">{{ o.name }}{% if o.is_default %}<span class="text-emerald-700"> · default</span>{% endif %}{% if o.latitude != None and o.longitude != None %} · <a class="font-semibold text-[#8f172d]" target="_blank" rel="noopener" href="https://www.openstreetmap.org/?mlat={{ o.latitude }}&mlon={{ o.longitude }}#map=17/{{ o.latitude }}/{{ o.longitude }}">Map ↗</a>{% endif %}</span><a class="delivery-config-action text-[#8f172d]" href="{% url 'delivery_origin_edit' o.pk %}">Edit</a></div>{% empty %}<p class="mt-2 text-xs text-stone-400">Add a mapped delivery or office base.</p>{% endfor %}</div>
   <div class="flex flex-col rounded-xl border border-[#E7DFCC] bg-white p-3"><div class="flex items-center justify-between gap-3"><h3 class="font-semibold">Price bands</h3><span class="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold text-stone-500">{{ rate_bands|length }}</span></div><div class="mt-1 max-h-72 overflow-y-auto pr-1">{% for b in rate_bands %}<div class="delivery-config-row mt-2 flex justify-between gap-2 border-t border-stone-100 pt-2 text-xs"><span class="delivery-config-copy">{% include "commerce/delivery/_vehicle_icon.html" with mode=b.vehicle_mode size="h-4 w-4" %} {{ b.name }} · {{ request.business.currency_symbol }}{{ b.base_fee }} + {{ request.business.currency_symbol }}{{ b.per_km_fee }}/km <span class="text-stone-400">· fallback {{ b.min_distance_km }}–{% if b.max_distance_km %}{{ b.max_distance_km }}{% else %}∞{% endif %} km</span></span><a class="delivery-config-action text-[#8f172d]" href="{% url 'delivery_rate_band_edit' b.pk %}">Edit</a></div>{% empty %}<p class="mt-2 text-xs text-stone-400">No price bands yet.</p>{% endfor %}</div></div>
   <div class="flex flex-col rounded-xl border border-[#E7DFCC] bg-white p-3"><div class="flex items-center justify-between gap-3"><h3 class="font-semibold">Destinations</h3><span class="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold text-stone-500">{{ areas|length }}</span></div><div class="mt-1 max-h-72 overflow-y-auto pr-1">{% for a in areas %}<div class="delivery-config-row mt-2 flex justify-between gap-2 border-t border-stone-100 pt-2 text-xs"><span class="delivery-config-copy">{{ a.name }} · {{ a.radius_km }} km radius{% if a.extension_ne_km or a.extension_se_km or a.extension_sw_km or a.extension_nw_km %} + corridor extensions{% endif %}{% if a.centre_distance_from_base_km != None %} · centre {{ a.centre_distance_from_base_km }} km from base · far edge ≈ {{ a.maximum_distance_from_base_km }} km{% endif %}{% if a.rate_band %} <span class="text-stone-500">{% include "commerce/delivery/_vehicle_icon.html" with mode="motorbike" size="h-4 w-4" %} {{ a.rate_band.name }}</span>{% endif %}{% if a.car_rate_band %} <span class="text-stone-500">{% include "commerce/delivery/_vehicle_icon.html" with mode="car" size="h-4 w-4" %} {{ a.car_rate_band.name }}</span>{% endif %}{% if a.latitude != None and a.longitude != None %} · <a class="font-semibold text-[#8f172d]" target="_blank" rel="noopener" href="https://www.openstreetmap.org/?mlat={{ a.latitude }}&mlon={{ a.longitude }}#map=17/{{ a.latitude }}/{{ a.longitude }}">Map ↗</a>{% endif %}</span><a class="delivery-config-action text-[#8f172d]" href="{% url 'delivery_area_edit' a.pk %}">Edit</a></div>{% empty %}<p class="mt-2 text-xs text-stone-400">No destinations yet.</p>{% endfor %}</div></div>
   <div class="rounded-xl border border-[#E7DFCC] bg-white p-3"><div class="flex items-center justify-between gap-3"><h3 class="font-semibold">Riders / couriers</h3><span class="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold text-stone-500">{{ drivers|length }}</span></div>{% for driver in drivers %}<div class="delivery-config-row mt-2 flex justify-between gap-2 border-t border-stone-100 pt-2 text-xs"><span class="delivery-config-copy">{% include "commerce/delivery/_vehicle_icon.html" with mode=driver.vehicle_mode size="h-4 w-4" %} {{ driver.name }} · {{ driver.get_provider_display }}{% if driver.user %}<span class="text-emerald-700"> · app linked</span>{% endif %}</span><a class="delivery-config-action text-[#8f172d]" href="{% url 'delivery_driver_edit' driver.pk %}">Edit</a></div>{% empty %}<p class="mt-2 text-xs text-stone-400">Add in-house riders or manual courier records.</p>{% endfor %}</div>
 </section>{% endif %}
+</div>{% endif %}
 <script>
 (() => {
+  document.addEventListener('wheel', (event) => {
+    const container = event.target.closest('.dlv-queue-scroll');
+    if (!container || event.ctrlKey || event.deltaY === 0 || event.target.closest('select')) return;
+    let node = event.target;
+    while (node && node !== container) {
+      if (node instanceof HTMLElement && ['auto', 'scroll'].includes(getComputedStyle(node).overflowY)
+          && node.scrollHeight > node.clientHeight) {
+        const canScroll = event.deltaY < 0 ? node.scrollTop > 0 : node.scrollTop + node.clientHeight < node.scrollHeight;
+        if (canScroll) return;
+      }
+      node = node.parentElement;
+    }
+    if (container.scrollHeight <= container.clientHeight) return;
+    event.preventDefault();
+    container.scrollTop += event.deltaY;
+  }, {passive:false});
   const root = document.getElementById('delivery-live-root');
   if (!root) return;
   let refreshTimer = null;
@@ -242,7 +331,7 @@
     const source = event.target.closest('[data-rider-source]');
     if (!source) return;
     source.closest('form').querySelectorAll('[data-rider-pane]').forEach((pane) => {
-      pane.style.display = pane.dataset.riderPane === source.value ? 'contents' : 'none';
+      pane.style.display = pane.dataset.riderPane === source.value ? 'grid' : 'none';
     });
   });
   async function refreshDeliveryQueue() {
@@ -267,6 +356,35 @@
     clearTimeout(refreshTimer);
     refreshTimer = setTimeout(refreshDeliveryQueue, 120);
   });
+})();
+</script>
+<script>
+(() => {
+  const workspace = document.querySelector('.delivery-workspace[data-delivery-tabs]');
+  if (!workspace) return;
+  const tabs = Array.from(workspace.querySelectorAll('[data-tab-target]'));
+  const allowed = tabs.map((tab) => tab.dataset.tabTarget);
+  function show(name) {
+    if (!allowed.includes(name)) name = 'live';
+    workspace.dataset.tab = name;
+    tabs.forEach((tab) => tab.setAttribute('aria-selected', String(tab.dataset.tabTarget === name)));
+    try { history.replaceState(null, '', '#' + name); } catch (_) {}
+  }
+  workspace.addEventListener('click', (event) => {
+    const tab = event.target.closest('[data-tab-target]');
+    if (tab) { show(tab.dataset.tabTarget); return; }
+    const chip = event.target.closest('[data-dlv-filter]');
+    if (!chip) return;
+    workspace.dataset.filter = chip.dataset.dlvFilter;
+    workspace.querySelectorAll('[data-dlv-filter]').forEach((el) => el.setAttribute('aria-pressed', String(el === chip)));
+  });
+  // A live refresh re-renders the queue; re-apply the chosen filter to the fresh chips.
+  document.addEventListener('inprofic:delivery-changed', () => setTimeout(() => {
+    const active = workspace.dataset.filter || 'all';
+    workspace.querySelectorAll('[data-dlv-filter]').forEach((el) => el.setAttribute('aria-pressed', String(el.dataset.dlvFilter === active)));
+  }, 600));
+  const initial = (location.hash || '').replace('#', '');
+  show(allowed.includes(initial) ? initial : workspace.dataset.tab);
 })();
 </script>
 </div>

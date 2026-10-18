@@ -54,7 +54,7 @@
       {% for o in run.orders.all %}
         <div class="p-3">
           <div class="flex justify-between gap-3"><a class="text-[#8f172d] font-medium hover:underline" href="{% url 'order_detail' o.pk %}">Order #{{ o.display_number }}</a><span class="text-xs">{{ o.display_order_type }} · {{ o.get_status_display }}</span></div>
-          <div class="text-xs text-stone-500 mt-1">{% if o.order_type == 'physical_store' %}{{ vertical_ui.stock_location }}{% else %}{{ o.customer_name|default:'Unspecified customer' }}{% endif %}</div>
+          <div class="text-xs text-stone-500 mt-1">{% if o.is_multi_channel %}Several channels{% elif o.order_type == 'physical_store' %}{{ vertical_ui.stock_location }}{% else %}{{ o.customer_name|default:'Unspecified customer' }}{% endif %}</div>
           {% for i in o.items.all %}<div class="text-sm mt-1">{{ i.finished_good.name }} — requested {{ i.total_units|num }}, production target {{ i.production_total_units|num }}</div>{% endfor %}
           {% if run.status == 'approved' and o.status == 'approved' %}<a href="{% url 'order_complete' o.pk %}" class="inline-block mt-2 text-xs px-2.5 py-1.5 rounded bg-[#8f172d] text-white">Complete this order's outputs</a>{% endif %}
         </div>

@@ -32,6 +32,7 @@ EXTERNAL_COMMERCE_SOURCES = {
     CommerceIntake.SOURCE_STOREFRONT,
     CommerceIntake.SOURCE_API,
     CommerceIntake.SOURCE_CONNECTOR,
+    CommerceIntake.SOURCE_WHATSAPP,
 }
 
 

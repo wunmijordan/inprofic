@@ -18,6 +18,7 @@ urlpatterns = [
     path("sales/", include("sales.urls")),
     path("expenses/", include("expenses.urls")),
     path("", include("commerce.urls")),
+    path("", include("whatsapp_storefront.urls")),
 ]
 
 if settings.DEBUG:

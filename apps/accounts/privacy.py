@@ -83,11 +83,13 @@ DEFAULT_PRIVACY_POLICY_HTML = """
 <li>Authorised users of the relevant business workspace according to configured roles and permissions;</li>
 <li>Payment providers selected by the business or customer for payment processing and confirmation;</li>
 <li>Delivery providers, in-house riders and authorised dispatch users for delivery fulfilment;</li>
+<li>Meta/WhatsApp when a business connects WhatsApp and handles customer messages, and an optional AI service provider selected by that business when its assistant feature is enabled;</li>
 <li>Hosting, storage, email, web-push and other infrastructure providers that help operate INPROFIC;</li>
 <li>Professional advisers, regulators, courts or public authorities where disclosure is required or permitted by law; and</li>
 <li>A successor or relevant party in connection with a lawful business restructuring, financing, acquisition or transfer, subject to appropriate protections.</li>
 </ul>
 <p>We do not sell personal information for monetary consideration.</p>
+<p>Businesses control whether to enable WhatsApp replies and optional AI assistance. They should provide customer-facing privacy information and obtain any notices or permissions required for processing message content. When AI is enabled, recent message text and approved business guidance are sent to the configured AI provider to draft a reply. The business should choose a provider whose terms prohibit using WhatsApp Business Solution data to train or improve general AI models.</p>
 
 <h2>Headless API and external websites</h2>
 <p>Businesses may use the INPROFIC headless API to present catalogue, checkout, receipt, order and other commerce functions inside their own websites or applications. The operator of that external website remains responsible for its own privacy notice, cookies and customer-facing collection practices. Information sent to INPROFIC through the API is handled under this policy and the applicable service relationship.</p>

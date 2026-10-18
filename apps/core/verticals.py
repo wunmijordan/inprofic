@@ -10,6 +10,8 @@ from .models import Business
 VERTICAL_CONFIG = {
     Business.VERTICAL_BAKERY: {
         "uses_production": True,
+        "kitchen_label": "Bakery Production",
+        "kitchen_role_name": "Baker",
         "procures_finished_goods": False,
         "direct_sale_channel": "physical_store",
         "inventory_primary": "raw",
@@ -49,6 +51,8 @@ VERTICAL_CONFIG = {
     },
     Business.VERTICAL_RESTAURANT: {
         "uses_production": True,
+        "kitchen_label": "Kitchen Production",
+        "kitchen_role_name": "Chef",
         "procures_finished_goods": False,
         "direct_sale_channel": "physical_store",
         "inventory_primary": "raw",
@@ -88,6 +92,8 @@ VERTICAL_CONFIG = {
     },
     Business.VERTICAL_GENERAL: {
         "uses_production": True,
+        "kitchen_label": "Production Entry",
+        "kitchen_role_name": "Production Staff",
         "procures_finished_goods": False,
         "direct_sale_channel": "physical_store",
         "inventory_primary": "raw",

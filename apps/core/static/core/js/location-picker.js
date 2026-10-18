@@ -134,8 +134,17 @@
         if (sequence !== resolveSequence) return;
         if (!response.ok) throw new Error(data.detail || 'Location could not be validated.');
         center = { lat: Number(data.latitude), lng: Number(data.longitude) }; zoom = 17; openPanel(); setInputs(); render();
-        if (addressInput && data.address) { addressInput.value = data.address; addressInput.dispatchEvent(new Event('change', { bubbles: true })); }
-        setStatus(data.validated_by === 'map_pin' ? (data.address_resolved ? 'Map pin located and address updated.' : 'Map pin is valid, but no precise street address was returned.') : 'Address located. The map pin is synchronized to this destination.', !data.address_resolved && data.validated_by === 'map_pin');
+        // Geocoders often normalize a street to its road name and omit the
+        // customer's building number. Coordinates use the normalized result;
+        // the entered delivery address remains the source of record.
+        if (addressInput && !addressInput.value.trim() && data.address) {
+          addressInput.value = data.address;
+          addressInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        setStatus(data.validated_by === 'map_pin'
+          ? (data.address_resolved ? 'Map pin located. The entered delivery address is retained.' : 'Map pin is valid, but no precise street address was returned.')
+          : 'Address located. The entered delivery address is retained and the map pin is synchronized.',
+          !data.address_resolved && data.validated_by === 'map_pin');
         emitResolved(data);
       } catch (error) {
         if (error.name === 'AbortError' || sequence !== resolveSequence) return;

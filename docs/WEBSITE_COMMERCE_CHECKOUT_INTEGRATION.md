@@ -154,7 +154,7 @@ the delivery base to the customer's precise validated address or map pin.
 
 For a custom delivery partner, INPROFIC remains the control engine: customer pricing comes from INPROFIC price bands and the accepted quote remains authoritative. The provider account can be manual or can point to the courier/merchant adapter's API base URL and dispatch endpoint, with optional health-check endpoint, credentials, tracking URL, webhook secret and status mapping. Automatic dispatch uses the `inprofic.delivery.v1` payload documented below, and provider status callbacks return to the account-specific INPROFIC webhook.
 
-Glovo LaaS v2 is an optional built-in adapter only when the Founder enables it platform-wide. It stays inactive until the business completes its own approved Glovo account/API setup (base URL, client credentials, quote/order endpoints, Address Book pickup ID and webhook secret). INPROFIC does not provide or resell Glovo accounts. When the Founder switch is off, Glovo is omitted from tenant/customer/API-facing software surfaces while saved configuration remains dormant for possible later re-enable. Provider and payment webhooks point directly to INPROFIC, not through the customer website.
+Shipbubble is an optional built-in adapter in the provider-neutral delivery foundation. The platform integration setting controls adapter availability; it stays inactive for a business until that business connects its own Shipbubble account and API key. INPROFIC does not provide or resell Shipbubble access. Disabling the platform integration blocks Shipbubble execution while retaining saved tenant configuration and history. Obtain written permission or specific written guidance at the software/platform level before publicly using Shipbubble's name or marks; this is separate from each tenant's technical account setup. See [Shipbubble Terms and Conditions](https://shipbubble.com/terms-and-conditions). Provider and payment webhooks point directly to INPROFIC, not through the customer website.
 
 #### Car delivery (optional second vehicle)
 
@@ -234,10 +234,10 @@ POST /api/v1/storefronts/{business_slug}/orders/{order_id}/payments/current/clai
 POST /api/v1/storefronts/{business_slug}/payments/{provider}/webhook
 POST /api/v1/connectors/{business_slug}/{integration_id}/orders
 POST /api/v1/delivery/providers/custom/{business_slug}/{provider_id}/webhook
-POST /api/v1/delivery/providers/glovo/{business_slug}/webhook
+POST /api/v1/delivery/providers/shipbubble/{business_slug}/webhook
 ```
 
-The Glovo callback exists only as a dormant route when the Founder-level integration is disabled; disabled integration policy still blocks Glovo execution. Provider/payment webhooks and connector ingestion are server-to-server boundaries, not browser calls.
+The Shipbubble callback is verified with an HMAC-SHA512 signature. The platform integration setting blocks Shipbubble execution while disabled. Provider/payment webhooks and connector ingestion are server-to-server boundaries, not browser calls.
 
 Authenticated requests send:
 
@@ -1217,7 +1217,7 @@ Delivery Rider is a purpose-specific staff access surface: rider-only users can 
 
 ## Two-way delivery address/map synchronization
 
-For delivery UI, do not let the address textbox and map pin drift apart. Use `POST /api/v1/storefronts/{business_slug}/delivery/location` in both directions: send `area_id + address` to obtain validated coordinates and move/zoom the map pin; send `area_id + latitude + longitude` to reverse-geocode a manually placed pin and update the address field. For typed addresses, wait until the customer has stopped editing for **2 seconds**; every correction resets the debounce window, and an older request/result must be cancelled or ignored after the text changes. Because this endpoint requires `X-INPROFIC-Key`, the browser should call the website's own backend/serverless proxy; that proxy calls INPROFIC and returns only the normalized location result. Never expose the tenant API key in browser JavaScript. Then send the synchronized address, coordinates and returned `location_source` to `/delivery/quote`. Coverage and minimum-order errors returned by INPROFIC should be displayed as red customer-facing validation text. See `COMMERCE_INTEGRATION.md` for the complete payload/response contract.
+For delivery UI, do not let the address textbox and map pin drift apart. Use `POST /api/v1/storefronts/{business_slug}/delivery/location` in both directions: send `area_id + address` to obtain validated coordinates and move/zoom the map pin; send `area_id + latitude + longitude` to reverse-geocode a manually placed pin. For typed addresses, wait until the customer has stopped editing for **2 seconds**; every correction resets the debounce window, and an older request/result must be cancelled or ignored after the text changes. Because this endpoint requires `X-INPROFIC-Key`, the browser should call the website's own backend/serverless proxy; that proxy calls INPROFIC and returns only the normalized location result. Never expose the tenant API key in browser JavaScript. Treat the customer's non-empty typed delivery address as the record value and the location response as map/coverage data: geocoding can omit a house/building number, so do not overwrite the address input with the normalized response. Keep the submitted address for checkout review, order history and tracking. A reverse-geocoded address may initialize an empty field; preserve existing text when the customer has already entered an address. Then send the retained customer address, synchronized coordinates and returned `location_source` to `/delivery/quote`. Coverage and minimum-order errors returned by INPROFIC should be displayed as red customer-facing validation text. See `COMMERCE_INTEGRATION.md` for the complete payload/response contract.
 
 ## 18. Live delivery status, customer updates and pickup-based ETA
 

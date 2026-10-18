@@ -1,0 +1,47 @@
+{% comment %}Billing-cycle switch panel shared by the marketing page and the in-app plans page.
+Usage: {% include "accounts/_billing_switch.html" with plans=plans theme="dark" %}{% endcomment %}
+{% with first=plans.0 %}{% if first and first.cycle_options %}
+<div class="billing-switch billing-switch--{{ theme|default:'light' }}" data-billing-switch role="group" aria-label="Billing cycle">
+  {% for o in first.cycle_options %}
+  <button type="button" data-billing-cycle="{{ o.key }}" aria-pressed="{% if forloop.first %}true{% else %}false{% endif %}">
+    <span>{{ o.label }}</span>
+    <small data-cycle-badge="{{ o.key }}" hidden></small>
+  </button>
+  {% endfor %}
+</div>
+<style>
+  .billing-switch{display:inline-flex;gap:.25rem;padding:.25rem;border-radius:9999px;border:1px solid var(--bs-border);background:var(--bs-bg);flex-wrap:wrap;justify-content:center}
+  .billing-switch--dark{--bs-border:rgba(255,255,255,.18);--bs-bg:rgba(255,255,255,.07);--bs-text:rgba(255,255,255,.72);--bs-active-bg:#e7bd65;--bs-active-text:#050733}
+  .billing-switch--light{--bs-border:var(--ui-border,#E7DFCC);--bs-bg:var(--ui-surface-muted, #F0EAD9);--bs-text:var(--ui-surface-text,#57534e);--bs-active-bg:var(--ui-accent,#d14900);--bs-active-text:#fff}
+  .billing-switch button{display:inline-flex;align-items:center;gap:.4rem;border-radius:9999px;padding:.45rem .95rem;font-size:.8rem;font-weight:600;color:var(--bs-text);transition:background .15s,color .15s}
+  .billing-switch button[aria-pressed="true"]{background:var(--bs-active-bg);color:var(--bs-active-text)}
+  .billing-switch small{font-size:.65rem;font-weight:700;opacity:.9}
+</style>
+<script>
+(function () {
+  var switches = document.querySelectorAll('[data-billing-switch]');
+  if (!switches.length || window.__billingSwitchReady) return;
+  window.__billingSwitchReady = true;
+  function badges() {
+    var best = {};
+    document.querySelectorAll('[data-cycle-price]').forEach(function (el) {
+      var d = parseFloat(el.dataset.discount || '0'), k = el.dataset.cyclePrice;
+      if (d > (best[k] || 0)) best[k] = d;
+    });
+    document.querySelectorAll('[data-cycle-badge]').forEach(function (el) {
+      var d = best[el.dataset.cycleBadge];
+      el.hidden = !d; if (d) el.textContent = 'Save up to ' + (Math.round(d * 100) / 100) + '%';
+    });
+  }
+  function apply(cycle) {
+    document.querySelectorAll('[data-cycle-price]').forEach(function (el) { el.hidden = el.dataset.cyclePrice !== cycle; });
+    document.querySelectorAll('[data-billing-cycle]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.billingCycle === cycle ? 'true' : 'false'); });
+    document.querySelectorAll('[data-cycle-link]').forEach(function (a) { a.dataset.cycle = cycle; if (a.dataset.base) a.href = a.dataset.base + (a.dataset.base.indexOf('?') > -1 ? '&' : '?') + 'cycle=' + cycle; });
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-billing-cycle]'); if (b) apply(b.dataset.billingCycle);
+  });
+  badges(); apply('monthly');
+})();
+</script>
+{% endif %}{% endwith %}

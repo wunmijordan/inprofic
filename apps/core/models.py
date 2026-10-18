@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.core.validators import FileExtensionValidator, RegexValidator
+from django.core.validators import FileExtensionValidator, MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models
 from decimal import Decimal
 from pathlib import Path
@@ -65,6 +65,23 @@ class Business(models.Model):
     restaurant_table_service = models.BooleanField(
         default=True,
         help_text="For restaurant businesses, capture a table/reference for dine-in sales.",
+    )
+    PROFIT_PERIOD_YEAR = "year"
+    PROFIT_PERIOD_HALF = "half"
+    PROFIT_PERIOD_QUARTER = "quarter"
+    PROFIT_PERIOD_CHOICES = [
+        (PROFIT_PERIOD_YEAR, "Business year"),
+        (PROFIT_PERIOD_HALF, "Half year"),
+        (PROFIT_PERIOD_QUARTER, "Quarter"),
+    ]
+    fiscal_year_start_month = models.PositiveSmallIntegerField(
+        default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(12)],
+        help_text="Month your business year begins (1 = January). Profit and loss periods are counted from here.",
+    )
+    profit_period = models.CharField(
+        max_length=10, choices=PROFIT_PERIOD_CHOICES, default=PROFIT_PERIOD_YEAR,
+        help_text="How long each profit and loss reporting period runs.",
     )
 
     class Meta:

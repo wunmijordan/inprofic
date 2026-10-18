@@ -29,7 +29,7 @@
           {% for o in r.orders.all %}{% for i in o.items.all %}
           <tr class="border-t border-[#E7DFCC]">
             <td class="px-3 py-2 font-mono text-xs text-stone-500">{% if forloop.first %}#{{ o.display_number }} &middot; {{ o.display_order_type }}{% endif %}</td>
-            <td class="px-3 py-2 text-xs text-stone-600">{% if forloop.first %}{% if o.order_type == 'physical_store' %}{{ vertical_ui.stock_location }}{% else %}{{ o.customer_name|default:'Unspecified customer' }}{% endif %}{% endif %}</td>
+            <td class="px-3 py-2 text-xs text-stone-600">{% if forloop.first %}{% if o.is_multi_channel %}Several channels{% elif o.order_type == 'physical_store' %}{{ vertical_ui.stock_location }}{% else %}{{ o.customer_name|default:'Unspecified customer' }}{% endif %}{% endif %}</td>
             <td class="px-3 py-2 font-medium text-stone-700">{{ i.finished_good.name }}</td>
             <td class="px-3 py-2 text-right font-mono">{{ i.production_total_units|num }}</td>
           </tr>

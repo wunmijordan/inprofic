@@ -44,10 +44,11 @@ what was borrowed and what was deliberately left out).
 - **Commerce payments** — Paystack/Monnify, provider-backed instant bank transfer, and a native no-gateway **Transfer** mode that shows the tenant's bank details, requires proof on public/headless checkout, and uses explicit staff confirmation on in-premise POS.
 - **Commerce reach and pricing** — the Overview includes plain-language customer-source reporting plus tenant QR links; Online pricing remains Online whether fulfilment uses available Physical Store stock or made-to-order production, customers can choose the available source per line, and out-of-stock stock-backed channel options are suppressed externally while POS keeps unavailable Physical Store cards visibly disabled.
 - **Storefront product variants and add-ons** — group separately priced, stocked and produced size variants under one hosted storefront card while retaining each variant's own recipe and checkout line. Each product can offer a no-price-change customer choice (such as flavor or color) and separately priced add-ons that appear as individual basket lines; product descriptions and basket-dock copy are configurable per business.
+- **WhatsApp Storefront** — each business can connect its own WhatsApp Business number, answer from current Commerce data, take simple orders and eligible payments in chat, fall back to hosted checkout for product options or proof upload, and hand conversations to staff. Optional AI assistance is disabled by default; Meta app review and permissions are required before production onboarding.
 - **Founder-managed trust strip** — the public marketing page can show paid-tenant storefront logos plus founder-uploaded logos, alongside an animated count of all registered businesses including trials.
 - **Delivery** — plan-gated delivery setup with mapped destination centres, radius/diagonal coverage guides,
   precise-address geocoding with map-pin fallback, in-house riders, true interchangeable Hybrid routing, external
-  provider-neutral custom courier adapters plus an optional Founder-gated Glovo LaaS v2 plug-in, with live base-to-destination delivery-fee quoting before payment,
+  provider-neutral custom courier adapters plus an optional platform-enabled Shipbubble integration that uses each tenant's own account, with live base-to-destination delivery-fee quoting before payment,
   customer tracking, proof-of-delivery records and delivery timelines across hosted storefront, POS and headless API. In-house riders can carry routed multi-order pickup batches; pickup means en route and starts each stop-aware customer ETA countdown, while active customer/rider messages remain visible to dispatch staff.
 - **Audit Workspace** — plan-gated read-only cross-module evidence review for
   external auditors, with auditor queries/flags and response tracking for
@@ -219,7 +220,7 @@ and the shared production command, see
 ## What's next
 
 See `CLAUDE.md` §7 and the docs folder for extension notes. New operational
-references include `docs/DELIVERY_GLOVO_PROVIDER.md` and
+references include `docs/DELIVERY_SHIPBUBBLE_PROVIDER.md` and
 `docs/AUDIT_WORKSPACE.md`.
 
 ### Guided onboarding and technical study guide

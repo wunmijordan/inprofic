@@ -67,3 +67,18 @@ def unit_plural(unit, count):
     else:
         plural = word + "s"
     return plural.capitalize() if word.istitle() else plural.upper() if word.isupper() else plural
+
+
+@register.filter
+def split_pairs(value):
+    """Turn ``"key:Label,key2:Label 2"`` into ``[("key", "Label"), ...]`` for headers."""
+    return [tuple(part.split(":", 1)) for part in str(value).split(",") if ":" in part]
+
+
+@register.filter
+def dict_get(mapping, key):
+    """Look up ``mapping[key]`` in a template (empty string when missing)."""
+    try:
+        return mapping.get(key, "")
+    except AttributeError:
+        return ""

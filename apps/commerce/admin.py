@@ -1,5 +1,5 @@
 from django.contrib import admin
-from accounts.platform_integrations import glovo_platform_enabled
+from accounts.platform_integrations import shipbubble_platform_enabled
 from .models import (
     CommerceCheckoutItem,
     CommerceCheckoutSession,
@@ -65,14 +65,14 @@ class DeliveryProviderAccountAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
-        if not glovo_platform_enabled():
-            queryset = queryset.exclude(provider_code=DeliveryProviderAccount.PROVIDER_GLOVO)
+        if not shipbubble_platform_enabled():
+            queryset = queryset.exclude(provider_code=DeliveryProviderAccount.PROVIDER_SHIPBUBBLE)
         return queryset
 
     def formfield_for_choice_field(self, db_field, request, **kwargs):
-        if db_field.name == "provider_code" and not glovo_platform_enabled():
+        if db_field.name == "provider_code" and not shipbubble_platform_enabled():
             kwargs["choices"] = [
                 choice for choice in DeliveryProviderAccount.PROVIDER_CHOICES
-                if choice[0] != DeliveryProviderAccount.PROVIDER_GLOVO
+                if choice[0] != DeliveryProviderAccount.PROVIDER_SHIPBUBBLE
             ]
         return super().formfield_for_choice_field(db_field, request, **kwargs)

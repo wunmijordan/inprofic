@@ -1,8 +1,10 @@
 from django.contrib import admin
-from .models import Order, OrderNumberSequence, OrderItem, ProductionBatch, ProductionQualityCheck, ProductionRun, ProductionOffcutAllocation
+from .models import Order, OrderAllocation, OrderAllocationLine, OrderNumberSequence, OrderItem, ProductionBatch, ProductionQualityCheck, ProductionRun, ProductionOffcutAllocation
 
 admin.site.register(Order)
 admin.site.register(OrderItem)
+admin.site.register(OrderAllocation)
+admin.site.register(OrderAllocationLine)
 admin.site.register(ProductionBatch)
 admin.site.register(ProductionQualityCheck)
 

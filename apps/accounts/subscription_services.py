@@ -10,6 +10,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from core.models import Business
+from .models import BILLING_CYCLE_LABELS, BILLING_CYCLE_MONTHS
 from .models import (
     BusinessPayrollAddon,
     BusinessFeatureAccess,
@@ -47,7 +48,7 @@ def _track_subscription_event(event_type, subscription, *, user=None, metadata=N
 # This prevents a cashier from needing broad Commerce access simply to operate
 # the in-premise counter.
 PLAN_ENTITLEMENT_MODULES = tuple(
-    (module, label) for module, label in RoleModulePermission.MODULE_CHOICES if module not in {"pos", "delivery_rider"}
+    (module, label) for module, label in RoleModulePermission.MODULE_CHOICES if module not in {"pos", "delivery_rider", "kitchen"}
 )
 
 
@@ -103,6 +104,23 @@ def build_plan_feature_matrix(plans, currency_symbol="\u20a6"):
     their commercial availability follows Commerce and Delivery respectively.
     """
     plans = list(plans)
+    from .platform_integrations import shipbubble_platform_enabled, whatsapp_storefront_platform_enabled
+    shipbubble_features = []
+    if shipbubble_platform_enabled():
+        shipbubble_features.append((
+            "Shipbubble delivery integration",
+            "Connect the business's own Shipbubble account for configurable courier choice, parcel defaults, live quotes and dispatch when the platform adapter is enabled.",
+            "delivery",
+        ))
+    whatsapp_features = []
+    if whatsapp_storefront_platform_enabled():
+        whatsapp_features.append((
+            "WhatsApp storefront & AI sales assistant",
+            "Answer from the live catalogue, take simple orders and payments in chat, and use hosted checkout for product options or payment proof; includes a staff inbox for handoff.",
+            "commerce",
+        ))
+    for plan in plans:
+        plan.matrix_display_name = re.sub(r"\bfounder\b", "Complimentary", plan.name, flags=re.IGNORECASE).strip()
     entitlement_maps = {
         plan.pk: {row.module: row for row in plan.module_entitlements.all()}
         for plan in plans
@@ -160,7 +178,7 @@ def build_plan_feature_matrix(plans, currency_symbol="\u20a6"):
         },
         {
             "label": "Staff payroll add-on",
-            "detail": "Supplementary payroll is included during free trial and Founder lifetime access; after that, Founder-configured staff tiers are purchased separately.",
+            "detail": "Supplementary payroll is included during a free trial and complimentary access; after that, platform-configured staff tiers are purchased separately.",
             "values": [payroll_value(plan) for plan in plans],
         },
     ]
@@ -168,6 +186,7 @@ def build_plan_feature_matrix(plans, currency_symbol="\u20a6"):
     feature_modules = list(PLAN_ENTITLEMENT_MODULES) + [
         ("pos", "In-Premise POS"),
         ("delivery_rider", "Delivery Rider Workspace"),
+        ("kitchen", "Production Entry Workspace"),
     ]
     details = {
         "dashboard": "Workspace overview and operational starting point.",
@@ -180,26 +199,122 @@ def build_plan_feature_matrix(plans, currency_symbol="\u20a6"):
         "reports": "Operational and financial reporting depth for the plan.",
         "users": "Business users, roles and permissions.",
         "commerce": "Hosted storefront, website API and commerce operations.",
-        "delivery": "Delivery quoting, dispatch, tracking and provider workflows.",
+        "delivery": "Delivery quoting, dispatch, tracking and courier-partner workflows.",
         "audit": "Read-only external audit evidence workspace and audit packs.",
         "pos": "Dedicated cashier workspace; availability follows Commerce access.",
         "delivery_rider": "Purpose-specific rider workspace; availability follows Delivery access.",
+        "kitchen": "Purpose-specific production-entry workspace for kitchen staff; availability follows Production access.",
     }
+    entitlement_for = {"pos": "commerce", "delivery_rider": "delivery", "kitchen": "production"}
 
+    def module_state(plan, entitlement_module, require_full=False):
+        entitlement = entitlement_maps.get(plan.pk, {}).get(entitlement_module)
+        if not entitlement or not entitlement.enabled or entitlement.level == SubscriptionPlanModule.LEVEL_NONE:
+            return {"text": "Not included", "state": "off"}
+        if entitlement_module == "reports" or require_full:
+            if entitlement.level == SubscriptionPlanModule.LEVEL_BASIC:
+                return {"text": "Basic", "state": "partial"} if not require_full else {"text": "Not included", "state": "off"}
+            return {"text": "Full" if entitlement_module == "reports" else "Included", "state": "included"}
+        return {"text": "Included", "state": "included"}
+
+    def group(name):
+        return {"group": name, "label": "", "detail": "", "values": []}
+
+    def feature_row(label, detail, module, require_full=False):
+        # Purpose-specific workspaces (POS, rider, production entry) have no plan
+        # entitlement of their own; they follow the module they sit inside.
+        entitlement_module = entitlement_for.get(module, module)
+        return {"label": label, "detail": detail,
+                "values": [module_state(plan, entitlement_module, require_full) for plan in plans]}
+
+    def cycle_text(plan):
+        parts = []
+        for key, label in (("quarterly", "Quarterly"), ("biannual", "Bi-annual"), ("yearly", "Yearly")):
+            pct = plan.cycle_discount_percent(key)
+            if pct:
+                parts.append(f"{label} {pct.normalize():f}% off")
+        return capacity_value("Monthly" if plan.is_free_forever else "Monthly, quarterly, bi-annual, yearly") | (
+            {"sub": " · ".join(parts)} if parts and not plan.is_free_forever else {}
+        )
+
+    def trial_text(plan):
+        if plan.is_free_forever:
+            return capacity_value("Free forever")
+        return capacity_value(f"{plan.trial_days}-day free trial" if plan.trial_days else "Paid from day one")
+
+    rows.insert(0, group("Capacity & billing"))
+    rows.append({"label": "Free trial", "detail": "How a new workspace starts on this plan.", "values": [trial_text(p) for p in plans]})
+    rows.append({"label": "Billing cycles", "detail": "Pay monthly, or commit to a longer cycle for a configured discount.", "values": [cycle_text(p) for p in plans]})
+
+    rows.append(group("Workspace modules"))
     for module, label in feature_modules:
-        entitlement_module = "commerce" if module == "pos" else "delivery" if module == "delivery_rider" else module
-        values = []
-        for plan in plans:
-            entitlement = entitlement_maps.get(plan.pk, {}).get(entitlement_module)
-            if not entitlement or not entitlement.enabled or entitlement.level == SubscriptionPlanModule.LEVEL_NONE:
-                values.append({"text": "Not included", "state": "off"})
-            elif entitlement_module == "reports" and entitlement.level == SubscriptionPlanModule.LEVEL_BASIC:
-                values.append({"text": "Basic", "state": "partial"})
-            elif entitlement_module == "reports" and entitlement.level == SubscriptionPlanModule.LEVEL_FULL:
-                values.append({"text": "Full", "state": "included"})
-            else:
-                values.append({"text": "Included", "state": "included"})
-        rows.append({"label": label, "detail": details.get(module, ""), "values": values})
+        rows.append({"label": label, "detail": details.get(module, ""),
+                     "values": [module_state(plan, entitlement_for.get(module, module)) for plan in plans]})
+
+    # Feature-level rows. Each follows the entitlement of the module that owns
+    # it, so Founder Console plan changes flow through without a second source of truth.
+    catalog = [
+        ("Inventory & purchasing", [
+            ("Raw materials & finished goods", "Track what you buy and what you sell, separately, with full movement history.", "inventory"),
+            ("Buy-unit vs use-unit conversion", "Buy flour by the bag and use it by the kilogram; stock and recipe usage stay consistent, and live conversions change cost and quantities together.", "inventory"),
+            ("Product categories & channel pricing", "Group products into categories and price them per channel (store, distribution, online).", "inventory"),
+            ("Low-stock & warning alerts", "Persistent, per-user alerts for raw materials and finished goods.", "inventory"),
+            ("Purchase orders & receiving", "Order from suppliers, receive stock and keep the cost history behind every price change.", "procurement"),
+            ("Supplier balances & payments", "See what you owe each supplier and pay it down through Finance.", "procurement"),
+        ]),
+        ("Production", [
+            ("Recipes & bills of materials", "Define what each product is made from, including packaging and other inputs.", "production"),
+            ("Production orders & batches", "Release materials, record what was actually made, wastage, yield, batch number and expiry.", "production"),
+            ("Flexible materials", "Mark a material as decided at the bench (yeast, seasoning) instead of fixed by the recipe.", "production"),
+            ("Shared production runs", "Make several customer or store orders in one exercise while keeping each order separate.", "production"),
+            ("Quality checks & batch costing", "Attach inspection results to a batch and freeze its material cost as evidence.", "production"),
+            ("Production-floor entry roles", "The people who make the product (Baker for bakeries, Chef for restaurants, Production Staff for general production) log it through the normal order form, trimmed to what the floor needs. The order is saved with no channel and a manager assigns it later.", "kitchen"),
+            ("Guided entry (no recipe access)", "A variant of the floor role with no access to recipes: it sees the order and sets only the flexible material amounts.", "kitchen"),
+            ("Assign a production entry to channels", "A manager says how many of each product go to which channel, right from one page; the floor's recorded output is shared in proportion.", "kitchen"),
+        ]),
+        ("Selling & commerce", [
+            ("Hosted storefront & Order Now links", "A branded online catalogue and shareable order links, with payment-first checkout.", "commerce"),
+            ("Targeted QR codes for social selling", "Generate QR codes aimed at specific platforms or campaigns so each audience lands on the right order page.", "commerce"),
+            ("Headless Commerce API", "Run checkout from your own website or app and let INPROFIC handle the order, payment and fulfilment.", "commerce"),
+            *whatsapp_features,
+            ("Paystack, Monnify & transfer payments", "Gateway payments or a no-gateway manual transfer mode with verification.", "commerce"),
+            ("In-premise POS", "A focused counter-sales workspace for cashiers.", "pos"),
+            ("Customer records & pricing", "Reusable customer profiles, customer-specific prices and receivable tracking.", "sales"),
+        ]),
+        ("Delivery", [
+            ("In-house riders & rider workspace", "Register your own riders; each gets a lightweight My Deliveries screen instead of the full workspace.", "delivery"),
+            ("Delivery zones with radius coverage", "Map zones on a graphical editor; fees come from real distance and your pricing bands.", "delivery"),
+            ("Precise address validation", "Checkout locates the address and checks it against your coverage before payment.", "delivery"),
+            ("Courier partner integrations", "Connect a custom delivery partner (or the optional built-in adapter) next to your own riders; INPROFIC keeps the quote, fee, tracking and audit trail.", "delivery"),
+            *shipbubble_features,
+            ("Hybrid routing & customer choice", "Use riders, couriers or both, with a clear switch policy shown before payment.", "delivery"),
+            ("Proof of delivery & live tracking", "Status timeline, delivery proof and customer tracking on every order.", "delivery"),
+        ]),
+        ("Finance & reporting", [
+            ("Cash accounts & movements", "Keep cash truth separate from sales: receipts, payments and transfers.", "finance"),
+            ("Receivables, payables & profit", "Customer balances, supplier balances, gross profit and cash flow.", "finance"),
+            ("Sales & stock CSV exports", "Dated sales and stock exports available on every plan with reports.", "reports"),
+            ("Excel exports & full backup", "Procurement, production, finance and adjustment exports plus a full JSON backup.", "reports", True),
+            ("Expense tracking", "Capture and categorise operating expenses.", "expenses"),
+        ]),
+        ("Team, trust & control", [
+            ("Users, roles & per-user permissions", "Purpose-built roles plus optional per-user overrides, always inside the plan ceiling.", "users"),
+            ("Audit trail", "A tamper-evident history of important actions across the workspace.", "users"),
+            ("Audit Workspace for external auditors", "A read-only review environment where auditors can raise queries without changing records.", "audit"),
+        ]),
+    ]
+    for group_name, items in catalog:
+        rows.append(group(group_name))
+        for item in items:
+            label, detail, module = item[0], item[1], item[2]
+            rows.append(feature_row(label, detail, module, require_full=(len(item) > 3 and item[3])))
+    # Tag every row (group markers included) with the group it belongs to so the
+    # template can render one accordion panel per group via ``{% regroup %}``.
+    current_section = ""
+    for row in rows:
+        if row.get("group"):
+            current_section = row["group"]
+        row["section"] = current_section
     return rows
 
 
@@ -740,6 +855,23 @@ def attach_active_promotions(plans, *, moment=None):
             plan.promo_additional_service_monthly_price = plan.current_monthly_promotion.discounted_additional_service_monthly_price_for(plan)
         if plan.current_yearly_promotion:
             plan.promo_yearly_price = plan.current_yearly_promotion.discounted_yearly_price_for(plan)
+        # One ordered description of every billing cycle, shared by the public
+        # pricing page and the in-app plan pages so both switch panels agree.
+        options = []
+        for cycle, months in BILLING_CYCLE_MONTHS.items():
+            promo = active_promotion_for_plan(plan, moment=moment, billing_cycle=cycle) if cycle != "monthly" else plan.current_monthly_promotion
+            total = plan.price_for_cycle(cycle)
+            promo_total = promo.discounted_cycle_price_for(plan, cycle) if promo else None
+            effective = promo_total if promo_total is not None else total
+            options.append({
+                "key": cycle, "label": BILLING_CYCLE_LABELS[cycle], "months": months,
+                "period": {"monthly": "month", "quarterly": "quarter", "biannual": "6 months", "yearly": "year"}[cycle],
+                "discount": plan.cycle_discount_percent(cycle),
+                "total": total, "promo_total": promo_total,
+                "per_month": (effective / months).quantize(Decimal("0.01")),
+                "promotion": promo,
+            })
+        plan.cycle_options = options
     return plans
 
 
@@ -766,9 +898,10 @@ def payment_amount(plan, service_count, months=1, billing_cycle="monthly", promo
     base_monthly = effective_monthly_price(plan, promotion, billing_cycle=billing_cycle)
     addon_monthly = effective_additional_service_monthly_price(plan, promotion, billing_cycle=billing_cycle)
     monthly_total = base_monthly + Decimal(service_count - 1) * addon_monthly
-    if billing_cycle == SubscriptionPayment.CYCLE_YEARLY:
-        discount = min(max(plan.yearly_discount_percent, Decimal("0")), Decimal("100"))
-        return (monthly_total * Decimal("12") * (Decimal("1") - discount / Decimal("100"))).quantize(Decimal("0.01"))
+    if billing_cycle in BILLING_CYCLE_MONTHS and billing_cycle != SubscriptionPayment.CYCLE_MONTHLY:
+        discount = plan.cycle_discount_percent(billing_cycle)
+        cycle_months = Decimal(BILLING_CYCLE_MONTHS[billing_cycle])
+        return (monthly_total * cycle_months * (Decimal("1") - discount / Decimal("100"))).quantize(Decimal("0.01"))
     months = max(1, int(months or 1))
     return (monthly_total * Decimal(months)).quantize(Decimal("0.01"))
 
@@ -783,8 +916,8 @@ def payment_is_locked(subscription, plan):
 @transaction.atomic
 def create_payment_request(subscription, plan, *, months=1, billing_cycle="monthly", provider="manual", purpose=None, payroll_tier=None, payroll_batch=None, batch_quantity=1):
     purpose = purpose or SubscriptionPayment.PURPOSE_SUBSCRIPTION
-    if billing_cycle == SubscriptionPayment.CYCLE_YEARLY:
-        months = 12
+    if billing_cycle in BILLING_CYCLE_MONTHS and billing_cycle != SubscriptionPayment.CYCLE_MONTHLY:
+        months = BILLING_CYCLE_MONTHS[billing_cycle]
     service_count = max(1, subscription.services.count())
     if purpose == SubscriptionPayment.PURPOSE_PAYROLL_BATCH:
         from .payroll import assert_can_buy_batch, batch_snapshot, prorated_batch_amount
@@ -916,7 +1049,12 @@ def mark_payment_paid(payment):
     subscription.status = BusinessSubscription.STATUS_ACTIVE
     subscription.founder_lifetime = False
     base = max([x for x in (subscription.paid_until, subscription.trial_ends_at, now) if x is not None])
-    duration_days = 365 if payment.billing_cycle == SubscriptionPayment.CYCLE_YEARLY else 30 * payment.months
+    if payment.billing_cycle == SubscriptionPayment.CYCLE_YEARLY:
+        duration_days = 365
+    elif payment.billing_cycle in (SubscriptionPayment.CYCLE_QUARTERLY, SubscriptionPayment.CYCLE_BIANNUAL):
+        duration_days = round(365 * payment.months / 12)  # 91 / 182 days
+    else:
+        duration_days = 30 * payment.months
     subscription.paid_until = base + timezone.timedelta(days=duration_days)
     subscription.save()
     apply_subscription_entitlements(subscription)

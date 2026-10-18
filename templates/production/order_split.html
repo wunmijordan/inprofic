@@ -1,0 +1,237 @@
+{% extends "base.html" %}{% load core_extras %}{% block content %}
+<style>[data-split-form] [hidden] { display: none !important; }</style>
+<div class="max-w-6xl">
+  <a href="{% url 'order_detail' order.pk %}" class="text-xs text-stone-500 hover:text-[#8f172d]">← Order #{{ order.display_number }}</a>
+  <h2 class="text-xl font-semibold font-display text-[#8f172d] mt-1">Assign order #{{ order.display_number }} to channels</h2>
+  <p class="text-sm text-stone-500 mt-1 mb-2 max-w-3xl">Say where this production goes: pick a channel for each destination, then enter how many of each product it receives. Every unit must be assigned. This stays <b>one order</b> — it is approved once and produced once, with the same recipes, materials and costing — and each channel receives its share when production is completed.</p>
+  <p class="text-xs text-stone-400 mb-4 max-w-3xl">If less is produced than assigned, customer destinations are filled first, in the order shown, then stock destinations. A customer is billed only for what is delivered.</p>
+
+  <form method="post" class="space-y-5" data-split-form>{% csrf_token %}
+
+    <section>
+      <h3 class="text-sm font-semibold text-stone-700 mb-2">1 · Destinations</h3>
+      <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {% for d in destinations %}
+        <div class="rounded-xl border border-[#E7DFCC] bg-white p-4 shadow-[0_2px_8px_#000000d2] space-y-2" data-dest-card="{{ d.index }}"{% if not d.visible %} hidden{% endif %}>
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-xs font-semibold uppercase tracking-wide text-stone-500">Destination {{ d.letter }}</div>
+            <button type="button" data-remove-destination aria-label="Remove destination {{ d.letter }}" class="rounded-md border border-[#D9CFB4] px-2 py-0.5 text-[11px] font-semibold text-stone-500 hover:text-rose-600">Remove</button>
+          </div>
+          <input type="hidden" name="d{{ d.index }}_removed" value="{% if d.visible %}0{% else %}1{% endif %}" data-removed>
+          <label class="block text-xs font-semibold text-stone-600">Channel
+            <select name="d{{ d.index }}_channel" data-channel class="mt-1 w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm font-normal">
+              <option value="">Choose a channel…</option>
+              {% for value, label in channels %}<option value="{{ value }}"{% if d.channel == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+          </label>
+
+          <div data-show="customer" hidden class="space-y-2">
+            <label class="block text-xs font-semibold text-stone-600">Customer <span class="font-normal text-stone-400">(required for customer orders)</span>
+              <select name="d{{ d.index }}_customer" class="mt-1 w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm font-normal">
+                <option value="">—</option>
+                {% for customer in customers %}<option value="{{ customer.pk }}"{% if d.customer == customer.pk|stringformat:"s" %} selected{% endif %}>{{ customer.name }}</option>{% endfor %}
+              </select>
+            </label>
+            <label class="block text-xs font-semibold text-stone-600">Customer name <span class="font-normal text-stone-400">(optional)</span>
+              <input name="d{{ d.index }}_customer_name" value="{{ d.customer_name }}" maxlength="120" class="mt-1 w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm font-normal">
+            </label>
+          </div>
+
+          <div data-show="store" hidden class="space-y-2">
+            <label class="block text-xs font-semibold text-stone-600">What happens to it
+              <select name="d{{ d.index }}_store_mode" data-store-mode class="mt-1 w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm font-normal">
+                <option value="store"{% if d.store_mode != 'non_stock' %} selected{% endif %}>Add to {{ stock_location }} stock</option>
+                <option value="non_stock"{% if d.store_mode == 'non_stock' %} selected{% endif %}>Non-stock purpose (not added to stock)</option>
+              </select>
+            </label>
+            <label data-show-purpose hidden class="block text-xs font-semibold text-stone-600">Purpose <span class="font-normal text-stone-400">(e.g. Staff welfare, Gift)</span>
+              <input name="d{{ d.index }}_purpose" value="{{ d.purpose }}" maxlength="255" class="mt-1 w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm font-normal">
+            </label>
+          </div>
+
+          <div data-show="pay" hidden class="space-y-2">
+            <label class="block text-xs font-semibold text-stone-600">Customer payment
+              <select name="d{{ d.index }}_pay_status" data-pay-status class="mt-1 w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm font-normal">
+                <option value="paid"{% if d.pay_status != 'unpaid' %} selected{% endif %}>Received</option>
+                <option value="unpaid"{% if d.pay_status == 'unpaid' %} selected{% endif %}>Receivable (not paid yet)</option>
+              </select>
+            </label>
+            <div data-show-paid class="grid grid-cols-2 gap-2">
+              <label class="block text-xs font-semibold text-stone-600">Method
+                <select name="d{{ d.index }}_pay_method" class="mt-1 w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm font-normal">
+                  <option value="Cash"{% if d.pay_method == "Cash" %} selected{% endif %}>Cash</option>
+                  <option value="Card"{% if d.pay_method == "Card" %} selected{% endif %}>Card</option>
+                  <option value="Transfer"{% if d.pay_method != "Cash" and d.pay_method != "Card" %} selected{% endif %}>Transfer</option>
+                </select>
+              </label>
+              <label class="block text-xs font-semibold text-stone-600">Received into
+                <select name="d{{ d.index }}_pay_account" class="mt-1 w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm font-normal">
+                  <option value="">—</option>
+                  {% for account in accounts %}<option value="{{ account.pk }}"{% if d.pay_account == account.pk|stringformat:"s" %} selected{% endif %}>{{ account.name }}</option>{% endfor %}
+                </select>
+              </label>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <button type="button" data-add-destination class="mt-3 rounded-md border border-[#D9CFB4] px-3 py-1.5 text-xs font-semibold text-stone-600"{% if visible_destinations >= max_destinations %} hidden{% endif %}>+ Add another destination</button>
+    </section>
+
+    <section>
+      <h3 class="text-sm font-semibold text-stone-700 mb-1">2 · How many go where</h3>
+      <p class="text-xs text-stone-500 mb-2">Batches and pieces add up to one quantity: pieces are the part of a batch left over, so a batch can be broken to fill a channel. Pieces beyond a full batch roll over into batches.</p>
+      <div class="overflow-x-auto rounded-xl border border-[#E7DFCC] bg-white shadow-[0_2px_8px_#000000d2]">
+        <table class="w-full min-w-[640px] text-sm text-left">
+          <thead>
+            <tr class="text-xs text-stone-500">
+              <th class="px-3 py-2">Product (produced)</th>
+              {% for d in destinations %}<th class="px-3 py-2" data-dest-col="{{ d.index }}"{% if not d.visible %} hidden{% endif %}><span class="font-semibold text-stone-700">{{ d.letter }}</span> <span data-dest-title class="font-normal"></span></th>{% endfor %}
+              <th class="px-3 py-2">Still to assign</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            <tr class="border-t border-[#E7DFCC] align-top" data-row data-per-batch="{{ row.per_batch|stringformat:'s' }}" data-total="{{ row.total|stringformat:'s' }}" data-has-pieces="{% if row.has_pieces %}1{% else %}0{% endif %}">
+              <td class="px-3 py-2 font-medium text-stone-800">{{ row.item.finished_good.name }}
+                <div class="text-xs font-normal text-stone-400">{{ row.total_batches|floatformat:"-2" }} batch{{ row.total_batches|pluralize:"es" }}{% if row.has_pieces %} + {{ row.total_pieces|floatformat:"-2" }} pieces · {{ row.per_batch|floatformat:"-2" }} per batch{% endif %}</div>
+              </td>
+              {% for cell in row.cells %}
+              <td class="px-3 py-2" data-dest-col="{{ cell.dest }}"{% if not cell.visible %} hidden{% endif %}>
+                <div class="flex items-center gap-1.5">
+                  <label class="text-[11px] text-stone-500">Batches<input name="{{ cell.batch_name }}" value="{{ cell.batch }}" data-batch type="number" min="0" step="0.01" placeholder="0" class="mt-0.5 w-20 rounded-md border border-[#D9CFB4] bg-white px-2 py-1 text-sm"></label>
+                  {% if row.has_pieces %}<label class="text-[11px] text-stone-500">Pieces<input name="{{ cell.piece_name }}" value="{{ cell.piece }}" data-piece type="number" min="0" step="0.01" placeholder="0" class="mt-0.5 w-20 rounded-md border border-[#D9CFB4] bg-white px-2 py-1 text-sm"></label>{% endif %}
+                </div>
+                <button type="button" data-rest class="mt-1 text-[11px] text-stone-500 underline">Put the rest here</button>
+              </td>
+              {% endfor %}
+              <td class="px-3 py-2 text-xs" data-left aria-live="polite"></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="flex gap-2"><button class="px-4 py-2 rounded-md bg-[#8f172d] text-sm font-semibold text-white">Assign to channels</button><a href="{% url 'order_detail' order.pk %}" class="px-4 py-2 rounded-md border border-[#D9CFB4] text-sm text-stone-600">Cancel</a></div>
+  </form>
+</div>
+
+<script>
+(function () {
+  var form = document.querySelector('[data-split-form]');
+  if (!form) return;
+  var round = function (n) { return Math.round(n * 100) / 100; };
+  var num = function (el) { var v = el ? parseFloat(el.value) : 0; return isNaN(v) ? 0 : v; };
+  var fmt = function (n) { return String(round(n)); };
+  var max = {{ max_destinations }};
+  var cards = [].slice.call(form.querySelectorAll('[data-dest-card]'));
+
+  function rowUnits(cell, perBatch) {
+    return round(num(cell.querySelector('[data-batch]')) * perBatch + num(cell.querySelector('[data-piece]')));
+  }
+  function setCell(cell, units, perBatch) {
+    var batch = Math.floor(round(units / perBatch)), pieces = round(units - batch * perBatch);
+    cell.querySelector('[data-batch]').value = units > 0 ? fmt(batch) : '';
+    var piece = cell.querySelector('[data-piece]');
+    if (piece) piece.value = units > 0 && pieces > 0 ? fmt(pieces) : '';
+  }
+  function describe(units, perBatch, hasPieces) {
+    var batch = Math.floor(round(units / perBatch)), pieces = round(units - batch * perBatch);
+    if (!hasPieces) return fmt(units);
+    return fmt(batch) + ' batch' + (batch === 1 ? '' : 'es') + (pieces > 0 ? ' + ' + fmt(pieces) + ' pieces' : '');
+  }
+  function refreshRow(row) {
+    var perBatch = parseFloat(row.dataset.perBatch) || 1, total = parseFloat(row.dataset.total) || 0;
+    var hasPieces = row.dataset.hasPieces === '1', used = 0;
+    row.querySelectorAll('td[data-dest-col]').forEach(function (cell) { if (!cell.hidden) used += rowUnits(cell, perBatch); });
+    var left = round(total - used), out = row.querySelector('[data-left]');
+    if (left < 0) { out.textContent = 'Over by ' + describe(-left, perBatch, hasPieces); out.className = 'px-3 py-2 text-xs font-semibold text-rose-600'; }
+    else if (left === 0) { out.textContent = 'All assigned'; out.className = 'px-3 py-2 text-xs font-semibold text-emerald-600'; }
+    else { out.textContent = describe(left, perBatch, hasPieces); out.className = 'px-3 py-2 text-xs text-stone-600'; }
+  }
+  function normalise(cell, perBatch) {
+    // Pieces beyond a full batch roll over into batches.
+    var piece = cell.querySelector('[data-piece]');
+    if (!piece || perBatch <= 1 || num(piece) < perBatch) return;
+    var units = rowUnits(cell, perBatch);
+    if (units > 0) setCell(cell, units, perBatch);
+  }
+  function refreshAll() { form.querySelectorAll('[data-row]').forEach(refreshRow); }
+
+  function syncCard(card) {
+    var channel = card.querySelector('[data-channel]').value;
+    var customerChannel = channel === 'distribution' || channel === 'online';
+    card.querySelector('[data-show="customer"]').hidden = !customerChannel;
+    card.querySelector('[data-show="pay"]').hidden = !customerChannel;
+    card.querySelector('[data-show="store"]').hidden = channel !== 'physical_store';
+    var mode = card.querySelector('[data-store-mode]');
+    card.querySelector('[data-show-purpose]').hidden = !(channel === 'physical_store' && mode && mode.value === 'non_stock');
+    var status = card.querySelector('[data-pay-status]');
+    card.querySelector('[data-show-paid]').hidden = !(customerChannel && status && status.value === 'paid');
+    var index = card.dataset.destCard, select = card.querySelector('[data-channel]');
+    var label = select.selectedIndex > 0 ? select.options[select.selectedIndex].text : '';
+    form.querySelectorAll('th[data-dest-col="' + index + '"] [data-dest-title]').forEach(function (t) { t.textContent = label ? '· ' + label : ''; });
+  }
+  function setShown(index, shown) {
+    var card = form.querySelector('[data-dest-card="' + index + '"]');
+    card.hidden = !shown;
+    card.querySelector('[data-removed]').value = shown ? '0' : '1';
+    form.querySelectorAll('[data-dest-col="' + index + '"]').forEach(function (el) { el.hidden = !shown; });
+  }
+  function clearDestination(index) {
+    // Removing a destination also empties it, so nothing it held is submitted or counted.
+    var card = form.querySelector('[data-dest-card="' + index + '"]');
+    card.querySelectorAll('input:not([type=hidden])').forEach(function (el) { el.value = ''; });
+    card.querySelectorAll('select').forEach(function (el) {
+      el.selectedIndex = 0;
+      if (/_pay_method$/.test(el.name)) el.value = 'Transfer';
+    });
+    form.querySelectorAll('td[data-dest-col="' + index + '"] input').forEach(function (el) { el.value = ''; });
+    syncCard(card);
+  }
+  function updateControls() {
+    var shown = cards.filter(function (c) { return !c.hidden; });
+    cards.forEach(function (c) { c.querySelector('[data-remove-destination]').hidden = shown.length <= 1; });
+    var add = form.querySelector('[data-add-destination]');
+    if (add) add.hidden = shown.length >= max;
+    refreshAll();
+  }
+
+  form.addEventListener('change', function (event) {
+    var card = event.target.closest('[data-dest-card]');
+    if (card) syncCard(card);
+    var cell = event.target.closest('td[data-dest-col]'), row = event.target.closest('[data-row]');
+    if (cell && row) normalise(cell, parseFloat(row.dataset.perBatch) || 1);
+    refreshAll();
+  });
+  form.addEventListener('input', function (event) { if (event.target.closest('td[data-dest-col]')) refreshAll(); });
+  form.addEventListener('click', function (event) {
+    var rest = event.target.closest('[data-rest]');
+    if (rest) {
+      var cell = rest.closest('td[data-dest-col]'), row = rest.closest('[data-row]');
+      var perBatch = parseFloat(row.dataset.perBatch) || 1, total = parseFloat(row.dataset.total) || 0, others = 0;
+      row.querySelectorAll('td[data-dest-col]').forEach(function (c) { if (c !== cell && !c.hidden) others += rowUnits(c, perBatch); });
+      setCell(cell, Math.max(round(total - others), 0), perBatch);
+      refreshAll();
+    }
+    var remove = event.target.closest('[data-remove-destination]');
+    if (remove) {
+      var card = remove.closest('[data-dest-card]');
+      if (cards.filter(function (c) { return !c.hidden; }).length > 1) {
+        clearDestination(card.dataset.destCard);
+        setShown(card.dataset.destCard, false);
+        updateControls();
+      }
+    }
+    if (event.target.closest('[data-add-destination]')) {
+      var next = cards.find(function (c) { return c.hidden; });
+      if (next) { setShown(next.dataset.destCard, true); updateControls(); }
+    }
+  });
+
+  cards.forEach(syncCard);
+  updateControls();
+})();
+</script>
+{% endblock %}

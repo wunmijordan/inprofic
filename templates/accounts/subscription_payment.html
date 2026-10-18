@@ -16,7 +16,7 @@
         <div class="text-xs uppercase tracking-wider text-stone-500">Current subscription</div>
         <div class="font-semibold mt-1">{{ subscription.plan.name }}</div>
         {% if subscription.founder_lifetime %}
-          <div class="text-sm text-emerald-700 mt-1">Founder lifetime</div>
+          <div class="text-sm text-emerald-700 mt-1">Lifetime access</div>
         {% elif subscription.status == 'trial' and subscription.is_effectively_active %}
           <div class="text-sm mt-1"><span class="font-medium">Trial</span>{% if subscription.trial_ends_at %} · ends {{ subscription.trial_ends_at|date:"j M Y" }}{% endif %}</div>
         {% elif subscription.status == 'active' %}
@@ -63,23 +63,21 @@
       <input type="hidden" name="confirm_plan_change" id="confirm-plan-change" value="">
       <h2 class="font-semibold text-lg">Pay for {{ selected_plan.name }}</h2>
       {% if selected_plan.current_monthly_promotion or selected_plan.current_yearly_promotion %}<div class="mt-3 rounded-lg border border-orange-200 bg-orange-50 p-3"><div class="text-sm font-semibold text-[#b94300]">Available promotion</div><div class="mt-1 space-y-1 text-xs text-stone-600">{% if selected_plan.current_monthly_promotion %}<div><strong>Monthly:</strong> {{ selected_plan.current_monthly_promotion.reason }} · expires {{ selected_plan.current_monthly_promotion.ends_at|date:"j M Y, g:i A" }}</div>{% endif %}{% if selected_plan.current_yearly_promotion %}<div><strong>Yearly:</strong> {{ selected_plan.current_yearly_promotion.reason }} · valid only when paying yearly{% if selected_plan.current_yearly_promotion.billing_cycle != 'yearly' %} / eligible for yearly{% endif %} · expires {{ selected_plan.current_yearly_promotion.ends_at|date:"j M Y, g:i A" }}</div>{% endif %}<div>Your payment record snapshots only the promotion valid for the billing cycle you choose.</div></div></div>{% endif %}
-      {% if payment_locked %}<div class="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{% if selected_plan.is_free_forever %}Starter is currently free forever and does not require checkout or renewal.{% elif subscription.founder_lifetime %}This plan already has founder lifetime access, so payment is disabled. Other plans remain available if you choose to change access.{% else %}This plan cannot be renewed yet. Payment opens during the final 7 days before expiry.{% endif %}</div>{% endif %}
+      {% if payment_locked %}<div class="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{% if selected_plan.is_free_forever %}Starter is currently free forever and does not require checkout or renewal.{% elif subscription.founder_lifetime %}This plan already has lifetime access, so payment is disabled. Other plans remain available if you choose to change access.{% else %}This plan cannot be renewed yet. Payment opens during the final 7 days before expiry.{% endif %}</div>{% endif %}
       {% if selected_plan.code != 'starter' and subscription.plan.is_free_forever and subscription.status == 'active' %}
         {% if paid_trial_available %}<div class="mt-3 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm text-stone-700"><strong>Try this plan free for {{ general_trial_days }} days.</strong> No payment is taken now, and you can cancel anytime. One trial is available per account credentials.</div><button name="action" value="start_paid_trial" class="mt-3 w-full rounded-md bg-[#d14900] py-2.5 text-sm font-semibold text-white">Start {{ general_trial_days }}-day free trial</button>
         {% else %}<div class="mt-3 rounded-lg border border-stone-200 bg-stone-50 p-3 text-sm text-stone-600">The one-time paid-plan trial has already been used by this account. You can still subscribe normally.</div>{% endif %}
       {% endif %}
       {% if subscription.status == 'trial' %}<button name="action" value="cancel_trial" class="mt-3 w-full rounded-md border border-rose-300 bg-white py-2 text-sm font-medium text-rose-700">{% if subscription.plan.code == 'starter' and not subscription.plan.is_free_forever %}End Starter trial{% else %}Cancel trial and return to Starter{% endif %}</button>{% endif %}
       {% if requires_change_warning %}<div class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">You are moving from active {{ subscription.plan.name }} access to {{ selected_plan.name }}. Your current access remains unchanged unless checkout succeeds and payment is verified.</div>{% endif %}
-      <div class="grid sm:grid-cols-2 gap-3 mt-4">
+      <div class="grid sm:grid-cols-2 gap-3 mt-4" data-cycle-cards>
+        {% for c in cycle_totals %}
         <label class="border rounded-lg p-3 cursor-pointer has-[:checked]:border-[#8f172d] has-[:checked]:bg-rose-50">
-          <input type="radio" name="billing_cycle" value="monthly" checked class="accent-[#8f172d]"> <strong class="ml-1">Monthly</strong>
-          <div class="text-sm mt-1 font-mono">{{ selected_monthly_total|money:biz.currency_symbol }} <span class="font-sans text-stone-500">/ month at your current service count</span></div>
+          <input type="radio" name="billing_cycle" value="{{ c.key }}" {% if forloop.first %}checked{% endif %} class="accent-[#8f172d]" data-total="{{ c.total }}" data-base-total="{{ c.base_total }}" data-promo="{% if c.promo %}1{% else %}0{% endif %}" data-months="{{ c.months }}" data-label="{{ c.label }}" data-discount="{{ c.discount }}"> <strong class="ml-1">{{ c.label }}</strong>
+          <div class="text-sm mt-1 font-mono">{{ c.total|money:biz.currency_symbol }} <span class="font-sans text-stone-500">/ {% if c.months == 1 %}month{% elif c.months == 12 %}year{% else %}{{ c.months }} months{% endif %}</span></div>
+          {% if c.discount %}<div class="text-xs text-emerald-700">Includes {{ c.discount }}% {{ c.label|lower }} discount</div>{% endif %}
         </label>
-        <label class="border rounded-lg p-3 cursor-pointer has-[:checked]:border-[#8f172d] has-[:checked]:bg-rose-50">
-          <input type="radio" name="billing_cycle" value="yearly" class="accent-[#8f172d]"> <strong class="ml-1">Yearly</strong>
-          <div class="text-sm mt-1 font-mono">{{ selected_yearly_total|money:biz.currency_symbol }} <span class="font-sans text-stone-500">/ year</span></div>
-          <div class="text-xs text-emerald-700">Includes {{ selected_plan.yearly_discount_percent }}% yearly discount</div>
-        </label>
+        {% endfor %}
       </div>
       <div id="monthly-duration" class="mt-4">
         <label class="block text-xs text-stone-500 mb-1">Monthly billing duration</label>
@@ -141,18 +139,22 @@
   const money = value => `${currency}${number.format(Number(value || 0))}`;
 
   function refreshTotal() {
-    const cycle = document.querySelector('input[name="billing_cycle"]:checked')?.value || 'monthly';
-    const isYearly = cycle === 'yearly';
-    monthly.classList.toggle('hidden', isYearly);
-    if (isYearly) {
-      total.textContent = money(yearlyTotal);
-      if (baseDisplay) { baseDisplay.textContent = money(baseYearlyTotal); baseDisplay.classList.toggle('hidden', !yearlyPromo); }
-      caption.textContent = `1 year · ${serviceCount} service profile${serviceCount === 1 ? '' : 's'} · yearly discount applied`;
+    const picked = document.querySelector('input[name="billing_cycle"]:checked');
+    const cycle = picked?.value || 'monthly';
+    const isMonthly = cycle === 'monthly';
+    monthly.classList.toggle('hidden', !isMonthly);
+    const profiles = `${serviceCount} service profile${serviceCount === 1 ? '' : 's'}`;
+    if (!isMonthly && picked) {
+      const cycleMonths = Number(picked.dataset.months || 1);
+      total.textContent = money(picked.dataset.total);
+      if (baseDisplay) { baseDisplay.textContent = money(picked.dataset.baseTotal); baseDisplay.classList.toggle('hidden', picked.dataset.promo !== '1'); }
+      const discount = Number(picked.dataset.discount || 0);
+      caption.textContent = `${cycleMonths} months · ${profiles}${discount ? ` · ${discount}% ${picked.dataset.label.toLowerCase()} discount applied` : ''}`;
     } else {
       const monthCount = Math.max(1, Number(months.value || 1));
       total.textContent = money(monthlyBase * monthCount);
       if (baseDisplay) { baseDisplay.textContent = money(baseMonthlyTotal * monthCount); baseDisplay.classList.toggle('hidden', !monthlyPromo); }
-      caption.textContent = `${monthCount} month${monthCount === 1 ? '' : 's'} · ${serviceCount} service profile${serviceCount === 1 ? '' : 's'}`;
+      caption.textContent = `${monthCount} month${monthCount === 1 ? '' : 's'} · ${profiles}`;
     }
   }
 

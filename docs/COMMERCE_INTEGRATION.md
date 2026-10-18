@@ -1,4 +1,6 @@
 > **Current website integration contract:** New and migrated headless integrations must use the pre-intake checkout/payment boundary documented in [`WEBSITE_COMMERCE_CHECKOUT_INTEGRATION.md`](WEBSITE_COMMERCE_CHECKOUT_INTEGRATION.md). `POST /orders` is retired and returns HTTP 410; no new public or connector write may create an operational intake before verified payment.
+>
+> WhatsApp channel setup, Meta credentials, webhook and data behavior are documented in [`WHATSAPP_STOREFRONT.md`](WHATSAPP_STOREFRONT.md). WhatsApp uses the same storefront catalogue and Commerce checkout/payment services; option-heavy carts and manual payment-proof upload fall back to hosted checkout.
 
 # Customer Ordering and External Commerce Integration
 
@@ -34,7 +36,7 @@ rules.
 
 Delivery follows the same rule. A website may request a delivery quote and pay
 the full checkout amount, but delivery assignments are created only after trusted
-payment verification. The delivery engine then owns in-house, hybrid and external-partner delivery without allowing the storefront to create operational delivery records directly. External partners are provider-neutral by default: INPROFIC remains authoritative for the customer quote, routing choice, assignment and timeline, while a configured partner account can stay manual or optionally receive dispatches through the INPROFIC Delivery Adapter v1 contract. Glovo LaaS v2 remains an optional built-in adapter only when the Founder has exposed it platform-wide and the business has configured its own approved account.
+payment verification. The delivery engine then owns in-house, hybrid and external-partner delivery without allowing the storefront to create operational delivery records directly. External partners are provider-neutral by default: INPROFIC remains authoritative for the customer quote, routing choice, assignment and timeline, while a configured partner account can stay manual or optionally receive dispatches through the INPROFIC Delivery Adapter v1 contract. Shipbubble is an optional built-in integration in this provider-neutral delivery foundation; it is available when the platform integration is enabled and each business connects its own Shipbubble account and API key.
 
 Named delivery areas are geometry-backed rather than tariff-only labels. Each
 area has a mapped centre, radius and optional diagonal extensions. That geometry
@@ -285,13 +287,13 @@ An explicit `BusinessModuleAccess.enabled=False` remains the hard ceiling. The s
 
 ### Public product publication
 
-`commerce.StorefrontProduct` is a publication/configuration layer around the existing `inventory.FinishedGood`. It does not duplicate stock. Products are unpublished by default and can independently configure Physical Store/direct, Online and Distribution/bulk channels. Physical Store/direct and Distribution/bulk are consumed only by the staff-operated in-premise POS. Hosted storefronts, connectors and the headless API publish Online options; available `bulk_packs[]` are additional made-to-order-price choices on that Online mode. Product images are uploaded to tenant-partitioned media storage; the catalog API exposes the uploaded file as an absolute `image_url`. The former URL field remains a fallback for pre-existing live records, but is no longer editable in the publishing form.
+`commerce.StorefrontProduct` is a publication/configuration layer around the existing `inventory.FinishedGood`. It does not duplicate stock. Products are unpublished by default and can independently configure Physical Store/direct, Online and Distribution/bulk channels. Physical Store/direct and Distribution/bulk are consumed only by the staff-operated in-premise POS. Hosted storefronts, connectors, the headless API and WhatsApp publish Online options; WhatsApp chat checkout currently supports simple products without additional option selection and uses the hosted checkout when configured product choices are needed. Available `bulk_packs[]` are additional made-to-order-price choices on the Online mode. Product images are uploaded to tenant-partitioned media storage; the catalog API exposes the uploaded file as an absolute `image_url`. The former URL field remains a fallback for pre-existing live records, but is no longer editable in the publishing form.
 
 For production-centric services, `FinishedGood.physical_saleable_stock` is the immediate storefront availability. Distribution Market Stock remains a separate pool. The existing explicit Market Stock → Physical Store transfer updates the same FinishedGood shelf balance/transfer allowance, so the storefront/API sees the new availability automatically without a commerce-specific stock sync.
 
 ### Sales channel versus fulfilment route
 
-The persisted commercial choice can be `physical_store`, `online`, or `distribution`, but surface boundaries are enforced before checkout creation: `physical_store` and `distribution` are POS-only; hosted/API/connector sources accept only `online`. `CommerceIntake.ordering_mode` remains the internal fulfilment route and is derived by INPROFIC:
+The persisted commercial choice can be `physical_store`, `online`, or `distribution`, but surface boundaries are enforced before checkout creation: `physical_store` and `distribution` are POS-only; hosted/API/connector/WhatsApp sources accept only `online`. WhatsApp checkouts use internal source `whatsapp` and the same pre-intake checkout and payment boundary; they are not public Commerce API calls. `CommerceIntake.ordering_mode` remains the internal fulfilment route and is derived by INPROFIC:
 
 - production businesses: Physical Store/direct uses available stock; Online can use available stock or create made-to-order Production demand after staff acceptance; Distribution/bulk is a POS prepared-order route;
 - wholesale and retail businesses: all three channel prices use procured finished stock and never invoke Production.
@@ -500,7 +502,7 @@ Content-Type: application/json
 
 A minimal callback is `{"external_reference":"...","status":"..."}`; `tracking_url` is optional. Tenant-configured `status_mapping` translates partner statuses to INPROFIC delivery states. These callbacks are data-continuity writes: if a subscription later hides the Delivery workspace, INPROFIC can still keep already-created assignments synchronized underneath so an upgrade reveals complete history.
 
-The optional Glovo adapter is different only in adapter implementation, not in delivery ownership. It is **Founder-gated, off by default, and tenant-disabled until fully configured**. Turning the Founder switch off hides Glovo references outside the Founder Console and blocks Glovo execution without deleting saved tenant credentials or history. When enabled, each business must use its own Glovo business account/API access; INPROFIC does not provide or resell Glovo accounts and does not imply official partnership status.
+The optional Shipbubble integration is different only in adapter implementation, not in delivery ownership. A platform-level integration setting enables the adapter; each business then connects its own Shipbubble account and API key. Disabling the platform integration blocks Shipbubble execution without deleting saved tenant configuration or history. INPROFIC does not provide or resell Shipbubble access. Obtain written platform-level permission before using Shipbubble's name or marks in public product or marketing material; this is distinct from the tenant's technical account and API-key setup. See `DELIVERY_SHIPBUBBLE_PROVIDER.md`.
 
 
 ### Delivery rider and storefront-customer boundaries
@@ -545,7 +547,7 @@ New websites should use checkout-scoped payment endpoints. Provider webhooks are
 ```text
 POST /api/v1/storefronts/{business_slug}/payments/{provider}/webhook
 POST /api/v1/delivery/providers/custom/{business_slug}/{provider_id}/webhook
-POST /api/v1/delivery/providers/glovo/{business_slug}/webhook   # only while the Founder-level Glovo integration switch is enabled
+POST /api/v1/delivery/providers/shipbubble/{business_slug}/webhook   # signed (x-ship-signature, HMAC-SHA512); only while the platform Shipbubble integration is enabled
 ```
 
 The normalized platform-connector ingestion boundary is separate from headless storefront checkout:
@@ -610,7 +612,7 @@ Successful response:
 }
 ```
 
-The website should move the pin to those coordinates, zoom to the resolved destination, and retain/update the visible address with the returned normalized address.
+Move the pin to those coordinates and zoom to the resolved destination. Preserve the customer's original non-empty delivery address as the record value: geocoding may normalize a road or omit the building/house number. Use the response's normalized `address` only as map lookup data, and submit the original entered text as the checkout delivery address. The hosted storefront and POS follow this rule so the full address remains available on checkout review, order history and delivery tracking.
 
 **Map pin -> address field**
 
@@ -625,7 +627,7 @@ Call the same endpoint with coordinates instead:
 }
 ```
 
-INPROFIC reverse-geocodes the pin and returns the corresponding address with `validated_by: "map_pin"`. The website should replace the address field with the returned address when `address_resolved` is true. If reverse geocoding cannot identify a precise street address, keep the existing user text and visibly ask the customer to confirm/refine it rather than inventing an address.
+INPROFIC reverse-geocodes the pin and returns the corresponding address with `validated_by: "map_pin"`. Use the returned address to initialize an empty field when `address_resolved` is true. If the field already contains customer-entered text, retain it when applying the pin result. If reverse geocoding cannot identify a precise street address, keep the existing user text and visibly ask the customer to confirm/refine it rather than inventing an address.
 
 When `area_id` is supplied, both forward and reverse location resolution enforce that area's radius/diagonal coverage. An out-of-range point returns HTTP 400. Display this and other validation failures as clear red error text near the delivery fields.
 
@@ -656,7 +658,7 @@ A Hybrid tenant may return `selection_required: true` plus `options[]`. Present 
 - Every quote option, and the top-level selected quote, carries `vehicle_mode` (`motorbike` or `car`) and `vehicle_label`, each at its own `fee`, `total` and ETA.
 - When the chosen delivery method offers more than one vehicle, the response has `selection_required: true` and `options[]` with one quote per vehicle. Show them with their prices, let the customer choose, and submit the chosen option's `quote_id`. The customer may switch vehicle until the order is placed.
 - To skip the choice, send `"vehicle_mode": "motorbike"` or `"car"` in the quote request: only that vehicle is quoted and it is selected automatically. An unknown value, or `car` when the business does not offer it, returns HTTP 400.
-- Live external-partner quotes (Glovo) are motorbike only. The vehicle the customer chose is stored on the order's delivery and cannot be changed by switching delivery method.
+- Live external-partner quotes (Shipbubble couriers) are treated as motorbike delivery. The vehicle the customer chose is stored on the order's delivery and cannot be changed by switching delivery method.
 - The checkout snapshot (`delivery` on a checkout), the order detail `delivery`, and the tracking payload all carry `vehicle_mode` and `vehicle_label`. Show a car or motorbike icon from them on selection, review and tracking screens.
 
 ### Final pre-payment review contract

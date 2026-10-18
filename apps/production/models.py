@@ -20,7 +20,21 @@ class Order(BusinessOwnedModel):
         (BASIS_BASE_MATERIAL, "Base material"),
     ]
 
-    TYPE_CHOICES = [("distribution", "Distribution Order"), ("online", "Online Order"), ("physical_store", "Physical Store Order")]
+    TYPE_UNASSIGNED = "unassigned"
+    # "unassigned" is only ever created by the kitchen entry screen: the order is
+    # not attached to any channel or store until someone with order confirmation
+    # access decides where it (or portions of it) goes.
+    TYPE_MULTI = "multi_channel"
+    # "multi_channel" is never chosen on the order form. It is set when a manager
+    # assigns one production order's output to several channels at once; the
+    # channel details then live on the order's OrderAllocation rows, and
+    # everything about producing the order (recipes, materials, cost snapshots,
+    # batches) is exactly as for any other order.
+    TYPE_CHOICES = [
+        ("distribution", "Distribution Order"), ("online", "Online Order"), ("physical_store", "Physical Store Order"),
+        (TYPE_UNASSIGNED, "Production entry — channel not decided"),
+        (TYPE_MULTI, "Multi-channel"),
+    ]
     STATUS_CHOICES = [
         ("pending", "Pending"), ("approved", "Approved"),
         ("completed", "Completed"), ("rejected", "Rejected"), ("reversed", "Reversed"),
@@ -134,8 +148,14 @@ class Order(BusinessOwnedModel):
     def is_customer_order(self):
         return self.order_type in ("distribution", "online") and not self.is_market_stock_order
 
+    @property
+    def is_multi_channel(self):
+        return self.order_type == self.TYPE_MULTI
+
     def __str__(self):
-        if self.is_market_stock_order:
+        if self.is_multi_channel:
+            who = "Multi-channel"
+        elif self.is_market_stock_order:
             who = "Market stock"
         elif self.order_type in ("distribution", "online"):
             who = self.customer_name
@@ -244,6 +264,53 @@ class Order(BusinessOwnedModel):
                     "short": needed - mat.stock,
                 })
         return result
+
+
+class OrderFlexibleMaterialReport(BusinessOwnedModel):
+    """What production staff recorded when they registered a production order.
+
+    Baker/Chef users log production after making it, so they know the flexible
+    material they actually used and the final output. This record only *pre-fills*
+    the existing approval (flexible usage) and completion (units produced and
+    wastage) forms; the approver and completer still confirm those figures, and
+    orders without a report behave exactly as before.
+
+    ``flexible_per_batch``: ``{item_id: {recipe_link_id: qty_per_batch}}`` for
+    product-quantity orders. ``flexible_totals``: ``{material_id: total_qty}``
+    for base-material orders. ``output``: ``{item_id: {"produced", "wastage",
+    "reason"}}`` in finished units.
+    """
+    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name="flexible_report")
+    flexible_per_batch = models.JSONField(default=dict, blank=True)
+    flexible_totals = models.JSONField(default=dict, blank=True)
+    output = models.JSONField(default=dict, blank=True)
+
+    def __str__(self):
+        return f"Flexible material report for order #{self.order.display_number}"
+
+    @staticmethod
+    def _decimal(value):
+        try:
+            return Decimal(str(value))
+        except Exception:
+            return None
+
+    def per_batch_for(self, item_id, link_id):
+        """Reported per-batch flexible quantity, or ``None`` when not reported."""
+        raw = (self.flexible_per_batch or {}).get(str(item_id), {}).get(str(link_id))
+        return self._decimal(raw) if raw not in (None, "") else None
+
+    def total_for(self, material_id):
+        raw = (self.flexible_totals or {}).get(str(material_id))
+        return self._decimal(raw) if raw not in (None, "") else None
+
+    def output_for(self, item_id):
+        row = (self.output or {}).get(str(item_id)) or {}
+        return {
+            "produced": self._decimal(row.get("produced")) if row.get("produced") not in (None, "") else None,
+            "wastage": self._decimal(row.get("wastage")) if row.get("wastage") not in (None, "") else None,
+            "reason": row.get("reason") or "",
+        }
 
 
 class OrderNumberSequence(BusinessOwnedModel):
@@ -376,6 +443,124 @@ class OrderItem(TimestampedModel):
         if self.commercial_quantity is not None and self.commercial_unit_price is not None:
             return self.commercial_quantity * self.commercial_unit_price
         return self.total_units * ((self.price or Decimal("0")) - (self.discount or Decimal("0")))
+class OrderAllocation(TimestampedModel):
+    """One channel's share of a multi-channel production order.
+
+    A production order is usually meant for more than one purpose at once (a
+    customer's online order, shelf stock, a bulk distribution customer...).
+    Instead of splitting it into separate orders, the order keeps being produced
+    as one - one approval, one material release, one batch per product - and its
+    output is assigned here, product by product, to each channel. Each
+    allocation carries what a single-channel order would carry for that channel
+    (customer, payment, stock destination) and is posted when the order is
+    completed, exactly as that channel would have been.
+    """
+
+    CHANNEL_CHOICES = [
+        (value, label) for value, label in Order.TYPE_CHOICES
+        if value not in (Order.TYPE_UNASSIGNED, Order.TYPE_MULTI)
+    ]
+
+    order = models.ForeignKey(Order, related_name="allocations", on_delete=models.CASCADE)
+    position = models.PositiveSmallIntegerField(default=0, help_text="Order in which allocations are filled when output falls short.")
+    channel = models.CharField(max_length=15, choices=CHANNEL_CHOICES)
+    is_market_stock = models.BooleanField(default=False, help_text="Distribution output with no customer yet; enters Market Stock.")
+    production_destination = models.CharField(max_length=12, choices=Order.DESTINATION_CHOICES, default="store")
+    non_stock_purpose = models.CharField(max_length=255, blank=True, default="")
+    customer = models.ForeignKey("sales.Customer", null=True, blank=True, on_delete=models.SET_NULL, related_name="order_allocations")
+    customer_name = models.CharField(max_length=120, blank=True, default="")
+    payment_status = models.CharField(max_length=10, choices=Order.CUSTOMER_PAYMENT_CHOICES, default="paid")
+    payment_method = models.CharField(max_length=10, choices=Order.PAYMENT_CHOICES, default="Transfer", blank=True)
+    payment_account = models.ForeignKey("core.CashAccount", null=True, blank=True, on_delete=models.PROTECT, related_name="order_allocation_payments")
+    sale = models.ForeignKey("sales.Sale", null=True, blank=True, on_delete=models.SET_NULL, related_name="order_allocations",
+                             help_text="The customer sale created for this allocation when the order was completed.")
+
+    class Meta:
+        ordering = ["position", "id"]
+
+    def __str__(self):
+        return f"Order #{self.order.display_number} → {self.label}"
+
+    @property
+    def is_market(self):
+        return self.channel == "distribution" and self.is_market_stock
+
+    @property
+    def is_customer(self):
+        return self.channel in ("distribution", "online") and not self.is_market
+
+    @property
+    def is_stock(self):
+        """Adds to shelf stock (Physical Store replenishment)."""
+        return self.channel == "physical_store" and self.production_destination == "store"
+
+    @property
+    def is_non_stock(self):
+        return self.channel == "physical_store" and self.production_destination == "non_stock"
+
+    @property
+    def customer_display(self):
+        if self.customer_id:
+            return self.customer.name
+        return self.customer_name
+
+    @property
+    def label(self):
+        if self.is_market:
+            return "Distribution market stock"
+        if self.is_customer:
+            who = self.customer_display
+            base = dict(Order.TYPE_CHOICES).get(self.channel, self.channel)
+            return f"{base} — {who}" if who else base
+        if self.is_non_stock:
+            return f"Non-stock purpose — {self.non_stock_purpose}" if self.non_stock_purpose else "Non-stock purpose"
+        return "Physical Store stock"
+
+    @property
+    def total_units(self):
+        return sum((line.total_units for line in self.lines.all()), Decimal("0"))
+
+    @property
+    def delivered_units(self):
+        return sum((line.delivered_units for line in self.lines.all()), Decimal("0"))
+
+    @property
+    def total(self):
+        return sum((line.line_total for line in self.lines.all()), Decimal("0"))
+
+
+class OrderAllocationLine(TimestampedModel):
+    """How much of one order line goes to one allocation (units, as batches + loose pieces)."""
+
+    allocation = models.ForeignKey(OrderAllocation, related_name="lines", on_delete=models.CASCADE)
+    order_item = models.ForeignKey(OrderItem, related_name="allocation_lines", on_delete=models.CASCADE)
+    batch_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    piece_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    price = models.DecimalField(max_digits=12, decimal_places=2, default=0,
+                                help_text="Selling price for this channel/customer, snapshotted when assigned.")
+    discount = models.DecimalField(max_digits=12, decimal_places=2, default=0, blank=True)
+    delivered_units = models.DecimalField(max_digits=14, decimal_places=2, default=0,
+                                          help_text="Units actually delivered to this allocation when the order was completed.")
+
+    class Meta:
+        ordering = ["allocation__position", "allocation_id", "order_item_id"]
+        constraints = [
+            models.UniqueConstraint(fields=["allocation", "order_item"], name="unique_allocation_line_per_order_item"),
+        ]
+
+    def __str__(self):
+        return f"{self.order_item.finished_good.name} → {self.allocation.label}: {self.total_units} units"
+
+    @property
+    def total_units(self):
+        upb = self.order_item.finished_good.units_per_batch or Decimal("1")
+        return self.batch_qty * upb + self.piece_qty
+
+    @property
+    def line_total(self):
+        return self.total_units * ((self.price or Decimal("0")) - (self.discount or Decimal("0")))
+
+
 class OrderMaterialUsage(BusinessOwnedModel):
     """Actual raw-material quantity released for one production order item.
 

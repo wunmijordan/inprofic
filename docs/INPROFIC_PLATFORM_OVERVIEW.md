@@ -33,7 +33,7 @@ The objective is not simply to record transactions. It is to make the business a
 
 Every tenant operates as its own business inside INPROFIC. Its products, customers, suppliers, users, pricing, delivery setup, payments, reports and operational records are isolated from other businesses.
 
-A customer profile created on one tenant storefront belongs only to that tenant. A rider belongs only to the business that linked the rider login. An external auditor sees only the business whose Audit Workspace they were granted. Provider credentials such as Glovo or payment credentials remain business-specific.
+A customer profile created on one tenant storefront belongs only to that tenant. A rider belongs only to the business that linked the rider login. An external auditor sees only the business whose Audit Workspace they were granted. Provider credentials such as Shipbubble or payment credentials remain business-specific.
 
 A commercial subscription can control which modules a business is entitled to use. Founder-level plan controls sit above staff permissions, so a user cannot gain access to a module that the business plan itself does not include.
 
@@ -139,13 +139,17 @@ Tenants can register their own riders or drivers. A rider can be linked to a ded
 
 The rider sees only deliveries assigned to that rider profile, together with the information needed to complete the job. The rider can update allowed delivery stages, record proof details where required, and lodge delivery issues or complaints for dispatch staff to review.
 
-### External delivery partners and optional Glovo adapter
+### External delivery partners and the optional Shipbubble integration
 
 The delivery engine is not built around one courier. A business can configure any delivery partner as a manual courier or connect a courier/merchant integration service through the provider-neutral Delivery Adapter v1 contract. INPROFIC remains authoritative for customer pricing, routing, assignment, status history and tracking.
 
-Glovo LaaS v2 is a built-in optional adapter only when the Founder enables it platform-wide. It remains inactive until the tenant supplies its own approved Glovo account/API configuration. Turning the Founder switch off hides and blocks Glovo runtime use while preserving saved tenant configuration and history.
+Shipbubble is an optional built-in adapter controlled by a platform integration setting. It gives customers live courier rates at checkout and can book the courier after payment. Each tenant connects its own Shipbubble account and API key; turning the platform integration off blocks runtime use while preserving saved tenant configuration and history. Written permission or specific written guidance is required at the software/platform level before publicly using Shipbubble's name or marks; this is separate from tenant API credentials. See [Shipbubble Terms and Conditions](https://shipbubble.com/terms-and-conditions).
 
-The tenant remains free to use in-house delivery, a custom delivery partner, the optional Glovo adapter when available, or Hybrid routing without changing the core Commerce workflow.
+The tenant remains free to use in-house delivery, a custom delivery partner, the optional Shipbubble integration when available, or Hybrid routing without changing the core Commerce workflow.
+
+## WhatsApp Storefront
+
+Commerce includes an optional tenant-connected WhatsApp channel with a staff inbox and human handoff. Customers can browse the live catalogue, create simple orders, choose delivery quotes and start eligible payments in chat. Product option selection and transfer-proof upload use the same hosted checkout as a fallback. Optional AI assistance is disabled by default and does not create orders, set prices, confirm stock, or verify payments. Meta app review, permissions and business-number setup are external prerequisites. See [WhatsApp Storefront setup and contracts](WHATSAPP_STOREFRONT.md).
 
 ### True Hybrid delivery
 

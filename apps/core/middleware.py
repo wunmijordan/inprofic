@@ -1,3 +1,4 @@
+import re
 import time
 from urllib.parse import urlencode
 
@@ -229,12 +230,21 @@ class LoginRequiredMiddleware:
                         return redirect("audit_workspace")
                     if user_has_permission(request.user, business, "pos", "view"):
                         return redirect("commerce_storefront_pos")
+                    if user_has_permission(request.user, business, "kitchen", "view"):
+                        return redirect("orders_list")
                     if user_has_permission(request.user, business, "delivery_rider", "view"):
                         return redirect("delivery_rider_dashboard")
                     if user_has_permission(request.user, business, "delivery", "view"):
                         return redirect("delivery_dashboard")
             module = _module_for_path(request.path)
             action = _action_for_request(request)
+            if module == "production" and _KITCHEN_FLOOR_PATH.match(request.path):
+                # Production-floor users reach only the normal order list, entry
+                # form, detail and flexible-material save; everything else under
+                # /orders/ (approve, complete, runs, invoices...) stays closed.
+                business_ = getattr(request, "business", None)
+                if not user_has_permission(request.user, business_, "production", "view") and user_has_permission(request.user, business_, "kitchen", action):
+                    module = "kitchen"
             if not user_has_permission(request.user, getattr(request, "business", None), module, action):
                 from django.shortcuts import render
                 return render(request, "403.html", status=403)
@@ -258,6 +268,9 @@ MODULE_RULES = [
     ("/business", "dashboard"),
 ]
 
+_KITCHEN_FLOOR_PATH = re.compile(r"^/orders/(?:add/?|\d+/?|\d+/edit/?|\d+/flexible/?)?$")
+
+
 def _module_for_path(path):
     for prefix, module in MODULE_RULES:
         if path == prefix or path.startswith(prefix + "/"):
@@ -275,7 +288,7 @@ def _action_for_request(request):
         return "view"
     if request.method != "POST":
         path = request.path.rstrip("/")
-        if any(token in path.split("/") for token in ("add", "edit", "delete", "approve", "reject", "complete", "receive", "dispense", "permissions")):
+        if any(token in path.split("/") for token in ("add", "edit", "delete", "approve", "reject", "complete", "receive", "dispense", "permissions", "split")):
             return "edit"
         return "view"
     return "edit"

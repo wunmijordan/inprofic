@@ -1,0 +1,85 @@
+{% extends "base.html" %}{% load core_extras %}{% block content %}
+{% with cur=biz.currency_symbol a=result.a b=result.b sa=result.statement_a sb=result.statement_b %}
+<div class="flex flex-wrap items-end justify-between gap-3 mb-5">
+  <div>
+    <a href="{% url 'finance_profit_loss' %}" class="text-xs text-stone-500 hover:text-[#8f172d]">← Profit &amp; Loss</a>
+    <h2 class="text-2xl font-semibold font-display text-[#8f172d] mt-1">Compare periods</h2>
+    <p class="text-sm text-stone-500">See how profit and margin changed, and where the money moved.</p>
+  </div>
+  <a href="{% url 'finance_product_profit' %}" class="px-3 py-2 rounded-md text-sm bg-white text-[#8f172d] border border-[#D9CFB4] shadow-[0_2px_4px_#000000d2]">Product profitability</a>
+</div>
+
+<form method="get" class="rounded-xl border border-[#E7DFCC] bg-white p-4 mb-5 shadow-[0_2px_8px_#000000d2]">
+  <div class="flex flex-wrap items-end gap-3">
+    <div class="flex gap-1 rounded-lg bg-[#F5EFE0] border border-[#E7DFCC] p-1" role="group" aria-label="Compare by">
+      {% for value, label in kinds %}<a href="?kind={{ value }}" class="px-3 py-1.5 text-xs rounded-md {% if kind == value %}bg-[#8f172d] text-white{% else %}text-stone-600 hover:bg-[#4D1C25] hover:text-white{% endif %}" aria-current="{% if kind == value %}true{% else %}false{% endif %}">{{ label }}</a>{% endfor %}
+    </div>
+    <input type="hidden" name="kind" value="{{ kind }}">
+    <label class="text-xs font-semibold text-stone-600">Period<select name="a" class="mt-1 block rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm font-normal">{% for o in options %}<option value="{{ o.start|date:'Y-m-d' }}" {% if o.start == a.start %}selected{% endif %}>{{ o.label }}</option>{% endfor %}</select></label>
+    <span class="pb-2 text-xs text-stone-400">compared with</span>
+    <label class="text-xs font-semibold text-stone-600">Other period<select name="b" class="mt-1 block rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm font-normal">{% for o in options %}<option value="{{ o.start|date:'Y-m-d' }}" {% if o.start == b.start %}selected{% endif %}>{{ o.label }}</option>{% endfor %}</select></label>
+    <button class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Compare</button>
+    <a href="?{{ swap_query }}" class="pb-2 text-xs text-[#8f172d] hover:underline">Swap</a>
+  </div>
+</form>
+
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+  <div class="bg-white border border-[#E7DFCC] rounded-xl p-4 shadow-[0_2px_8px_#000000d2]">
+    <div class="text-[10px] uppercase tracking-wider text-stone-400 font-bold">Net margin</div>
+    <div class="mt-1 flex items-baseline gap-2"><span class="font-mono text-lg font-semibold {% if sa.net_margin is not None and sa.net_margin < 0 %}text-rose-700{% else %}text-emerald-700{% endif %}">{% if sa.net_margin is not None %}{{ sa.net_margin }}%{% else %}—{% endif %}</span><span class="text-xs text-stone-400">vs {% if sb.net_margin is not None %}{{ sb.net_margin }}%{% else %}—{% endif %}</span></div>
+    <div class="text-xs mt-1 {% if result.net_margin_delta is None %}text-stone-400{% elif result.net_margin_delta < 0 %}text-rose-700{% else %}text-emerald-700{% endif %}">{% if result.net_margin_delta is None %}Not enough revenue to compare{% elif result.net_margin_delta < 0 %}▼ {{ result.net_margin_delta|cut:"-" }} points lower{% elif result.net_margin_delta > 0 %}▲ {{ result.net_margin_delta }} points higher{% else %}No change{% endif %}</div>
+  </div>
+  <div class="bg-white border border-[#E7DFCC] rounded-xl p-4 shadow-[0_2px_8px_#000000d2]">
+    <div class="text-[10px] uppercase tracking-wider text-stone-400 font-bold">Gross margin</div>
+    <div class="mt-1 flex items-baseline gap-2"><span class="font-mono text-lg font-semibold text-stone-800">{% if sa.gross_margin is not None %}{{ sa.gross_margin }}%{% else %}—{% endif %}</span><span class="text-xs text-stone-400">vs {% if sb.gross_margin is not None %}{{ sb.gross_margin }}%{% else %}—{% endif %}</span></div>
+    <div class="text-xs mt-1 {% if result.gross_margin_delta is None %}text-stone-400{% elif result.gross_margin_delta < 0 %}text-rose-700{% else %}text-emerald-700{% endif %}">{% if result.gross_margin_delta is None %}—{% elif result.gross_margin_delta < 0 %}▼ {{ result.gross_margin_delta|cut:"-" }} points lower{% elif result.gross_margin_delta > 0 %}▲ {{ result.gross_margin_delta }} points higher{% else %}No change{% endif %}</div>
+  </div>
+  <div class="bg-white border border-[#E7DFCC] rounded-xl p-4 shadow-[0_2px_8px_#000000d2]">
+    <div class="text-[10px] uppercase tracking-wider text-stone-400 font-bold">Net profit</div>
+    <div class="mt-1 flex items-baseline gap-2"><span class="font-mono text-lg font-semibold {% if sa.net_profit < 0 %}text-rose-700{% else %}text-emerald-700{% endif %}">{% if sa.net_profit < 0 %}−{% endif %}{{ sa.net_profit|money:cur|cut:"-" }}</span><span class="text-xs text-stone-400">vs {% if sb.net_profit < 0 %}−{% endif %}{{ sb.net_profit|money:cur|cut:"-" }}</span></div>
+    <div class="text-xs mt-1 text-stone-400">{{ a.label }} vs {{ b.label }}</div>
+  </div>
+</div>
+
+{% if result.movers %}
+<div class="rounded-xl border border-[#E7DFCC] bg-white p-4 mb-5 shadow-[0_2px_8px_#000000d2]">
+  <div class="text-xs uppercase tracking-wider font-bold text-[#8f172d] mb-2">Where the money moved</div>
+  <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+    {% for m in result.movers %}<div class="rounded-lg border border-[#EFE7D2] px-3 py-2 text-xs"><div class="font-semibold text-stone-700">{{ m.label }}</div><div class="mt-0.5 {% if m.share_delta > 0 %}text-rose-700{% else %}text-emerald-700{% endif %}">{% if m.share_delta > 0 %}Took {{ m.share_delta }} more points of revenue{% else %}Took {{ m.share_delta|cut:"-" }} fewer points of revenue{% endif %}</div><div class="text-stone-400 mt-0.5">{{ m.share_b|default_if_none:"—" }}% → {{ m.share_a|default_if_none:"—" }}% of revenue</div></div>{% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="grid grid-cols-1 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-4 mb-6">
+  <div class="bg-white border border-[#E7DFCC] rounded-xl shadow-[0_2px_8px_#000000d2] overflow-x-auto">
+    <table class="w-full text-sm min-w-[34rem]">
+      <thead><tr class="border-b border-[#E7DFCC] text-[10px] uppercase tracking-wider text-stone-400"><th class="px-4 py-3 text-left">Line</th><th class="px-3 py-3 text-right">{{ a.short }}</th><th class="px-3 py-3 text-right">{{ b.short }}</th><th class="px-3 py-3 text-right">Change</th><th class="px-3 py-3 text-right">% of revenue</th></tr></thead>
+      <tbody class="divide-y divide-[#EFE7D2]">
+        {% for r in result.rows %}
+        <tr class="{% if r.kind == 'net' %}bg-[#F5EFE0] font-semibold{% elif r.kind == 'subtotal' %}bg-stone-50 font-semibold{% elif r.kind == 'income' %}font-semibold{% endif %}">
+          <td class="px-4 py-2.5 {% if r.indent %}pl-9 text-stone-600{% endif %}">{{ r.label }}</td>
+          <td class="px-3 py-2.5 text-right font-mono">{{ r.a|money:cur }}</td>
+          <td class="px-3 py-2.5 text-right font-mono text-stone-500">{{ r.b|money:cur }}</td>
+          <td class="px-3 py-2.5 text-right font-mono {% if r.kind == 'cost' %}{% if r.change > 0 %}text-rose-700{% elif r.change < 0 %}text-emerald-700{% endif %}{% else %}{% if r.change > 0 %}text-emerald-700{% elif r.change < 0 %}text-rose-700{% endif %}{% endif %}">{% if r.change > 0 %}+{% elif r.change < 0 %}−{% endif %}{{ r.change|money:cur|cut:"-" }}{% if r.change_pct is not None %}<span class="block text-[10px] font-normal text-stone-400">{{ r.change_pct }}%</span>{% endif %}</td>
+          <td class="px-3 py-2.5 text-right text-xs text-stone-500">{% if r.share_a is not None %}{{ r.share_a }}%{% else %}—{% endif %}{% if r.share_delta is not None and r.share_delta != 0 %}<span class="block text-[10px] {% if r.kind == 'cost' %}{% if r.share_delta > 0 %}text-rose-700{% else %}text-emerald-700{% endif %}{% else %}{% if r.share_delta > 0 %}text-emerald-700{% else %}text-rose-700{% endif %}{% endif %}">{% if r.share_delta > 0 %}+{% endif %}{{ r.share_delta }} pts</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="bg-white border border-[#E7DFCC] rounded-xl shadow-[0_2px_8px_#000000d2] overflow-hidden self-start">
+    <div class="px-4 py-3 border-b border-[#E7DFCC] font-semibold flex justify-between"><span>Net margin trend</span><span class="text-xs text-stone-400 font-normal">{% if best_margin is not None %}best {{ best_margin }}% · lowest {{ worst_margin }}%{% endif %}</span></div>
+    <div class="divide-y divide-[#EFE7D2]">
+      {% for row in trend %}
+      <a href="?kind={{ kind }}&a={{ row.start|date:'Y-m-d' }}&b={{ b.start|date:'Y-m-d' }}" class="flex items-center gap-3 px-4 py-2 text-xs hover:bg-stone-50" title="Compare {{ row.full_label }}">
+        <span class="w-12 shrink-0 text-stone-500">{{ row.label }}</span>
+        <span class="relative h-2.5 flex-1 rounded bg-stone-100"><span class="absolute inset-y-0 left-0 rounded {% if row.net_margin is not None and row.net_margin < 0 %}bg-rose-500{% else %}bg-emerald-500{% endif %}" style="width: {{ row.bar }}%"></span></span>
+        <span class="w-14 shrink-0 text-right font-mono {% if row.net_margin is not None and row.net_margin < 0 %}text-rose-700{% else %}text-stone-700{% endif %}">{% if row.net_margin is not None %}{{ row.net_margin }}%{% else %}—{% endif %}</span>
+      </a>
+      {% endfor %}
+    </div>
+    <p class="px-4 py-2 text-[11px] text-stone-400">Select a period to compare it with {{ b.short }}.</p>
+  </div>
+</div>
+<p class="text-xs text-stone-400 mb-6">Margin is a percentage of revenue, so a period can earn more money but a thinner margin. Percentage points (pts) show the change between the two shares.</p>
+{% endwith %}{% endblock %}

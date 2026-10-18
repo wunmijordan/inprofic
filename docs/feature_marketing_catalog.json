@@ -220,9 +220,18 @@
     "name": "Provider-neutral delivery partner adapters",
     "group": "delivery",
     "audience": "businesses using in-house riders, couriers or external delivery partners",
-    "proof": "Keep INPROFIC in control of delivery pricing, routing and tracking while any courier stays manual or connects through a normalized dispatch/status adapter; optional built-in providers remain separately governed.",
+    "proof": "Keep INPROFIC in control of delivery pricing, routing and tracking while any courier stays manual or connects through a normalized dispatch/status adapter. When the platform enables the optional Shipbubble adapter, each business connects its own account and configures courier choice, parcel defaults and dispatch. Obtain software-level written permission before public use of Shipbubble's name or marks.",
     "highlight": "NEW",
     "added_on": "2026-09-20"
+  },
+  {
+    "id": "whatsapp-storefront-assistant",
+    "name": "Tenant-connected WhatsApp storefront and sales assistant",
+    "group": "commerce",
+    "audience": "businesses selling online and customers who prefer WhatsApp",
+    "proof": "Connect a business-owned WhatsApp number through Meta Embedded Signup, answer from current Commerce records, take simple orders and eligible payments in chat, fall back to hosted checkout for product options or proof upload, and hand conversations to staff. Optional AI support is disabled by default; Meta app review and permissions are required before production onboarding.",
+    "highlight": "NEW",
+    "added_on": "2026-10-18"
   },
   {
     "id": "delivery-notifications",
@@ -439,5 +448,14 @@
     "proof": "Businesses can offer car delivery beside motorbike delivery just by adding a car price band, with the same riders, independent-rider and batch options. At checkout the customer presses Calculate delivery, sees Motorbike and Car with their own prices and ETAs, picks the one they want, then presses Place order; tracking, rider and dispatch screens show a car or motorbike icon throughout the delivery.",
     "highlight": "NEW",
     "added_on": "2026-10-09"
+  },
+  {
+    "id": "multi-channel-production-orders",
+    "name": "One production order, several channels",
+    "group": "production",
+    "audience": "bakeries, restaurants and production businesses that serve stores, online customers and bulk buyers from the same run",
+    "proof": "Assign one production order's output, product by product, to Physical Store stock, online or bulk/distribution customers, or market stock - each customer with its own sale and payment - while materials are released once and every batch keeps its cost snapshot. It works whatever the production basis, and whoever entered the order.",
+    "highlight": "NEW",
+    "added_on": "2026-10-16"
   }
 ]

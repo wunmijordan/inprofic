@@ -18,6 +18,7 @@ from django.utils.text import slugify
 from core.models import Business
 from core.performance import performance_section
 from .forms import BusinessSignupForm, UserForm, PermissionMatrixForm, RoleForm, RolePermissionForm
+from .models import BILLING_CYCLE_LABELS, BILLING_CYCLE_MONTHS
 from .models import BusinessModuleAccess, CustomUser, Role, RoleModulePermission, UserBusiness, UserModulePermission
 from .services import ensure_permissions, is_business_admin, seed_business_modules, seed_business_roles, user_has_permission
 
@@ -356,6 +357,7 @@ def subscription_payment(request, plan_code=None):
     from .payment_gateways import GatewayError, initialize_gateway
     from .services import business_subscription_for
     from .subscription_services import (
+        active_promotion_for_plan,
         attach_active_promotions,
         create_payment_request,
         ensure_default_plans,
@@ -426,14 +428,14 @@ def subscription_payment(request, plan_code=None):
             messages.success(request, f"Trial switched to {selected.name}; the current trial end date is unchanged.")
             return redirect("subscription_plans")
         billing_cycle = request.POST.get("billing_cycle") or SubscriptionPayment.CYCLE_MONTHLY
-        if billing_cycle not in {SubscriptionPayment.CYCLE_MONTHLY, SubscriptionPayment.CYCLE_YEARLY}:
+        if billing_cycle not in BILLING_CYCLE_MONTHS:
             billing_cycle = SubscriptionPayment.CYCLE_MONTHLY
         provider = request.POST.get("provider") or ""
         if not payment_settings.provider_enabled(provider):
             messages.error(request, "That subscription payment provider is currently unavailable. Choose an enabled provider.")
             return redirect("subscription_payment_plan", plan_code=selected.code)
         try:
-            months = 12 if billing_cycle == SubscriptionPayment.CYCLE_YEARLY else max(1, min(12, int(request.POST.get("months") or 1)))
+            months = BILLING_CYCLE_MONTHS[billing_cycle] if billing_cycle != SubscriptionPayment.CYCLE_MONTHLY else max(1, min(12, int(request.POST.get("months") or 1)))
         except (TypeError, ValueError):
             months = 1
         try:
@@ -468,6 +470,16 @@ def subscription_payment(request, plan_code=None):
         "service_profiles": service_profiles,
         "selected_monthly_total": payment_amount(selected, len(service_profiles), 1),
         "selected_yearly_total": payment_amount(selected, len(service_profiles), 12, billing_cycle=SubscriptionPayment.CYCLE_YEARLY),
+        "cycle_totals": [
+            {
+                "key": key, "label": BILLING_CYCLE_LABELS[key], "months": months_,
+                "discount": selected.cycle_discount_percent(key),
+                "total": str(payment_amount(selected, len(service_profiles), months_, billing_cycle=key)),
+                "base_total": str(payment_amount(selected, len(service_profiles), months_, billing_cycle=key, promotion=False)),
+                "promo": bool(active_promotion_for_plan(selected, billing_cycle=key)),
+            }
+            for key, months_ in BILLING_CYCLE_MONTHS.items()
+        ],
         "selected_base_monthly_total": payment_amount(selected, len(service_profiles), 1, promotion=False),
         "selected_base_yearly_total": payment_amount(selected, len(service_profiles), 12, billing_cycle=SubscriptionPayment.CYCLE_YEARLY, promotion=False),
         "available_payment_providers": available_payment_providers,
@@ -1280,6 +1292,7 @@ def founder_subscriptions(request):
             from decimal import Decimal, InvalidOperation
             plans_to_update = list(SubscriptionPlan.objects.all().order_by("id"))
             parsed = []
+            cycle_discounts = {}
             try:
                 for plan in plans_to_update:
                     starter_free = bool(
@@ -1292,6 +1305,10 @@ def founder_subscriptions(request):
                     elif plan.code == SubscriptionPlan.CODE_STARTER and monthly <= 0:
                         raise ValueError("Paid Starter needs a positive monthly price.")
                     yearly_discount = min(Decimal("100"), max(Decimal("0"), Decimal(request.POST.get(f"yearly_discount_{plan.pk}") or "0")))
+                    cycle_discounts[plan.pk] = (
+                        min(Decimal("100"), max(Decimal("0"), Decimal(request.POST.get(f"quarterly_discount_{plan.pk}") or "0"))),
+                        min(Decimal("100"), max(Decimal("0"), Decimal(request.POST.get(f"biannual_discount_{plan.pk}") or "0"))),
+                    )
                     addon_discount = min(Decimal("100"), max(Decimal("0"), Decimal(request.POST.get(f"addon_discount_{plan.pk}") or "0")))
                     if plan.code == SubscriptionPlan.CODE_STARTER:
                         user_limit, service_limit = 1, 0
@@ -1335,6 +1352,7 @@ def founder_subscriptions(request):
                 for plan, monthly, yearly_discount, addon_discount, user_limit, service_limit, was_free, will_be_free in parsed:
                     plan.monthly_price = monthly
                     plan.yearly_discount_percent = yearly_discount
+                    plan.quarterly_discount_percent, plan.biannual_discount_percent = cycle_discounts[plan.pk]
                     plan.additional_service_discount_percent = addon_discount
                     plan.user_limit = user_limit
                     plan.additional_service_limit = service_limit
@@ -1370,6 +1388,7 @@ def founder_subscriptions(request):
                     plan_rows,
                     [
                         "monthly_price", "yearly_discount_percent",
+                        "quarterly_discount_percent", "biannual_discount_percent",
                         "additional_service_discount_percent", "trial_days",
                         "user_limit", "additional_service_limit",
                     ],
@@ -1413,13 +1432,16 @@ def founder_subscriptions(request):
             messages.success(request, "Privacy Policy updated and the public cached copy was refreshed.")
             return redirect(f"{reverse('founder_subscriptions')}?workspace=management#privacy-policy-management")
         if action == "save_platform_integrations":
-            integration_settings.glovo_enabled = request.POST.get("glovo_enabled") == "on"
+            integration_settings.shipbubble_enabled = request.POST.get("shipbubble_enabled") == "on"
+            integration_settings.whatsapp_storefront_enabled = request.POST.get("whatsapp_storefront_enabled") == "on"
             integration_settings.updated_by = request.user
-            integration_settings.save(update_fields=["glovo_enabled", "updated_by", "updated_at"])
-            from .platform_integrations import set_glovo_platform_enabled
-            set_glovo_platform_enabled(integration_settings.glovo_enabled)
-            state = "available" if integration_settings.glovo_enabled else "hidden and unavailable"
-            messages.success(request, f"External integration availability updated. Optional delivery provider is now {state} outside the Founder Console.")
+            integration_settings.save(update_fields=["shipbubble_enabled", "whatsapp_storefront_enabled", "updated_by", "updated_at"])
+            from .platform_integrations import set_shipbubble_platform_enabled, set_whatsapp_storefront_platform_enabled
+            set_shipbubble_platform_enabled(integration_settings.shipbubble_enabled)
+            set_whatsapp_storefront_platform_enabled(integration_settings.whatsapp_storefront_enabled)
+            shipbubble_state = "available" if integration_settings.shipbubble_enabled else "hidden and unavailable"
+            whatsapp_state = "available" if integration_settings.whatsapp_storefront_enabled else "hidden and unavailable"
+            messages.success(request, f"Platform availability updated. Shipbubble is {shipbubble_state}; WhatsApp Storefront is {whatsapp_state} outside the Founder Console.")
             return redirect(f"{reverse('founder_subscriptions')}?workspace=management#platform-integrations")
         if action == "revoke_founder":
             from .subscription_services import revoke_founder_lifetime

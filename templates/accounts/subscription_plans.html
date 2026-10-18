@@ -8,31 +8,21 @@
   </div>
   {% if subscription %}
   <div class="mb-5 rounded-lg border {% if subscription.is_expiring_soon %}border-rose-300 bg-rose-50{% else %}border-[#E7DFCC] bg-[#FFFDF8]{% endif %} p-4">
-    <div class="flex flex-wrap justify-between gap-3"><div><div class="text-xs uppercase tracking-wider text-stone-500">Current plan</div><div class="font-semibold">{{ subscription.plan.name }} · {{ subscription.effective_status_label }}</div></div><div class="text-sm">{% if subscription.founder_lifetime %}<strong>Lifetime founder access</strong>{% elif subscription.expires_at %}Expires {{ subscription.expires_at|date:"j M Y" }}{% endif %}</div></div>
+    <div class="flex flex-wrap justify-between gap-3"><div><div class="text-xs uppercase tracking-wider text-stone-500">Current plan</div><div class="font-semibold">{{ subscription.plan.name }} · {{ subscription.effective_status_label }}</div></div><div class="text-sm">{% if subscription.founder_lifetime %}<strong>Lifetime access</strong>{% elif subscription.expires_at %}Expires {{ subscription.expires_at|date:"j M Y" }}{% endif %}</div></div>
     <div class="mt-3 text-sm">Monthly total at configured pricing: <strong class="font-mono">{{ subscription.monthly_total|money:biz.currency_symbol }}</strong></div>
     <div class="mt-3 flex flex-wrap gap-2">{% for service in subscription.services.all %}<span class="rounded-full bg-[#F5EFE0] border border-[#E7DFCC] px-2.5 py-1 text-xs">{{ service.business.name }} · {{ service.business.get_vertical_display }}{% if service.is_primary %} · Primary{% endif %}</span>{% endfor %}</div>
     {% if can_add_service %}<a href="{% url 'subscription_add_service' %}" class="inline-block mt-3 text-sm text-[#8f172d] underline">+ Add another service/business profile</a>{% else %}<p class="mt-3 text-xs text-stone-500">This plan's additional-service capacity is in use. Choose a plan with more capacity to add another profile.</p>{% endif %}
     {% if subscription.status == 'trial' %}<form method="post" action="{% url 'subscription_payment_plan' subscription.plan.code %}" class="mt-3">{% csrf_token %}<button name="action" value="cancel_trial" class="text-sm font-medium text-rose-700 underline">{% if subscription.plan.code == 'starter' and not subscription.plan.is_free_forever %}End Starter trial{% else %}Cancel trial and return to Starter{% endif %}</button></form>{% endif %}
   </div>
   {% else %}<div class="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm"><strong>Existing access:</strong> this existing business has not yet been enrolled in a subscription, so its current module access is preserved. Choosing a plan makes the plan entitlements authoritative.</div>{% endif %}
-  <div class="grid items-stretch lg:grid-cols-3 gap-4">
+  <div class="mb-4 flex justify-center">{% include "accounts/_billing_switch.html" with plans=plans theme="light" %}</div>
+<div class="grid items-stretch lg:grid-cols-3 gap-4">
     {% for card in plan_cards %}{% with plan=card.plan %}<article class="flex h-full flex-col bg-[#FFFDF8] border {% if card.is_current %}border-emerald-400 ring-2 ring-emerald-100{% else %}border-[#E7DFCC]{% endif %} rounded-2xl p-5 shadow-[0_8px_24px_rgba(0,0,0,.08)]">
-      <div class="flex flex-wrap items-center justify-between gap-2"><h2 class="font-display text-xl font-semibold text-[#8f172d]">{{ plan.name }}</h2>{% if card.is_current %}<span class="rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-800">Current · {{ subscription.effective_status_label }}</span>{% endif %}</div>
-      {% if plan.current_monthly_promotion %}
-      <div class="mt-3 flex items-baseline gap-2"><span class="font-mono text-sm text-stone-400 line-through">{{ plan.monthly_price|money:biz.currency_symbol }}</span><span class="text-2xl font-semibold font-mono text-[#8f172d]">{{ plan.promo_monthly_price|money:biz.currency_symbol }}</span><span class="text-xs text-stone-500">/ month</span></div>
-      <p class="mt-1 text-xs font-medium text-[#b94300]">{{ plan.current_monthly_promotion.reason }} · ends {{ plan.current_monthly_promotion.ends_at|date:"j M Y" }}</p>
-      {% else %}
-      <div class="mt-2 text-2xl font-semibold font-mono text-stone-900">{% if plan.is_free_forever %}Free forever{% else %}{{ plan.monthly_price|money:biz.currency_symbol }}<span class="text-xs font-normal font-sans text-stone-500"> / month</span>{% endif %}</div>
-      {% endif %}
-      {% if plan.current_yearly_promotion %}
-      <div class="mt-2 text-sm font-medium text-emerald-700"><span class="font-mono">{{ plan.promo_yearly_price|money:biz.currency_symbol }}</span> / year · {{ plan.current_yearly_promotion.reason }}</div>
-      {% elif not plan.is_free_forever %}
-      <div class="mt-2 text-sm font-medium text-emerald-700"><span class="font-mono">{{ plan.yearly_price|money:biz.currency_symbol }}</span> / year{% if plan.code != 'starter' %} · {{ plan.yearly_discount_percent }}% yearly discount{% endif %}</div>
-      {% endif %}
-      <div class="mt-4 border-t border-[#E7DFCC] pt-4 text-xs leading-6 text-stone-600">
+      <div class="flex flex-wrap items-center justify-between gap-2"><h2 class="font-display text-xl font-semibold text-[#8f172d]">{{ plan.matrix_display_name|default:plan.name }}</h2>{% if card.is_current %}<span class="rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-800">Current</span>{% endif %}</div>
+      {% include "accounts/_plan_cycle_prices.html" with plan=plan symbol=biz.currency_symbol theme="light" %}
+            <div class="mt-4 border-t border-[#E7DFCC] pt-4 text-xs leading-6 text-stone-600">
         <p><strong class="text-stone-800">{% if plan.user_limit %}{{ plan.user_limit }} user{{ plan.user_limit|pluralize }}{% else %}Unlimited users{% endif %}</strong></p>
-        <p>{% if plan.additional_service_limit == None %}Unlimited additional service profiles{% elif plan.additional_service_limit %}{{ plan.additional_service_limit }} additional service profile{{ plan.additional_service_limit|pluralize }}{% else %}Single service profile{% endif %}</p>
-        {% if plan.code != 'starter' %}<p>Additional services use the configured {{ plan.additional_service_discount_percent }}% discount.</p>{% endif %}
+        <p>{% if plan.additional_service_limit == None %}Unlimited additional service profiles{% elif plan.additional_service_limit %}{{ plan.additional_service_limit }} additional service profile{{ plan.additional_service_limit|pluralize }}{% else %}Single service profile{% endif %} - {% if plan.code != 'starter' %}{{ plan.additional_service_discount_percent }}% Off.{% endif %}</p>
         {% include "accounts/_plan_payroll_addon.html" with plan=plan symbol=biz.currency_symbol included=card.payroll_included %}
       </div>
       <div class="mt-auto pt-5 w-full">
@@ -45,6 +35,5 @@
     </article>{% endwith %}{% endfor %}
   </div>
   {% if plans %}<div class="mt-5">{% include "accounts/_plan_feature_matrix.html" %}</div>{% endif %}
-  <!-- <p class="text-xs text-stone-500 mt-4">Plan pricing, users, additional services and module entitlements are configured by the INPROFIC founder. Starter remains fixed at one user and no additional service, while its free/paid commercial mode is founder-controlled.</p> -->
 </div>
 {% endblock %}

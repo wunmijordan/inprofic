@@ -3,7 +3,7 @@ from pathlib import Path
 from accounts.models import RoleModulePermission, UserBusiness
 from accounts.services import business_subscription_for, can_use_commerce_storefront, is_business_admin, is_live_tester, user_has_permission
 from accounts.subscription_services import business_has_feature
-from accounts.platform_integrations import glovo_platform_enabled
+from accounts.platform_integrations import shipbubble_platform_enabled, whatsapp_storefront_platform_enabled
 from django.conf import settings
 from django.utils.functional import SimpleLazyObject
 from .context import get_request_cache
@@ -98,7 +98,8 @@ def business(request):
         "static_asset_version": (
             _static_asset_version() if settings.DEBUG else STATIC_ASSET_VERSION
         ),
-        "glovo_platform_enabled": SimpleLazyObject(glovo_platform_enabled),
+        "shipbubble_platform_enabled": SimpleLazyObject(shipbubble_platform_enabled),
+        "whatsapp_storefront_platform_enabled": SimpleLazyObject(whatsapp_storefront_platform_enabled),
         # Only the reports page consumes this flag. Keep it lazy so ordinary
         # navigation doesn't query feature entitlements that won't be rendered.
         "reports_full": (

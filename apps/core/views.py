@@ -133,7 +133,15 @@ def marketing_home(request):
 
     marketing_cache_key = None
     if not request.user.is_authenticated and not request.GET:
-        marketing_cache_key = f"marketing:home:v4:{request.get_host().lower()}"
+        # Integration switches control public feature listings. Include their
+        # current state in the cache key so switch changes take effect on
+        # already cached marketing pages.
+        from accounts.platform_integrations import shipbubble_platform_enabled, whatsapp_storefront_platform_enabled
+        marketing_cache_key = (
+            f"marketing:home:v5:{request.get_host().lower()}:"
+            f"shipbubble-{int(shipbubble_platform_enabled())}-"
+            f"whatsapp-{int(whatsapp_storefront_platform_enabled())}"
+        )
         with performance_section(request, "marketing.cache_read"):
             cached_html = cache.get(marketing_cache_key)
         if cached_html is not None:
@@ -606,6 +614,13 @@ def _financial_daily_ledgers(start, end):
             date__range=(start, end), payment_status="paid"
         ).values("date").annotate(total=Sum("amount"))
     }
+    # Wages are real cash out too: runs plus later corrections, net of recoveries.
+    payroll_by_date = defaultdict(Decimal)
+    for row in FinancialTransaction.objects.filter(
+        date__range=(start, end), category__in=("Payroll / Wages", "Payroll adjustment"),
+    ).values("date", "transaction_type").annotate(total=Sum("amount")):
+        sign = 1 if row["transaction_type"] == FinancialTransaction.OUTFLOW else -1
+        payroll_by_date[row["date"]] += sign * (row["total"] or Decimal("0"))
     return {
         "start": start,
         "end": end,
@@ -614,6 +629,7 @@ def _financial_daily_ledgers(start, end):
         "procurement_by_date": procurement_by_date,
         "cash_procurement_by_date": cash_procurement_by_date,
         "expenses_by_date": expenses_by_date,
+        "payroll_by_date": dict(payroll_by_date),
     }
 
 
@@ -628,6 +644,7 @@ def _financial_snapshot(ledger=None):
     procurement_by_date = ledger["procurement_by_date"]
     cash_procurement_by_date = ledger["cash_procurement_by_date"]
     expenses_by_date = ledger["expenses_by_date"]
+    payroll_by_date = ledger.get("payroll_by_date", {})
 
     def period_total(values, start, end):
         return sum(
@@ -641,7 +658,8 @@ def _financial_snapshot(ledger=None):
         procurement = period_total(procurement_by_date, start, end)
         cash_procurement = period_total(cash_procurement_by_date, start, end)
         misc = period_total(expenses_by_date, start, end)
-        spend = cash_procurement + misc
+        payroll = period_total(payroll_by_date, start, end)
+        spend = cash_procurement + misc + payroll
         cogs = period_total(cogs_by_date, start, end)
         rows.append({
             "label": label,
@@ -649,6 +667,7 @@ def _financial_snapshot(ledger=None):
             "procurement": procurement,
             "cash_procurement": cash_procurement,
             "misc": misc,
+            "payroll": payroll,
             "spend": spend,
             "gross_profit": sales - cogs,
             "cogs": cogs,
@@ -658,7 +677,7 @@ def _financial_snapshot(ledger=None):
     return rows
 
 
-def _financial_chart_series(ledger=None):
+def _financial_chart_series(ledger=None, fiscal=None):
     """Return dashboard chart data at useful resolutions for each period tab.
 
     Week/month use daily points; quarter uses weekly points; year uses monthly
@@ -678,6 +697,7 @@ def _financial_chart_series(ledger=None):
     sales_by_date = ledger["sales_by_date"]
     procurement_by_date = ledger["cash_procurement_by_date"]
     expenses_by_date = ledger["expenses_by_date"]
+    payroll_by_date = ledger.get("payroll_by_date", {})
 
     def period_total(values, start, end):
         return sum(
@@ -689,8 +709,9 @@ def _financial_chart_series(ledger=None):
         sales = period_total(sales_by_date, start, end)
         procurement = period_total(procurement_by_date, start, end)
         misc = period_total(expenses_by_date, start, end)
+        payroll = period_total(payroll_by_date, start, end)
 
-        spend = procurement + misc
+        spend = procurement + misc + payroll
         revenue = sales - spend
 
         return {
@@ -698,6 +719,9 @@ def _financial_chart_series(ledger=None):
             "sales": float(sales or 0),
             "spend": float(spend or 0),
             "revenue": float(revenue or 0),
+            "procurement": float(procurement or 0),
+            "expenses": float(misc or 0),
+            "payroll": float(payroll or 0),
         }
 
     daily = []
@@ -729,7 +753,67 @@ def _financial_chart_series(ledger=None):
         end = min(next_start - timedelta(days=1), t)
         yearly.append(bucket(start, end, start.strftime("%b")))
 
-    return {"week": daily, "month": month_daily, "quarter": quarterly, "year": yearly}
+    series = {"week": daily, "month": month_daily, "quarter": quarterly, "year": yearly}
+    if fiscal:
+        series["fiscal"] = [
+            bucket(start, end, label)
+            for start, end, label in _fiscal_buckets(fiscal, t)
+        ]
+    return series
+
+
+def _fiscal_buckets(fiscal, t):
+    """(start, end, label) buckets across the business period up to today.
+
+    Quarters are charted weekly, half years and years monthly.
+    """
+    from .accounting import add_months
+    start, stop = fiscal["start"], min(fiscal["end"], t)
+    weekly = fiscal["months"] <= 3
+    buckets, cursor = [], start
+    while cursor <= stop:
+        if weekly:
+            end = min(cursor + timedelta(days=6), stop)
+            label = cursor.strftime("%d %b")
+        else:
+            month_start = cursor.replace(day=1)
+            end = min(add_months(month_start, 1) - timedelta(days=1), stop)
+            label = cursor.strftime("%b")
+        buckets.append((cursor, end, label))
+        cursor = end + timedelta(days=1)
+    return buckets
+
+
+def _profit_chart_series(business, components, fiscal):
+    """The same chart buckets as the cash view, on a profit-and-loss basis."""
+    from .accounting import bucket_row
+    t = today()
+    week_start = t - timedelta(days=6)
+    month_start = t.replace(day=1)
+    quarter_start = _quarter_start(t)
+    year_start = t.replace(month=1, day=1)
+    series = {
+        "week": [bucket_row(components, d, d, d.strftime("%a %d")) for d in (week_start + timedelta(days=i) for i in range(7))],
+        "month": [bucket_row(components, d, d, d.strftime("%d %b")) for d in (month_start + timedelta(days=i) for i in range((t - month_start).days + 1))],
+    }
+    weekly, cursor = [], quarter_start
+    while cursor <= t:
+        end = min(cursor + timedelta(days=6), t)
+        weekly.append(bucket_row(components, cursor, end, f"{cursor.strftime('%d %b')}–{end.strftime('%d %b')}"))
+        cursor = end + timedelta(days=1)
+    series["quarter"] = weekly
+    series["year"] = [
+        bucket_row(components, year_start.replace(month=m), min(_quarter_month_end(t.year, m), t), year_start.replace(month=m).strftime("%b"))
+        for m in range(1, t.month + 1)
+    ]
+    if fiscal:
+        series["fiscal"] = [bucket_row(components, start, end, label) for start, end, label in _fiscal_buckets(fiscal, t)]
+    return series
+
+
+def _quarter_month_end(year, month):
+    from .accounting import add_months
+    return add_months(datetime(year, month, 1).date(), 1) - timedelta(days=1)
 
 def _financial_chart_json():
     return _financial_chart_series()
@@ -1216,6 +1300,12 @@ def _raw_search_detail(material):
     }
 
 
+def _product_profitability_payload(good):
+    """Profit, rank and cost build-up for the finished-good search detail."""
+    from .accounting import product_profit_windows
+    return product_profit_windows(good.business, good, today())
+
+
 def _finished_good_search_detail(good):
     vocabulary = vertical_config(good.business)
     periods = _search_periods()
@@ -1251,15 +1341,18 @@ def _finished_good_search_detail(good):
         "physical_store": "Physical store",
         "distribution": "Distribution",
         "online": "Online",
+        "multi_channel": "Multi-channel (shared production)",
     }
     channel_rows = []
-    for channel in ("physical_store", "distribution", "online"):
+    for channel in ("physical_store", "distribution", "online", "multi_channel"):
         batches_qs = ProductionBatch.objects.filter(
             finished_good=good,
             order__order_type=channel,
             order__status="completed",
             is_reversed=False,
         ).prefetch_related("reconciliation_in", "reconciliation_out")
+        if channel == "multi_channel" and not batches_qs.exists():
+            continue  # only appears once a multi-channel order has produced this product
         units = sum((b.saleable_units for b in batches_qs), Decimal("0"))
         shortages = sum((b.shortage_units for b in batches_qs), Decimal("0"))
         reconciled = sum((b.reconciled_units for b in batches_qs), Decimal("0"))
@@ -1395,6 +1488,7 @@ def _finished_good_search_detail(good):
             "units_per_batch": _decimal(good.units_per_batch),
         },
         "periods": period_rows,
+        "profitability": _product_profitability_payload(good),
         "production_channels": channel_rows,
         "sales_channels": sales_by_channel,
         "recipe": [
@@ -1766,11 +1860,14 @@ def dashboard(request):
             )
             monthly_units = received_totals["monthly"] or Decimal("0")
             yearly_units = received_totals["yearly"] or Decimal("0")
+    from .accounting import daily_components, fiscal_period
+    fiscal = fiscal_period(request.business, dashboard_date)
     financial_ledger_start = min(
-        year_start, dashboard_date - timedelta(days=dashboard_date.weekday())
+        year_start, dashboard_date - timedelta(days=dashboard_date.weekday()),
+        dashboard_date - timedelta(days=6), fiscal["start"],
     )
     financial_cache_key = (
-        f"dashboard:finance-ledger:v2:{request.business.pk}:"
+        f"dashboard:finance-ledger:v3:{request.business.pk}:"
         f"{financial_ledger_start.isoformat()}:{dashboard_date.isoformat()}"
     )
     with performance_section(request, "dashboard.finance"):
@@ -1779,7 +1876,22 @@ def dashboard(request):
             financial_ledger = _financial_daily_ledgers(financial_ledger_start, dashboard_date)
             cache.set(financial_cache_key, financial_ledger, 20)
         financial = _financial_snapshot(financial_ledger)
-        financial_json = _financial_chart_series(financial_ledger)
+        financial_json = _financial_chart_series(financial_ledger, fiscal)
+        profit_key = (
+            f"dashboard:profit-components:v1:{request.business.pk}:"
+            f"{financial_ledger_start.isoformat()}:{dashboard_date.isoformat()}"
+        )
+        profit_components = cache.get(profit_key)
+        if profit_components is None:
+            profit_components = daily_components(request.business, financial_ledger_start, dashboard_date)
+            cache.set(profit_key, profit_components, 20)
+        profit_json = _profit_chart_series(request.business, profit_components, fiscal)
+        fiscal_meta = {
+            "label": fiscal["label"], "short": fiscal["short"], "kind": fiscal["kind_label"],
+            "start": fiscal["start"].isoformat(), "end": fiscal["end"].isoformat(),
+            "in_progress": fiscal["start"] <= dashboard_date <= fiscal["end"],
+            "url": reverse("finance_profit_loss"),
+        }
         channel = _sales_by_channel(month_start, dashboard_date, sales=month_sales)
         channel_breakdowns = {
             "distribution": _channel_breakdown(
@@ -1836,6 +1948,8 @@ def dashboard(request):
         "yearly_units": yearly_units,
         "financial": financial,
         "financial_json": financial_json,
+        "profit_json": profit_json,
+        "fiscal_meta": fiscal_meta,
         "channel_sales": channel,
         "channel_breakdowns": channel_breakdowns,
         "all_raw_materials": raw_materials,
@@ -2244,15 +2358,15 @@ def export_operational_dispenses_xlsx(request):
 @login_required
 @reports_full_required
 def export_financial_csv(request):
-    rows = [[r["label"], r["sales"], r["cogs"], r["gross_profit"], r["procurement"], r["cash_procurement"], r["misc"], r["spend"], r["net_cash_flow"]] for r in _financial_snapshot()]
-    return _csv_response("financial-summary.csv", ["Period", "Paid Sales", "COGS", "Gross Profit", "Procurement Received", "Procurement Cash Paid", "Expenses Paid", "Cash Outflow", "Net Cash Flow"], rows)
+    rows = [[r["label"], r["sales"], r["cogs"], r["gross_profit"], r["procurement"], r["cash_procurement"], r["misc"], r["payroll"], r["spend"], r["net_cash_flow"]] for r in _financial_snapshot()]
+    return _csv_response("financial-summary.csv", ["Period", "Paid Sales", "COGS", "Gross Profit", "Procurement Received", "Procurement Cash Paid", "Expenses Paid", "Payroll Paid", "Cash Outflow", "Net Cash Flow"], rows)
 
 
 @login_required
 @reports_full_required
 def export_financial_xlsx(request):
-    rows = [[r["label"], r["sales"], r["cogs"], r["gross_profit"], r["procurement"], r["cash_procurement"], r["misc"], r["spend"], r["net_cash_flow"]] for r in _financial_snapshot()]
-    return _xlsx_response("financial-summary.xlsx", "Financial Summary", ["Period", "Paid Sales", "COGS", "Gross Profit", "Procurement Received", "Procurement Cash Paid", "Expenses Paid", "Cash Outflow", "Net Cash Flow"], rows)
+    rows = [[r["label"], r["sales"], r["cogs"], r["gross_profit"], r["procurement"], r["cash_procurement"], r["misc"], r["payroll"], r["spend"], r["net_cash_flow"]] for r in _financial_snapshot()]
+    return _xlsx_response("financial-summary.xlsx", "Financial Summary", ["Period", "Paid Sales", "COGS", "Gross Profit", "Procurement Received", "Procurement Cash Paid", "Expenses Paid", "Payroll Paid", "Cash Outflow", "Net Cash Flow"], rows)
 
 
 @login_required

@@ -11,7 +11,10 @@ from django.utils.crypto import get_random_string
 from procurement.models import RawMaterialCostSnapshot
 
 from .forms import (OrderForm, OrderItemFormSet, ProductionCompletionForm, ProductionQualityCheckForm, ProductionReconciliationForm, ProductionRunForm, PlannedOffcutAllocationFormSet)
-from .models import (Order, OrderNumberSequence, OrderItem, OrderMaterialUsage, ProductionBatch, ProductionBatchReconciliation, ProductionQualityCheck, ProductionCostSnapshot, ProductionCostLine, ProductionRun, ProductionOffcutAllocation)
+from accounts.services import is_kitchen_restricted
+from . import allocations as channel_allocations
+from .kitchen import kitchen_report, summarize_report
+from .models import (Order, OrderFlexibleMaterialReport, OrderNumberSequence, OrderItem, OrderMaterialUsage, ProductionBatch, ProductionBatchReconciliation, ProductionQualityCheck, ProductionCostSnapshot, ProductionCostLine, ProductionRun, ProductionOffcutAllocation)
 from sales.models import CustomerProductPrice
 from inventory.models import FinishedGood, RawMaterial
 from inventory.services import (
@@ -41,12 +44,17 @@ def orders_list(request):
     orders = Order.objects.select_related("business").prefetch_related(
         Prefetch("items", queryset=OrderItem.objects.select_related("finished_good"))
     )
+    kitchen = is_kitchen_restricted(request.user, request.business)
+    if kitchen:
+        # Production-floor users see only the entries still waiting to be assigned.
+        orders = orders.filter(order_type=Order.TYPE_UNASSIGNED)
     current_business_empty = not Order.raw_objects.filter(business=request.business).exists()
     can_reset_current_business_numbering = (
         _can_reset_order_numbering(request) and current_business_empty
     )
     return render(request, "production/orders_list.html", {
         "orders": orders,
+        "kitchen_view": kitchen,
         "can_reset_current_business_numbering": can_reset_current_business_numbering,
         "can_global_reset_order_numbering": request.user.is_superuser and not Order.raw_objects.exists(),
         "numbering_businesses": Business.objects.order_by("name", "id") if request.user.is_superuser else [],
@@ -98,6 +106,25 @@ def order_form(request, pk=None):
     if obj and obj.status != "pending":
         messages.error(request, "Only pending orders can be edited.")
         return redirect("order_detail", pk=obj.pk)
+    if obj and obj.is_multi_channel:
+        messages.info(request, "This order is assigned to several channels, so its channels are changed from the assignment page.")
+        return redirect("order_split", pk=obj.pk)
+    # Baker / Chef roles use this same form, trimmed to what the floor needs.
+    # Their entries are saved unassigned: no channel, customer or payment, and a
+    # manager later decides where each portion goes.
+    kitchen = is_kitchen_restricted(request.user, request.business)
+    if kitchen:
+        if obj and obj.order_type != Order.TYPE_UNASSIGNED:
+            messages.error(request, "That order has already been assigned, so it can't be changed from this account.")
+            return redirect("orders_list")
+        if request.method == "POST":
+            forced = request.POST.copy()
+            for key, value in {
+                "order_type": "physical_store", "production_destination": "store", "is_market_stock": "",
+                "customer": "", "customer_name": "", "customer_region": "", "customer_group": "",
+            }.items():
+                forced[key] = value  # item assignment replaces, unlike QueryDict.update
+            request.POST = forced
     run_id = request.POST.get("production_run_id") or request.GET.get("run")
     target_run = None
     if run_id and not obj:
@@ -110,7 +137,7 @@ def order_form(request, pk=None):
         store_replenishment = (
             request.POST.get("order_type") == "physical_store"
             and request.POST.get("production_destination", "store") == "store"
-        )
+        ) and not kitchen  # the floor may log any made-in-house product
         formset = OrderItemFormSet(
             request.POST, instance=obj if obj else Order(),
             store_replenishment=store_replenishment,
@@ -175,6 +202,12 @@ def order_form(request, pk=None):
                 order.account = None
                 order.transaction_type = "unpaid"
                 order.unpaid_description = "Customer receivable — payment to be recorded through Finance."
+            if kitchen:
+                order.order_type = Order.TYPE_UNASSIGNED
+                order.is_market_stock = False
+                order.production_destination = "store"
+                order.customer = None
+                order.customer_name = order.customer_region = order.customer_group = ""
             order.save()
             formset.instance = order
             # Populate Django's deletion list, then save every active row. The
@@ -188,8 +221,10 @@ def order_form(request, pk=None):
                     continue
                 item = item_form.instance
                 item.order = order
-                item.price = item.finished_good.selling_price_for(order.order_type, order.customer)
-                if order.order_type == "physical_store" or order.production_basis == Order.BASIS_BASE_MATERIAL:
+                item.price = item.finished_good.selling_price_for(
+                    "physical_store" if order.order_type == Order.TYPE_UNASSIGNED else order.order_type, order.customer
+                )
+                if order.order_type in ("physical_store", Order.TYPE_UNASSIGNED) or order.production_basis == Order.BASIS_BASE_MATERIAL:
                     item.production_batch_qty = Decimal("0")
                     item.production_piece_qty = Decimal("0")
                 item.save()
@@ -211,7 +246,7 @@ def order_form(request, pk=None):
             messages.success(request, "Order updated." if obj else "Order created — approve it from the Orders page when ready.")
             return redirect("order_detail", pk=order.pk)
     else:
-        new_initial = {"date": today(), "order_type": "distribution"}
+        new_initial = {"date": today(), "order_type": "physical_store" if kitchen else "distribution"}
         new_basis, new_pool = Order.BASIS_PRODUCT_QUANTITY, Decimal("0")
         if target_run and target_run.production_basis == ProductionRun.BASIS_BASE_MATERIAL and request.GET.get("independent"):
             # Independent order that stretches the run to its overall base material.
@@ -226,12 +261,12 @@ def order_form(request, pk=None):
         formset = OrderItemFormSet(
             instance=obj, store_replenishment=store_replenishment,
             market_stock=bool(obj and obj.is_market_stock_order),
-            order_type=(obj.order_type if obj else new_initial["order_type"]),
+            order_type=((obj.order_type if obj.order_type != Order.TYPE_UNASSIGNED else "physical_store") if obj else new_initial["order_type"]),
             production_basis=(obj.production_basis if obj else new_basis),
             base_material_quantity=(obj.base_material_quantity if obj else new_pool),
         )
     prices = _price_map()
-    return render(request, "production/order_form.html", {"form": form, "formset": formset, "prices": prices, "obj": obj, "target_run": target_run})
+    return render(request, "production/order_form.html", {"form": form, "formset": formset, "prices": prices, "obj": obj, "target_run": target_run, "kitchen_mode": kitchen})
 
 
 @login_required
@@ -262,8 +297,9 @@ def order_recreate(request, pk):
             payment_method=source.payment_method, account=source.account,
             status="pending", notes=source.notes,
         )
+        item_map = {}
         for item in source.items.select_related("finished_good"):
-            OrderItem.objects.create(
+            item_map[item.pk] = OrderItem.objects.create(
                 order=new_order, finished_good=item.finished_good,
                 production_basis=item.production_basis,
                 base_material_quantity=item.base_material_quantity,
@@ -273,6 +309,8 @@ def order_recreate(request, pk):
                 discount=item.discount,
                 price=item.finished_good.selling_price_for(source.order_type, source.customer),
             )
+        if source.is_multi_channel:
+            channel_allocations.copy_allocations(source, new_order, item_map)
         audit(
             source.business, request.user, "recreate", new_order,
             f"Pending order #{new_order.display_number} created from reversed order #{source.display_number}",
@@ -282,7 +320,7 @@ def order_recreate(request, pk):
         request,
         f"Created Pending order #{new_order.display_number} from reversed order #{source.display_number}. Review and edit it before saving/approval; it can also be added to a draft Shared Production Run.",
     )
-    return redirect("order_edit", pk=new_order.pk)
+    return redirect("order_split" if new_order.is_multi_channel else "order_edit", pk=new_order.pk)
 
 
 _USAGE_QUANTUM = Decimal("0.0001")
@@ -347,6 +385,9 @@ def _plan_release(orders, post_data=None, *, central=False, scope=None):
     central_groups = {}
 
     for order in orders:
+        # Amounts the kitchen recorded pre-fill the approval form; a posted value
+        # (or the planned recipe amount when nothing was reported) still wins.
+        kitchen = kitchen_report(order)
         prefetched_items = getattr(order, "_prefetched_objects_cache", {}).get("items")
         if prefetched_items is None:
             items = list(order.items.select_related("finished_good").prefetch_related(
@@ -368,6 +409,10 @@ def _plan_release(orders, post_data=None, *, central=False, scope=None):
                 actual_per_batch = planned_per_batch
                 flexible = bool(is_recipe and getattr(link, "flexible_usage", False))
                 input_name = f"flex_qty_{item.pk}_{link.pk}" if flexible else None
+                if flexible and kitchen is not None:
+                    reported = kitchen.per_batch_for(item.pk, link.pk)
+                    if reported is not None:
+                        actual_per_batch = reported
 
                 material_row = per_material.setdefault(link.raw_material_id, {
                     "order": order,
@@ -427,6 +472,17 @@ def _plan_release(orders, post_data=None, *, central=False, scope=None):
         entries = group["entries"]
         planned_total = sum((e["planned"] for e in entries), Decimal("0"))
         actual_total = planned_total.quantize(_USAGE_QUANTUM, rounding=ROUND_HALF_UP)
+        # What the kitchen recorded pre-fills the total. Across several orders (a
+        # shared run) the recorded totals add up, so assigning one entry to many
+        # channels keeps the baker's amount whole.
+        reported_totals = []
+        for member in orders:
+            member_report = kitchen_report(member)
+            member_total = member_report.total_for(material_id) if member_report else None
+            if member_total is not None:
+                reported_totals.append(member_total)
+        if reported_totals:
+            actual_total = sum(reported_totals, Decimal("0")).quantize(_USAGE_QUANTUM, rounding=ROUND_HALF_UP)
         input_name = f"flex_total_{scope}_{material_id}"
         if post_data is not None:
             raw = post_data.get(input_name)
@@ -811,6 +867,9 @@ def production_run_approve(request, pk):
         if any(o.status != "pending" for o in locked_orders):
             messages.error(request, "A member order changed status before the run could be approved.")
             return redirect("production_run_detail", pk=pk)
+        if any(o.order_type == Order.TYPE_UNASSIGNED for o in locked_orders):
+            messages.error(request, "A member order has no channel yet. Decide where it goes before approving the run.")
+            return redirect("production_run_detail", pk=pk)
         for entry in usage_entries:
             OrderMaterialUsage.objects.create(business=run.business, created_by=request.user, **entry)
         for mat, needed in aggregated.values():
@@ -851,6 +910,7 @@ def production_run_delete(request, pk):
 
 @login_required
 def order_detail(request, pk):
+    kitchen = is_kitchen_restricted(request.user, request.business)
     order = get_object_or_404(
         Order.objects.select_related("customer").prefetch_related(
             Prefetch(
@@ -863,12 +923,49 @@ def order_detail(request, pk):
         ),
         pk=pk,
     )
+    if kitchen and order.order_type != Order.TYPE_UNASSIGNED:
+        messages.error(request, "That order has already been assigned, so it isn't available from this account.")
+        return redirect("orders_list")
     run_link = order.production_run_links.select_related("production_run").first()
     in_draft_run = bool(run_link and run_link.production_run.status == "draft")
-    shortages = order.shortages() if order.status == "pending" and not in_draft_run else []
+    shortages = order.shortages() if order.status == "pending" and not in_draft_run and not kitchen else []
     flexible_usages = _material_release_plan(order)[0] if order.status == "pending" and not in_draft_run else []
     batches = order.production_batches.select_related("finished_good").prefetch_related("quality_check", "offcut_allocations__customer")
-    return render(request, "production/order_detail.html", {"order": order, "shortages": shortages, "batches": batches, "flexible_usages": flexible_usages, "production_run": run_link.production_run if run_link else None})
+    allocations = list(order.allocations.select_related("customer", "sale").prefetch_related("lines__order_item__finished_good")) if order.is_multi_channel else []
+    return render(request, "production/order_detail.html", {"order": order, "kitchen_summary": summarize_report(order), "shortages": shortages, "batches": batches, "flexible_usages": flexible_usages, "production_run": run_link.production_run if run_link else None, "kitchen_view": kitchen, "allocations": allocations})
+
+
+@login_required
+def order_flexible_save(request, pk):
+    """Save the flexible-material amounts entered on the order page without approving.
+
+    Approval later opens with these amounts already filled in; the approver can
+    still change them. Nothing is released from stock here.
+    """
+    order = get_object_or_404(Order, pk=pk)
+    if request.method != "POST" or order.status != "pending":
+        return redirect("order_detail", pk=pk)
+    if is_kitchen_restricted(request.user, request.business) and order.order_type != Order.TYPE_UNASSIGNED:
+        return redirect("orders_list")
+    rows, _entries, _aggregated, errors = _material_release_plan(order, request.POST)
+    if errors:
+        for error in errors:
+            messages.error(request, error)
+        return redirect("order_detail", pk=pk)
+    per_batch, totals = {}, {}
+    for row in rows:
+        if row["central"]:
+            totals[str(row["material"].pk)] = str(row["actual_total"])
+        else:
+            link_id = row["input_name"].rsplit("_", 1)[1]
+            per_batch.setdefault(str(row["item"].pk), {})[link_id] = str(row["actual_per_batch"])
+    OrderFlexibleMaterialReport.objects.update_or_create(
+        order=order,
+        defaults={"business": order.business, "created_by": request.user, "flexible_per_batch": per_batch, "flexible_totals": totals},
+    )
+    audit(request.business, request.user, "update", order, f"Flexible material amounts saved for order #{order.display_number}")
+    messages.success(request, "Flexible material amounts saved. They will be filled in when the order is approved.")
+    return redirect("order_detail", pk=pk)
 
 
 @login_required
@@ -880,6 +977,9 @@ def order_approve(request, pk):
     if run_link and run_link.production_run.status == "draft":
         messages.error(request, f"Order #{order.display_number} belongs to shared production run {run_link.production_run.run_number}. Approve the run so all member orders are released together from their proportional recipe requirements.")
         return redirect("production_run_detail", pk=run_link.production_run_id)
+    if order.order_type == Order.TYPE_UNASSIGNED:
+        messages.error(request, "Decide where this order goes before approving it: choose its channel, or assign it across channels.")
+        return redirect("order_detail", pk=pk)
     force = request.POST.get("force") == "1"
     flexible_usages, usage_entries, aggregated, errors = _material_release_plan(order, request.POST)
     if errors:
@@ -1024,6 +1124,8 @@ def order_complete(request, pk):
     ))
     customer_order = order.is_customer_order
     market_stock_order = order.is_market_stock_order
+    multi_channel = order.is_multi_channel
+    kitchen = kitchen_report(order)
     run_link = order.production_run_links.select_related("production_run").first()
     production_run = run_link.production_run if run_link and run_link.production_run.status in ("approved", "completed") else None
     completion_forms = []
@@ -1031,10 +1133,23 @@ def order_complete(request, pk):
         "physical_store": "P",
         "distribution": "D",
         "online": "O",
+        "multi_channel": "M",
     }.get(order.order_type, "P")
     date_code = today().strftime("%y%m%d")
     for item_index, item in enumerate(items, start=1):
         default_batch = f"{channel_code}{date_code}-{order.pk}-{item_index}"
+        initial = {
+            "produced_units": f"{Decimal(item.production_total_units).quantize(Decimal('0.01')):.2f}",
+            "batch_number": default_batch,
+        }
+        reported_output = kitchen.output_for(item.pk) if kitchen is not None else None
+        if reported_output:
+            # The kitchen already counted the output; the completer confirms or corrects it.
+            if reported_output["produced"] is not None:
+                initial["produced_units"] = f"{reported_output['produced'].quantize(Decimal('0.01')):.2f}"
+            if reported_output["wastage"]:
+                initial["wastage_units"] = f"{reported_output['wastage'].quantize(Decimal('0.01')):.2f}"
+                initial["wastage_reason"] = reported_output["reason"]
         form = ProductionCompletionForm(
             request.POST or None,
             prefix=f"item-{item.pk}",
@@ -1042,10 +1157,7 @@ def order_complete(request, pk):
             required_units=item.total_units,
             customer_order=customer_order,
             market_stock_order=market_stock_order,
-            initial={
-                "produced_units": f"{Decimal(item.production_total_units).quantize(Decimal('0.01')):.2f}",
-                "batch_number": default_batch,
-            },
+            initial=initial,
         )
         offcut_formset = (
             PlannedOffcutAllocationFormSet(
@@ -1104,6 +1216,7 @@ def order_complete(request, pk):
             with transaction.atomic():
                 movement_location = default_location(order.business)
                 material_cost_cache = {}
+                allocation_sales = {}
                 order.completed_date = today()
                 for item, form, offcut_formset in completion_forms:
                     produced = form.cleaned_data["produced_units"]
@@ -1168,6 +1281,18 @@ def order_complete(request, pk):
                         if order.order_type == "physical_store" or market_stock_order
                         else customer_committed
                     )
+                    if multi_channel:
+                        # Each allocation delivers its own share (shelf stock, market
+                        # stock, a customer sale...). Planned output nobody was
+                        # allocated stays in general finished-goods stock.
+                        posting = channel_allocations.post_item_allocations(
+                            order, item, batch, unit_cost=snapshot.unit_cost, location=movement_location,
+                            user=request.user, completed_date=order.completed_date, sales=allocation_sales,
+                        )
+                        destination_committed = Decimal("0")
+                        batch.planned_surplus_stock_units = posting["leftover_planned"]
+                        batch.save(update_fields=["planned_surplus_stock_units", "updated_at"])
+                        good.total_delivered_to_customers += posting["customer_units"]
                     planned_surplus_stock = batch.planned_surplus_stock_units
                     excess_stock = batch.excess_stock_units
                     excess_non_stock = batch.excess_non_stock_units
@@ -1282,10 +1407,12 @@ def order_complete(request, pk):
                         )
 
                     update_fields = ["total_produced"]
-                    if customer_order:
+                    if customer_order or multi_channel:
                         update_fields.append("total_delivered_to_customers")
                     good.save(update_fields=update_fields)
 
+                if multi_channel:
+                    channel_allocations.finalize_customer_sales(order, allocation_sales, user=request.user)
                 order.status = "completed"
                 order.save(update_fields=["status", "completed_date", "updated_at"])
                 if production_run:
@@ -1391,6 +1518,10 @@ def order_complete(request, pk):
                         "planned_offcut_to_stock": str(sum((f.cleaned_data.get("planned_surplus_stock_units") or Decimal("0") for _, f, _ in completion_forms), Decimal("0"))),
                         "planned_offcut_to_customer": str(sum((f.cleaned_data.get("planned_surplus_customer_units") or Decimal("0") for _, f, _ in completion_forms), Decimal("0"))),
                         "planned_offcut_allocations": audit_allocations,
+                        "channel_allocations": [
+                            {"channel": a.label, "units": str(a.total_units), "delivered": str(a.delivered_units)}
+                            for a in order.allocations.prefetch_related("lines")
+                        ] if multi_channel else [],
                         "excess_to_stock": str(sum((f.cleaned_data.get("excess_to_stock") or Decimal("0") for _, f, _ in completion_forms), Decimal("0"))),
                         "excess_to_market_stock": str(sum((f.cleaned_data.get("excess_to_market_stock") or Decimal("0") for _, f, _ in completion_forms), Decimal("0"))),
                         "excess_to_non_stock": str(sum((f.cleaned_data.get("excess_to_non_stock") or Decimal("0") for _, f, _ in completion_forms), Decimal("0"))),
@@ -1581,7 +1712,10 @@ def order_reverse(request, pk):
     for batch in batches:
         good = batch.finished_good
         qty = batch.planned_surplus_stock_units + batch.excess_stock_units
-        market_lot = batch.market_stock_lots.filter(source="production").first() if order.is_market_stock_order else None
+        market_lot = batch.market_stock_lots.filter(source="production").first() if (order.is_market_stock_order or order.is_multi_channel) else None
+        posted = channel_allocations.reversal_figures(order, batch) if order.is_multi_channel else None
+        if posted:
+            qty += posted["stock"]
         if market_lot and (
             market_lot.quantity_available != market_lot.quantity_received
             or market_lot.movements.exclude(movement_type="production_in").exists()
@@ -1615,7 +1749,10 @@ def order_reverse(request, pk):
             good = batch.finished_good
             remove_from_stock = batch.planned_surplus_stock_units + batch.excess_stock_units
             reversed_market_lot = False
-            if order.is_market_stock_order:
+            posted = channel_allocations.reversal_figures(order, batch) if order.is_multi_channel else None
+            if posted:
+                remove_from_stock += posted["stock"]
+            if order.is_market_stock_order or order.is_multi_channel:
                 reversed_market_lot = reverse_market_production_lot(
                     batch=batch,
                     date=today(),
@@ -1632,6 +1769,8 @@ def order_reverse(request, pk):
             if order.is_customer_order:
                 delivered += min(batch.saleable_units, batch.ordered_units or batch.planned_units)
             delivered += batch.planned_surplus_customer_units
+            if posted:
+                delivered += posted["customer"]
             if delivered:
                 good.total_delivered_to_customers = max(Decimal("0"), Decimal(good.total_delivered_to_customers or 0) - delivered)
                 good.save(update_fields=["total_produced", "total_delivered_to_customers"])

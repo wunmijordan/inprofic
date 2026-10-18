@@ -1,0 +1,66 @@
+{% extends "base.html" %}{% load core_extras %}{% block content %}
+{% with cur=biz.currency_symbol s=statement %}
+<div class="flex flex-wrap items-end justify-between gap-3 mb-5">
+  <div>
+    <a href="{% url 'finance_dashboard' %}" class="text-xs text-stone-500 hover:text-[#8f172d]">← Finance &amp; Reconciliation</a>
+    <h2 class="text-2xl font-semibold font-display text-[#8f172d] mt-1">Profit &amp; Loss</h2>
+    <p class="text-sm text-stone-500">Net profit after cost of goods, expenses, payroll, supplies used and stock losses.</p>
+  </div>
+  <div class="flex flex-wrap gap-2">
+    <a href="{% url 'finance_profit_compare' %}" class="px-3 py-2 rounded-md text-sm bg-white text-[#8f172d] border border-[#D9CFB4] shadow-[0_2px_4px_#000000d2]">Compare periods</a>
+    <a href="{% url 'finance_product_profit' %}" class="px-3 py-2 rounded-md text-sm bg-white text-[#8f172d] border border-[#D9CFB4] shadow-[0_2px_4px_#000000d2]">Product profit</a>
+    <a href="{% url 'finance_profit_loss_csv' %}?start={{ period.start|date:'Y-m-d' }}" class="px-3 py-2 rounded-md text-sm bg-white text-[#8f172d] border border-[#D9CFB4] shadow-[0_2px_4px_#000000d2]">Export CSV</a>
+    <a href="{% url 'business_settings' %}#fiscal-period" class="px-3 py-2 rounded-md text-sm bg-[#F0EAD9] text-[#8f172d] border border-[#D9CFB4] shadow-[0_2px_4px_#000000d2]">Period settings</a>
+  </div>
+</div>
+
+<div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#E7DFCC] bg-white px-4 py-3 mb-5 shadow-[0_2px_8px_#000000d2]">
+  <a href="?start={{ previous_period.start|date:'Y-m-d' }}" class="rounded-md border border-[#D9CFB4] px-3 py-1.5 text-sm text-[#8f172d]" aria-label="Previous period">← {{ previous_period.short }}</a>
+  <div class="text-center">
+    <div class="text-sm font-semibold text-stone-800">{{ period.label }}</div>
+    <div class="text-[11px] text-stone-400">{{ period.kind_label }} · {{ period.start|date:"j M Y" }} – {{ period.end|date:"j M Y" }}{% if is_current %} · in progress{% endif %} · year starts {{ business_year_start }}</div>
+  </div>
+  {% if can_go_next %}<a href="?start={{ next_period.start|date:'Y-m-d' }}" class="rounded-md border border-[#D9CFB4] px-3 py-1.5 text-sm text-[#8f172d]" aria-label="Next period">{{ next_period.short }} →</a>{% else %}<span class="rounded-md border border-stone-200 px-3 py-1.5 text-sm text-stone-300">{{ next_period.short }} →</span>{% endif %}
+</div>
+
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+  <div class="bg-white border border-[#E7DFCC] rounded-xl p-4 shadow-[0_2px_8px_#000000d2]"><div class="text-[10px] uppercase tracking-wider text-stone-400 font-bold">Revenue</div><div class="font-mono text-lg font-semibold text-emerald-700 mt-1">{{ s.revenue|money:cur }}</div><div class="text-xs text-stone-400">Gross margin {% if s.gross_margin is not None %}{{ s.gross_margin }}%{% else %}—{% endif %}</div></div>
+  <div class="bg-white border border-[#E7DFCC] rounded-xl p-4 shadow-[0_2px_8px_#000000d2]"><div class="text-[10px] uppercase tracking-wider text-stone-400 font-bold">Total costs</div><div class="font-mono text-lg font-semibold text-rose-700 mt-1">{{ s.total_costs|money:cur }}</div><div class="text-xs text-stone-400">Goods + expenses + payroll + losses</div></div>
+  <div class="bg-white border {% if s.net_profit < 0 %}border-rose-300{% else %}border-emerald-300{% endif %} rounded-xl p-4 shadow-[0_2px_8px_#000000d2]"><div class="text-[10px] uppercase tracking-wider text-stone-400 font-bold">Net {% if s.net_profit < 0 %}loss{% else %}profit{% endif %}</div><div class="font-mono text-lg font-semibold mt-1 {% if s.net_profit < 0 %}text-rose-700{% else %}text-emerald-700{% endif %}">{% if s.net_profit < 0 %}−{% endif %}{{ s.net_profit|money:cur|cut:"-" }}</div><div class="text-xs text-stone-400">{% if s.net_margin is not None %}{{ s.net_margin }}% margin · {% endif %}{% if net_change >= 0 %}▲{% else %}▼{% endif %} {{ net_change|money:cur|cut:"-" }} vs {{ previous_period.short }}</div></div>
+</div>
+
+<div class="grid grid-cols-1 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-4 mb-6">
+  <div class="bg-white border border-[#E7DFCC] rounded-xl shadow-[0_2px_8px_#000000d2] overflow-hidden">
+    <div class="px-4 py-3 border-b border-[#E7DFCC] font-semibold flex justify-between"><span>Statement</span><span class="text-xs text-stone-400 font-normal">% of revenue</span></div>
+    <table class="w-full text-sm"><tbody class="divide-y divide-[#EFE7D2]">
+      {% for line in lines %}
+      <tr class="{% if line.kind == 'net' %}bg-[#F5EFE0] font-semibold{% elif line.kind == 'subtotal' %}bg-stone-50 font-semibold{% elif line.kind == 'total' %}font-semibold{% endif %}">
+        <td class="px-4 py-2.5 {% if line.indent %}pl-9 text-stone-600{% endif %}">{{ line.label }}</td>
+        <td class="px-4 py-2.5 text-right font-mono {% if line.kind == 'net' %}{% if line.amount < 0 %}text-rose-700{% else %}text-emerald-700{% endif %}{% elif line.amount < 0 %}text-rose-700{% endif %}">{% if line.amount < 0 %}−{% endif %}{{ line.abs|money:cur }}</td>
+        <td class="px-4 py-2.5 text-right text-xs text-stone-400 w-20">{% if line.share is not None %}{{ line.share }}%{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody></table>
+  </div>
+  <div class="space-y-4">
+    <div class="bg-white border border-[#E7DFCC] rounded-xl shadow-[0_2px_8px_#000000d2] overflow-hidden">
+      <div class="px-4 py-3 border-b border-[#E7DFCC] font-semibold">Profit by {% if period.months <= 3 %}week{% else %}month{% endif %}</div>
+      <div class="max-h-80 overflow-y-auto divide-y divide-[#EFE7D2]">
+        {% for row in buckets %}
+        <div class="flex items-center gap-3 px-4 py-2 text-xs"><span class="w-14 shrink-0 text-stone-500">{{ row.label }}</span><span class="relative h-2.5 flex-1 rounded bg-stone-100"><span class="absolute inset-y-0 left-0 rounded {% if row.profit < 0 %}bg-rose-500{% else %}bg-emerald-500{% endif %}" style="width: {{ row.bar }}%"></span></span><span class="w-24 shrink-0 text-right font-mono {% if row.profit < 0 %}text-rose-700{% else %}text-stone-700{% endif %}">{% if row.profit < 0 %}−{% endif %}{{ row.abs_profit|money:cur }}</span></div>
+        {% empty %}<p class="px-4 py-6 text-sm text-stone-400">No activity in this period yet.</p>{% endfor %}
+      </div>
+    </div>
+    <div class="bg-white border border-[#E7DFCC] rounded-xl p-4 text-xs leading-5 text-stone-500 shadow-[0_2px_8px_#000000d2]">
+      <div class="font-semibold text-stone-700 mb-1">Not in revenue yet</div>
+      <p>Unpaid and part-paid sales: <strong class="font-mono text-amber-700">{{ s.unpaid_sales|money:cur }}</strong>. They count as revenue once paid.</p>
+      <p class="mt-1">Unpaid expenses already counted above: <strong class="font-mono text-rose-700">{{ s.unpaid_expenses|money:cur }}</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="rounded-xl border border-[#E7DFCC] bg-white p-4 mb-6 text-xs leading-5 text-stone-500">
+  <div class="font-semibold text-stone-700 mb-1">How this is calculated</div>
+  Revenue is paid sales. Cost of goods uses each sold item's recorded unit cost. Expenses count when recorded, paid or not. Payroll is the employer cost of issued payslips (gross pay plus employer contributions) on the pay date. Operating supplies used and stock write-offs (wastage, damage, count corrections, staff and business use) are included. Buying stock is not an expense until it is sold, used or written off. If you also record wages as a "Labour / Wages" expense, they appear in both lines — record them in one place.
+</div>
+{% endwith %}{% endblock %}

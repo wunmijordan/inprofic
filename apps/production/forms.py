@@ -35,6 +35,11 @@ class OrderForm(StyledModelForm):
         if business:
             config = vertical_config(business)
             self.fields["order_type"].choices = config["order_types"]
+            if getattr(self.instance, "order_type", None) == Order.TYPE_UNASSIGNED:
+                # A production-entry order has no channel yet; the person deciding
+                # picks one here (Physical Store is the pre-selected starting point).
+                valid = [value for value, _label in config["order_types"]]
+                self.initial["order_type"] = "physical_store" if "physical_store" in valid else valid[0]
             stock_location = config["stock_location"]
             self.fields["production_destination"].choices = [
                 ("store", f"{stock_location} replenishment — add to {stock_location} stock"),
@@ -216,8 +221,18 @@ class OrderItemFormSetBase(BaseInlineFormSet):
             ).order_by("name")
         else:
             allowed = made_in_house.order_by("name")
+        self._allowed_goods = allowed
         for form in self.forms:
             form.fields["finished_good"].queryset = allowed
+
+    @property
+    def empty_form(self):
+        # The field's class-level queryset is built at import time, before any
+        # business is active, so a blank template row must be scoped explicitly
+        # or it would list every tenant's products.
+        form = super().empty_form
+        form.fields["finished_good"].queryset = self._allowed_goods
+        return form
 
     def clean(self):
         super().clean()

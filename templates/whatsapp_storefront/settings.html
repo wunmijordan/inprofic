@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mx-auto max-w-5xl space-y-5">
+  <header class="flex flex-wrap items-end justify-between gap-3">
+    <div><p class="text-[11px] font-bold uppercase tracking-[.16em] text-stone-400">Commerce channel</p><h1 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">WhatsApp Storefront</h1><p class="mt-1 max-w-2xl text-sm text-stone-500">Connect your business number, answer product questions and hand conversations to your team. Checkout and payment records stay in Commerce.</p></div>
+    <div class="flex gap-2"><a href="{% url 'commerce_dashboard' %}" class="rounded-md border border-[#D9CFB4] px-3 py-2 text-sm">Commerce</a><a href="{% url 'whatsapp_inbox' %}" class="rounded-md bg-[#8f172d] px-3 py-2 text-sm font-semibold text-white">Open inbox</a></div>
+  </header>
+
+  {% if not meta_ready %}<div class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><strong>Meta onboarding is not configured.</strong> Set the Meta app ID, Embedded Signup configuration ID, app secret, webhook verify token and token encryption key in the server environment before connecting a number.</div>{% endif %}
+  <section class="rounded-xl border border-[#E7DFCC] bg-white p-5">
+    <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="font-semibold text-stone-800">WhatsApp Business connection</h2><p class="mt-1 text-sm text-stone-500">Each business connects its own WhatsApp Business Platform account through Meta Embedded Signup.</p></div>
+      {% if connection %}<span class="rounded-full px-3 py-1 text-xs font-semibold {% if connection.status == 'connected' %}bg-emerald-50 text-emerald-700{% else %}bg-amber-50 text-amber-800{% endif %}">{{ connection.get_status_display }}</span>{% endif %}</div>
+    {% if connection %}<div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><div class="rounded-lg bg-[#FAF8F1] p-3"><div class="text-xs text-stone-500">Business number</div><div class="mt-1 font-medium">{{ connection.display_phone_number|default:connection.phone_number_id }}</div></div><div class="rounded-lg bg-[#FAF8F1] p-3"><div class="text-xs text-stone-500">Connected</div><div class="mt-1 font-medium">{{ connection.connected_at|date:'M j, Y' }}</div></div><div class="rounded-lg bg-[#FAF8F1] p-3"><div class="text-xs text-stone-500">Messages this month</div><div class="mt-1 font-medium">{{ usage.in|default:0 }} received · {{ usage.out|default:0 }} sent</div></div><div class="rounded-lg bg-[#FAF8F1] p-3"><div class="text-xs text-stone-500">Unprocessed events</div><div class="mt-1 font-medium">{{ event_failures }}</div></div></div>
+    {% if connection.last_error %}<p class="mt-3 rounded-md bg-rose-50 p-3 text-sm text-rose-800">{{ connection.last_error }}</p>{% endif %}
+    {% else %}<p class="mt-4 text-sm text-stone-600">No WhatsApp Business number is connected.</p>{% endif %}
+    {% if meta_ready %}<div class="mt-4 flex flex-wrap gap-2"><form id="whatsapp-csrf-holder" class="hidden">{% csrf_token %}</form><button type="button" id="whatsapp-connect" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">{% if connection %}Reconnect number{% else %}Connect with Meta{% endif %}</button>{% if connection %}<form method="post" action="{% url 'whatsapp_disconnect' %}">{% csrf_token %}<button class="rounded-md border border-rose-200 px-4 py-2 text-sm text-rose-700">Disconnect</button></form>{% endif %}</div>{% endif %}
+    <p id="whatsapp-connect-status" role="status" class="mt-3 text-sm text-stone-500"></p>
+  </section>
+
+  {% if connection %}<form method="post" class="space-y-4 rounded-xl border border-[#E7DFCC] bg-white p-5">{% csrf_token %}
+    <div><h2 class="font-semibold text-stone-800">Assistant settings</h2><p class="mt-1 text-sm text-stone-500">The assistant reads the live online catalogue and sends customers to the hosted checkout for order confirmation and payment.</p></div>
+    <label class="flex items-start gap-3 rounded-lg bg-[#FAF8F1] p-3"><input type="checkbox" name="assistant_enabled" class="mt-1" {% if connection.assistant_enabled %}checked{% endif %}><span><strong class="text-sm">Enable automatic replies</strong><span class="mt-0.5 block text-xs text-stone-500">Replies only to inbound customer messages while the Meta customer service window is open.</span></span></label>
+    <label class="flex items-start gap-3 rounded-lg bg-[#FAF8F1] p-3"><input type="checkbox" name="ai_enabled" class="mt-1" {% if connection.ai_enabled %}checked{% endif %} {% if not ai_ready %}disabled{% endif %}><span><strong class="text-sm">Use AI for natural language replies</strong><span class="mt-0.5 block text-xs text-stone-500">{% if ai_ready %}Recent customer messages and approved business guidance are sent to the configured AI provider for commerce support replies.{% else %}AI is unavailable until an AI provider key is configured for this installation.{% endif %} Deterministic catalogue and human-help replies remain available. Use a provider whose terms prohibit training on WhatsApp Business data.</span></span></label>
+    <div class="grid gap-3 md:grid-cols-2"><label class="grid gap-1 text-sm font-medium">Welcome message <span class="text-xs font-normal text-stone-500">(optional, shown to customers after their first message)</span><textarea name="welcome_message" rows="2" maxlength="500" class="rounded-md border border-[#D9CFB4] px-3 py-2">{{ connection.welcome_message }}</textarea></label><label class="grid gap-1 text-sm font-medium">Human handoff reply<textarea name="handoff_message" rows="2" maxlength="500" class="rounded-md border border-[#D9CFB4] px-3 py-2">{{ connection.handoff_message }}</textarea></label></div>
+    <label class="grid gap-1 text-sm font-medium">Business guidance for AI <span class="text-xs font-normal text-stone-500">Keep this to approved product and service guidance. Prices, stock, payment and order state always come from Commerce.</span><textarea name="assistant_instructions" rows="4" maxlength="4000" class="rounded-md border border-[#D9CFB4] px-3 py-2">{{ connection.assistant_instructions }}</textarea></label>
+    <button class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Save assistant settings</button>
+  </form>{% endif %}
+
+  <section class="rounded-xl border border-[#E7DFCC] bg-[#FAF8F1] p-5 text-sm text-stone-600"><h2 class="font-semibold text-stone-800">Before going live</h2><ul class="mt-2 list-disc space-y-1 pl-5"><li>Configure Meta Embedded Signup and subscribe the app to WhatsApp account webhooks.</li><li>Set the public callback URL to <code class="rounded bg-white px-1">{% url 'whatsapp_webhook' %}</code> and subscribe to the <code class="rounded bg-white px-1">messages</code> field.</li><li>Configure the scheduled jobs runner to process persisted webhook events and outbound replies.</li><li>Obtain customer consent for WhatsApp messages and use approved templates when messaging outside the 24-hour service window. Campaign messaging and templates are not enabled here.</li></ul></section>
+</div>
+{% if meta_ready %}
+<script>
+(() => {
+  const button = document.getElementById('whatsapp-connect');
+  if (!button) return;
+  const status = document.getElementById('whatsapp-connect-status');
+  let signupCode = '';
+  let signupInfo = {};
+  let signupSubmitting = false;
+  const csrf = document.querySelector('#whatsapp-csrf-holder [name=csrfmiddlewaretoken]')?.value || '';
+  window.fbAsyncInit = () => FB.init({appId: '{{ meta_app_id|escapejs }}', cookie: true, xfbml: false, version: '{{ meta_graph_version|escapejs }}'});
+  window.addEventListener('message', (event) => {
+    if (event.origin !== 'https://www.facebook.com' && event.origin !== 'https://web.facebook.com') return;
+    let data = event.data;
+    if (typeof data === 'string') { try { data = JSON.parse(data); } catch (_) { return; } }
+    if (!data || data.type !== 'WA_EMBEDDED_SIGNUP') return;
+    if (data.event === 'FINISH') { signupInfo = data.data || {}; if (signupCode) finishSignup(); }
+    if (data.event === 'CANCEL') status.textContent = 'Meta setup was cancelled.';
+  });
+  async function finishSignup() {
+        if (signupSubmitting) return;
+        for (let attempt = 0; attempt < 12 && (!signupInfo.waba_id || !signupInfo.phone_number_id); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 350));
+        if (!signupInfo.waba_id || !signupInfo.phone_number_id) { status.textContent = 'Meta did not return the selected business number. Please try again.'; return; }
+        signupSubmitting = true;
+        status.textContent = 'Verifying your number…';
+        try {
+          const response = await fetch('{% url "whatsapp_embedded_signup_complete" %}', {
+            method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+            body: JSON.stringify({code: signupCode, waba_id: signupInfo.waba_id, phone_number_id: signupInfo.phone_number_id})
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.detail || 'Could not connect WhatsApp.');
+          status.textContent = `${data.number || 'WhatsApp number'} connected.`;
+          window.location.reload();
+        } catch (error) { status.textContent = error.message; signupSubmitting = false; }
+  }
+  button.addEventListener('click', () => {
+    status.textContent = 'Opening Meta…';
+    if (!window.FB) { status.textContent = 'Meta onboarding could not load. Please try again.'; return; }
+    FB.login((response) => {
+      signupCode = response?.authResponse?.code || '';
+      if (!signupCode) { status.textContent = 'Meta did not return an authorization code.'; return; }
+      finishSignup();
+    }, {config_id: '{{ meta_config_id|escapejs }}', response_type: 'code', override_default_response_type: true, extras: {setup: {}, sessionInfoVersion: 3}});
+  });
+})();
+</script>{% endif %}
+{% if meta_ready %}<script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js"></script>{% endif %}
+{% endblock %}

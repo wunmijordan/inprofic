@@ -36,7 +36,7 @@
     <strong>{{ payroll_state.reason }}</strong>
     {% if payroll_state.enabled and payroll_state.unlimited %}<span class="rounded-full bg-white px-2.5 py-1 text-xs font-semibold">Unlimited active staff</span>{% elif payroll_state.staff_limit %}<span class="rounded-full bg-white px-2.5 py-1 text-xs font-semibold">Up to {{ payroll_state.staff_limit }} active staff{% if payroll_state.extra_staff %} ({{ payroll_state.base_limit }} + {{ payroll_state.extra_staff }} extra){% endif %}</span>{% endif %}
   </div>
-  {% if not payroll_state.enabled %}<p class="mt-2 text-xs leading-5">Your normal plan can remain active while payroll is purchased separately. Choose a Founder-configured staff package to restore payroll access.</p>{% endif %}
+  {% if not payroll_state.enabled %}<p class="mt-2 text-xs leading-5">Your normal plan can remain active while payroll is purchased separately. Choose a staff package to restore payroll access.</p>{% endif %}
 </div>
 
 {% if payroll_recent_runs %}

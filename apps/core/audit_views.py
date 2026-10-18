@@ -23,7 +23,7 @@ from procurement.models import PurchaseOrder, PurchaseOrderItem, RawMaterialCost
 from production.models import ProductionBatch, ProductionCostSnapshot, ProductionQualityCheck
 from sales.models import CustomerPayment, Sale, SaleItem
 from accounts.services import is_business_admin, user_has_permission
-from accounts.platform_integrations import glovo_platform_enabled, redact_disabled_integrations
+from accounts.platform_integrations import shipbubble_platform_enabled, redact_disabled_integrations
 from .performance import performance_section
 
 from .models import AuditLog, AuditQuery, CashAccount, FinancialTransaction
@@ -89,7 +89,7 @@ def _audit_detail_value(value, *, integration_enabled=None):
         return "Recorded securely"
     if isinstance(value, (list, tuple)):
         value = ", ".join(str(item) for item in value)
-    text = str(redact_disabled_integrations(value, glovo_enabled=integration_enabled))
+    text = str(redact_disabled_integrations(value, shipbubble_enabled=integration_enabled))
     return f"{text[:177]}…" if len(text) > 180 else text
 
 
@@ -111,7 +111,7 @@ def _public_audit_details(metadata, *, integration_enabled=None):
 
 def _prepare_audit_log(log, *, integration_enabled=None):
     log.description = redact_disabled_integrations(
-        log.description, glovo_enabled=integration_enabled
+        log.description, shipbubble_enabled=integration_enabled
     )
     log.action_label = (log.action or "Activity").replace("_", " ").title()
     model = (log.model_name or "Record").split(".")[-1]
@@ -360,7 +360,7 @@ def _audit_dataset(request, *, for_export=False):
             logs_queryset.annotate(_filtered_total=Window(expression=Count("pk")))[:250]
         )
         logs_total = int(logs[0]._filtered_total) if logs else 0
-    integration_enabled = glovo_platform_enabled()
+    integration_enabled = shipbubble_platform_enabled()
     logs = [
         _prepare_audit_log(log, integration_enabled=integration_enabled)
         for log in logs

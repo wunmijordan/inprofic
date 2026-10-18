@@ -2,7 +2,7 @@
 
 This document is a study guide for explaining, defending, maintaining, and extending INPROFIC. It is deliberately more detailed than the product overview: the goal is to explain **what the system is, which technologies it uses, why the architecture is shaped this way, where business truth lives, and how the major workflows connect without sacrificing tenant isolation or auditability**.
 
-It should be read together with `ARCHITECTURE.md` for the concise engineering map, `COMMERCE_INTEGRATION.md` for the commerce/API contract, `DELIVERY_GLOVO_PROVIDER.md` for provider integration, `AUDIT_WORKSPACE.md` for auditor isolation, `SUBSCRIPTIONS.md` for commercial entitlement rules, and `DEPLOYMENT.md` for environment/deployment operations.
+It should be read together with `ARCHITECTURE.md` for the concise engineering map, `COMMERCE_INTEGRATION.md` for the commerce/API contract, `DELIVERY_SHIPBUBBLE_PROVIDER.md` for provider integration, `AUDIT_WORKSPACE.md` for auditor isolation, `SUBSCRIPTIONS.md` for commercial entitlement rules, and `DEPLOYMENT.md` for environment/deployment operations.
 
 ---
 
@@ -195,7 +195,7 @@ Owns the public/staff digital commerce boundary:
 - web-push subscriptions/outbox records;
 - optional tenant storefront customer accounts;
 - delivery configuration, zones, providers, drivers, quotes, assignments, events and issues;
-- provider-neutral custom courier adapters plus the optional Founder-gated Glovo LaaS v2 adapter;
+- provider-neutral custom courier adapters plus the optional Founder-gated Shipbubble adapter;
 - hosted storefront, in-premise POS and headless API flows.
 
 This app division keeps domain responsibilities readable without pretending they are independent systems. They intentionally connect through service-layer functions and explicit foreign keys.
@@ -567,7 +567,7 @@ Geocoding candidates can be cached. Coverage remains an INPROFIC decision, not a
 A delivery assignment resolves to a real execution method:
 
 - in-house;
-- configured external delivery partner (including the optional Glovo adapter when Founder-enabled).
+- configured external delivery partner (including the optional Shipbubble adapter when Founder-enabled).
 
 Hybrid means both are available rather than “one named courier with an emergency fallback.” Routing policies can include customer choice, dispatcher choice, lowest fee, fastest ETA, in-house first and provider first.
 
@@ -577,9 +577,9 @@ The tenant also controls post-payment switching rules. The customer-facing switc
 
 A Delivery Rider is a dedicated staff access profile tied to an active driver. The lightweight dashboard only queries assignments for that rider/business. The rider can progress allowed statuses, supply POD information and lodge issues/complaints. Dispatcher/authorized staff respond through the operational delivery dashboard.
 
-### Glovo adapter
+### Shipbubble integration
 
-Glovo LaaS v2 is a Founder-gated optional provider adapter. Tenant credentials remain tenant-owned, the tenant connection stays inactive until configured, and disabling platform availability preserves saved configuration while blocking runtime execution. Live quote, paid-order parcel dispatch, tracking-link retrieval, cancellation and webhook status sync attach to INPROFIC's own delivery quote/assignment/event model.
+Shipbubble is a Founder-gated optional courier integration. The API key remains tenant-owned (and doubles as the HMAC-SHA512 webhook secret), the tenant connection stays inactive until configured, and disabling platform availability preserves saved configuration while blocking runtime execution. Live courier rates, paid-order booking, cancellation and signed webhook status sync attach to INPROFIC's own delivery quote/assignment/event model.
 
 Provider callbacks update delivery state/timeline; they do not directly mutate stock, production or finance.
 
@@ -701,7 +701,7 @@ Django's standard CSRF/session/auth mechanisms protect staff/browser workflows. 
 
 ### Secrets
 
-Payment, R2, Glovo and integration secrets come from environment/database configuration and are not supposed to be embedded in client-side JavaScript.
+Payment, R2, Shipbubble and integration secrets come from environment/database configuration and are not supposed to be embedded in client-side JavaScript.
 
 ### Atomic operations
 

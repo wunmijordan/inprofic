@@ -20,11 +20,36 @@
 <div class="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">This order belongs to shared production run <a href="{% url 'production_run_detail' production_run.pk %}" class="font-semibold text-[#8f172d] hover:underline">{{ production_run.run_number }}</a>. {% if production_run.status == 'draft' %}Approve the shared run so all member orders are released together using their normal proportional {{ vertical_ui.recipe_label|lower }} requirements.{% else %}Its customer, channel, pricing and completion logic remain independent inside the shared manufacturing event.{% endif %}</div>
 {% endif %}
 <p class="text-sm text-stone-500 mb-4">
-  {% if order.is_market_stock_order %}Unassigned {{ order.display_order_type }} — completed saleable units enter separate Distribution Market Stock for later assignment. Distributor releases, returns, expiry and Physical Store transfers are managed from the Market Stock page.
+  {% if order.is_multi_channel %}One order, {{ allocations|length }} channels — it is approved and produced once, and each channel below receives its share when production is completed.
+  {% elif order.is_market_stock_order %}Unassigned {{ order.display_order_type }} — completed saleable units enter separate Distribution Market Stock for later assignment. Distributor releases, returns, expiry and Physical Store transfers are managed from the Market Stock page.
   {% elif order.order_type == 'distribution' %}For {{ order.customer_name }} — Distribution sale will be recorded once completed.
   {% elif order.order_type == 'online' %}{% if order.customer_name %}For {{ order.customer_name }} — {% endif %}Online sale will be recorded once completed.
   {% else %}{{ vertical_ui.stock_location }} production — <b>{{ order.get_production_destination_display }}</b>. {% if order.production_destination == "store" %}Completed production adds to available stock.{% else %}Completed production does not enter stock. Purpose: <b>{{ order.non_stock_purpose }}</b>.{% endif %} Direct sales and all payment details are handled in the Sales form.{% endif %}
 </p>
+
+{% if order.is_multi_channel %}
+<div class="mb-4 rounded-xl border border-[#E7DFCC] bg-white p-4 shadow-[0_2px_8px_#000000d2]" data-channel-assignment>
+  <div class="mb-2 flex items-center justify-between gap-3">
+    <h3 class="text-sm font-semibold text-stone-700">Channel assignment</h3>
+    {% if order.status == 'pending' and not kitchen_view %}<a href="{% url 'order_split' order.pk %}" class="text-xs font-semibold text-[#8f172d] hover:underline">Change</a>{% endif %}
+  </div>
+  <div class="space-y-2">
+    {% for a in allocations %}
+    <div class="rounded-lg border border-[#E7DFCC] p-3">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="text-sm font-semibold text-stone-800">{{ forloop.counter }}. {{ a.label }}</div>
+        <div class="text-xs text-stone-500">{% if a.is_customer %}{% if a.payment_status == 'paid' %}Payment received{% else %}Receivable{% endif %}{% elif a.is_market %}Enters Market Stock{% elif a.is_stock %}Adds to stock{% endif %}{% if a.sale_id %} · Sale recorded{% endif %}</div>
+      </div>
+      <ul class="mt-1 text-sm text-stone-600">
+        {% for line in a.lines.all %}
+        <li>{{ line.order_item.finished_good.name }} — <span class="font-mono">{{ line.total_units|num }}</span> units{% if order.status == 'completed' %} · delivered <span class="font-mono">{{ line.delivered_units|num }}</span>{% if line.delivered_units < line.total_units %} <span class="text-amber-700">(short)</span>{% endif %}{% endif %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
 
 {% if order.production_basis == 'base_material' %}
 {% with base=order.shared_base_material %}
@@ -42,7 +67,7 @@
 <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg shadow-[0_2px_8px_#000000d2] mb-8 overflow-x-auto overflow-y-auto max-h-[28rem]">
   <table class="min-w-max w-full text-sm">
     <thead class="bg-[#F0EAD9] text-stone-600 text-md text-middle"><tr>
-      <th class="px-2 py-1.5">Product</th><th class="px-2 py-1.5">Sizing</th><th class="px-2 py-1.5">Ordered batches</th><th class="px-2 py-1.5">Ordered pieces</th><th class="px-2 py-1.5">Ordered / requested units</th><th class="px-2 py-1.5">Production target</th><th class="px-2 py-1.5">Planned offcut</th><th class="px-2 py-1.5">Price</th><th class="px-2 py-1.5">Discount</th><th class="px-2 py-1.5">Line Total</th>
+      <th class="px-2 py-1.5">Product</th><th class="px-2 py-1.5">Sizing</th><th class="px-2 py-1.5">Ordered batches</th><th class="px-2 py-1.5">Ordered pieces</th><th class="px-2 py-1.5">Ordered / requested units</th><th class="px-2 py-1.5">Production target</th><th class="px-2 py-1.5">Planned offcut</th>{% if not kitchen_view %}<th class="px-2 py-1.5">Price</th><th class="px-2 py-1.5">Discount</th><th class="px-2 py-1.5">Line Total</th>{% endif %}
     </tr></thead>
     <tbody>
       {% for i in order.items.all %}
@@ -54,9 +79,9 @@
         <td class="px-2 py-1.5 text-right font-mono font-medium">{{ i.total_units|num }}</td>
         <td class="px-2 py-1.5 text-right font-mono">{{ i.production_total_units|num }}</td>
         <td class="px-2 py-1.5 text-right font-mono {% if i.planned_overproduction_units > 0 %}text-emerald-700{% endif %}">{{ i.planned_overproduction_units|num }}</td>
-        <td class="px-2 py-1.5 text-right font-mono">{{ i.price|money:biz.currency_symbol }}</td>
-        <td class="px-2 py-1.5 text-right font-mono">{{ i.discount|money:biz.currency_symbol }}</td>
-        <td class="px-2 py-1.5 text-right font-mono">{{ i.line_total|money:biz.currency_symbol }}</td>
+        {% if not kitchen_view %}<td class="px-2 py-1.5 text-right font-mono">{{ i.price|money:biz.currency_symbol }}</td>{% endif %}
+        {% if not kitchen_view %}<td class="px-2 py-1.5 text-right font-mono">{{ i.discount|money:biz.currency_symbol }}</td>{% endif %}
+        {% if not kitchen_view %}<td class="px-2 py-1.5 text-right font-mono">{{ i.line_total|money:biz.currency_symbol }}</td>{% endif %}
       </tr>
       {% endfor %}
     </tbody>
@@ -71,6 +96,22 @@
 <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-4 mb-4 max-w-4xl"><div class="flex items-center justify-between mb-2"><h3 class="font-semibold text-stone-700">Production batches</h3><a href="{% url 'production_batches' %}" class="text-xs text-[#8f172d] hover:underline">All batches</a></div><div class="space-y-2">{% for b in batches %}<div class="flex flex-wrap items-center justify-between gap-2 text-xs border-t border-[#E7DFCC] pt-2"><span><a href="{% url 'production_batch_detail' b.pk %}" class="font-mono text-[#8f172d] hover:underline">{{ b.batch_number }}</a> · {{ b.finished_good.name }}</span><span>Saleable {{ b.saleable_units|num }} · Yield {{ b.yield_percent|num }}% · {% if b.planned_surplus_stock_units > 0 or b.planned_surplus_customer_units > 0 %}Planned offcut: {{ b.planned_surplus_stock_units|num }} stock{% if b.planned_surplus_customer_units > 0 %}, {{ b.planned_surplus_customer_units|num }} customer-allocated{% endif %}{% for a in b.offcut_allocations.all %} · {{ a.customer.name }} {{ a.quantity|num }} ({{ a.get_channel_display }}){% empty %}{% if b.planned_surplus_customer_units > 0 and b.planned_surplus_customer %} · {{ b.planned_surplus_customer.name }} {{ b.planned_surplus_customer_units|num }} ({{ b.planned_surplus_customer_channel|title }}){% endif %}{% endfor %} · {% endif %}{% if b.excess_units > 0 %}Additional excess {{ b.excess_units|num }} (stock {{ b.excess_stock_units|num }}, non-stock {{ b.excess_non_stock_units|num }}) · {% endif %}{% if b.shortage_flag %}Shortage {{ b.outstanding_shortage_units|num }} outstanding · {% endif %}{{ b.quality_check.get_status_display }}</span></div>{% endfor %}</div></div>
 {% endif %}
 
+{% if order.order_type == 'unassigned' and order.status == 'pending' and not kitchen_view and not kitchen_summary %}
+  <div class="mb-4 max-w-3xl rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">This order has no channel yet. Choose where it goes before approving.
+    <div class="mt-2 flex flex-wrap gap-2"><a href="{% url 'order_edit' order.pk %}" class="rounded-md bg-[#8f172d] px-3 py-1.5 font-semibold text-white">Choose channel</a><a href="{% url 'order_split' order.pk %}" class="rounded-md border border-amber-300 bg-white px-3 py-1.5 font-semibold text-amber-900">Assign across channels</a></div>
+  </div>{% endif %}
+{% if kitchen_summary %}
+<div class="bg-white border border-[#E7DFCC] rounded-lg p-4 mb-4 max-w-3xl">
+  <h3 class="text-sm font-semibold text-stone-700">Recorded by production staff</h3>
+  <p class="text-xs text-stone-500 mt-1 mb-2">Registered by {{ order.created_by|default:"production staff" }}. These amounts pre-fill the flexible usage below and the completion form; you still confirm them.</p>
+  {% for line in kitchen_summary.lines %}<div class="text-xs flex flex-wrap justify-between gap-2 border-t border-[#EFE7D2] py-1.5"><span class="font-medium">{{ line.product }}</span><span class="font-mono">{% if line.produced is not None %}output {{ line.produced|num }}{% endif %}{% if line.wastage %} · wasted {{ line.wastage|num }}{% endif %}</span></div>{% endfor %}
+  {% if order.order_type == 'unassigned' and order.status == 'pending' and not kitchen_view %}
+  <div class="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">This order has no channel yet. Choose where it goes before approving.
+    <div class="mt-2 flex flex-wrap gap-2"><a href="{% url 'order_edit' order.pk %}" class="rounded-md bg-[#8f172d] px-3 py-1.5 font-semibold text-white">Choose channel</a><a href="{% url 'order_split' order.pk %}" class="rounded-md border border-amber-300 bg-white px-3 py-1.5 font-semibold text-amber-900">Assign across channels</a></div>
+  </div>{% endif %}
+</div>
+{% endif %}
+
 {% if order.status == 'pending' and flexible_usages %}
 <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4 max-w-3xl">
   <h3 class="text-sm font-semibold text-amber-900">Flexible {{ vertical_ui.recipe_label|lower }} usage</h3>
@@ -81,7 +122,7 @@
     <div class="border-t border-amber-200 pt-2" data-flex-central>
       <div class="grid grid-cols-1 sm:grid-cols-[1fr_9rem_auto] gap-2 items-end">
         <div class="text-xs"><b>{{ row.material.name }}</b> · all products<div class="text-[10px] text-amber-600">Planned total: {{ row.planned_total|num }} {{ row.usage_unit }}</div></div>
-        <label class="text-[10px] text-amber-700">Total used for this order<input form="approve-order-form" type="number" min="0" step="0.0001" name="{{ row.input_name }}" value="{{ row.input_value }}" data-flex-total class="mt-1 w-full rounded-md border border-amber-300 bg-white px-2 py-1.5 text-sm font-mono"></label>
+        <label class="text-[10px] text-amber-700">Total used for this order<input form="{% if kitchen_view %}flexible-save-form{% else %}approve-order-form{% endif %}" type="number" min="0" step="0.0001" name="{{ row.input_name }}" value="{{ row.input_value }}" data-flex-total class="mt-1 w-full rounded-md border border-amber-300 bg-white px-2 py-1.5 text-sm font-mono"></label>
         <span class="text-[10px] text-amber-600 pb-2">{{ row.usage_unit }}</span>
       </div>
       <ul class="mt-2 space-y-0.5 text-[11px] text-amber-800">
@@ -91,12 +132,18 @@
     {% else %}
     <div class="grid grid-cols-1 sm:grid-cols-[1fr_9rem_auto] gap-2 items-end border-t border-amber-200 pt-2">
       <div class="text-xs"><b>{{ row.good.name }}</b> · {{ row.material.name }}<div class="text-[10px] text-amber-600">{{ vertical_ui.recipe_label }}: {{ row.planned_per_batch|num }} {{ row.usage_unit }} / batch · production equivalent {{ row.multiplier|num }} batch(es)</div></div>
-      <label class="text-[10px] text-amber-700">Actual qty / batch<input form="approve-order-form" type="number" min="0" step="0.01" name="{{ row.input_name }}" value="{{ row.input_value }}" class="mt-1 w-full rounded-md border border-amber-300 bg-white px-2 py-1.5 text-sm font-mono"></label>
+      <label class="text-[10px] text-amber-700">Actual qty / batch<input form="{% if kitchen_view %}flexible-save-form{% else %}approve-order-form{% endif %}" type="number" min="0" step="any" name="{{ row.input_name }}" value="{{ row.input_value }}" class="mt-1 w-full rounded-md border border-amber-300 bg-white px-2 py-1.5 text-sm font-mono"></label>
       <span class="text-[10px] text-amber-600 pb-2">{{ row.usage_unit }}</span>
     </div>
     {% endif %}
     {% endfor %}
   </div>
+  {% if kitchen_view %}
+  <form id="flexible-save-form" method="post" action="{% url 'order_flexible_save' order.pk %}" class="mt-3">{% csrf_token %}
+    <button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save flexible amounts</button>
+    <span class="ml-2 text-[11px] text-amber-700">Saved amounts are filled in when this order is approved.</span>
+  </form>
+  {% endif %}
 </div>
 <script>
 // Live preview of the per-product split; the server recomputes it exactly on approval.
@@ -146,12 +193,13 @@ document.querySelectorAll('[data-flex-central]').forEach(function (box) {
 {% endif %}
 
 <div class="flex w-full max-w-4xl flex-wrap items-center gap-2">
-  <a href="{% url 'order_invoice' order.pk %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Download PDF</a>
+  {% if not kitchen_view %}<a href="{% url 'order_invoice' order.pk %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Download PDF</a>{% endif %}
   {% if order.status == 'pending' %}
   <a href="{% url 'order_edit' order.pk %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Edit</a>
+  {% if not kitchen_view and order.order_type != 'unassigned' %}<a href="{% url 'order_split' order.pk %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Assign across channels</a>{% endif %}
   {% if production_run and production_run.status == 'draft' %}
   <a href="{% url 'production_run_detail' production_run.pk %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-sky-50 text-sky-800 border border-sky-200">Approve via Shared Run</a>
-  {% else %}
+  {% elif not kitchen_view %}
   <form id="approve-order-form" method="post" action="{% url 'order_approve' order.pk %}">{% csrf_token %}
     <button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Approve — release Raw Materials</button>
   </form>
@@ -174,7 +222,7 @@ document.querySelectorAll('[data-flex-central]').forEach(function (box) {
     <button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Edit as New Order</button>
   </form>
   {% endif %}
-  {% if order.status == 'pending' or order.status == 'rejected' or order.status == 'reversed' %}
+  {% if not kitchen_view and order.status == 'pending' or not kitchen_view and order.status == 'rejected' or not kitchen_view and order.status == 'reversed' %}
   <form method="post" action="{% url 'order_delete' order.pk %}" onsubmit="return confirm('{% if order.status == 'reversed' %}Permanently delete this already-reversed order and its trace records?{% else %}Delete this order?{% endif %}');">{% csrf_token %}
     <button type="submit" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">{% if order.status == 'reversed' %}Delete Reversed Order{% else %}Delete{% endif %}</button>
   </form>

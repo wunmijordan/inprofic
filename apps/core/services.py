@@ -47,7 +47,8 @@ def tenant_backup_querysets(business):
         PurchaseOrder, PurchaseOrderItem, RawMaterialCostSnapshot, SupplierPayment,
     )
     from production.models import (
-        Order, OrderNumberSequence, OrderItem, OrderMaterialUsage, ProductionRun,
+        Order, OrderNumberSequence, OrderItem, OrderAllocation, OrderAllocationLine, OrderMaterialUsage,
+        OrderFlexibleMaterialReport, ProductionRun,
         ProductionRunOrder, ProductionRunMaterial, ProductionBatch,
         ProductionOffcutAllocation, ProductionBatchReconciliation,
         ProductionQualityCheck, ProductionCostSnapshot, ProductionCostLine,
@@ -86,6 +87,7 @@ def tenant_backup_querysets(business):
         OrderNumberSequence.raw_objects.filter(business=business),
         OrderItem.objects.filter(order__business=business),
         OrderMaterialUsage.raw_objects.filter(business=business),
+        OrderFlexibleMaterialReport.raw_objects.filter(business=business),
         ProductionRun.raw_objects.filter(business=business),
         ProductionRunOrder.objects.filter(production_run__business=business),
         ProductionRunMaterial.raw_objects.filter(business=business),
@@ -98,6 +100,9 @@ def tenant_backup_querysets(business):
 
         Sale.raw_objects.filter(business=business),
         SaleItem.objects.filter(sale__business=business),
+        # After Sale: an allocation points at the customer sale it created.
+        OrderAllocation.objects.filter(order__business=business),
+        OrderAllocationLine.objects.filter(allocation__order__business=business),
         CustomerPayment.raw_objects.filter(business=business),
         Expense.raw_objects.filter(business=business),
         ExpensePayment.raw_objects.filter(business=business),
@@ -108,4 +113,3 @@ def tenant_backup_objects(business):
     """Lazy iterable for Django serialization; never crosses tenant ownership."""
     from itertools import chain
     return chain.from_iterable(tenant_backup_querysets(business))
-

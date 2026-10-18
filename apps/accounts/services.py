@@ -50,6 +50,16 @@ ROLE_DEFAULTS = {
     CustomUser.ROLE_DELIVERY_RIDER: {
         "delivery_rider": (True, True),
     },
+    # Production-entry staff work in an isolated workspace: no channel,
+    # customer or payment screens. The "Baker / Chef" role may also read stock
+    # and recipes (Inventory view); the Guided role is never given recipe access
+    # and sees only the materials for the job in front of them.
+    CustomUser.ROLE_KITCHEN_COOK: {
+        "kitchen": (True, True), "inventory": (True, False),
+    },
+    CustomUser.ROLE_KITCHEN_GUIDED: {
+        "kitchen": (True, True),
+    },
     CustomUser.ROLE_BUSINESS_ADMIN: {m: (True, True) for m, _ in RoleModulePermission.MODULE_CHOICES},
     # Demo can open normal operational add/edit workflows so the live UI can be
     # exercised, but mutation is blocked centrally by middleware. The historical
@@ -145,6 +155,17 @@ def seed_business_roles(business):
     labels and permission values are left untouched just as before.
     """
     definitions = dict(CustomUser.SYSTEM_ROLE_DEFINITIONS)
+    kitchen_keys = (CustomUser.ROLE_KITCHEN_COOK, CustomUser.ROLE_KITCHEN_GUIDED)
+    if getattr(business, "uses_production", False):
+        # Kitchen roles are named for the business vertical (Baker, Chef, ...).
+        from core.verticals import vertical_config
+        role_name = vertical_config(business).get("kitchen_role_name") or "Production Staff"
+        definitions[CustomUser.ROLE_KITCHEN_COOK] = role_name
+        definitions[CustomUser.ROLE_KITCHEN_GUIDED] = f"{role_name} (Guided)"
+    else:
+        # Wholesale and retail have no production workflow, so no kitchen roles.
+        for key in kitchen_keys:
+            definitions.pop(key, None)
     system_keys = tuple(definitions)
     hidden_system_keys = {CustomUser.ROLE_SUPERUSER, CustomUser.ROLE_LIVE_TESTER}
 
@@ -276,7 +297,7 @@ def seed_business_modules(business, source=BusinessModuleAccess.SOURCE_DEFAULT):
     """
     expected = [
         module for module, _label in RoleModulePermission.MODULE_CHOICES
-        if module not in {"pos", "delivery_rider"}
+        if module not in {"pos", "delivery_rider", "kitchen"}
     ]
     existing = set(
         BusinessModuleAccess.objects.filter(business=business, module__in=expected)
@@ -314,7 +335,8 @@ def business_has_module(business, module):
         return False
     # Rider access is a purpose-specific surface inside the plan-gated Delivery
     # module, not a separate commercial entitlement.
-    entitlement_module = "delivery" if module == "delivery_rider" else module
+    # Purpose-specific workspaces follow the entitlement of the module they sit in.
+    entitlement_module = {"delivery_rider": "delivery", "kitchen": "production"}.get(module, module)
     subscription = business_subscription_for(business)
     if subscription and not subscription.is_effectively_active and entitlement_module != "dashboard":
         return False
@@ -398,3 +420,18 @@ def is_business_admin(user, business):
         return False
     membership, _user_permissions, _role_permissions = _permission_snapshot(user, business)
     return bool(membership and membership.role.key == CustomUser.ROLE_BUSINESS_ADMIN)
+
+
+def is_kitchen_restricted(user, business):
+    """True for production-floor users (Baker / Chef roles).
+
+    They work through the normal Orders pages, trimmed to what the floor needs.
+    Anyone who also holds regular Production access (for example an admin who
+    gave them a broader role) is not restricted.
+    """
+    if not getattr(user, "is_authenticated", False) or not business:
+        return False
+    return (
+        user_has_permission(user, business, "kitchen", "view")
+        and not user_has_permission(user, business, "production", "view")
+    )

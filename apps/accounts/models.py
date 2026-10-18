@@ -35,6 +35,10 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     ROLE_AUDITOR = "auditor"
     ROLE_DELIVERY_COORDINATOR = "delivery_coordinator"
     ROLE_DELIVERY_RIDER = "delivery_rider"
+    # Production-entry roles. Display names follow the business vertical when
+    # seeded (Baker, Chef, Production Staff); the keys are fixed identifiers.
+    ROLE_KITCHEN_COOK = "kitchen_cook"
+    ROLE_KITCHEN_GUIDED = "kitchen_guided"
     # Backward-compatible internal key for the fixed, superuser-only Demo role.
     ROLE_LIVE_TESTER = "live_tester"
     ROLE_SUPERUSER = "superuser"
@@ -48,6 +52,8 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         (ROLE_AUDITOR, "External Auditor"),
         (ROLE_DELIVERY_COORDINATOR, "Delivery Coordinator"),
         (ROLE_DELIVERY_RIDER, "Delivery Rider"),
+        (ROLE_KITCHEN_COOK, "Production Staff"),
+        (ROLE_KITCHEN_GUIDED, "Production Staff (Guided)"),
         (ROLE_LIVE_TESTER, "Demo"),
         (ROLE_SUPERUSER, "Superuser"),
     )
@@ -120,6 +126,7 @@ class RoleModulePermission(models.Model):
         ("commerce", "Commerce"),
         ("delivery", "Delivery"),
         ("delivery_rider", "Delivery Rider"),
+        ("kitchen", "Production Entry"),
         ("audit", "Audit Workspace"),
         ("pos", "In-Premise POS"),
     ]
@@ -208,6 +215,11 @@ class UserModulePermission(models.Model):
         return f"{self.membership.user} — {self.get_module_display()}"
 
 
+# Billing cycles offered for plan subscriptions: key -> months covered.
+BILLING_CYCLE_MONTHS = {"monthly": 1, "quarterly": 3, "biannual": 6, "yearly": 12}
+BILLING_CYCLE_LABELS = {"monthly": "Monthly", "quarterly": "Quarterly", "biannual": "Bi-annual", "yearly": "Yearly"}
+
+
 class SubscriptionPlan(models.Model):
     """Commercial plan definition; module entitlements are copied into BusinessModuleAccess."""
     CODE_STARTER = "starter"
@@ -225,6 +237,14 @@ class SubscriptionPlan(models.Model):
     yearly_discount_percent = models.DecimalField(
         max_digits=5, decimal_places=2, default=0,
         help_text="Discount applied to 12 months of the plan when paid yearly.",
+    )
+    quarterly_discount_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        help_text="Discount applied to 3 months of the plan when paid quarterly.",
+    )
+    biannual_discount_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        help_text="Discount applied to 6 months of the plan when paid bi-annually.",
     )
     additional_service_discount_percent = models.DecimalField(
         max_digits=5, decimal_places=2, default=30,
@@ -258,6 +278,30 @@ class SubscriptionPlan(models.Model):
         from decimal import Decimal
         return self.code == self.CODE_STARTER and Decimal(self.monthly_price or 0) <= 0
 
+    def cycle_discount_percent(self, cycle):
+        from decimal import Decimal
+        value = {
+            "quarterly": self.quarterly_discount_percent,
+            "biannual": self.biannual_discount_percent,
+            "yearly": self.yearly_discount_percent,
+        }.get(cycle, Decimal("0"))
+        return min(max(Decimal(value or 0), Decimal("0")), Decimal("100"))
+
+    def price_for_cycle(self, cycle):
+        """Base price for one full billing cycle (no promotion, primary service only)."""
+        from decimal import Decimal
+        months = BILLING_CYCLE_MONTHS.get(cycle, 1)
+        discount = self.cycle_discount_percent(cycle)
+        return (self.monthly_price * Decimal(months) * (Decimal("1") - discount / Decimal("100"))).quantize(Decimal("0.01"))
+
+    @property
+    def quarterly_price(self):
+        return self.price_for_cycle("quarterly")
+
+    @property
+    def biannual_price(self):
+        return self.price_for_cycle("biannual")
+
     @property
     def yearly_price(self):
         from decimal import Decimal
@@ -279,12 +323,16 @@ class SubscriptionPromotion(models.Model):
         (DISCOUNT_AMOUNT, "Fixed amount off"),
     ]
 
-    CYCLE_BOTH = "both"
+    CYCLE_BOTH = "both"  # kept as the stored value for "every billing cycle"
     CYCLE_MONTHLY = "monthly"
+    CYCLE_QUARTERLY = "quarterly"
+    CYCLE_BIANNUAL = "biannual"
     CYCLE_YEARLY = "yearly"
     BILLING_CYCLE_CHOICES = [
-        (CYCLE_BOTH, "Monthly and yearly"),
+        (CYCLE_BOTH, "All billing cycles"),
         (CYCLE_MONTHLY, "Monthly only"),
+        (CYCLE_QUARTERLY, "Quarterly only"),
+        (CYCLE_BIANNUAL, "Bi-annual only"),
         (CYCLE_YEARLY, "Yearly only"),
     ]
 
@@ -334,7 +382,7 @@ class SubscriptionPromotion(models.Model):
 
     @property
     def billing_cycle_label(self):
-        return dict(self.BILLING_CYCLE_CHOICES).get(self.billing_cycle, "Monthly and yearly")
+        return dict(self.BILLING_CYCLE_CHOICES).get(self.billing_cycle, "All billing cycles")
 
     def is_active_at(self, moment=None):
         from django.utils import timezone
@@ -370,6 +418,16 @@ class SubscriptionPromotion(models.Model):
             return Decimal("0.00")
         discount = min(max(plan.yearly_discount_percent, Decimal("0")), Decimal("100"))
         return (self.discounted_monthly_price_for(plan) * Decimal("12") * (Decimal("1") - discount / Decimal("100"))).quantize(Decimal("0.01"))
+
+    def discounted_cycle_price_for(self, plan=None, cycle="monthly"):
+        """Promotional price of one full billing cycle for a single service."""
+        from decimal import Decimal
+        plan = plan or self.plan
+        if not plan:
+            return Decimal("0.00")
+        months = BILLING_CYCLE_MONTHS.get(cycle, 1)
+        discount = plan.cycle_discount_percent(cycle)
+        return (self.discounted_monthly_price_for(plan) * Decimal(months) * (Decimal("1") - discount / Decimal("100"))).quantize(Decimal("0.01"))
 
     @property
     def discounted_monthly_price(self):
@@ -584,7 +642,7 @@ class BusinessSubscription(models.Model):
     @property
     def effective_status_label(self):
         if self.founder_lifetime:
-            return "Founder lifetime"
+            return "Lifetime access"
         if not self.is_effectively_active:
             return "Expired"
         if self.plan.is_free_forever and self.status == self.STATUS_ACTIVE:
@@ -1202,8 +1260,13 @@ class SubscriptionPayment(models.Model):
         (PROVIDER_MANUAL, "Manual / founder confirmation"),
     ]
     CYCLE_MONTHLY = "monthly"
+    CYCLE_QUARTERLY = "quarterly"
+    CYCLE_BIANNUAL = "biannual"
     CYCLE_YEARLY = "yearly"
-    CYCLE_CHOICES = [(CYCLE_MONTHLY, "Monthly"), (CYCLE_YEARLY, "Yearly")]
+    CYCLE_CHOICES = [
+        (CYCLE_MONTHLY, "Monthly"), (CYCLE_QUARTERLY, "Quarterly"),
+        (CYCLE_BIANNUAL, "Bi-annual"), (CYCLE_YEARLY, "Yearly"),
+    ]
     PURPOSE_SUBSCRIPTION = "subscription"
     PURPOSE_PAYROLL_ADDON = "payroll_addon"
     PURPOSE_PAYROLL_BATCH = "payroll_batch"
@@ -1317,9 +1380,13 @@ class PlatformIntegrationSettings(models.Model):
     credentials, provider records, delivery history, or synchronized records.
     """
 
-    glovo_enabled = models.BooleanField(
+    shipbubble_enabled = models.BooleanField(
         default=False,
-        help_text="Expose and allow the optional Glovo delivery-provider integration across INPROFIC.",
+        help_text="Expose and allow the optional Shipbubble delivery-provider integration across INPROFIC.",
+    )
+    whatsapp_storefront_enabled = models.BooleanField(
+        default=False,
+        help_text="Expose and allow the tenant-connected WhatsApp Storefront and assistant across INPROFIC.",
     )
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

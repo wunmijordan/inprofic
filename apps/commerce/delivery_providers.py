@@ -12,7 +12,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from accounts.platform_integrations import glovo_platform_enabled
+from accounts.platform_integrations import shipbubble_platform_enabled
 from core.services import audit
 
 from .models import CommerceNotification, DeliveryAssignment, DeliveryEvent, DeliveryProviderAccount
@@ -24,8 +24,8 @@ class ProviderDispatchError(ValidationError):
     pass
 
 
-def _require_glovo_platform():
-    if not glovo_platform_enabled():
+def _require_shipbubble_platform():
+    if not shipbubble_platform_enabled():
         raise ProviderDispatchError("This external delivery provider is not currently available.")
 
 
@@ -60,28 +60,162 @@ def _http_json(url: str, *, payload=None, method="POST", headers=None) -> dict:
         raise ProviderDispatchError("Provider returned a non-JSON response.") from exc
 
 
-def _glovo_token(account: DeliveryProviderAccount) -> str:
-    _require_glovo_platform()
-    if not account.api_key or not account.api_secret:
-        raise ProviderDispatchError("Configure the Glovo client ID and client secret first.")
+SHIPBUBBLE_BASE_URL = "https://api.shipbubble.com/v1"
+SHIPBUBBLE_STATUS_MAP = {
+    "pending": "assigned", "confirmed": "assigned", "assigned": "assigned", "ready": "ready",
+    "picked_up": "picked_up", "in_transit": "picked_up", "completed": "delivered", "delivered": "delivered",
+    "failed": "failed", "cancelled": "cancelled", "canceled": "cancelled", "returned": "returned",
+}
+
+
+def _shipbubble_request(account: DeliveryProviderAccount, path: str, *, payload=None, method="POST") -> dict:
+    """Call the Shipbubble API with the business's own key (Bearer auth)."""
+    _require_shipbubble_platform()
+    if not account.api_key:
+        raise ProviderDispatchError("Enter your Shipbubble API key first.")
+    base = (account.base_url or SHIPBUBBLE_BASE_URL).rstrip("/")
     response = _http_json(
-        _endpoint(account, account.auth_endpoint or "/oauth/token"),
-        payload={"grantType": "client_credentials", "clientId": account.api_key, "clientSecret": account.api_secret},
+        f"{base}/{path.lstrip('/')}", payload=payload, method=method,
+        headers={"Authorization": f"Bearer {account.api_key}"},
     )
-    token = str(response.get("accessToken") or response.get("access_token") or "").strip()
-    if not token:
-        raise ProviderDispatchError("Glovo authentication succeeded without returning an access token.")
-    return token
+    if not isinstance(response, dict):
+        return {}
+    if str(response.get("status") or "").lower() == "failed":
+        errors = response.get("errors")
+        detail = "; ".join(str(e) for e in errors) if isinstance(errors, list) and errors else ""
+        raise ProviderDispatchError(f"Shipbubble: {response.get('message') or 'the request failed'}{(' — ' + detail) if detail else ''}")
+    return response
 
 
-def _glovo_request(account: DeliveryProviderAccount, endpoint: str, *, payload=None, method="POST") -> dict:
-    return _http_json(
-        _endpoint(account, endpoint),
-        payload=payload,
-        method=method,
-        headers={"Authorization": f"Bearer {_glovo_token(account)}"},
+def _sb_meta(account) -> dict:
+    return account.metadata if isinstance(account.metadata, dict) else {}
+
+
+def _sb_contact(account) -> dict:
+    try:
+        business = account.business
+    except Exception:  # an unsaved/unlinked account has no business yet
+        business = None
+    return {
+        "name": (getattr(business, "name", "") or "Store")[:100],
+        "email": getattr(business, "contact_email", "") or "noreply@inprofic.com",
+        "phone": getattr(business, "contact_phone", "") or "08000000000",
+    }
+
+
+def _sb_with_country(address: str) -> str:
+    address = (address or "").strip()
+    return address if "nigeria" in address.lower() else f"{address}, Nigeria"
+
+
+def _sb_validate_address(account, *, name, email, phone, address, latitude=None, longitude=None) -> int:
+    payload = {"name": name, "email": email, "phone": phone, "address": _sb_with_country(address)}
+    if latitude not in (None, "") and longitude not in (None, ""):
+        payload["latitude"] = float(latitude)
+        payload["longitude"] = float(longitude)
+    data = (_shipbubble_request(account, "shipping/address/validate", payload=payload).get("data") or {})
+    code = data.get("address_code")
+    if not code:
+        raise ProviderDispatchError("Shipbubble could not validate that address. Check it includes the area, city and state.")
+    return int(code)
+
+
+def _sb_pickup_code(account) -> int:
+    """The validated pickup address code; validated once from the delivery base and then remembered."""
+    stored = (account.address_book_id or "").strip()
+    if stored.isdigit():
+        return int(stored)
+    from .models import DeliveryOrigin
+    origin = DeliveryOrigin.raw_objects.filter(business=account.business, active=True).order_by("-is_default", "id").first()
+    if not origin:
+        raise ProviderDispatchError("Add a delivery base (pickup address) before using Shipbubble.")
+    contact = _sb_contact(account)
+    code = _sb_validate_address(
+        account, name=contact["name"], email=contact["email"], phone=contact["phone"],
+        address=origin.address, latitude=origin.latitude, longitude=origin.longitude,
     )
+    account.address_book_id = str(code)
+    account.save(update_fields=["address_book_id", "updated_at"])
+    return code
 
+
+def _sb_category_id(account) -> int:
+    meta = _sb_meta(account)
+    if str(meta.get("category_id") or "").isdigit():
+        return int(meta["category_id"])
+    data = _shipbubble_request(account, "shipping/labels/categories", method="GET").get("data") or []
+    pick = next((c for c in data if "food" in str(c.get("category", "")).lower()), None) or (data[0] if data else None)
+    if not pick:
+        raise ProviderDispatchError("Shipbubble returned no package categories.")
+    account.metadata = {**meta, "category_id": pick["category_id"]}
+    account.save(update_fields=["metadata", "updated_at"])
+    return int(pick["category_id"])
+
+
+def _sb_package(account, subtotal) -> dict:
+    meta = _sb_meta(account)
+
+    def number(key, default):
+        try:
+            value = Decimal(str(meta.get(key) or default))
+            return value if value > 0 else Decimal(str(default))
+        except (InvalidOperation, ValueError):
+            return Decimal(str(default))
+
+    amount = int(Decimal(str(subtotal or 0))) or 1
+    return {
+        "package_items": [{
+            "name": "Order", "description": "Customer order",
+            "unit_weight": str(number("default_weight_kg", 1)), "unit_amount": str(amount), "quantity": "1",
+        }],
+        "package_dimension": {
+            "length": int(number("package_length_cm", 30)), "width": int(number("package_width_cm", 30)),
+            "height": int(number("package_height_cm", 15)),
+        },
+    }
+
+
+def _sb_pickup_date() -> str:
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+    now = timezone.now().astimezone(ZoneInfo("Africa/Lagos"))
+    # Rates requested after 6 PM are processed the next day.
+    return (now + timedelta(days=1 if now.hour >= 18 else 0)).strftime("%Y-%m-%d")
+
+
+def _sb_fetch_rates(account, *, sender_code, receiver_code, subtotal, instructions="") -> dict:
+    payload = {
+        "sender_address_code": sender_code, "reciever_address_code": receiver_code,  # (sic) Shipbubble's spelling
+        "pickup_date": _sb_pickup_date(), "category_id": _sb_category_id(account),
+        "service_type": "pickup", **_sb_package(account, subtotal),
+    }
+    if instructions:
+        payload["delivery_instructions"] = instructions[:250]
+    data = _shipbubble_request(account, "shipping/fetch_rates", payload=payload).get("data") or {}
+    if not data.get("request_token") or not data.get("couriers"):
+        raise ProviderDispatchError("Shipbubble has no courier available for this destination right now.")
+    return data
+
+
+def _sb_pick_courier(data: dict, account, wanted: dict | None = None) -> dict:
+    couriers = data.get("couriers") or []
+    wanted = wanted or {}
+    for courier in couriers:
+        if wanted.get("service_code") and str(courier.get("service_code")) == str(wanted["service_code"]) \
+                and str(courier.get("courier_id")) == str(wanted.get("courier_id")):
+            return courier
+    key = "fastest_courier" if _sb_meta(account).get("courier_preference") == "fastest" else "cheapest_courier"
+    return data.get(key) or min(couriers, key=lambda c: Decimal(str(c.get("rate_card_amount") or c.get("total") or 0)))
+
+
+def _sb_minutes_until(value, fallback):
+    from zoneinfo import ZoneInfo
+    parsed = parse_datetime(str(value or "").replace(" ", "T"))
+    if not parsed:
+        return fallback
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, ZoneInfo("Africa/Lagos"))
+    return max(1, min(32000, int((parsed - timezone.now()).total_seconds() // 60)))
 
 def _generic_headers(account: DeliveryProviderAccount) -> dict:
     """Build headers for the provider-neutral adapter contract.
@@ -200,89 +334,48 @@ def _generic_dispatch_payload(assignment: DeliveryAssignment, account: DeliveryP
     }
 
 
-def _duration_minutes(value, fallback=0):
-    """Convert the ISO-8601 hour/minute duration returned by LaaS into minutes."""
-    match = re.fullmatch(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", str(value or "").strip())
-    if not match:
-        return int(fallback or 0)
-    hours, minutes, seconds = (int(part or 0) for part in match.groups())
-    return max(1, hours * 60 + minutes + (1 if seconds else 0))
-
-
 def _money(value, label):
     try:
         return Decimal(str(value)).quantize(Decimal("0.01"))
     except (InvalidOperation, TypeError, ValueError) as exc:
-        raise ProviderDispatchError(f"Glovo returned an invalid {label}.") from exc
+        raise ProviderDispatchError(f"Shipbubble returned an invalid {label}.") from exc
 
 
-def quote_glovo_delivery(account: DeliveryProviderAccount, *, destination_address, latitude=None, longitude=None) -> dict:
-    _require_glovo_platform()
+def quote_shipbubble_delivery(account: DeliveryProviderAccount, *, destination_address, latitude=None, longitude=None, subtotal=0) -> dict:
+    """Live courier rate for the checkout. The customer pays the courier's displayed rate."""
+    _require_shipbubble_platform()
     if not account.is_configured_for_quote:
-        raise ProviderDispatchError("Complete the Glovo LaaS live-quote configuration first.")
-    delivery_address = {"rawAddress": (destination_address or "").strip()}
-    if latitude not in (None, "") and longitude not in (None, ""):
-        delivery_address["coordinates"] = {"latitude": float(latitude), "longitude": float(longitude)}
-    response = _glovo_request(
-        account,
-        account.quote_endpoint,
-        payload={
-            "pickupDetails": {"addressBook": {"id": account.address_book_id}},
-            "deliveryAddress": delivery_address,
-        },
+        raise ProviderDispatchError("Add your Shipbubble API key and activate the account first.")
+    contact = _sb_contact(account)
+    sender = _sb_pickup_code(account)
+    # The real customer details are not known at quote time, so the quote uses the
+    # business contact; dispatch re-validates the address with the real recipient.
+    receiver = _sb_validate_address(
+        account, name="Customer", email=contact["email"], phone=contact["phone"],
+        address=destination_address, latitude=latitude, longitude=longitude,
     )
-    quote_id = str(response.get("quoteId") or response.get("id") or "").strip()
-    if not quote_id:
-        raise ProviderDispatchError("Glovo did not return a quote ID.")
-    fee = _money(response.get("quotePrice"), "quote price")
-    distance_m = Decimal(str(response.get("distanceInMeters") or 0))
-    eta = response.get("estimatedTimeOfDelivery") or {}
-    expires_at = parse_datetime(str(response.get("expiresAt") or ""))
-    if expires_at and timezone.is_naive(expires_at):
-        expires_at = timezone.make_aware(expires_at, timezone.get_current_timezone())
+    data = _sb_fetch_rates(account, sender_code=sender, receiver_code=receiver, subtotal=subtotal)
+    courier = _sb_pick_courier(data, account)
+    fee = _money(courier.get("rate_card_amount") if courier.get("rate_card_amount") is not None else courier.get("total"), "rate")
+    eta_max = _sb_minutes_until(courier.get("delivery_eta_time"), 24 * 60)
+    eta_min = min(eta_max, _sb_minutes_until(courier.get("pickup_eta_time"), 60))
+    trimmed = {k: courier.get(k) for k in (
+        "courier_id", "courier_name", "service_code", "service_type", "rate_card_amount", "total",
+        "pickup_eta", "delivery_eta", "pickup_eta_time", "delivery_eta_time",
+    )}
     return {
-        "quote_id": quote_id,
+        "quote_id": str(data["request_token"])[:160],
         "fee": fee,
-        "distance_km": (distance_m / Decimal("1000")).quantize(Decimal("0.01")),
-        "eta_min_minutes": _duration_minutes(eta.get("lowerBound"), 20),
-        "eta_max_minutes": _duration_minutes(eta.get("upperBound"), 60),
-        "expires_at": expires_at or timezone.now() + timezone.timedelta(minutes=10),
-        "currency": str(response.get("currencyCode") or "").strip(),
-        "response": response,
+        "distance_km": Decimal("0.00"),
+        "eta_min_minutes": eta_min,
+        "eta_max_minutes": eta_max,
+        "expires_at": timezone.now() + timezone.timedelta(minutes=30),
+        "currency": str(courier.get("currency") or courier.get("rate_card_currency") or "NGN"),
+        "response": {"courier": trimmed},
     }
 
-
-def _glovo_parcel_payload(assignment: DeliveryAssignment) -> dict:
-    intake = assignment.intake
-    quote = assignment.quote
-    provider_response = ((quote.provider_payload or {}).get("response") if quote else {}) or {}
-    currency = str(provider_response.get("currencyCode") or getattr(assignment.business, "currency", "NGN") or "NGN")
-    subtotal = quote.subtotal if quote else intake.total
-    payload = {
-        "contact": {
-            "name": intake.customer_name,
-            "phone": intake.customer_phone,
-        },
-        "pickupOrderCode": intake.public_number,
-        "price": {
-            "paymentType": "PAID",
-            "delivery": {"currencyCode": currency, "value": float(intake.delivery_fee or 0)},
-            "parcel": {"currencyCode": currency, "value": float(subtotal or 0)},
-        },
-    }
-    if intake.customer_email:
-        payload["contact"]["email"] = intake.customer_email
-    if intake.customer_address:
-        payload["deliveryAddress"] = {"details": intake.customer_address[:250]}
-    return payload
-
-
-def _glovo_status(response: dict) -> str:
-    status = response.get("status") or ""
-    if isinstance(status, dict):
-        status = status.get("state") or status.get("status") or ""
-    return str(status or "CREATED").strip().upper()
-
+def _shipbubble_status(value) -> str:
+    return re.sub(r"[\s-]+", "_", str(value or "pending").strip().lower())
 
 def _map_provider_status(account: DeliveryProviderAccount, status: str) -> str:
     mapping = account.status_mapping if isinstance(account.status_mapping, dict) else {}
@@ -290,38 +383,25 @@ def _map_provider_status(account: DeliveryProviderAccount, status: str) -> str:
 
 
 def ensure_builtin_provider_accounts(business):
-    """Materialize optional built-ins only while the founder exposes them."""
-    if not glovo_platform_enabled():
+    """Materialize the optional Shipbubble account only while the founder exposes it."""
+    if not shipbubble_platform_enabled():
         return None, False
     existing = DeliveryProviderAccount.raw_objects.filter(
-        business=business, provider_code=DeliveryProviderAccount.PROVIDER_GLOVO
+        business=business, provider_code=DeliveryProviderAccount.PROVIDER_SHIPBUBBLE
     ).order_by("id").first()
     if existing:
         return existing, False
-    name = "Glovo"
+    name = "Shipbubble"
     if DeliveryProviderAccount.raw_objects.filter(business=business, name=name).exists():
-        name = "Glovo delivery"
+        name = "Shipbubble couriers"
     account = DeliveryProviderAccount.raw_objects.create(
-        business=business,
-        name=name,
-        provider_code=DeliveryProviderAccount.PROVIDER_GLOVO,
-        active=False,
-        sandbox=True,
-        auto_dispatch=False,
-        use_live_quotes=True,
-        auth_endpoint="/oauth/token",
-        quote_endpoint="/v2/laas/quotes",
-        order_endpoint="/v2/laas/quotes/{quote_id}/parcels",
-        cancel_endpoint="/v2/laas/parcels/{external_reference}/cancel",
-        status_mapping={
-            "CREATED": "assigned", "SCHEDULED": "assigned", "ACTIVATED": "assigned",
-            "ACCEPTED": "assigned", "WAITING_FOR_PICKUP": "ready", "PICKED": "picked_up",
-            "WAITING_FOR_DELIVERY": "picked_up", "DELIVERED": "delivered",
-            "REJECTED": "failed", "CANCELLED": "cancelled", "RETURNED": "returned",
-        },
+        business=business, name=name, provider_code=DeliveryProviderAccount.PROVIDER_SHIPBUBBLE,
+        active=False, sandbox=False, auto_dispatch=False, use_live_quotes=True,
+        base_url=SHIPBUBBLE_BASE_URL, status_mapping=dict(SHIPBUBBLE_STATUS_MAP),
+        metadata={"courier_preference": "cheapest", "default_weight_kg": "1",
+                  "package_length_cm": "30", "package_width_cm": "30", "package_height_cm": "15"},
     )
     return account, True
-
 
 def dispatch_assignment_to_provider(assignment: DeliveryAssignment, *, actor=None) -> DeliveryAssignment:
     assignment = DeliveryAssignment.raw_objects.select_related("provider_account", "origin", "quote", "intake", "business", "driver__user").get(pk=assignment.pk)
@@ -391,33 +471,41 @@ def dispatch_assignment_to_provider(assignment: DeliveryAssignment, *, actor=Non
             rider_user_ids=(assignment.driver.user_id,) if assignment.driver_id and assignment.driver and assignment.driver.user_id else (),
         )
         return assignment
-    if account.provider_code != DeliveryProviderAccount.PROVIDER_GLOVO:
+    if account.provider_code != DeliveryProviderAccount.PROVIDER_SHIPBUBBLE:
         return assignment
-    _require_glovo_platform()
+    _require_shipbubble_platform()
     if not account.is_configured_for_dispatch:
         DeliveryEvent.raw_objects.create(
             business=assignment.business, created_by=actor, assignment=assignment, status=assignment.status,
-            note="Glovo is enabled but not fully configured; delivery awaits manual dispatch.",
-            metadata={"provider": "glovo", "configured": False},
+            note="Shipbubble is enabled but not fully configured; delivery awaits manual dispatch.",
+            metadata={"provider": "shipbubble", "configured": False},
         )
         return assignment
-    quote_reference = (assignment.quote.provider_quote_reference if assignment.quote_id else "").strip()
-    if not quote_reference:
-        raise ProviderDispatchError("This delivery has no live Glovo quote reference. Request a fresh Glovo quote or dispatch it manually.")
-    endpoint = account.order_endpoint.replace("{quote_id}", quote_reference)
-    payload = _glovo_parcel_payload(assignment)
-    response = _glovo_request(account, endpoint, payload=payload)
-    provider_id = str(response.get("trackingNumber") or response.get("orderCode") or response.get("id") or "")[:160]
-    status = _glovo_status(response)
-    mapped = _map_provider_status(account, status)
-    tracking_url = ""
-    if provider_id:
-        try:
-            tracking = _glovo_request(account, f"/v2/laas/parcels/{provider_id}/parcel-tracking-link", payload=None, method="GET")
-            tracking_url = str(tracking.get("link") or tracking.get("trackingUrl") or "")[:500]
-        except ProviderDispatchError:
-            tracking_url = ""
-    assignment.provider_payload = {"request": payload, "response": response, "dispatched_at": timezone.now().isoformat()}
+    intake = assignment.intake
+    contact = _sb_contact(account)
+    sender = _sb_pickup_code(account)
+    # Re-validate with the real recipient so the courier label carries their name and phone.
+    receiver = _sb_validate_address(
+        account, name=intake.customer_name or "Customer", email=intake.customer_email or contact["email"],
+        phone=intake.customer_phone or contact["phone"], address=intake.customer_address,
+        latitude=getattr(intake, "latitude", None), longitude=getattr(intake, "longitude", None),
+    )
+    subtotal = assignment.quote.subtotal if assignment.quote_id else intake.total
+    rates = _sb_fetch_rates(account, sender_code=sender, receiver_code=receiver, subtotal=subtotal)
+    quoted = ((assignment.quote.provider_payload or {}).get("response") or {}).get("courier") if assignment.quote_id else {}
+    courier = _sb_pick_courier(rates, account, quoted or {})
+    request_body = {"request_token": rates["request_token"], "service_code": courier.get("service_code"), "courier_id": str(courier.get("courier_id"))}
+    response = _shipbubble_request(account, "shipping/labels", payload=request_body)
+    data = response.get("data") or {}
+    provider_id = str(data.get("order_id") or "")[:160]
+    status = _shipbubble_status(data.get("status"))
+    mapped = _map_provider_status(account, status) or SHIPBUBBLE_STATUS_MAP.get(status, "")
+    tracking_url = str(data.get("tracking_url") or "")[:500]
+    assignment.provider_payload = {
+        "request": request_body, "courier": {k: courier.get(k) for k in ("courier_id", "courier_name", "service_code", "total", "rate_card_amount")},
+        "response": {"order_id": provider_id, "status": status, "courier": data.get("courier")},
+        "dispatched_at": timezone.now().isoformat(),
+    }
     assignment.provider_order_id = provider_id
     assignment.provider_status = status[:80]
     if provider_id:
@@ -429,28 +517,19 @@ def dispatch_assignment_to_provider(assignment: DeliveryAssignment, *, actor=Non
         assignment.status = mapped
     elif assignment.status == DeliveryAssignment.STATUS_PENDING:
         assignment.status = DeliveryAssignment.STATUS_ASSIGNED
-    now = timezone.now()
-    pickup_fields = []
-    if assignment.status in {DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_OUT_FOR_DELIVERY} and not assignment.picked_up_at:
-        assignment.picked_up_at = now
-        pickup_fields.append("picked_up_at")
-        if assignment.quote_id:
-            assignment.eta_at = now + timezone.timedelta(minutes=assignment.quote.eta_max_minutes)
-            pickup_fields.append("eta_at")
-    assignment.save(update_fields=["provider_payload", "provider_order_id", "provider_status", "external_reference", "external_tracking_url", "status", *pickup_fields, "updated_at"])
+    assignment.save(update_fields=["provider_payload", "provider_order_id", "provider_status", "external_reference", "external_tracking_url", "status", "updated_at"])
     DeliveryEvent.raw_objects.create(
         business=assignment.business, created_by=actor, assignment=assignment, status=assignment.status,
-        note="Delivery dispatched to Glovo LaaS.",
-        metadata={"provider": "glovo", "tracking_number": provider_id, "provider_status": status},
+        note=f"Booked with {courier.get('courier_name') or 'a Shipbubble courier'}.",
+        metadata={"provider": "shipbubble", "order_id": provider_id, "provider_status": status},
     )
-    audit(assignment.business, actor, "delivery_provider_dispatch", assignment, f"Delivery {assignment.public_id} dispatched to Glovo", {"tracking_number": provider_id, "provider_status": status})
+    audit(assignment.business, actor, "delivery_provider_dispatch", assignment,
+          f"Delivery {assignment.public_id} booked with Shipbubble", {"order_id": provider_id, "provider_status": status})
     queue_commerce_notification(
-        business=assignment.business,
-        event_type=CommerceNotification.EVENT_DELIVERY_PROVIDER,
-        title=f"Sent to Glovo · {assignment.intake.public_number}",
-        message=f"Tracking {provider_id or 'pending'} · {status}",
-        target_url="/delivery/",
-        dedupe_key=f"delivery:{assignment.pk}:glovo-dispatch:{provider_id or quote_reference}",
+        business=assignment.business, event_type=CommerceNotification.EVENT_DELIVERY_PROVIDER,
+        title=f"Booked on Shipbubble · {intake.public_number}",
+        message=f"{courier.get('courier_name') or 'Courier'} · {provider_id or 'pending'}", target_url="/delivery/",
+        dedupe_key=f"delivery:{assignment.pk}:shipbubble-dispatch:{provider_id}",
     )
     publish_delivery_changed(
         assignment.business_id, assignment.public_id, reason="provider_dispatch",
@@ -489,24 +568,23 @@ def cancel_assignment_with_provider(assignment: DeliveryAssignment, *, actor=Non
             {"provider_account": account.pk, "tracking_number": assignment.provider_order_id},
         )
         return assignment
-    if account.provider_code != DeliveryProviderAccount.PROVIDER_GLOVO:
+    if account.provider_code != DeliveryProviderAccount.PROVIDER_SHIPBUBBLE:
         return assignment
-    _require_glovo_platform()
-    if not account.cancel_endpoint:
-        raise ProviderDispatchError("Configure the Glovo cancellation endpoint before cancelling an active provider job.")
-    endpoint = account.cancel_endpoint.replace("{external_reference}", assignment.provider_order_id)
-    response = _glovo_request(account, endpoint, payload={})
+    _require_shipbubble_platform()
+    # Shipbubble only cancels a shipment that has not been processed yet.
+    response = _shipbubble_request(account, f"shipping/labels/cancel/{quote(assignment.provider_order_id, safe='')}", payload={})
     DeliveryEvent.raw_objects.create(
         business=assignment.business, created_by=actor, assignment=assignment, status=assignment.status,
-        note="Glovo cancellation request accepted; local delivery cancellation follows.",
-        metadata={"provider": "glovo", "tracking_number": assignment.provider_order_id, "response": response},
+        note="Shipbubble cancelled the booking; local delivery cancellation follows.",
+        metadata={"provider": "shipbubble", "order_id": assignment.provider_order_id, "response": {"message": response.get("message")}},
     )
-    audit(assignment.business, actor, "delivery_provider_cancel", assignment, f"Glovo cancellation requested for {assignment.public_id}", {"tracking_number": assignment.provider_order_id})
+    audit(assignment.business, actor, "delivery_provider_cancel", assignment,
+          f"Shipbubble cancellation requested for {assignment.public_id}", {"order_id": assignment.provider_order_id})
     queue_commerce_notification(
         business=assignment.business, event_type=CommerceNotification.EVENT_DELIVERY_PROVIDER,
-        title=f"Glovo cancellation requested · {assignment.intake.public_number}",
-        message=f"Tracking {assignment.provider_order_id}", target_url="/delivery/",
-        dedupe_key=f"delivery:{assignment.pk}:glovo-cancel:{assignment.provider_order_id}",
+        title=f"Shipbubble booking cancelled · {assignment.intake.public_number}",
+        message=f"Order {assignment.provider_order_id}", target_url="/delivery/",
+        dedupe_key=f"delivery:{assignment.pk}:shipbubble-cancel:{assignment.provider_order_id}",
     )
     return assignment
 
@@ -600,73 +678,53 @@ def consume_generic_provider_webhook(*, business, account_id, payload: dict, hea
     return assignment
 
 
-def ensure_glovo_webhooks(account: DeliveryProviderAccount, *, callback_url: str) -> dict:
-    _require_glovo_platform()
-    if account.provider_code != DeliveryProviderAccount.PROVIDER_GLOVO:
-        raise ProviderDispatchError("Webhook registration is only available for the Glovo plug-in.")
-    if not account.base_url or not account.api_key or not account.api_secret:
-        raise ProviderDispatchError("Configure the Glovo API base URL, client ID and client secret first.")
-    if not account.webhook_secret:
-        raise ProviderDispatchError("Set a strong webhook secret before registering Glovo callbacks.")
-    existing_response = _glovo_request(account, "/v2/laas/webhooks", payload=None, method="GET")
-    existing = existing_response.get("webhookList") or (existing_response.get("data") or {}).get("webhookList") or []
-    result = {"created": [], "existing": []}
-    for event_type in ("STATUS_UPDATE", "POSITION_UPDATE"):
-        match = next((item for item in existing if str(item.get("eventType", "")).upper() == event_type and item.get("callbackUrl") == callback_url and item.get("isActive", True)), None)
-        if match:
-            result["existing"].append(event_type)
-            continue
-        _glovo_request(
-            account,
-            "/v2/laas/webhooks",
-            payload={
-                "callbackUrl": callback_url,
-                "eventType": event_type,
-                "partnerSecret": account.webhook_secret,
-                "retryConfig": {"maxRetryCount": 1},
-            },
-        )
-        result["created"].append(event_type)
-    return result
-
-
-def consume_glovo_webhook(*, business, payload: dict, header_secret="", actor=None) -> DeliveryAssignment | None:
-    _require_glovo_platform()
-    header_secret = (header_secret or "").strip()
-    if not header_secret:
-        raise ProviderDispatchError("Missing Glovo webhook authorization secret.")
-    account = DeliveryProviderAccount.raw_objects.filter(
-        business=business,
-        provider_code=DeliveryProviderAccount.PROVIDER_GLOVO,
-        active=True,
-        webhook_secret=header_secret,
-    ).first()
+def consume_shipbubble_webhook(*, business, raw_body: bytes, payload: dict, signature="", actor=None) -> DeliveryAssignment | None:
+    """Apply a signed Shipbubble status event. The signature is HMAC-SHA512 of the body keyed by the account's API key."""
+    import hashlib
+    import hmac
+    _require_shipbubble_platform()
+    signature = (signature or "").strip().lower()
+    if not signature:
+        raise ProviderDispatchError("Missing Shipbubble webhook signature.")
+    account = None
+    for candidate in DeliveryProviderAccount.raw_objects.filter(
+        business=business, provider_code=DeliveryProviderAccount.PROVIDER_SHIPBUBBLE, active=True,
+    ).exclude(api_key=""):
+        expected = hmac.new(candidate.api_key.encode("utf-8"), raw_body, hashlib.sha512).hexdigest()
+        if hmac.compare_digest(expected, signature):
+            account = candidate
+            break
     if not account:
-        raise ProviderDispatchError("Invalid Glovo webhook authorization secret.")
-    provider_id = str(payload.get("trackingNumber") or payload.get("tracking_number") or payload.get("id") or "").strip()
-    status = str(payload.get("status") or payload.get("state") or "").strip().upper()
+        raise ProviderDispatchError("Invalid Shipbubble webhook signature.")
+    event = str(payload.get("event") or "")
+    if event == "wallet.threshold.alert":
+        queue_commerce_notification(
+            business=business, event_type=CommerceNotification.EVENT_DELIVERY_PROVIDER,
+            title="Shipbubble wallet is running low", message="Top up your Shipbubble wallet so courier bookings are not declined.",
+            target_url="/delivery/", dedupe_key=f"shipbubble:{business.pk}:wallet-low:{timezone.now():%Y%m%d}",
+        )
+        return None
+    if not event.startswith("shipment."):
+        return None
+    provider_id = str(payload.get("order_id") or "").strip()
     if not provider_id:
         return None
+    status = "cancelled" if event == "shipment.cancelled" else _shipbubble_status(payload.get("status"))
     assignment = DeliveryAssignment.raw_objects.select_related("quote", "intake", "driver__user").filter(
         business=business, provider_account=account, provider_order_id=provider_id
     ).first()
     if not assignment:
-        assignment = DeliveryAssignment.raw_objects.select_related("quote", "intake", "driver__user").filter(
-            business=business, provider_account=account, external_reference=provider_id
-        ).first()
-    if not assignment:
         return None
-    mapped = _map_provider_status(account, status)
+    mapped = _map_provider_status(account, status) or SHIPBUBBLE_STATUS_MAP.get(status, "")
     valid_statuses = {value for value, _ in DeliveryAssignment.STATUS_CHOICES}
     previous = assignment.status
     if mapped in valid_statuses:
         assignment.status = mapped
     assignment.provider_status = status[:80]
-    assignment.provider_payload = {
-        **(assignment.provider_payload or {}),
-        "last_webhook": payload,
-        "last_webhook_at": timezone.now().isoformat(),
-    }
+    tracking_url = str(payload.get("tracking_url") or "")[:500]
+    if tracking_url and not assignment.external_tracking_url:
+        assignment.external_tracking_url = tracking_url
+    assignment.provider_payload = {**(assignment.provider_payload or {}), "last_webhook": payload, "last_webhook_at": timezone.now().isoformat()}
     now = timezone.now()
     pickup_fields = []
     if assignment.status in {DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_OUT_FOR_DELIVERY} and not assignment.picked_up_at:
@@ -677,19 +735,20 @@ def consume_glovo_webhook(*, business, payload: dict, header_secret="", actor=No
             pickup_fields.append("eta_at")
     if assignment.status == DeliveryAssignment.STATUS_DELIVERED and not assignment.delivered_at:
         assignment.delivered_at = now
-    assignment.save(update_fields=["status", "provider_status", "provider_payload", "delivered_at", *pickup_fields, "updated_at"])
+    assignment.save(update_fields=["status", "provider_status", "provider_payload", "external_tracking_url", "delivered_at", *pickup_fields, "updated_at"])
     DeliveryEvent.raw_objects.create(
         business=business, created_by=actor, assignment=assignment, status=assignment.status,
-        note="Glovo LaaS webhook update received.",
-        metadata={"previous_status": previous, "provider_status": status, "event_type": payload.get("eventType"), "update_reason": payload.get("updateReason")},
+        note="Shipbubble status update received.",
+        metadata={"previous_status": previous, "provider_status": status, "event_type": event},
     )
-    audit(business, actor, "delivery_provider_webhook", assignment, f"Glovo updated delivery {assignment.public_id}", {"provider_status": status, "mapped_status": assignment.status})
-    if status and (mapped or status != assignment.provider_status):
+    audit(business, actor, "delivery_provider_webhook", assignment, f"Shipbubble updated delivery {assignment.public_id}",
+          {"provider_status": status, "mapped_status": assignment.status})
+    if status != previous:
         queue_commerce_notification(
             business=business, event_type=CommerceNotification.EVENT_DELIVERY_PROVIDER,
-            title=f"Glovo update · {assignment.intake.public_number}",
+            title=f"Shipbubble update · {assignment.intake.public_number}",
             message=f"{status} → {assignment.get_status_display()}", target_url="/delivery/",
-            dedupe_key=f"delivery:{assignment.pk}:glovo-status:{status}:{payload.get('updateReason') or ''}",
+            dedupe_key=f"delivery:{assignment.pk}:shipbubble-status:{status}",
         )
     publish_delivery_changed(
         business.pk, assignment.public_id, reason="provider_status",

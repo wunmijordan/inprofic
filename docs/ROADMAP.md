@@ -501,7 +501,7 @@ and external integrations.**
 
 - Product categories exposed across Inventory, POS, hosted storefront and product API.
 - Controlled measurement-change workflow for current-balance conversion without rewriting historical records.
-- Plan-gated Delivery with in-house, Hybrid and provider-neutral custom courier paths, plus the optional Founder-gated Glovo LaaS v2 live-quote/OAuth/webhook adapter.
+- Plan-gated Delivery with in-house, Hybrid and provider-neutral custom courier paths, plus the optional platform-enabled Shipbubble live-quote/webhook adapter using each tenant's own account.
 - Plan-gated Audit Workspace with external auditor role, read-only evidence views, Excel export and query/response handling.
 - Dedicated POS-only access flow that sends cashier-only users directly to the in-premise storefront, plus supplemental POS permission for staff who retain another primary role.
 

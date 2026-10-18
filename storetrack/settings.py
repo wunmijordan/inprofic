@@ -91,7 +91,18 @@ INSTALLED_APPS = [
     'sales',
     'expenses',
     'commerce',
+    'whatsapp_storefront',
 ]
+
+META_WHATSAPP_APP_ID = os.environ.get('META_WHATSAPP_APP_ID', '').strip()
+META_WHATSAPP_APP_SECRET = os.environ.get('META_WHATSAPP_APP_SECRET', '').strip()
+META_WHATSAPP_CONFIG_ID = os.environ.get('META_WHATSAPP_CONFIG_ID', '').strip()
+META_WHATSAPP_VERIFY_TOKEN = os.environ.get('META_WHATSAPP_VERIFY_TOKEN', '').strip()
+META_WHATSAPP_GRAPH_VERSION = os.environ.get('META_WHATSAPP_GRAPH_VERSION', 'v26.0').strip()
+WHATSAPP_TOKEN_ENCRYPTION_KEY = os.environ.get('WHATSAPP_TOKEN_ENCRYPTION_KEY', '').strip()
+WHATSAPP_AI_API_KEY = os.environ.get('WHATSAPP_AI_API_KEY', '').strip()
+WHATSAPP_AI_MODEL = os.environ.get('WHATSAPP_AI_MODEL', 'gpt-4.1-mini').strip()
+WHATSAPP_AI_BASE_URL = os.environ.get('WHATSAPP_AI_BASE_URL', 'https://api.openai.com/v1').strip().rstrip('/')
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

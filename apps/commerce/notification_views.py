@@ -7,7 +7,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
 from accounts.services import user_has_permission
-from accounts.platform_integrations import glovo_platform_enabled, redact_disabled_integrations
+from accounts.platform_integrations import shipbubble_platform_enabled, redact_disabled_integrations
 from core.performance import performance_section
 
 from .models import CommerceNotification, CommerceNotificationRead, CommerceSettings, DeliverySettings
@@ -99,13 +99,13 @@ def notification_feed(request):
         )
         unread_count = int(rows[0]._unread_total) if rows else 0
     with performance_section(request, "notification.serialize"):
-        integration_enabled = glovo_platform_enabled()
+        integration_enabled = shipbubble_platform_enabled()
         notifications = [
             {
                 "id": str(row.public_id),
                 "event_type": row.event_type,
-                "title": redact_disabled_integrations(row.title, glovo_enabled=integration_enabled),
-                "message": redact_disabled_integrations(row.message, glovo_enabled=integration_enabled),
+                "title": redact_disabled_integrations(row.title, shipbubble_enabled=integration_enabled),
+                "message": redact_disabled_integrations(row.message, shipbubble_enabled=integration_enabled),
                 "target_url": row.target_url,
                 "created_at": row.created_at.isoformat(),
             }

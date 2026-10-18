@@ -10,6 +10,7 @@
       {% if module_permissions.finance.view or can_manage_commerce %}<a href="{% url 'commerce_payment_queue' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">Payments</a>{% endif %}
       {% if can_manage_commerce %}<a href="{% url 'commerce_payment_settings' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">Payment settings</a>{% endif %}
       <a href="{% url 'commerce_settings' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">Settings</a>
+      {% if can_manage_commerce and whatsapp_storefront_platform_enabled %}<a href="{% url 'whatsapp_settings' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">WhatsApp Storefront</a>{% endif %}
       <a href="{% url 'commerce_integration_add' %}" class="px-3 py-2 bg-[#8f172d] text-white rounded-md text-sm">+ Integration</a>
     </div>
   </div>

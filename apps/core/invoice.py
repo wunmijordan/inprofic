@@ -124,9 +124,14 @@ def production_order_pdf(order):
     story = []
     is_customer_order = order.is_customer_order
     is_market_stock = order.is_market_stock_order
+    is_multi_channel = order.is_multi_channel
     channel_label = dict(order.TYPE_CHOICES).get(order.order_type, order.order_type).upper()
     stock_location = vertical_config(order.business)["stock_location"]
-    counterparty = order.customer_name if is_customer_order else ("Market stock / future customers" if is_market_stock else stock_location)
+    counterparty = (
+        "Several channels" if is_multi_channel
+        else order.customer_name if is_customer_order
+        else ("Market stock / future customers" if is_market_stock else stock_location)
+    )
     _header(story, order.business, "PRODUCTION ORDER", f"Production Order #{order.display_number}", order.date, "Customer" if is_customer_order else "For", counterparty)
     rows = []
     for item in order.items.select_related("finished_good"):
@@ -141,7 +146,17 @@ def production_order_pdf(order):
     _table(story, ["Finished good", "Batches", "Pieces", "Total units", "Price", "Line total"], rows, [42*mm, 22*mm, 22*mm, 34*mm, 28*mm, 32*mm], order.total if is_customer_order else None, symbol)
     styles = _styles()
     story.append(Spacer(1, 5 * mm))
-    if is_customer_order:
+    if is_multi_channel:
+        story.append(Paragraph("Production destination: <b>SEVERAL CHANNELS</b>", styles["body"]))
+        for number, allocation in enumerate(order.allocations.prefetch_related("lines__order_item__finished_good"), start=1):
+            story.append(Paragraph(f"<b>{number}. {allocation.label}</b>", styles["body"]))
+            for line in allocation.lines.all():
+                story.append(Paragraph(
+                    f"&nbsp;&nbsp;&nbsp;{line.order_item.finished_good.name}: {line.total_units:,.2f} units"
+                    + (f" (delivered {line.delivered_units:,.2f})" if order.status == "completed" else ""),
+                    styles["small"],
+                ))
+    elif is_customer_order:
         story.append(Paragraph(f"Sales channel: <b>{channel_label}</b>", styles["body"]))
         story.append(Paragraph(f"Customer order type: {order.display_order_type}", styles["body"]))
     elif is_market_stock:

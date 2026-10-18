@@ -1,0 +1,66 @@
+{% extends "base.html" %}{% load core_extras %}{% block content %}
+{% with cur=biz.currency_symbol r=result %}
+<div class="flex flex-wrap items-end justify-between gap-3 mb-5">
+  <div>
+    <a href="{% url 'finance_profit_loss' %}" class="text-xs text-stone-500 hover:text-[#8f172d]">← Profit &amp; Loss</a>
+    <h2 class="text-2xl font-semibold font-display text-[#8f172d] mt-1">Product profitability</h2>
+    <p class="text-sm text-stone-500">What each product makes after its cost, which sell best, and which are not doing well.</p>
+  </div>
+  <div class="flex flex-wrap gap-2">
+    <a href="{% url 'finance_product_profit_csv' %}?kind={{ kind }}&start={{ period.start|date:'Y-m-d' }}&show={{ show }}&sort={{ sort }}" class="px-3 py-2 rounded-md text-sm bg-white text-[#8f172d] border border-[#D9CFB4] shadow-[0_2px_4px_#000000d2]">Export CSV</a>
+    <a href="{% url 'finance_profit_compare' %}" class="px-3 py-2 rounded-md text-sm bg-[#F0EAD9] text-[#8f172d] border border-[#D9CFB4] shadow-[0_2px_4px_#000000d2]">Compare periods</a>
+  </div>
+</div>
+
+<div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#E7DFCC] bg-white px-4 py-3 mb-5 shadow-[0_2px_8px_#000000d2]">
+  <div class="flex gap-1 rounded-lg bg-[#F5EFE0] border border-[#E7DFCC] p-1" role="group" aria-label="Period length">
+    {% for value, label in kinds %}<a href="?kind={{ value }}&show={{ show }}&sort={{ sort }}" class="px-3 py-1.5 text-xs rounded-md {% if kind == value %}bg-[#8f172d] text-white{% else %}text-stone-600 hover:bg-[#4D1C25] hover:text-white{% endif %}">{{ label }}</a>{% endfor %}
+  </div>
+  <div class="flex items-center gap-3">
+    <a href="?kind={{ kind }}&start={{ previous_period.start|date:'Y-m-d' }}&show={{ show }}&sort={{ sort }}" class="rounded-md border border-[#D9CFB4] px-3 py-1.5 text-sm text-[#8f172d]" aria-label="Previous period">←</a>
+    <div class="text-center text-sm font-semibold text-stone-800">{{ period.label }}</div>
+    {% if can_go_next %}<a href="?kind={{ kind }}&start={{ next_period.start|date:'Y-m-d' }}&show={{ show }}&sort={{ sort }}" class="rounded-md border border-[#D9CFB4] px-3 py-1.5 text-sm text-[#8f172d]" aria-label="Next period">→</a>{% else %}<span class="rounded-md border border-stone-200 px-3 py-1.5 text-sm text-stone-300">→</span>{% endif %}
+  </div>
+</div>
+
+<div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
+  <div class="bg-white border border-[#E7DFCC] rounded-xl p-4 shadow-[0_2px_8px_#000000d2]"><div class="text-[10px] uppercase tracking-wider text-stone-400 font-bold">Overall margin</div><div class="font-mono text-lg font-semibold text-stone-800 mt-1">{% if r.total_margin is not None %}{{ r.total_margin }}%{% else %}—{% endif %}</div><div class="text-xs text-stone-400">{{ r.total_profit|money:cur }} on {{ r.total_revenue|money:cur }}</div></div>
+  <div class="bg-white border border-[#E7DFCC] rounded-xl p-4 shadow-[0_2px_8px_#000000d2]"><div class="text-[10px] uppercase tracking-wider text-stone-400 font-bold">Best seller</div><div class="text-sm font-semibold text-emerald-700 mt-1 truncate">{{ r.best_seller.name|default:"—" }}</div><div class="text-xs text-stone-400">{% if r.best_seller %}{{ r.best_seller.units }} {{ r.best_seller.unit }} sold{% else %}No sales yet{% endif %}</div></div>
+  <div class="bg-white border border-[#E7DFCC] rounded-xl p-4 shadow-[0_2px_8px_#000000d2]"><div class="text-[10px] uppercase tracking-wider text-stone-400 font-bold">Top earner</div><div class="text-sm font-semibold text-emerald-700 mt-1 truncate">{{ r.top_earner.name|default:"—" }}</div><div class="text-xs text-stone-400">{% if r.top_earner %}{{ r.top_earner.profit|money:cur }} profit{% else %}—{% endif %}</div></div>
+  <div class="bg-white border border-[#E7DFCC] rounded-xl p-4 shadow-[0_2px_8px_#000000d2]"><div class="text-[10px] uppercase tracking-wider text-stone-400 font-bold">Needs attention</div><div class="text-sm font-semibold text-rose-700 mt-1 truncate">{{ r.weakest.name|default:"None flagged" }}</div><div class="text-xs text-stone-400">{% if r.weakest %}{{ r.weakest.profit|money:cur }}{% if r.weakest.margin is not None %} · {{ r.weakest.margin }}% margin{% endif %}{% else %}All sellers are earning{% endif %}</div></div>
+</div>
+
+<div class="flex flex-wrap gap-2 mb-3" role="group" aria-label="Filter products">
+  {% for value, label in filters %}<a href="?kind={{ kind }}&start={{ period.start|date:'Y-m-d' }}&show={{ value }}&sort={{ sort }}" class="rounded-full border px-3 py-1 text-xs {% if show == value %}bg-[#8f172d] text-white{% else %}text-stone-600 hover:bg-[#4D1C25] hover:text-white{% endif %}">{{ label }}{% if value != 'all' %} <span class="opacity-70">{% for k, n in counts.items %}{% if k == value %}{{ n }}{% endif %}{% endfor %}</span>{% endif %}</a>{% endfor %}
+</div>
+
+<div class="bg-white border border-[#E7DFCC] rounded-xl shadow-[0_2px_8px_#000000d2] overflow-x-auto mb-6">
+  <table class="w-full text-sm min-w-[52rem]">
+    <thead><tr class="border-b border-[#E7DFCC] text-[10px] uppercase tracking-wider text-stone-400">
+      {% for key, label in "name:Product,units:Units,revenue:Revenue,cogs:Cost,profit:Profit,margin:Margin"|split_pairs %}<th class="px-3 py-3 {% if key == 'name' %}text-left pl-4{% else %}text-right{% endif %}"><a href="?kind={{ kind }}&start={{ period.start|date:'Y-m-d' }}&show={{ show }}&sort={{ key }}" class="{% if sort == key %}text-[#8f172d]{% endif %}">{{ label }}{% if sort == key %} ↓{% endif %}</a></th>{% endfor %}
+      <th class="px-3 py-3 text-left">Cost per unit (current)</th><th class="px-3 py-3 text-left">Verdict</th>
+    </tr></thead>
+    <tbody class="divide-y divide-[#EFE7D2]">
+      {% for p in rows %}
+      <tr>
+        <td class="px-3 py-2.5 pl-4"><div class="font-medium text-stone-800">{{ p.name }}</div><div class="text-[11px] text-stone-400">{% if p.rank_units %}#{{ p.rank_units }} by units · #{{ p.rank_profit }} by profit{% else %}{{ p.unit }}{% endif %}{% if p.is_resale %} · resale{% endif %}</div></td>
+        <td class="px-3 py-2.5 text-right font-mono">{{ p.units }}</td>
+        <td class="px-3 py-2.5 text-right font-mono">{{ p.revenue|money:cur }}</td>
+        <td class="px-3 py-2.5 text-right font-mono text-stone-500">{{ p.cogs|money:cur }}</td>
+        <td class="px-3 py-2.5 text-right font-mono {% if p.profit < 0 %}text-rose-700{% elif p.units %}text-emerald-700{% endif %}">{% if p.profit < 0 %}−{% endif %}{{ p.profit|money:cur|cut:"-" }}</td>
+        <td class="px-3 py-2.5 text-right font-mono {% if p.margin is not None and p.margin < 0 %}text-rose-700{% endif %}">{% if p.margin is not None %}{{ p.margin }}%{% else %}—{% endif %}</td>
+        <td class="px-3 py-2.5 text-xs">
+          {% if p.build.basis == 'recipe' %}<div class="text-stone-600"><span class="font-mono">{{ p.build.total|money:cur }}</span></div><div class="text-[11px] text-stone-400">Ingredients {{ p.build.raw_material|money:cur }} · Production {{ p.build.production|money:cur }}</div>
+          {% elif p.build.total %}<div class="font-mono text-stone-600">{{ p.build.total|money:cur }}</div><div class="text-[11px] text-stone-400">Purchase cost</div>{% else %}<span class="text-stone-400">No cost set up</span>{% endif %}
+        </td>
+        <td class="px-3 py-2.5"><div class="flex flex-wrap gap-1">{% for badge in p.badges %}<span class="rounded-full px-2 py-0.5 text-[10px] font-semibold {% if badge == 'Best seller' or badge == 'Top earner' %}bg-emerald-100 text-emerald-800{% elif badge == 'Loss-making' %}bg-rose-100 text-rose-800{% elif badge == 'Low margin' or badge == 'Cost not recorded' %}bg-amber-100 text-amber-800{% else %}bg-stone-100 text-stone-600{% endif %}">{{ badge }}</span>{% empty %}<span class="text-[11px] text-stone-400">Steady</span>{% endfor %}</div></td>
+      </tr>
+      {% empty %}<tr><td colspan="8" class="px-4 py-10 text-center text-sm text-stone-400">No products match this filter for the period.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="rounded-xl border border-[#E7DFCC] bg-white p-4 mb-6 text-xs leading-5 text-stone-500">
+  <div class="font-semibold text-stone-700 mb-1">How to read this</div>
+  Revenue and cost come from paid sales; cost is the unit cost recorded when each sale was made, so past months are not repriced. "Cost per unit (current)" splits today's recipe into ingredients and production materials (packaging and other supplies) for products you make, or shows the latest purchase cost for resale items. Best sellers and top earners are the top few by units and by profit; low margin is below 20%; slow movers are in the bottom quarter of sellers.
+</div>
+{% endwith %}{% endblock %}

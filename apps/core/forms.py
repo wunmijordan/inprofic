@@ -1,3 +1,4 @@
+from datetime import date
 from django import forms
 from django.forms.models import BaseInlineFormSet
 from .models import Business
@@ -12,9 +13,10 @@ class BusinessForm(forms.ModelForm):
             "name", "slug", "vertical", "currency_symbol", "background_color", "accent_color", "tagline",
             "contact_phone", "contact_email", "contact_address", "contact_website",
             "storefront_logo",
-            "restaurant_table_service",
+            "restaurant_table_service", "fiscal_year_start_month", "profit_period",
         ]
         widgets = {
+            "fiscal_year_start_month": forms.Select(choices=[(m, date(2000, m, 1).strftime("%B")) for m in range(1, 13)]),
             "background_color": forms.TextInput(attrs={"type": "color"}),
             "accent_color": forms.TextInput(attrs={"type": "color"}),
             "storefront_logo": forms.ClearableFileInput(
@@ -26,6 +28,11 @@ class BusinessForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         for f in self.fields.values():
             f.widget.attrs["class"] = INPUT_CLS
+        self.fields["fiscal_year_start_month"].label = "Business year starts in"
+        self.fields["profit_period"].label = "Profit & loss period"
+        # Optional so any form that does not post them keeps the saved values.
+        self.fields["fiscal_year_start_month"].required = False
+        self.fields["profit_period"].required = False
         self.fields["vertical"].label = "Service"
         self.fields["slug"].label = "Public business address"
         self.fields["slug"].help_text = (
@@ -56,6 +63,14 @@ class BusinessForm(forms.ModelForm):
             raise forms.ValidationError("Upload a storefront logo no larger than 4 MB.")
         return image
 
+
+    def clean_fiscal_year_start_month(self):
+        value = self.cleaned_data.get("fiscal_year_start_month")
+        return value or getattr(self.instance, "fiscal_year_start_month", None) or 1
+
+    def clean_profit_period(self):
+        value = self.cleaned_data.get("profit_period")
+        return value or getattr(self.instance, "profit_period", None) or "year"
 
 class ExistingAwareInlineFormSet(BaseInlineFormSet):
     """Keep create-mode starter rows without injecting blank rows on edit.

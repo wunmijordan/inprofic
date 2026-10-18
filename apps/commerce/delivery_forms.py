@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django import forms
 
-from accounts.platform_integrations import glovo_platform_enabled
+from accounts.platform_integrations import shipbubble_platform_enabled
 from .models import (
     VEHICLE_CAR, VEHICLE_MOTORBIKE, DeliveryArea, DeliveryDriver, DeliveryOrigin, DeliveryProviderAccount,
     DeliveryRateBand, DeliverySettings,
@@ -22,11 +22,11 @@ class StyledModelForm(forms.ModelForm):
 class DeliverySettingsForm(StyledModelForm):
     def __init__(self, *args, business=None, **kwargs):
         super().__init__(*args, **kwargs)
-        glovo_enabled = glovo_platform_enabled()
+        shipbubble_enabled = shipbubble_platform_enabled()
         if business:
             accounts = DeliveryProviderAccount.objects.filter(business=business, active=True)
-            if not glovo_enabled:
-                accounts = accounts.exclude(provider_code=DeliveryProviderAccount.PROVIDER_GLOVO)
+            if not shipbubble_enabled:
+                accounts = accounts.exclude(provider_code=DeliveryProviderAccount.PROVIDER_SHIPBUBBLE)
             self.fields["default_provider_account"].queryset = accounts
         else:
             self.fields["default_provider_account"].queryset = DeliveryProviderAccount.objects.none()
@@ -85,11 +85,11 @@ class DeliverySettingsForm(StyledModelForm):
 class DeliveryProviderAccountForm(StyledModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        glovo_enabled = glovo_platform_enabled()
-        if not glovo_enabled:
+        shipbubble_enabled = shipbubble_platform_enabled()
+        if not shipbubble_enabled:
             self.fields["provider_code"].choices = [
                 choice for choice in self.fields["provider_code"].choices
-                if choice[0] != DeliveryProviderAccount.PROVIDER_GLOVO
+                if choice[0] != DeliveryProviderAccount.PROVIDER_SHIPBUBBLE
             ]
             if not self.instance.pk:
                 self.fields["provider_code"].initial = DeliveryProviderAccount.PROVIDER_GENERIC
@@ -129,23 +129,67 @@ class DeliveryProviderAccountForm(StyledModelForm):
             "status_mapping": "Optional JSON mapping from partner statuses to INPROFIC statuses, for example {\"completed\": \"delivered\"}.",
             "metadata": "Optional advanced adapter JSON. Custom adapters may use auth_type (api_key, bearer, basic, none), api_key_header, api_secret_header and headers.",
         }
-        if glovo_enabled:
+        if shipbubble_enabled:
             hints.update({
-                "name": "Use a recognizable internal name, such as Glovo Lagos Production or Manual Courier Desk.",
-                "provider_code": "Choose Generic for a manually coordinated courier or Glovo for the built-in LaaS v2 connection.",
-                "auth_endpoint": "OAuth token endpoint. Glovo LaaS v2 uses /oauth/token.",
-                "quote_endpoint": "Glovo LaaS v2 uses /v2/laas/quotes for live delivery quotes.",
-                "address_book_id": "For Glovo, this is the pickup location ID created in the LaaS Address Book—not the written office address.",
+                "name": "Use a recognizable internal name, such as Shipbubble couriers or Manual Courier Desk.",
+                "provider_code": "Choose Custom delivery partner for a manually coordinated courier, or Shipbubble couriers for live courier rates and booking.",
+                "api_key": "Your Shipbubble API key (sb_prod… for live, sb_sandbox… for testing). It stays private and is also used to verify Shipbubble's status callbacks.",
+                "address_book_id": "Optional. Leave blank and INPROFIC validates your delivery base address with Shipbubble the first time it is needed.",
+                "auto_dispatch": "Book the courier on Shipbubble automatically once a delivery is paid. The cost is deducted from your Shipbubble wallet.",
             })
         for name, hint in hints.items():
             self.fields[name].help_text = hint
-        glovo_only_fields = ("auth_endpoint", "quote_endpoint", "use_live_quotes", "address_book_id")
-        for name in glovo_only_fields:
+        # Shipbubble needs only a key, an optional pickup code and parcel defaults; the
+        # custom-partner plumbing is hidden for it, and Shipbubble's own inputs are hidden otherwise.
+        generic_only = ("sandbox", "base_url", "health_endpoint", "auth_endpoint", "quote_endpoint", "order_endpoint",
+                        "cancel_endpoint", "api_secret", "store_id", "webhook_secret", "tracking_base_url",
+                        "status_mapping", "metadata", "use_live_quotes")
+        for name in generic_only:
             if name in self.fields:
-                self.fields[name].widget.attrs["data-provider-scope"] = "glovo"
-        if not glovo_enabled:
-            for name in glovo_only_fields:
-                self.fields.pop(name, None)
+                self.fields[name].widget.attrs["data-provider-scope"] = DeliveryProviderAccount.PROVIDER_GENERIC
+        if shipbubble_enabled:
+            meta = self.instance.metadata if isinstance(self.instance.metadata, dict) else {}
+            extra = {
+                "courier_preference": forms.ChoiceField(
+                    label="Courier choice", required=False, initial=meta.get("courier_preference") or "cheapest",
+                    choices=[("cheapest", "Cheapest courier"), ("fastest", "Fastest courier")],
+                    help_text="Which courier's rate is offered to the customer at checkout.",
+                ),
+                "default_weight_kg": forms.DecimalField(
+                    label="Typical parcel weight (kg)", required=False, min_value=0, decimal_places=2,
+                    initial=meta.get("default_weight_kg") or "1", help_text="Used for rate quotes; couriers may re-bill wrong weights.",
+                ),
+                "package_length_cm": forms.IntegerField(label="Parcel length (cm)", required=False, min_value=1, initial=meta.get("package_length_cm") or 30),
+                "package_width_cm": forms.IntegerField(label="Parcel width (cm)", required=False, min_value=1, initial=meta.get("package_width_cm") or 30),
+                "package_height_cm": forms.IntegerField(label="Parcel height (cm)", required=False, min_value=1, initial=meta.get("package_height_cm") or 15),
+            }
+            for name, field in extra.items():
+                field.widget.attrs["class"] = INPUT
+                field.widget.attrs["data-provider-scope"] = DeliveryProviderAccount.PROVIDER_SHIPBUBBLE
+                self.fields[name] = field
+            self.fields["address_book_id"].label = "Pickup address code (optional)"
+            self.fields["address_book_id"].widget.attrs["data-provider-scope"] = DeliveryProviderAccount.PROVIDER_SHIPBUBBLE
+        elif "address_book_id" in self.fields:
+            self.fields.pop("address_book_id")
+
+    def save(self, commit=True):
+        account = super().save(commit=False)
+        if account.provider_code == DeliveryProviderAccount.PROVIDER_SHIPBUBBLE:
+            from .delivery_providers import SHIPBUBBLE_STATUS_MAP
+            meta = dict(account.metadata) if isinstance(account.metadata, dict) else {}
+            for key in ("courier_preference", "default_weight_kg", "package_length_cm", "package_width_cm", "package_height_cm"):
+                value = self.cleaned_data.get(key)
+                if value not in (None, ""):
+                    meta[key] = str(value)
+            account.metadata = meta
+            account.use_live_quotes = True
+            account.sandbox = False
+            if not account.status_mapping:
+                account.status_mapping = dict(SHIPBUBBLE_STATUS_MAP)
+        if commit:
+            account.save()
+            self.save_m2m()
+        return account
 
     class Meta:
         model = DeliveryProviderAccount
@@ -172,42 +216,15 @@ class DeliveryProviderAccountForm(StyledModelForm):
 
     def clean(self):
         cleaned = super().clean()
-        if cleaned.get("auto_dispatch") and not cleaned.get("order_endpoint"):
-            self.add_error("order_endpoint", "Auto-dispatch needs the provider order endpoint.")
-        if cleaned.get("provider_code") == DeliveryProviderAccount.PROVIDER_GLOVO:
-            if not glovo_platform_enabled():
+        if cleaned.get("provider_code") == DeliveryProviderAccount.PROVIDER_SHIPBUBBLE:
+            if not shipbubble_platform_enabled():
                 self.add_error("provider_code", "This delivery provider is not currently available.")
                 return cleaned
-            if cleaned.get("active"):
-                required = {
-                    "base_url": "Add the API base URL issued during onboarding before activating this provider.",
-                    "auth_endpoint": "Add the authentication endpoint before activating this provider.",
-                    "quote_endpoint": "Add the live-quote endpoint before activating this provider.",
-                    "order_endpoint": "Add the dispatch endpoint before activating this provider.",
-                    "api_key": "Add the client ID issued during onboarding before activating this provider.",
-                    "api_secret": "Add the client secret issued during onboarding before activating this provider.",
-                    "address_book_id": "Add the pickup Address Book ID before activating this provider.",
-                    "webhook_secret": "Add a strong webhook secret before activating this provider.",
-                }
-                for field_name, message in required.items():
-                    if not cleaned.get(field_name):
-                        self.add_error(field_name, message)
-                if not cleaned.get("use_live_quotes"):
-                    self.add_error("use_live_quotes", "Keep live quotes enabled for this provider before activating it.")
-            if cleaned.get("auto_dispatch") and not cleaned.get("use_live_quotes"):
-                self.add_error("use_live_quotes", "Glovo LaaS auto-dispatch requires the live provider quote ID.")
-            if cleaned.get("auto_dispatch") or cleaned.get("use_live_quotes"):
-                if not cleaned.get("base_url"):
-                    self.add_error("base_url", "Enter the Glovo LaaS API base URL issued during onboarding.")
-                if not cleaned.get("api_key"):
-                    self.add_error("api_key", "Enter the Glovo client ID issued during onboarding.")
-                if not cleaned.get("api_secret"):
-                    self.add_error("api_secret", "Enter the Glovo client secret issued during onboarding.")
-            if cleaned.get("use_live_quotes") and not cleaned.get("address_book_id"):
-                self.add_error("address_book_id", "Live Glovo quotes require the LaaS Address Book pickup ID.")
-            if cleaned.get("use_live_quotes") and not cleaned.get("quote_endpoint"):
-                self.add_error("quote_endpoint", "Live Glovo quotes require the quote endpoint.")
+            if (cleaned.get("active") or cleaned.get("auto_dispatch")) and not cleaned.get("api_key"):
+                self.add_error("api_key", "Add your Shipbubble API key before activating this provider.")
         else:
+            if cleaned.get("auto_dispatch") and not cleaned.get("order_endpoint"):
+                self.add_error("order_endpoint", "Auto-dispatch needs the provider order endpoint.")
             if cleaned.get("use_live_quotes"):
                 self.add_error("use_live_quotes", "Custom delivery partners use INPROFIC price bands unless a dedicated live-quote adapter is installed.")
             if cleaned.get("auto_dispatch"):

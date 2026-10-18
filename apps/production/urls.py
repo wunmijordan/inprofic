@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views
+from . import kitchen_views, views
 
 urlpatterns = [
     path("runs/", views.production_runs, name="production_runs"),
@@ -17,6 +17,7 @@ urlpatterns = [
     path("orders/add/", views.order_form, name="order_add"),
     path("orders/reset-numbering/", views.reset_order_numbering, name="reset_order_numbering"),
     path("orders/<int:pk>/edit/", views.order_form, name="order_edit"),
+    path("orders/<int:pk>/flexible/", views.order_flexible_save, name="order_flexible_save"),
     path("orders/<int:pk>/recreate/", views.order_recreate, name="order_recreate"),
     path("orders/<int:pk>/", views.order_detail, name="order_detail"),
     path("orders/<int:pk>/invoice/", views.order_invoice, name="order_invoice"),
@@ -25,4 +26,5 @@ urlpatterns = [
     path("orders/<int:pk>/complete/", views.order_complete, name="order_complete"),
     path("orders/<int:pk>/reverse/", views.order_reverse, name="order_reverse"),
     path("orders/<int:pk>/delete/", views.order_delete, name="order_delete"),
+    path("orders/<int:pk>/split/", kitchen_views.order_split, name="order_split"),
 ]

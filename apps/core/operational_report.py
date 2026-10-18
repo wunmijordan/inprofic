@@ -51,7 +51,7 @@ def _month_rows(start, end):
 
 
 def _source_bucket(source):
-    if source in (CommerceIntake.SOURCE_API, CommerceIntake.SOURCE_CONNECTOR):
+    if source in (CommerceIntake.SOURCE_API, CommerceIntake.SOURCE_CONNECTOR, CommerceIntake.SOURCE_WHATSAPP):
         return "external"
     if source == CommerceIntake.SOURCE_STAFF_POS:
         return "pos"

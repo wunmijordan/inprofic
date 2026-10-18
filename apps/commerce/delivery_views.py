@@ -7,12 +7,11 @@ from django.core.exceptions import ValidationError
 from django.db.models import Count, Prefetch
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
 
 from accounts.models import CustomUser, UserBusiness
-from accounts.platform_integrations import glovo_platform_enabled
+from accounts.platform_integrations import shipbubble_platform_enabled
 from accounts.services import business_has_module, is_business_admin, user_has_permission
 from core.models import Business
 from core.context import get_request_cache
@@ -135,13 +134,13 @@ def delivery_dashboard(request):
         rate_bands = list(DeliveryRateBand.objects.filter(business=request.business))
         areas = list(DeliveryArea.objects.filter(business=request.business).select_related("rate_band"))
         drivers = list(DeliveryDriver.objects.filter(business=request.business).select_related("user"))
-        integration_enabled = glovo_platform_enabled()
+        integration_enabled = shipbubble_platform_enabled()
         provider_accounts_qs = DeliveryProviderAccount.objects.filter(business=request.business)
         if not integration_enabled:
-            provider_accounts_qs = provider_accounts_qs.exclude(provider_code=DeliveryProviderAccount.PROVIDER_GLOVO)
+            provider_accounts_qs = provider_accounts_qs.exclude(provider_code=DeliveryProviderAccount.PROVIDER_SHIPBUBBLE)
         provider_accounts = list(provider_accounts_qs)
         if integration_enabled and not any(
-            row.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO for row in provider_accounts
+            row.provider_code == DeliveryProviderAccount.PROVIDER_SHIPBUBBLE for row in provider_accounts
         ):
             # Missing built-ins are an exceptional repair path. Healthy
             # dashboards reuse the provider-account query above instead of
@@ -179,7 +178,7 @@ def delivery_dashboard(request):
         if account_required:
             provider_ready = bool(
                 account and account.active
-                and not (account.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO and not integration_enabled)
+                and not (account.provider_code == DeliveryProviderAccount.PROVIDER_SHIPBUBBLE and not integration_enabled)
                 and account.is_configured_for_dispatch
             )
     public_ready = bool(settings.enabled and base_ready and pricing_ready and provider_ready)
@@ -204,7 +203,17 @@ def delivery_dashboard(request):
             else "inhouse"
         )
         assignment.batch_label = str(assignment.batch.public_id)[:8].upper() if assignment.batch_id else ""
+    # Live counts for the dashboard summary strip (computed from the queue already loaded).
+    road_statuses = {DeliveryAssignment.STATUS_PICKED_UP, DeliveryAssignment.STATUS_OUT_FOR_DELIVERY}
+    delivery_kpis = {
+        "awaiting": sum(1 for row in active_assignments if row.status not in road_statuses and row.status != DeliveryAssignment.STATUS_FAILED),
+        "on_road": sum(1 for row in active_assignments if row.status in road_statuses),
+        "attention": sum(1 for row in active_assignments if row.status == DeliveryAssignment.STATUS_FAILED),
+        "batches": len(active_batches),
+        "closed": len(completed_assignments),
+    }
     context = {
+        "delivery_kpis": delivery_kpis,
         "delivery_settings": settings,
         "assignments": active_assignments,
         "completed_assignments": completed_assignments,
@@ -229,7 +238,7 @@ def delivery_dashboard(request):
         },
         "can_manage_delivery": can_manage_delivery,
         "can_update_delivery": can_update_delivery,
-        "glovo_webhook_path": (f"/api/v1/delivery/providers/glovo/{request.business.slug}/webhook" if integration_enabled else ""),
+        "shipbubble_webhook_path": (f"/api/v1/delivery/providers/shipbubble/{request.business.slug}/webhook" if integration_enabled else ""),
         "has_inhouse_riders": has_inhouse_riders,
         "issue_status_choices": DeliveryIssue.STATUS_CHOICES,
         "can_approve_delivery_switch": can_approve_delivery_switch,
@@ -304,9 +313,9 @@ def _model_form_view(
 
 @login_required
 def delivery_provider_account_form(request, pk=None):
-    glovo_enabled = glovo_platform_enabled()
-    if pk and not glovo_enabled and DeliveryProviderAccount.objects.filter(
-        pk=pk, business=request.business, provider_code=DeliveryProviderAccount.PROVIDER_GLOVO
+    shipbubble_enabled = shipbubble_platform_enabled()
+    if pk and not shipbubble_enabled and DeliveryProviderAccount.objects.filter(
+        pk=pk, business=request.business, provider_code=DeliveryProviderAccount.PROVIDER_SHIPBUBBLE
     ).exists():
         raise Http404("Delivery provider account is unavailable.")
     return _model_form_view(
@@ -314,15 +323,15 @@ def delivery_provider_account_form(request, pk=None):
         title="Delivery provider account", success="Delivery provider account saved.", pk=pk,
         intro="Add any delivery partner while INPROFIC remains the control engine for checkout quotes, routing, assignments, staff actions and the customer timeline. A partner may stay fully manual or connect through its own API/adapter.",
         setup_tip=(
-            "Custom partners can use INPROFIC price bands and manual dispatch immediately after activation. Optional automatic dispatch uses the INPROFIC Delivery Adapter v1 endpoint and account-specific status webhook. For Glovo, use only credentials and API access issued or enabled for that business, keep the connection inactive until setup is complete, then test a full quote and dispatch in Sandbox before production."
-            if glovo_enabled else
+            "Custom partners can use INPROFIC price bands and manual dispatch immediately after activation. Optional automatic dispatch uses the INPROFIC Delivery Adapter v1 endpoint and account-specific status webhook. For Shipbubble, use only credentials and API access issued or enabled for that business, keep the connection inactive until setup is complete, then test a full quote and dispatch in Sandbox before production."
+            if shipbubble_enabled else
             "Custom partners can use INPROFIC price bands and manual dispatch after activation. If the courier or your integration service supports automation, configure its endpoint and credentials; the account-specific status webhook appears on the Delivery dashboard after saving."
         ),
         form_notice=(
-            "Glovo account required: this connection requires an active Glovo business account and API access issued or enabled by Glovo. INPROFIC does not provide or resell Glovo accounts. Glovo is a third-party service; availability, onboarding, pricing and API access are governed by Glovo and may vary by market."
-            if glovo_enabled else ""
+            "Shipbubble account required: this connection requires an active Shipbubble business account and API access issued or enabled by Shipbubble. INPROFIC does not provide or resell Shipbubble accounts. Shipbubble is a third-party service; availability, onboarding, pricing and API access are governed by Shipbubble and may vary by market."
+            if shipbubble_enabled else ""
         ),
-        form_notice_scope="glovo" if glovo_enabled else "",
+        form_notice_scope="shipbubble" if shipbubble_enabled else "",
     )
 
 
@@ -343,30 +352,6 @@ def delivery_provider_test_custom_connection(request, pk):
             "Custom delivery partner connection test succeeded", {"provider_account": account.pk},
         )
         messages.success(request, f"{account.name} connection test succeeded.")
-    except ValidationError as exc:
-        messages.error(request, _detail(exc))
-    return redirect("delivery_dashboard")
-
-
-@login_required
-@require_POST
-def delivery_provider_register_glovo_webhooks(request, pk):
-    if not glovo_platform_enabled():
-        raise Http404("Delivery provider integration is unavailable.")
-    if not is_business_admin(request.user, request.business):
-        return render(request, "403.html", status=403)
-    account = get_object_or_404(
-        DeliveryProviderAccount, pk=pk, business=request.business,
-        provider_code=DeliveryProviderAccount.PROVIDER_GLOVO,
-    )
-    try:
-        from .delivery_providers import ensure_glovo_webhooks
-        callback_url = request.build_absolute_uri(reverse("glovo_delivery_webhook", args=[request.business.slug]))
-        result = ensure_glovo_webhooks(account, callback_url=callback_url)
-        created = ", ".join(result["created"]) or "none"
-        existing = ", ".join(result["existing"]) or "none"
-        audit(request.business, request.user, "delivery_provider_webhooks", account, "Glovo webhooks registered/verified", {"created": result["created"], "existing": result["existing"]})
-        messages.success(request, f"Glovo webhooks verified. Created: {created}; already active: {existing}.")
     except ValidationError as exc:
         messages.error(request, _detail(exc))
     return redirect("delivery_dashboard")
@@ -473,11 +458,11 @@ def delivery_assignment_update(request, public_id):
         requested_status = request.POST.get("status")
         if requested_status == DeliveryAssignment.STATUS_CANCELLED and assignment.provider_account_id and assignment.provider_order_id:
             from .delivery_providers import cancel_assignment_with_provider
-            is_disabled_glovo = (
-                assignment.provider_account.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO
-                and not glovo_platform_enabled()
+            is_disabled_shipbubble = (
+                assignment.provider_account.provider_code == DeliveryProviderAccount.PROVIDER_SHIPBUBBLE
+                and not shipbubble_platform_enabled()
             )
-            if not is_disabled_glovo:
+            if not is_disabled_shipbubble:
                 cancel_assignment_with_provider(assignment, actor=request.user)
         update_delivery_status(
             assignment=assignment,
@@ -1179,21 +1164,23 @@ def generic_delivery_provider_webhook(request, business_slug, provider_id):
 
 @csrf_exempt
 @require_http_methods(["POST"])
-def glovo_delivery_webhook(request, business_slug):
-    if not glovo_platform_enabled():
+def shipbubble_delivery_webhook(request, business_slug):
+    if not shipbubble_platform_enabled():
         return JsonResponse({"detail": "Delivery provider integration is unavailable."}, status=404)
     business = get_object_or_404(Business, slug=business_slug)
     # Founder availability is the platform kill switch. Plan visibility is not:
     # keep already-created delivery records synchronized underneath so a later
     # plan upgrade reveals complete history rather than a status gap.
+    raw_body = request.body or b""
     try:
-        data = json.loads(request.body or b"{}")
+        data = json.loads(raw_body or b"{}")
     except json.JSONDecodeError:
         return JsonResponse({"detail": "Invalid JSON payload."}, status=400)
-    secret = request.headers.get("Authorization") or request.headers.get("X-INPROFIC-Delivery-Webhook-Secret") or request.headers.get("X-Glovo-Webhook-Secret") or ""
+    # Shipbubble signs every callback with HMAC-SHA512 (key: your API key) in x-ship-signature.
+    signature = request.headers.get("x-ship-signature") or ""
     try:
-        from .delivery_providers import consume_glovo_webhook
-        assignment = consume_glovo_webhook(business=business, payload=data, header_secret=secret)
+        from .delivery_providers import consume_shipbubble_webhook
+        assignment = consume_shipbubble_webhook(business=business, raw_body=raw_body, payload=data, signature=signature)
     except ValidationError as exc:
         return JsonResponse({"detail": _detail(exc)}, status=403)
     if not assignment:

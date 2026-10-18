@@ -14,7 +14,7 @@ finance describe one business flow rather than four isolated ledgers.
 It is **not yet a full manufacturing ERP**. It has a strong batch/recipe,
 procurement, inventory, sales and finance foundation, but production planning,
 MRP/material planning, WIP, scheduling, labour/overhead costing, formal QC
-release gates. Delivery/last-mile fulfilment is now an entitlement-gated provider-neutral subsystem with an optional Glovo LaaS v2 plug-in.
+release gates. Delivery/last-mile fulfilment is now an entitlement-gated provider-neutral subsystem with an optional Shipbubble plug-in.
 See `docs/ROADMAP.md` for the remaining evolution.
 
 Customer-facing ordering, external website/API routing, path-based tenant
@@ -217,6 +217,60 @@ for or apply common-material override quantities.
 - Which flexible recipe quantities were adjusted for a particular product?
 - Which batches, customer sales, shortages, wastage and offcuts came from the
   shared run?
+
+## Multi-channel production orders (channel allocations)
+
+One production is often meant for several purposes at once - a customer's
+online order, Physical Store stock, a bulk Distribution customer, market stock -
+and whoever enters the order (floor staff or not, on any production basis) often
+cannot know the split yet. A manager therefore assigns the order's output to
+channels **from the order itself**, on `/orders/<id>/split/` ("Assign across
+channels").
+
+**It stays one order.** The order is approved once, releases materials once
+(`_plan_release` is unaware of channels), and produces one `ProductionBatch` and
+one cost snapshot per product. Nothing about recipes, flexible-ingredient
+allocation, the base-material pool, the production plan or the kitchen's
+recorded amounts changes. Only *where the output goes* is stored:
+
+- `Order.order_type = "multi_channel"` marks the state. It is never offered on the
+  order form; the order's own customer/payment/destination fields are cleared and
+  the order is edited through its assignment page instead.
+- `OrderAllocation` (one per channel) carries what a single-channel order would
+  carry for that channel: channel, market-stock flag, store destination or
+  non-stock purpose, customer, payment status/method/account.
+- `OrderAllocationLine` (one per allocation and product) holds the units as
+  batches plus loose pieces, the channel price snapshot, the per-unit discount and,
+  after completion, `delivered_units`.
+- Batches and pieces are one quantity. Loose pieces are only the part of a batch
+  that is left over, so a batch can be broken to fill a channel and pieces beyond
+  a full batch roll into batches.
+- Every unit must be assigned. One destination just gives the order that channel
+  (no allocations are stored). At most one market-stock and one store-stock
+  allocation exist per order.
+
+**Completion** (`allocations.post_item_allocations`, called from `order_complete`
+only for multi-channel orders): the saleable output up to the planned units is
+delivered to the allocations - customer allocations first, in their saved order,
+then stock-type allocations. Shelf-stock allocations add stock, non-stock
+purposes record a non-stock movement, market-stock allocations create the usual
+Market Stock lot, and each customer allocation gets **its own Sale** (linked to
+the order, with its own receivable or payment). Customers are never merged into
+one commercial order and are billed only for what was delivered; a shortfall is
+visible as delivered < assigned. Planned output nobody was assigned stays in
+general finished-goods stock through the existing `planned_surplus_stock_units`.
+Wastage and unexpected excess keep their existing meaning and inputs.
+
+**Reversal** is compensating: `allocations.reversal_figures` reports what each
+allocation posted so shelf stock, customer deliveries and market-stock lots are
+undone exactly, and the existing Sale/cash reversal covers every customer's sale.
+A reversed multi-channel order can be recreated; its assignment is copied.
+
+**Not changed:** single-channel orders (their completion path is untouched),
+unassigned Distribution market-stock orders, planned-offcut customer allocations,
+excess handling, Shared Production Runs (which still coordinate separate normal
+orders and may include a multi-channel order), and storefront-originated orders
+(these keep their customer-facing quantities and cannot be reassigned).
 
 ## Production batches, yield and wastage
 
@@ -564,7 +618,7 @@ specialized surface.
 
 Delivery remains provider-neutral. INPROFIC owns delivery quotes, delivery fee
 snapshots, assignments, events, proof of delivery and customer tracking.
-Provider accounts add optional external dispatch and authorized status synchronization without making the delivery engine courier-specific. Custom accounts use the stable Delivery Adapter v1 contract; the built-in Glovo LaaS v2 adapter is Founder-gated, dormant until tenant configuration is complete, and preserves saved configuration when platform availability is switched off.
+Provider accounts add optional external dispatch and authorized status synchronization without making the delivery engine courier-specific. Custom accounts use the stable Delivery Adapter v1 contract; the built-in Shipbubble adapter is Founder-gated, dormant until tenant configuration is complete, and preserves saved configuration when platform availability is switched off.
 
 ### Delivery coverage geometry and address validation
 

@@ -506,6 +506,21 @@ def _public_catalog_data(business):
             product.allow_online_order and (product.public_stock_source_available or product.public_made_source_available)
         )
         product.public_bulk_packs = list(product.bulk_pack_options)
+        product.public_contents_help_items = [
+            {
+                "name": f"Standard portion · {item['name']}",
+                "quantity_label": item.get("quantity_label", ""),
+            }
+            for item in product.standard_public_contents
+        ]
+        for pack in product.public_bulk_packs:
+            product.public_contents_help_items.extend(
+                {
+                    "name": f"{pack.name} · {item['name']}",
+                    "quantity_label": item.get("quantity_label", ""),
+                }
+                for item in pack.public_contents
+            )
         # Bulk options are made-to-order price options on the Online channel (there is no separate
         # Distribution channel on hosted storefronts). Bought-in goods are fulfilled from stock.
         product.public_bulk_online_available = bool(

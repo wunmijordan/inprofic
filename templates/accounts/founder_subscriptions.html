@@ -258,15 +258,22 @@
     </div>
     <form id="platform-integrations" method="post" class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">{% csrf_token %}
       <div class="flex flex-wrap items-start justify-between gap-4">
-        <div><h2 class="font-semibold">External integrations</h2><p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">Founder-level availability controls. Turning an integration off removes it from tenant, customer, API-discovery and marketing surfaces without deleting saved tenant credentials or historical records.</p></div>
+        <div><h2 class="font-semibold">Platform integrations</h2><p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">Founder-level availability controls. Turning an integration off removes its tenant-facing surfaces and blocks its operation without deleting saved tenant credentials or historical records.</p></div>
         <button name="action" value="save_platform_integrations" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Save integrations</button>
       </div>
       <label class="mt-4 flex items-start justify-between gap-4 rounded-xl border border-[#D9CFB4] bg-white p-4 cursor-pointer">
         <span class="inline-flex items-center gap-1.5">
-          <span class="text-sm font-semibold">Glovo delivery provider</span>
-          {% include "_help_tip.html" with help_text="When off, Glovo is not shown or callable anywhere outside this Founder control. Existing business configuration stays dormant and is restored if you enable it later. When on, each business must still configure and activate its own approved Glovo account." label="Glovo delivery provider" %}
+          <span class="text-sm font-semibold">Shipbubble delivery provider</span>
+          {% include "_help_tip.html" with help_text="When off, Shipbubble is not shown or callable anywhere outside this Founder control. Existing business configuration stays dormant and is restored if you enable it later. When on, each business must still configure and activate its own approved Shipbubble account." label="Shipbubble delivery provider" %}
         </span>
-        <span class="relative inline-flex h-6 w-11 shrink-0"><input type="checkbox" name="glovo_enabled" class="peer sr-only" {% if integration_settings.glovo_enabled %}checked{% endif %}><span class="absolute inset-0 rounded-full bg-stone-300 transition peer-checked:bg-[#8f172d]"></span><span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span></span>
+        <span class="relative inline-flex h-6 w-11 shrink-0"><input type="checkbox" name="shipbubble_enabled" class="peer sr-only" {% if integration_settings.shipbubble_enabled %}checked{% endif %}><span class="absolute inset-0 rounded-full bg-stone-300 transition peer-checked:bg-[#8f172d]"></span><span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span></span>
+      </label>
+      <label class="mt-3 flex items-start justify-between gap-4 rounded-xl border border-[#D9CFB4] bg-white p-4 cursor-pointer">
+        <span class="inline-flex items-center gap-1.5">
+          <span class="text-sm font-semibold">WhatsApp Storefront</span>
+          {% include "_help_tip.html" with help_text="When off, WhatsApp setup, inbox access, assistant replies and the plan feature listing are unavailable outside this Founder control. Existing tenant connections and conversation history stay saved. When on, each business still connects its own WhatsApp Business account and needs Commerce enabled." label="WhatsApp Storefront availability" %}
+        </span>
+        <span class="relative inline-flex h-6 w-11 shrink-0"><input type="checkbox" name="whatsapp_storefront_enabled" class="peer sr-only" {% if integration_settings.whatsapp_storefront_enabled %}checked{% endif %}><span class="absolute inset-0 rounded-full bg-stone-300 transition peer-checked:bg-[#8f172d]"></span><span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span></span>
       </label>
     </form>
     <form id="privacy-policy-management" method="post" enctype="multipart/form-data" class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">{% csrf_token %}
@@ -373,6 +380,10 @@
           {% include "_help_tip.html" with help_text="Turn off to make Starter payable. Existing free Starter tenants receive the Founder-configured trial transition window; turning it back on restores non-expiring access." label="Free forever" %}
         </span><span class="relative inline-flex h-6 w-11 shrink-0"><input type="checkbox" name="free_forever_{{ plan.pk }}" data-starter-free-toggle class="peer sr-only" {% if plan.is_free_forever %}checked{% endif %}><span class="absolute inset-0 rounded-full bg-stone-300 transition peer-checked:bg-[#8f172d]"></span><span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span></span></label>{% endif %}
         <label class="block text-xs text-stone-500 mt-3">Monthly price</label><input name="monthly_price_{{ plan.pk }}" value="{{ plan.monthly_price }}" type="number" step="0.01" min="0" data-plan-monthly-price {% if plan.code == 'starter' and plan.is_free_forever %}readonly{% endif %} class="w-full border rounded px-2 py-1.5 text-sm font-mono {% if plan.code == 'starter' and plan.is_free_forever %}bg-stone-100{% endif %}"><div class="text-[11px] text-stone-500 mt-1">{% if plan.is_free_forever %}Free forever · no renewal{% else %}Current monthly: <span class="font-mono">{{ plan.monthly_price|money:"₦" }}</span>{% if plan.code == 'starter' %} · paid Starter{% endif %}{% endif %}</div>
+        <label class="block text-xs text-stone-500 mt-2">Quarterly discount % (3 months)</label><input name="quarterly_discount_{{ plan.pk }}" value="{{ plan.quarterly_discount_percent }}" type="number" step="0.01" min="0" max="100" class="w-full border rounded px-2 py-1.5 text-sm font-mono">
+        <div class="text-[11px] text-emerald-700 mt-1">Base quarterly price after discount: <span class="font-mono">{{ plan.quarterly_price|money:"₦" }}</span></div>
+        <label class="block text-xs text-stone-500 mt-2">Bi-annual discount % (6 months)</label><input name="biannual_discount_{{ plan.pk }}" value="{{ plan.biannual_discount_percent }}" type="number" step="0.01" min="0" max="100" class="w-full border rounded px-2 py-1.5 text-sm font-mono">
+        <div class="text-[11px] text-emerald-700 mt-1">Base bi-annual price after discount: <span class="font-mono">{{ plan.biannual_price|money:"₦" }}</span></div>
         <label class="block text-xs text-stone-500 mt-2">Yearly discount %</label><input name="yearly_discount_{{ plan.pk }}" value="{{ plan.yearly_discount_percent }}" type="number" step="0.01" min="0" max="100" class="w-full border rounded px-2 py-1.5 text-sm font-mono">
         <div class="text-[11px] text-emerald-700 mt-1">Base yearly price after discount: <span class="font-mono">{{ plan.yearly_price|money:"₦" }}</span></div>
         <label class="block text-xs text-stone-500 mt-2">Additional service discount %</label><input name="addon_discount_{{ plan.pk }}" value="{{ plan.additional_service_discount_percent }}" type="number" step="0.01" min="0" max="100" class="w-full border rounded px-2 py-1.5 text-sm font-mono">

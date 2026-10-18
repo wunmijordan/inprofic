@@ -17,7 +17,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from accounts.services import business_has_module
-from accounts.platform_integrations import glovo_platform_enabled, redact_disabled_integrations
+from accounts.platform_integrations import shipbubble_platform_enabled, redact_disabled_integrations
 from core.services import audit
 
 from .models import (
@@ -426,29 +426,25 @@ def _native_quote_data(*, business, origin, area, latitude, longitude, subtotal,
     }
 
 
-def _glovo_quote_data(*, account, destination_address, latitude, longitude, subtotal, area):
-    from .delivery_providers import ProviderDispatchError, quote_glovo_delivery
+def _shipbubble_quote_data(*, account, destination_address, latitude, longitude, subtotal, area):
+    from .delivery_providers import ProviderDispatchError, quote_shipbubble_delivery
 
-    if not account or account.provider_code != DeliveryProviderAccount.PROVIDER_GLOVO:
+    if not account or account.provider_code != DeliveryProviderAccount.PROVIDER_SHIPBUBBLE:
         return None
     if not account.use_live_quotes or not account.is_configured_for_quote:
         return None
     try:
-        result = quote_glovo_delivery(
+        result = quote_shipbubble_delivery(
             account,
             destination_address=destination_address,
             latitude=latitude,
             longitude=longitude,
+            subtotal=subtotal,
         )
     except ProviderDispatchError:
         return None
-    # Live partner quotes are motorbike-only; apply the motorbike band's minimum
-    # (destination band, else the distance-range fallback) like the native path.
-    band = _rate_band(account.business, Decimal(str(result["distance_km"])), area=area, vehicle=VEHICLE_MOTORBIKE)
-    if band and subtotal < band.minimum_order:
-        raise ValidationError(
-            f"Minimum order for this delivery area is {account.business.currency_symbol}{band.minimum_order:,.2f}."
-        )
+    # The courier's rate is final: it is what the customer sees and pays, so the
+    # tenant's own distance-band minimum order does not apply to this route.
     return {
         "distance": result["distance_km"],
         "fee": result["fee"],
@@ -456,7 +452,7 @@ def _glovo_quote_data(*, account, destination_address, latitude, longitude, subt
         "eta_max": result["eta_max_minutes"],
         "expires_at": result["expires_at"],
         "provider_reference": result["quote_id"],
-        "payload": {"provider": "glovo_laas_v2", "response": result["response"]},
+        "payload": {"provider": "shipbubble", "response": result["response"]},
     }
 
 
@@ -564,15 +560,15 @@ def create_delivery_quote_options(*, business, subtotal, destination_address, ar
             errors.append("The external delivery provider is not configured.")
             return
         candidates = []  # (quote data, vehicle mode)
-        if account.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO:
-            if not glovo_platform_enabled():
+        if account.provider_code == DeliveryProviderAccount.PROVIDER_SHIPBUBBLE:
+            if not shipbubble_platform_enabled():
                 errors.append("The external delivery provider is not currently available.")
                 return
-            data = _glovo_quote_data(
+            data = _shipbubble_quote_data(
                 account=account, destination_address=address, latitude=lat, longitude=lon, subtotal=subtotal, area=area
             )
             if not data:
-                errors.append("Glovo could not provide a live quote for this destination.")
+                errors.append("Shipbubble could not provide a live quote for this destination.")
                 return
             # Live partner quotes carry no vehicle choice, so they stay motorbike.
             if requested_vehicle and requested_vehicle != VEHICLE_MOTORBIKE:
@@ -679,7 +675,7 @@ def serialize_delivery_quote(quote):
     if quote.provider == DeliverySettings.PROVIDER_INHOUSE:
         provider_label = "In-house delivery"
     elif quote.provider_account_id:
-        if quote.provider_account.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO and not glovo_platform_enabled():
+        if quote.provider_account.provider_code == DeliveryProviderAccount.PROVIDER_SHIPBUBBLE and not shipbubble_platform_enabled():
             provider_label = "Delivery partner"
         else:
             provider_label = redact_disabled_integrations(quote.provider_account.name or quote.provider_account.get_provider_code_display())
@@ -774,8 +770,8 @@ def serialize_delivery_tracking(assignment):
                 if assignment.provider == DeliverySettings.PROVIDER_INHOUSE
                 else "Delivery partner"
                 if assignment.provider_account_id
-                and assignment.provider_account.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO
-                and not glovo_platform_enabled()
+                and assignment.provider_account.provider_code == DeliveryProviderAccount.PROVIDER_SHIPBUBBLE
+                and not shipbubble_platform_enabled()
                 else redact_disabled_integrations(assignment.provider_account.name)
                 if assignment.provider_account_id
                 else assignment.get_provider_display()
@@ -794,8 +790,8 @@ def serialize_delivery_tracking(assignment):
             "external_tracking_url": (
                 None
                 if assignment.provider_account_id
-                and assignment.provider_account.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO
-                and not glovo_platform_enabled()
+                and assignment.provider_account.provider_code == DeliveryProviderAccount.PROVIDER_SHIPBUBBLE
+                and not shipbubble_platform_enabled()
                 else (assignment.external_tracking_url or None)
             ),
             "updated_at": assignment.updated_at.isoformat(),
@@ -835,8 +831,8 @@ def validate_delivery_quote(*, business, public_id, subtotal):
         raise ValidationError("Delivery quote was not found.")
     if (
         quote.provider_account_id
-        and quote.provider_account.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO
-        and not glovo_platform_enabled()
+        and quote.provider_account.provider_code == DeliveryProviderAccount.PROVIDER_SHIPBUBBLE
+        and not shipbubble_platform_enabled()
     ):
         raise ValidationError("The selected external delivery provider is no longer available. Request a fresh delivery quote.")
     if quote.provider == DeliverySettings.PROVIDER_HYBRID:
@@ -1324,12 +1320,12 @@ def switch_delivery_method(*, assignment, target_provider, actor=None, manager_a
         raise ValidationError("A manager must approve this higher-cost switch. The customer will not be charged extra.")
 
     if current.provider == DeliverySettings.PROVIDER_THIRD_PARTY and current.provider_order_id:
-        provider_is_disabled_glovo = bool(
+        provider_is_disabled_shipbubble = bool(
             current.provider_account_id
-            and current.provider_account.provider_code == DeliveryProviderAccount.PROVIDER_GLOVO
-            and not glovo_platform_enabled()
+            and current.provider_account.provider_code == DeliveryProviderAccount.PROVIDER_SHIPBUBBLE
+            and not shipbubble_platform_enabled()
         )
-        if not provider_is_disabled_glovo:
+        if not provider_is_disabled_shipbubble:
             from .delivery_providers import cancel_assignment_with_provider
             cancel_assignment_with_provider(current, actor=actor)
 

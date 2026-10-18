@@ -1,0 +1,19 @@
+{% load core_extras %}
+{% comment %}Per-plan price block that follows the billing switch.
+Usage: {% include "accounts/_plan_cycle_prices.html" with plan=plan symbol="₦" theme="dark" %}{% endcomment %}
+{% if plan.is_free_forever %}
+  <div class="mt-3"><span class="font-mono text-3xl font-semibold {% if theme == 'dark' %}text-[#e7bd65]{% else %}text-stone-900{% endif %}">Free</span></div>
+  <p class="mt-1 text-xs {% if theme == 'dark' %}text-emerald-300{% else %}text-emerald-700{% endif %}">No expiry and no card required</p>
+{% else %}
+  {% for o in plan.cycle_options %}
+  <div data-cycle-price="{{ o.key }}" data-discount="{{ o.discount }}" {% if not forloop.first %}hidden{% endif %} class="mt-3">
+    <div class="flex flex-wrap items-end gap-x-2 gap-y-1">
+      {% if o.promo_total is not None %}<span class="font-mono text-sm line-through {% if theme == 'dark' %}text-white/35{% else %}text-stone-400{% endif %}">{{ o.total|money:symbol }}</span>{% endif %}
+      <span class="font-mono text-3xl font-semibold {% if theme == 'dark' %}text-[#e7bd65]{% else %}text-[#8f172d]{% endif %}">{% if o.promo_total is not None %}{{ o.promo_total|money:symbol }}{% else %}{{ o.total|money:symbol }}{% endif %}</span>
+      <span class="text-xs {% if theme == 'dark' %}text-white/50{% else %}text-stone-500{% endif %}">/ {{ o.period }}</span>
+    </div>
+    {% if o.months > 1 %}<p class="mt-1 text-xs {% if theme == 'dark' %}text-white/60{% else %}text-stone-500{% endif %}">≈ <span class="font-mono">{{ o.per_month|money:symbol }}</span> a month{% if o.discount %} · <span class="{% if theme == 'dark' %}text-emerald-300{% else %}text-emerald-700{% endif %} font-semibold">{{ o.discount }}% off</span>{% endif %}</p>{% endif %}
+    {% if o.promotion %}<p class="mt-1 text-xs font-semibold {% if theme == 'dark' %}text-[#f3d99b]{% else %}text-[#b94300]{% endif %}">{{ o.promotion.reason }} · ends {{ o.promotion.ends_at|date:"j M Y" }}</p>{% endif %}
+  </div>
+  {% endfor %}
+{% endif %}

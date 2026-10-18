@@ -1,12 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Production planning</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit{% else %}New{% endif %} {{ vertical_ui.orders|slice:":-1" }}</h2><p class="mt-1 max-w-3xl text-sm text-stone-500">Plan customer demand or stock production, then let INPROFIC calculate the material requirement from the product recipe.</p></div>
+{% if kitchen_mode %}<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Production entry</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit entry #{{ obj.display_number }}{% else %}New production entry{% endif %}</h2><p class="mt-1 max-w-3xl text-sm text-stone-500">Choose what was made and how it is sized. The order is saved as pending with no channel. You can adjust the flexible material from the order page, and a manager later assigns each portion to its channel.</p></div>{% else %}<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Production planning</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit{% else %}New{% endif %} {{ vertical_ui.orders|slice:":-1" }}</h2><p class="mt-1 max-w-3xl text-sm text-stone-500">Plan customer demand or stock production, then let INPROFIC calculate the material requirement from the product recipe.</p></div>{% endif %}
+{% if kitchen_mode %}<style>#order-form.kitchen-mode .production-plan-col,#order-form.kitchen-mode .kitchen-hide-col{display:none !important}</style>{% endif %}
 <div class="cf-form-shell">
 <div class="cf-form-body">
   {% if formset.non_field_errors %}
     <div class="text-sm bg-rose-50 text-rose-700 border border-rose-200 rounded-md px-3 py-2 mb-3">{{ formset.non_field_errors }}</div>
   {% endif %}
-  <form method="post" id="order-form">
+  <form method="post" id="order-form"{% if kitchen_mode %} class="kitchen-mode" novalidate{% endif %}>
     {% csrf_token %}
     {% if target_run %}
       <input type="hidden" name="production_run_id" value="{{ target_run.pk }}">
@@ -14,6 +15,7 @@
         <b>Adding a new order to Shared Run {{ target_run.run_number }}.</b> Create this order exactly as you normally would. Its customer, channel, quantities, pricing and production plan remain independent; saving it returns you to the Shared Run.
       </div>
     {% endif %}
+    <div {% if kitchen_mode %}hidden{% endif %}>{# kitchen-hide: order type & destination #}
     <div class="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-stone-600">
       <span>Order type</span>
       <span class="form-help-tip normal-case tracking-normal" data-form-help-tip>
@@ -84,7 +86,9 @@
       </div>
     </div>
 
+    </div>{# /kitchen-hide #}
     {% include "_field.html" with field=form.date %}
+    <div {% if kitchen_mode %}hidden{% endif %}>{# kitchen-hide: market stock, customer, payment #}
     <div id="distribution-market-wrap" class="hidden mb-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
       {% include "_field.html" with field=form.is_market_stock %}
       <p data-form-help-text data-form-help-for="{{ form.is_market_stock.id_for_label }}" class="-mt-2 text-[11px] leading-5 text-sky-700">Use this for Distribution production intended for future demand. Completed saleable output enters Distribution Market Stock without creating a customer sale or payment at this stage.</p>
@@ -109,6 +113,7 @@
       <div id="customer-payment-method-wrap">{% include "_field.html" with field=form.customer_payment_method %}</div>
       <div id="customer-payment-account-wrap">{% include "_field.html" with field=form.customer_payment_account %}</div>
     </div>
+    </div>{# /kitchen-hide #}
 
     <div class="mt-5 mb-2 flex flex-wrap items-end justify-between gap-3">
       <div>
@@ -135,8 +140,8 @@
             <th class="text-right px-2 py-2 w-20">Pieces</th>
             <th class="text-right px-2 py-2 w-20 production-plan-col">Produce<br>batches</th>
             <th class="text-right px-2 py-2 w-20 production-plan-col">Produce<br>pieces</th>
-            <th class="text-right px-2 py-2 w-24">Discount</th>
-            <th class="text-right px-2 py-2 w-32">Price/Unit</th>
+            <th class="kitchen-hide-col text-right px-2 py-2 w-24">Discount</th>
+            <th class="kitchen-hide-col text-right px-2 py-2 w-32">Price/Unit</th>
             <th class="w-16"></th>
           </tr></thead>
           <tbody id="order-rows">
@@ -147,8 +152,8 @@
               <td class="px-2 py-1.5">{{ f.piece_qty }}{% for error in f.piece_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
               <td class="px-2 py-1.5 production-plan-col">{{ f.production_batch_qty }}{% for error in f.production_batch_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
               <td class="px-2 py-1.5 production-plan-col">{{ f.production_piece_qty }}{% for error in f.production_piece_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
-              <td class="px-2 py-1.5">{{ f.discount }}{% for error in f.discount.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
-              <td class="px-2 py-1.5 text-right text-xs text-stone-500 font-mono price-display">—</td>
+              <td class="kitchen-hide-col px-2 py-1.5">{{ f.discount }}{% for error in f.discount.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
+              <td class="kitchen-hide-col px-2 py-1.5 text-right text-xs text-stone-500 font-mono price-display">—</td>
               <td class="px-2 py-1.5 text-center">
                 {% if f.instance.pk %}
                 <span class="hidden">{{ f.DELETE }}</span><button type="button" data-existing-formset-remove onclick="markExistingFormsetRowDeleted(this); refreshBaseMaterialAllocation();" class="rounded px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50">Remove</button>
@@ -165,8 +170,8 @@
     {% include "_field.html" with field=form.notes %}
 
     <div class="flex justify-end gap-2 mt-4">
-      <a href="{% url 'orders_list' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a>
-      <button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">{% if obj %}Save changes{% else %}Create order{% endif %}</button>
+      <a href="{% if kitchen_mode %}{% url 'orders_list' %}{% else %}{% url 'orders_list' %}{% endif %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a>
+      <button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">{% if kitchen_mode %}{% if obj %}Save changes{% else %}Save order{% endif %}{% elif obj %}Save changes{% else %}Create order{% endif %}</button>
     </div>
   </form>
 </div>

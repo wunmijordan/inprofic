@@ -212,7 +212,6 @@ class DeliverySettings(BusinessOwnedModel):
     HYBRID_ROUTE_INHOUSE_FIRST = "inhouse_first"
     # Keep the persisted value for backward compatibility; the routing policy is provider-neutral.
     HYBRID_ROUTE_PROVIDER_FIRST = "glovo_first"
-    HYBRID_ROUTE_GLOVO_FIRST = HYBRID_ROUTE_PROVIDER_FIRST
     HYBRID_ROUTE_CHOICES = [
         (HYBRID_ROUTE_DISPATCHER, "Dispatcher chooses per order"),
         (HYBRID_ROUTE_CUSTOMER, "Customer chooses at checkout"),
@@ -286,10 +285,10 @@ class DeliveryProviderAccount(BusinessOwnedModel):
     """
 
     PROVIDER_GENERIC = "generic"
-    PROVIDER_GLOVO = "glovo"
+    PROVIDER_SHIPBUBBLE = "shipbubble"
     PROVIDER_CHOICES = [
         (PROVIDER_GENERIC, "Custom delivery partner"),
-        (PROVIDER_GLOVO, "Glovo"),
+        (PROVIDER_SHIPBUBBLE, "Shipbubble couriers"),
     ]
 
     name = models.CharField(max_length=100, default="Delivery partner")
@@ -328,16 +327,13 @@ class DeliveryProviderAccount(BusinessOwnedModel):
         quote, routing, assignment, tracking timeline and staff controls.
         Automatic dispatch is validated separately.
         """
-        if self.provider_code == self.PROVIDER_GLOVO:
-            return bool(
-                self.active and self.use_live_quotes and self.is_configured_for_quote
-                and self.order_endpoint
-            )
+        if self.provider_code == self.PROVIDER_SHIPBUBBLE:
+            return bool(self.active and self.use_live_quotes and self.is_configured_for_quote)
         return bool(self.active)
 
     @property
     def is_configured_for_automatic_dispatch(self):
-        if self.provider_code == self.PROVIDER_GLOVO:
+        if self.provider_code == self.PROVIDER_SHIPBUBBLE:
             return self.is_configured_for_dispatch
         metadata = self.metadata if isinstance(self.metadata, dict) else {}
         auth_type = str(metadata.get("auth_type") or "api_key").strip().lower()
@@ -349,11 +345,9 @@ class DeliveryProviderAccount(BusinessOwnedModel):
 
     @property
     def is_configured_for_quote(self):
-        if self.provider_code == self.PROVIDER_GLOVO:
-            return bool(
-                self.active and self.use_live_quotes and self.base_url and self.auth_endpoint
-                and self.quote_endpoint and self.api_key and self.api_secret and self.address_book_id
-            )
+        if self.provider_code == self.PROVIDER_SHIPBUBBLE:
+            # The pickup address code is validated automatically from the delivery base on first use.
+            return bool(self.active and self.use_live_quotes and self.api_key)
         return False
 
     @property
@@ -938,11 +932,13 @@ class CommerceIntake(BusinessOwnedModel):
     SOURCE_STOREFRONT = "storefront"
     SOURCE_API = "api"
     SOURCE_CONNECTOR = "connector"
+    SOURCE_WHATSAPP = "whatsapp"
     SOURCE_STAFF_POS = "staff_pos"
     SOURCE_CHOICES = [
         (SOURCE_STOREFRONT, "Hosted storefront"),
         (SOURCE_API, "API"),
         (SOURCE_CONNECTOR, "External connector"),
+        (SOURCE_WHATSAPP, "WhatsApp storefront"),
         (SOURCE_STAFF_POS, "In-premise storefront"),
     ]
     MODE_STOCK = "stock"
@@ -1126,6 +1122,7 @@ class CommerceCheckoutSession(BusinessOwnedModel):
     SOURCE_API = CommerceIntake.SOURCE_API
     SOURCE_STOREFRONT = CommerceIntake.SOURCE_STOREFRONT
     SOURCE_CONNECTOR = CommerceIntake.SOURCE_CONNECTOR
+    SOURCE_WHATSAPP = CommerceIntake.SOURCE_WHATSAPP
     SOURCE_STAFF_POS = CommerceIntake.SOURCE_STAFF_POS
     SOURCE_CHOICES = CommerceIntake.SOURCE_CHOICES
 

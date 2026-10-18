@@ -1,50 +1,199 @@
-<details class="group {% if matrix_theme == 'dark' %}border border-white/15 bg-white/[.06] text-white{% else %}border border-[#E7DFCC] bg-[#FFFDF8] text-stone-800{% endif %} overflow-hidden rounded-2xl" data-plan-feature-matrix>
-  <summary class="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 sm:px-6">
+{% comment %}
+  Plan comparison matrix shared by the public site (matrix_theme="dark") and the
+  in-app Plan & Billing page (default). Each feature group is an accordion panel;
+  opening one closes the others (native <details name> + a small fallback below).
+
+  Theme: the in-app variant reads the workspace --ui-* tokens, so it follows the
+  Light / Dark / System choice. The public site keeps its fixed navy palette.
+{% endcomment %}
+{% regroup plan_feature_matrix by section as matrix_sections %}
+<details class="pfm" data-plan-feature-matrix data-matrix-theme="{% if matrix_theme == 'dark' %}dark{% else %}app{% endif %}">
+  <summary class="pfm__summary">
     <div>
-      <div class="font-subheading text-lg font-extrabold sm:text-xl">Full feature comparison</div>
-      <p class="mt-1 text-xs leading-5 {% if matrix_theme == 'dark' %}text-white/55{% else %}text-stone-500{% endif %}">Expand to see capacity and every plan-controlled workspace feature side by side.</p>
+      <div class="pfm__title font-subheading">Full feature comparison</div>
+      <p class="pfm__hint">Expand to compare capacity and every plan-controlled workspace feature, one group at a time.</p>
     </div>
-    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full {% if matrix_theme == 'dark' %}border border-white/15 bg-white/10 text-[#e7bd65]{% else %}border border-[#E7DFCC] bg-white text-[#8f172d]{% endif %} transition group-open:rotate-45" aria-hidden="true">+</span>
+    <span class="pfm__toggle" aria-hidden="true">+</span>
   </summary>
-  <div class="border-t {% if matrix_theme == 'dark' %}border-white/10{% else %}border-[#E7DFCC]{% endif %}">
-    <div class="relative overflow-x-auto"><!-- relative: contains the absolutely-positioned sr-only text so it cannot widen the page on phones -->
-      <table class="w-full min-w-[720px] border-collapse text-left text-sm">
-        <thead>
-          <tr class="{% if matrix_theme == 'dark' %}bg-white/[.04] text-white{% else %}bg-white text-stone-800{% endif %}">
-            <th scope="col" class="sticky left-0 z-10 w-[38%] min-w-[260px] px-5 py-3 font-sans font-extrabold {% if matrix_theme == 'dark' %}bg-[#101244]{% else %}bg-white{% endif %}">Feature</th>
-            {% for plan in plans %}<th scope="col" class="min-w-[150px] px-4 py-3 text-center font-sans font-extrabold tracking-tight">{{ plan.name }}</th>{% endfor %}
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in plan_feature_matrix %}
-          <tr class="border-t {% if matrix_theme == 'dark' %}border-white/10{% else %}border-[#EFE8D9]{% endif %}">
-            <th scope="row" class="sticky left-0 z-10 px-5 py-3 align-top font-medium {% if matrix_theme == 'dark' %}bg-[#090b3a] text-white{% else %}bg-[#FFFDF8] text-stone-800{% endif %}">
-              <span class="block">{{ row.label }}</span>
-              {% if row.detail %}<span class="mt-1 block text-[11px] font-normal italic leading-4 normal-case {% if matrix_theme == 'dark' %}text-white/45{% else %}text-stone-500{% endif %}" style="text-transform:none;letter-spacing:normal;">{{ row.detail }}</span>{% endif %}
-            </th>
-            {% for value in row.values %}
-            <td class="px-4 py-3 text-center align-middle">
-              {% if value.state == 'off' %}
-                <span class="inline-flex items-center justify-center {% if matrix_theme == 'dark' %}text-white/35{% else %}text-stone-400{% endif %}" title="{{ value.text }}" aria-label="{{ value.text }}">
-                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m9 9 6 6M15 9l-6 6"></path></svg>
-                  <span class="sr-only">{{ value.text }}</span>
-                </span>
-              {% elif value.state == 'partial' %}
-                <span class="inline-flex rounded-full {% if matrix_theme == 'dark' %}bg-[#e7bd65]/15 text-[#f3d99b]{% else %}bg-amber-50 text-amber-800{% endif %} px-2.5 py-1 text-[11px] font-semibold">{{ value.text }}</span>
-              {% elif value.state == 'text' %}
-                <span class="inline-flex items-center justify-center text-xs font-semibold normal-case {% if matrix_theme == 'dark' %}text-white/75{% else %}text-stone-700{% endif %}" style="text-transform:none;letter-spacing:normal;">{{ value.text }}{% if value.sub %}<span class="mt-0.5 block text-[11px] font-normal {% if matrix_theme == 'dark' %}text-white/45{% else %}text-stone-500{% endif %}">{{ value.sub }}</span>{% endif %}</span>
-              {% else %}
-                <span class="inline-flex items-center justify-center {% if matrix_theme == 'dark' %}text-emerald-300{% else %}text-emerald-700{% endif %}" title="{{ value.text }}" aria-label="{{ value.text }}">
-                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8.5 12 2.25 2.25L15.75 9"></path></svg>
-                  <span class="sr-only">{{ value.text }}</span>
-                </span>
-              {% endif %}
-            </td>
-            {% endfor %}
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+  <div class="pfm__body">
+    {% for section in matrix_sections %}
+    {% with feature_count=section.list|length|add:"-1" %}
+    <details class="pfm__group" name="pfm-group" data-pfm-group{% if forloop.first %} open{% endif %}>
+      <summary class="pfm__group-summary">
+        <span class="pfm__group-name">{{ section.grouper }}</span>
+        <span class="pfm__group-meta">
+          <span class="pfm__group-count">{{ feature_count }} feature{{ feature_count|pluralize }}</span>
+          <svg class="pfm__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+        </span>
+      </summary>
+      <div class="pfm__scroll"><!-- relative: contains the absolutely-positioned sr-only text so it cannot widen the page on phones -->
+        <table class="pfm__table">
+          <colgroup><col class="pfm__col-feature">{% for plan in plans %}<col>{% endfor %}</colgroup>
+          <thead>
+            <tr>
+              <th scope="col" class="pfm__feature-col pfm__feature-col--head">Feature</th>
+              {% for plan in plans %}<th scope="col" class="pfm__plan">{{ plan.matrix_display_name|default:plan.name }}</th>{% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in section.list %}{% if not row.group %}
+            <tr>
+              <th scope="row" class="pfm__feature-col">
+                <span class="pfm__label">{{ row.label }}{% if row.detail %}{% include "_help_tip.html" with help_text=row.detail label=row.label portal_bubble=True %}{% endif %}</span>
+              </th>
+              {% for value in row.values %}
+              <td>
+                {% if value.state == 'off' %}
+                  <span class="pfm__off" title="{{ value.text }}" aria-label="{{ value.text }}">
+                    <svg class="pfm__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m9 9 6 6M15 9l-6 6"></path></svg>
+                    <span class="sr-only">{{ value.text }}</span>
+                  </span>
+                {% elif value.state == 'partial' %}
+                  <span class="pfm__partial">{{ value.text }}</span>
+                {% elif value.state == 'text' %}
+                  <span class="pfm__text">{{ value.text }}{% if value.sub %}<span class="pfm__sub">{{ value.sub }}</span>{% endif %}</span>
+                {% else %}
+                  <span class="pfm__ok" title="{{ value.text }}" aria-label="{{ value.text }}">
+                    <svg class="pfm__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8.5 12 2.25 2.25L15.75 9"></path></svg>
+                    <span class="sr-only">{{ value.text }}</span>
+                  </span>
+                {% endif %}
+              </td>
+              {% endfor %}
+            </tr>
+            {% endif %}{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    {% endwith %}
+    {% endfor %}
   </div>
 </details>
+
+<style>
+  .pfm {
+    /* In-app palette: workspace tokens, so Light / Dark / System all apply. */
+    --pfm-canvas: var(--ui-bg, #ffffff);
+    --pfm-surface: var(--ui-surface, #FFFDF8);
+    --pfm-surface-2: var(--ui-surface-muted, #F7F1E3);
+    --pfm-text: var(--ui-surface-text, #292524);
+    --pfm-muted: var(--ui-surface-muted-text, #78716c);
+    --pfm-border: var(--ui-border, #E7DFCC);
+    --pfm-accent: var(--ui-accent, #8f172d);
+    --pfm-ok: #15803d;
+    --pfm-partial-text: #92400e;
+    --pfm-partial-bg: color-mix(in srgb, #f59e0b 20%, transparent);
+    --pfm-shadow: var(--ui-shadow, none);
+    --pfm-radius: var(--ui-card-radius-large, 1.25rem);
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--pfm-border);
+    border-radius: var(--pfm-radius);
+    background: var(--pfm-surface);
+    color: var(--pfm-text);
+    box-shadow: var(--pfm-shadow);
+  }
+  html[data-theme="dark"] .pfm:not([data-matrix-theme="dark"]) {
+    --pfm-ok: #6ee7b7;
+    --pfm-partial-text: #fcd34d;
+    --pfm-partial-bg: color-mix(in srgb, #f59e0b 24%, transparent);
+  }
+  /* Public site: always the navy palette, independent of the viewer's theme. */
+  .pfm[data-matrix-theme="dark"] {
+    --pfm-canvas: #1d1f4e;
+    --pfm-surface: rgba(255,255,255,.06);
+    --pfm-surface-2: rgba(255,255,255,.07);
+    --pfm-text: #ffffff;
+    --pfm-muted: rgba(255,255,255,.6);
+    --pfm-border: rgba(255,255,255,.12);
+    --pfm-accent: #e7bd65;
+    --pfm-ok: #6ee7b7;
+    --pfm-partial-text: #f3d99b;
+    --pfm-partial-bg: rgba(231,189,101,.15);
+    --pfm-shadow: none;
+    --pfm-radius: 1rem;
+  }
+
+  .pfm summary { list-style: none; cursor: pointer; }
+  .pfm summary::-webkit-details-marker { display: none; }
+  .pfm summary:focus-visible { outline: 2px solid var(--pfm-accent); outline-offset: -2px; }
+
+  .pfm__summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; }
+  .pfm__title { font-size: 1.125rem; font-weight: 800; color: var(--pfm-text); }
+  .pfm__hint { margin: .25rem 0 0; font-size: .75rem; line-height: 1.25rem; color: var(--pfm-muted); }
+  .pfm__toggle {
+    display: flex; flex: none; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem;
+    border: 1px solid var(--pfm-border); border-radius: 9999px; background: var(--pfm-surface-2);
+    color: var(--pfm-text); font-size: 1.125rem; line-height: 1; transition: transform 140ms;
+  }
+  .pfm[open] > .pfm__summary .pfm__toggle { transform: rotate(45deg); }
+  .pfm__body { border-top: 1px solid var(--pfm-border); }
+
+  .pfm__group + .pfm__group { border-top: 1px solid var(--pfm-border); }
+  .pfm__group-summary {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .75rem 1.25rem;
+    background: var(--pfm-surface-2); color: var(--pfm-text);
+  }
+  .pfm__group[open] > .pfm__group-summary { box-shadow: inset 3px 0 0 var(--pfm-accent); }
+  .pfm__group-name { font-size: .6875rem; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+  .pfm__group-meta { display: inline-flex; align-items: center; gap: .625rem; color: var(--pfm-muted); }
+  .pfm__group-count { font-size: .6875rem; font-weight: 600; }
+  .pfm__chev { width: 1rem; height: 1rem; transition: transform 140ms; }
+  .pfm__group[open] > .pfm__group-summary .pfm__chev { transform: rotate(180deg); }
+
+  .pfm__scroll { position: relative; overflow-x: auto; }
+  .pfm__table { width: 100%; min-width: 720px; table-layout: fixed; border-collapse: separate; border-spacing: 0; text-align: left; font-size: .875rem; }
+  .pfm__col-feature { width: 38%; }
+  /* Beat the workspace-wide `main th/td/thead/tr:hover` rules, which would
+     otherwise upper-case row labels and apply their own backgrounds. */
+  .pfm thead { background: transparent !important; }
+  .pfm tbody tr:hover { background: transparent !important; }
+  .pfm th, .pfm td { padding: .75rem 1rem; border-top: 1px solid var(--pfm-border); vertical-align: middle; color: var(--pfm-text); }
+  .pfm tbody tr { border-color: var(--pfm-border) !important; }
+  .pfm thead th, .pfm thead td { border-top: 0; }
+  .pfm th {
+    height: auto !important; text-transform: none !important; letter-spacing: normal !important;
+    font-size: .875rem !important; color: var(--pfm-text) !important;
+  }
+  .pfm__plan { text-align: center; font-weight: 800; letter-spacing: -.005em !important; }
+  /* Every cell is painted the same opaque way so the pinned first column never
+     looks different from the plan columns while the table scrolls sideways. */
+  .pfm th, .pfm td {
+    background-color: var(--pfm-canvas); background-image: linear-gradient(var(--pfm-surface), var(--pfm-surface));
+  }
+  .pfm thead th { background-image: linear-gradient(var(--pfm-surface-2), var(--pfm-surface-2)); }
+  .pfm__feature-col { position: sticky; left: 0; z-index: 1; padding-left: 1.25rem; font-weight: 500; }
+  .pfm__feature-col--head { font-weight: 800; }
+  .pfm__label { display: flex; align-items: center; gap: .375rem; }
+  .pfm td { text-align: center; }
+
+  .pfm__icon { width: 1rem; height: 1rem; }
+  .pfm__ok, .pfm__off { display: inline-flex; align-items: center; justify-content: center; }
+  .pfm__ok { color: var(--pfm-ok); }
+  .pfm__off { color: var(--pfm-muted); opacity: .65; }
+  .pfm__partial {
+    display: inline-flex; padding: .25rem .625rem; border-radius: 9999px; font-size: .6875rem; font-weight: 600;
+    background: var(--pfm-partial-bg); color: var(--pfm-partial-text);
+  }
+  .pfm__text { display: inline-flex; flex-direction: column; align-items: center; font-size: .75rem; font-weight: 600; text-transform: none; letter-spacing: normal; color: var(--pfm-text); }
+  .pfm__sub { display: block; margin-top: .125rem; font-size: .6875rem; font-weight: 400; color: var(--pfm-muted); }
+</style>
+
+<script>
+  /* Accordion fallback: `<details name>` already closes siblings in current
+     browsers; this keeps older ones behaving the same way. */
+  (function () {
+    document.querySelectorAll('[data-plan-feature-matrix]').forEach(function (root) {
+      if (root.dataset.pfmWired) return;
+      root.dataset.pfmWired = '1';
+      var groups = Array.prototype.slice.call(root.querySelectorAll('[data-pfm-group]'));
+      groups.forEach(function (group) {
+        group.addEventListener('toggle', function () {
+          if (!group.open) return;
+          groups.forEach(function (other) { if (other !== group && other.open) other.open = false; });
+        });
+      });
+    });
+  })();
+</script>
