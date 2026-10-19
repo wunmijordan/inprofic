@@ -23,7 +23,7 @@
       </section>
       <section class="cf-form-section" data-run-basis>
         <div class="cf-form-section-title mb-1">Base material basis <span class="text-[11px] font-normal text-stone-400">(optional)</span></div>
-        <p class="mb-3 text-xs leading-5 text-stone-500">Enter one overall pool quantity for the whole run. The base material itself is not chosen here: it is the one set on the products of the orders you add, so every member order (customer orders included) must share it. Product output weights determine each order's material share. The run page shows what remains in the overall pool, so you can add an independent order to use it.</p>
+        <p class="mb-3 text-xs leading-5 text-stone-500">Enter one overall pool quantity for the whole run. The base material itself is the one set on the products of the orders you add, so every member order (customer orders included) must share it. Product quantities map to each product's recipe use, with finished output weight shown as a live check. The run page totals recipe use against the pool.</p>
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
           {% include "_field.html" with field=form.production_basis %}
           <div data-run-basis-fields>{% include "_field.html" with field=form.base_material_quantity %}</div>

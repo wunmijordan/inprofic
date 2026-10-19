@@ -218,9 +218,10 @@ class Order(BusinessOwnedModel):
     def material_requirements(self):
         """Raw material needed across every line item.
 
-        Both recipe ingredients and per-production inputs (packaging, gas,
-        production supplies) are included. Quantities are exact batch+piece
-        requirements and are returned in each material's usage unit.
+        Recipe ingredients and per-production inputs (packaging, gas,
+        production supplies) are included. In a base-material order, the base
+        ingredient uses its saved output-weight share of the shared pool; all
+        other inputs remain proportional to the planned batch and piece counts.
         """
         needed = {}
         prefetched_items = getattr(self, "_prefetched_objects_cache", {}).get("items")
@@ -248,7 +249,6 @@ class Order(BusinessOwnedModel):
                     self.production_basis == self.BASIS_BASE_MATERIAL
                     and item.production_basis == OrderItem.BASIS_BASE_MATERIAL
                     and good.base_material_id == link.raw_material_id
-                    and item.base_material_quantity > 0
                 ):
                     qty = item.base_material_quantity
                 else:
@@ -390,10 +390,9 @@ class OrderItem(TimestampedModel):
 
     @property
     def base_material_batch_factor(self):
-        # New base-material production is order-scoped: the entered product
-        # quantities are authoritative and this line field is only the amount
-        # consumed from the shared pool. Legacy rows (whose Order still uses
-        # product_quantity) retain the old input-driven calculation.
+        # New order-level base-material pools cap recipe-driven output; they do
+        # not override the product quantities. Keep input-driven sizing only
+        # for legacy line-level base-material records.
         if self.order.production_basis == Order.BASIS_BASE_MATERIAL:
             return None
         if self.production_basis != self.BASIS_BASE_MATERIAL or not self.finished_good_id:

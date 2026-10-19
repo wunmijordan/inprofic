@@ -118,7 +118,7 @@
     <div class="mt-5 mb-2 flex flex-wrap items-end justify-between gap-3">
       <div>
         <span class="cf-form-section-title">Products & production size</span>
-        <p class="mt-1 max-w-4xl text-[11px] leading-5 text-stone-500">For customer orders, enter the requested product quantity. For eligible stock production, <b>Production basis</b> applies to the whole order. In <b>Base material</b> mode, enter the shared quantity, then each product's batches/pieces. INPROFIC splits the full material pool by each product's finished output weight; enter each product's weight in grams on its product form.</p>
+        <p class="mt-1 max-w-4xl text-[11px] leading-5 text-stone-500">For customer orders, enter the requested product quantity. For eligible stock production, <b>Production basis</b> applies to the whole order. In <b>Base material</b> mode, enter the shared quantity, then each product's batches/pieces. The pool is allocated across rows by finished output weight and released in full; recipe quantities check that the planned output fits. Set each product's unit weight in grams on its product form.</p>
       </div>
     </div>
 
@@ -300,8 +300,8 @@
     const sharedBase = sharedBaseFromRows();
     syncSharedBaseProductOptions(sharedBase);
     const allocated = numberValue(baseInput);
-    let totalOutputWeight = 0;
-    const weightedRows = [];
+    let recipeNeed = 0;
+    const recipeRows = [];
     let hasInvalidProduct = false;
 
     activeOrderRows().forEach((row) => {
@@ -328,53 +328,71 @@
       const pieces = numberValue(row.querySelector('input[name$="-piece_qty"]'));
       const unitsPerBatch = Math.max(Number(product.units_per_batch || 1), 0.0000001);
       const outputWeight = Math.max(Number(product.output_weight_grams || 0), 0);
+      const recipeQuantity = Math.max(Number(base.qty_per_batch || 0), 0);
       if (outputWeight <= 0) {
         hasInvalidProduct = true;
         setBaseRowHint(row, 'Set this product\'s finished output weight in grams on its product form before using Base material production.', true);
         return;
       }
+      if (recipeQuantity <= 0) {
+        hasInvalidProduct = true;
+        setBaseRowHint(row, `Set a positive ${base.name} quantity in this product's recipe before using Base material production.`, true);
+        return;
+      }
       const rowUnits = batches * unitsPerBatch + pieces;
-      const rowWeight = rowUnits * outputWeight;
-      totalOutputWeight += rowWeight;
-      weightedRows.push({ row, rowWeight, outputWeight, base });
+      const batchOutputWeight = unitsPerBatch * outputWeight;
+      const rowOutputWeight = rowUnits * outputWeight;
+      const exactRowUse = batchOutputWeight > 0
+        ? recipeQuantity * rowOutputWeight / batchOutputWeight
+        : 0;
+      recipeRows.push({ row, rowOutputWeight, batchOutputWeight, recipeQuantity, exactRowUse, base });
+      recipeNeed += exactRowUse;
     });
 
-    const shares = weightedRows.map(({ rowWeight }) => totalOutputWeight > 0
-      ? Math.round((allocated * rowWeight / totalOutputWeight) * 10000) / 10000
+    const totalOutputWeight = recipeRows.reduce((sum, item) => sum + item.rowOutputWeight, 0);
+    const shares = recipeRows.map(({ rowOutputWeight }) => totalOutputWeight > 0
+      ? Math.round((allocated * rowOutputWeight / totalOutputWeight + Number.EPSILON) * 10000) / 10000
       : 0);
     if (shares.length) {
       const largestShare = shares.reduce((largest, share, index) => share > shares[largest] ? index : largest, 0);
       shares[largestShare] += allocated - shares.reduce((sum, share) => sum + share, 0);
     }
-    weightedRows.forEach(({ row, rowWeight, outputWeight, base }, index) => {
-      const share = shares[index];
-      setBaseRowHint(row, `${formatQuantity(share)} ${base.unit} ${base.name} allocated · ${formatQuantity(rowWeight)} g output weight at ${formatQuantity(outputWeight)} g per unit.`);
+    recipeRows.forEach(({ row, rowOutputWeight, batchOutputWeight, recipeQuantity, base }, index) => {
+      setBaseRowHint(row, `${formatQuantity(shares[index])} ${base.unit} ${base.name} from pool · ${formatQuantity(rowOutputWeight)} g output; batch recipe is ${formatQuantity(recipeQuantity)} ${base.unit} for ${formatQuantity(batchOutputWeight)} g output.`);
     });
 
-    const poolUsed = shares.reduce((sum, share) => sum + share, 0);
+    const poolUsed = recipeRows.length && totalOutputWeight > 0 ? allocated : 0;
     const poolRemaining = Math.max(0, allocated - poolUsed);
-    const poolMapped = weightedRows.length > 0 && poolUsed > 0;
+    const poolOver = recipeNeed > allocated + 0.000000001;
+    const poolMapped = recipeRows.length > 0;
 
     if (summary) {
       summary.classList.remove('hidden', 'border-rose-200', 'bg-rose-50', 'text-rose-700', 'border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
       if (!sharedBase) {
         summary.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
         summary.textContent = allocated > 0
-          ? `${formatQuantity(allocated)} pool available. Select a product to assign it by finished output weight.`
+          ? `${formatQuantity(allocated)} pool quantity available. Select a product to see its allocation.`
           : 'Enter the shared base-material quantity, then select the first product. Its base material becomes the basis for every product in this order.';
       } else if (poolMapped) {
-        summary.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
-        summary.textContent = `${sharedBase.name}: ${formatQuantity(poolUsed)} ${sharedBase.unit} allocated · ${formatQuantity(poolRemaining)} ${sharedBase.unit} remaining.`;
+        if (poolOver || hasInvalidProduct) {
+          summary.classList.add('border-rose-200', 'bg-rose-50', 'text-rose-700');
+          summary.textContent = poolOver
+            ? `${sharedBase.name}: recipe demand ${formatQuantity(recipeNeed)} ${sharedBase.unit} exceeds the ${formatQuantity(allocated)} ${sharedBase.unit} pool by ${formatQuantity(recipeNeed - allocated)} ${sharedBase.unit}.`
+            : `${sharedBase.name}: ${formatQuantity(poolUsed)} ${sharedBase.unit} allocated · fix the product setup above.`;
+        } else {
+          summary.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
+          summary.textContent = `${sharedBase.name}: ${formatQuantity(poolUsed)} ${sharedBase.unit} allocated · ${formatQuantity(poolRemaining)} ${sharedBase.unit} remaining.`;
+        }
       } else {
         summary.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
-        summary.textContent = `${sharedBase.name}: 0 ${sharedBase.unit} allocated · ${formatQuantity(allocated)} ${sharedBase.unit} remaining. Enter product quantities to allocate the pool by finished output weight.`;
+        summary.textContent = `${sharedBase.name}: 0 ${sharedBase.unit} allocated · ${formatQuantity(allocated)} ${sharedBase.unit} remaining. Enter product quantities to split the pool.`;
       }
     }
 
     if (addButton) {
-      addButton.disabled = allocated <= 0 || hasInvalidProduct;
+      addButton.disabled = allocated <= 0 || hasInvalidProduct || poolOver;
       addButton.title = addButton.disabled
-        ? 'Complete the shared base-material setup before adding another product.'
+        ? (poolOver ? 'Reduce product quantities to fit the shared base-material pool.' : 'Complete the shared base-material setup before adding another product.')
         : '';
     }
   }

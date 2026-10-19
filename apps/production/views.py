@@ -413,7 +413,6 @@ def _plan_release(orders, post_data=None, *, central=False, scope=None):
                     and item.production_basis == OrderItem.BASIS_BASE_MATERIAL
                     and is_recipe
                     and good.base_material_id == link.raw_material_id
-                    and item.base_material_quantity > 0
                 )
                 planned_quantity = (
                     item.base_material_quantity if allocated_base_material else planned_per_batch * multiplier

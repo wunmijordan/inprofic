@@ -351,7 +351,7 @@ class FinishedGoodForm(StyledModelForm):
             )
             self.fields["output_weight_grams"].label = "Finished output weight per unit (g)"
             self.fields["output_weight_grams"].help_text = (
-                "Finished weight of one base production unit in grams. Required for Base material production so the shared material is split by actual output weight."
+                "Finished weight of one base production unit in grams. Required for Base material production to apportion the shared pool by output weight and check the planned quantity against the standard-batch recipe."
             )
         if "base_material" in self.fields:
             self.fields["base_material"].required = False
