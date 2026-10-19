@@ -257,7 +257,7 @@ def order_form(request, pk=None):
         form = OrderForm(instance=obj, initial=None if obj else new_initial, business=request.business)
         store_replenishment = bool(
             obj and obj.order_type == "physical_store" and obj.production_destination == "store"
-        )
+        ) and not kitchen  # the floor may log any made-in-house product
         formset = OrderItemFormSet(
             instance=obj, store_replenishment=store_replenishment,
             market_stock=bool(obj and obj.is_market_stock_order),

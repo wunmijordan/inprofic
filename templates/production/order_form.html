@@ -147,7 +147,7 @@
           <tbody id="order-rows">
             {% for f in formset %}
             <tr {% if forloop.first %}data-formset-row{% endif %} class="border-t border-[#E7DFCC]" data-row>
-              <td class="px-2 py-2 max-w-[100px]">{{ f.id }}{{ f.finished_good }}<div class="base-material-row-hint mt-1 hidden text-[10px] leading-4 text-stone-500"></div>{% for error in f.finished_good.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}{% for error in f.non_field_errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
+              <td class="px-2 py-2">{{ f.id }}{{ f.finished_good }}<div class="base-material-row-hint mt-1 hidden text-[10px] leading-4 text-stone-500"></div>{% for error in f.finished_good.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}{% for error in f.non_field_errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
               <td class="px-2 py-1.5">{{ f.batch_qty }}{% for error in f.batch_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
               <td class="px-2 py-1.5">{{ f.piece_qty }}{% for error in f.piece_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
               <td class="px-2 py-1.5 production-plan-col">{{ f.production_batch_qty }}{% for error in f.production_batch_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
@@ -348,7 +348,7 @@
       if (!sharedBase) {
         summary.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
         summary.textContent = allocated > 0
-          ? `${formatQuantity(allocated)} allocated. Select the first product to establish the shared base material; subsequent products must use that same base material.`
+          ? `${formatQuantity(allocated)} allocated. Select the first product to establish the shared base material; subsequent products must use that same configured base material.`
           : 'Enter the shared base-material quantity, then select the first product. Its base material becomes the basis for every product in this order.';
       } else if (remaining < -0.0000001) {
         summary.classList.add('border-rose-200', 'bg-rose-50', 'text-rose-700');
@@ -440,6 +440,9 @@
   }
 
   function storeReplenishmentSelected() {
+    // Production entry hides the order type/destination fields (they default to Physical
+    // Store → Store) but may log any made-in-house product, so never narrow its list.
+    if (document.getElementById('order-form')?.classList.contains('kitchen-mode')) return false;
     return document.querySelector('[name="production_destination"]')?.value === 'store'
       && document.querySelector('input[name="order_type"]:checked')?.value === 'physical_store';
   }
