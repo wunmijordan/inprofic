@@ -86,6 +86,7 @@ def _price_map():
             "stock_tracked": g.stock is not None,
             "physical_store_valid": g.stock is not None and g.reorder_level is not None and g.reorder_level > 0,
             "units_per_batch": f"{g.units_per_batch or Decimal('1')}",
+            "output_weight_grams": f"{g.output_weight_grams or Decimal('0')}",
             "unit": g.unit,
             "base_material": ({
                 "id": g.base_material_id,
@@ -407,7 +408,19 @@ def _plan_release(orders, post_data=None, *, central=False, scope=None):
             for link, is_recipe in links:
                 planned_per_batch = link.qty_per_batch
                 actual_per_batch = planned_per_batch
-                flexible = bool(is_recipe and getattr(link, "flexible_usage", False))
+                allocated_base_material = bool(
+                    order.production_basis == Order.BASIS_BASE_MATERIAL
+                    and item.production_basis == OrderItem.BASIS_BASE_MATERIAL
+                    and is_recipe
+                    and good.base_material_id == link.raw_material_id
+                    and item.base_material_quantity > 0
+                )
+                planned_quantity = (
+                    item.base_material_quantity if allocated_base_material else planned_per_batch * multiplier
+                )
+                flexible = bool(
+                    is_recipe and getattr(link, "flexible_usage", False) and not allocated_base_material
+                )
                 input_name = f"flex_qty_{item.pk}_{link.pk}" if flexible else None
                 if flexible and kitchen is not None:
                     reported = kitchen.per_batch_for(item.pk, link.pk)
@@ -422,7 +435,7 @@ def _plan_release(orders, post_data=None, *, central=False, scope=None):
                     "actual_quantity": Decimal("0"),
                     "flexible": False,
                 })
-                material_row["planned_quantity"] += planned_per_batch * multiplier
+                material_row["planned_quantity"] += planned_quantity
 
                 if flexible and central_mode:
                     # Resolved after every product has been seen, so the one
@@ -461,7 +474,9 @@ def _plan_release(orders, post_data=None, *, central=False, scope=None):
                         "usage_unit": link.raw_material.usage_unit,
                     })
 
-                material_row["actual_quantity"] += actual_per_batch * multiplier
+                material_row["actual_quantity"] += (
+                    planned_quantity if allocated_base_material else actual_per_batch * multiplier
+                )
                 material_row["flexible"] = material_row["flexible"] or flexible
 
             usage_entries.extend(per_material.values())

@@ -56,7 +56,7 @@
 <div class="mb-4 max-w-4xl rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
   <div class="font-semibold">Production basis · Shared base material</div>
   {% if base %}
-  <div class="mt-1 text-xs">{{ base.name }}: {{ order.base_material_quantity|num }} {{ base.usage_unit }} allocated across this order · {{ order.base_material_used_quantity|num }} {{ base.usage_unit }} mapped to product quantities · {{ order.base_material_remaining_quantity|num }} {{ base.usage_unit }} remaining.</div>
+  <div class="mt-1 text-xs">{{ base.name }}: {{ order.base_material_quantity|num }} {{ base.usage_unit }} allocated across this order · {{ order.base_material_used_quantity|num }} {{ base.usage_unit }} split by finished output weight · {{ order.base_material_remaining_quantity|num }} {{ base.usage_unit }} remaining.</div>
   {% else %}
   <div class="mt-1 text-xs">This order uses the shared base-material basis. Its product rows retain the material-use snapshots used for production and costing.</div>
   {% endif %}

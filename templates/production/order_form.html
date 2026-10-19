@@ -118,7 +118,7 @@
     <div class="mt-5 mb-2 flex flex-wrap items-end justify-between gap-3">
       <div>
         <span class="cf-form-section-title">Products & production size</span>
-        <p class="mt-1 max-w-4xl text-[11px] leading-5 text-stone-500">For customer orders, enter the requested product quantity. For eligible stock production, <b>Production basis</b> applies to the whole order. In <b>Base material</b> mode, enter one shared base-material quantity, then enter each product's normal batches/pieces; INPROFIC maps each row through that product's recipe and deducts its base-material use from the shared quantity.</p>
+        <p class="mt-1 max-w-4xl text-[11px] leading-5 text-stone-500">For customer orders, enter the requested product quantity. For eligible stock production, <b>Production basis</b> applies to the whole order. In <b>Base material</b> mode, enter the shared quantity, then each product's batches/pieces. INPROFIC splits the full material pool by each product's finished output weight; enter each product's weight in grams on its product form.</p>
       </div>
     </div>
 
@@ -301,6 +301,7 @@
     syncSharedBaseProductOptions(sharedBase);
     const allocated = numberValue(baseInput);
     let used = 0;
+    const weightedRows = [];
     let hasInvalidProduct = false;
 
     activeOrderRows().forEach((row) => {
@@ -326,22 +327,24 @@
       const batches = numberValue(row.querySelector('input[name$="-batch_qty"]'));
       const pieces = numberValue(row.querySelector('input[name$="-piece_qty"]'));
       const unitsPerBatch = Math.max(Number(product.units_per_batch || 1), 0.0000001);
-      const recipeQty = Math.max(Number(base.qty_per_batch || 0), 0);
-      const rowUse = (batches + (pieces / unitsPerBatch)) * recipeQty;
-      used += rowUse;
-      setBaseRowHint(
-        row,
-        `${formatQuantity(rowUse)} ${base.unit} ${base.name} mapped from this product quantity (${formatQuantity(recipeQty)} ${base.unit} per standard batch).`
-      );
+      const outputWeight = Math.max(Number(product.output_weight_grams || 0), 0);
+      if (outputWeight <= 0) {
+        hasInvalidProduct = true;
+        setBaseRowHint(row, 'Set this product\'s finished output weight in grams on its product form before using Base material production.', true);
+        return;
+      }
+      const rowUnits = batches * unitsPerBatch + pieces;
+      const rowWeight = rowUnits * outputWeight;
+      used += rowWeight;
+      weightedRows.push({ row, rowWeight, outputWeight, base });
     });
 
-    const remaining = allocated - used;
-    const poolExhausted = allocated > 0 && remaining <= 0.0000001;
-
-    activeOrderRows().forEach((row) => {
-      const productSelect = row.querySelector('select[name$="-finished_good"]');
-      if (productSelect && !productSelect.value) productSelect.disabled = poolExhausted;
+    weightedRows.forEach(({ row, rowWeight, outputWeight, base }) => {
+      const share = used > 0 ? allocated * rowWeight / used : 0;
+      setBaseRowHint(row, `${formatQuantity(share)} ${base.unit} ${base.name} allocated · ${formatQuantity(rowWeight)} g output weight at ${formatQuantity(outputWeight)} g per unit.`);
     });
+
+    const poolMapped = allocated > 0 && used > 0;
 
     if (summary) {
       summary.classList.remove('hidden', 'border-rose-200', 'bg-rose-50', 'text-rose-700', 'border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
@@ -350,22 +353,19 @@
         summary.textContent = allocated > 0
           ? `${formatQuantity(allocated)} allocated. Select the first product to establish the shared base material; subsequent products must use that same configured base material.`
           : 'Enter the shared base-material quantity, then select the first product. Its base material becomes the basis for every product in this order.';
-      } else if (remaining < -0.0000001) {
-        summary.classList.add('border-rose-200', 'bg-rose-50', 'text-rose-700');
-        summary.textContent = `${sharedBase.name}: ${formatQuantity(allocated)} ${sharedBase.unit} allocated · ${formatQuantity(used)} ${sharedBase.unit} mapped · over by ${formatQuantity(Math.abs(remaining))} ${sharedBase.unit}. Reduce product quantities before saving.`;
-      } else if (poolExhausted) {
+      } else if (poolMapped) {
         summary.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
-        summary.textContent = `${sharedBase.name}: all ${formatQuantity(allocated)} ${sharedBase.unit} is mapped to the selected product quantities. No further product can be added unless you increase the allocation or reduce a quantity.`;
+        summary.textContent = `${sharedBase.name}: ${formatQuantity(allocated)} ${sharedBase.unit} will be fully released and split across ${formatQuantity(used)} g of finished output.`;
       } else {
         summary.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
-        summary.textContent = `${sharedBase.name}: ${formatQuantity(allocated)} ${sharedBase.unit} allocated · ${formatQuantity(used)} ${sharedBase.unit} mapped · ${formatQuantity(Math.max(0, remaining))} ${sharedBase.unit} remaining.`;
+        summary.textContent = `${sharedBase.name}: enter product quantities to split the full ${formatQuantity(allocated)} ${sharedBase.unit} pool by finished output weight.`;
       }
     }
 
     if (addButton) {
-      addButton.disabled = allocated <= 0 || poolExhausted || hasInvalidProduct;
+      addButton.disabled = allocated <= 0 || hasInvalidProduct;
       addButton.title = addButton.disabled
-        ? (poolExhausted ? 'The shared base-material quantity is fully mapped.' : 'Complete the shared base-material setup before adding another product.')
+        ? 'Complete the shared base-material setup before adding another product.'
         : '';
     }
   }

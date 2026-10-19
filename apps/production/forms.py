@@ -254,8 +254,7 @@ class OrderItemFormSetBase(BaseInlineFormSet):
             raise forms.ValidationError("Enter the total base material available for this production order.")
 
         shared_material = None
-        total_base_used = Decimal("0")
-        base_rows = 0
+        base_material_rows = []
 
         for form in self.forms:
             data = getattr(form, "cleaned_data", None) or {}
@@ -297,21 +296,20 @@ class OrderItemFormSetBase(BaseInlineFormSet):
                     )
                     continue
 
-                # The recipe's base quantity is what one standard batch (units_per_batch units)
-                # draws, so each unit draws qty_per_batch / units_per_batch. Multiplying
-                # before dividing and rounding to the stored 4 dp keeps a whole batch exact
-                # (e.g. 41 of a 41-unit, 20 kg batch is exactly 20 kg).
-                row_base_used = (recipe_row.qty_per_batch * ordered / upb).quantize(
-                    _BASE_QUANTUM, rounding=ROUND_HALF_UP
-                )
-                base_rows += 1
-                total_base_used += row_base_used
+                output_weight = good.output_weight_grams or Decimal("0")
+                if output_weight <= 0:
+                    form.add_error(
+                        "finished_good",
+                        "Set this product's finished output weight in grams before using Base material production.",
+                    )
+                    continue
+                base_material_rows.append((form, data, good, ordered, output_weight))
 
-                # Keep the existing line fields as an audit snapshot only. The
-                # product quantity is now authoritative; base material no longer
-                # determines each product's output independently.
+                # The entered product quantity stays authoritative. The exact
+                # base-material share is filled after all line output weights
+                # have been collected.
                 form.instance.production_basis = OrderItem.BASIS_BASE_MATERIAL
-                form.instance.base_material_quantity = row_base_used
+                form.instance.base_material_quantity = Decimal("0")
                 data["production_batch_qty"] = Decimal("0")
                 data["production_piece_qty"] = Decimal("0")
                 form.instance.production_batch_qty = Decimal("0")
@@ -333,19 +331,25 @@ class OrderItemFormSetBase(BaseInlineFormSet):
                     f"Production plan ({production_plan:.2f}) cannot be below the customer order ({ordered:.2f}). Leave both production-plan fields at 0 to produce exactly the order quantity.",
                 )
 
-        if (
-            basis == Order.BASIS_BASE_MATERIAL
-            and shared_material is not None
-            # Each line is rounded to 4 dp, so allow that much slack per line.
-            and total_base_used > self.base_material_quantity + _BASE_QUANTUM * base_rows
-        ):
-            excess = total_base_used - self.base_material_quantity
-            raise forms.ValidationError(
-                f"The selected product quantities require {total_base_used:.4f} {shared_material.usage_unit} "
-                f"of {shared_material.name}, but this production has {self.base_material_quantity:.4f} "
-                f"{shared_material.usage_unit} available. Reduce product quantities by an equivalent "
-                f"{excess:.4f} {shared_material.usage_unit} before saving."
+        if basis == Order.BASIS_BASE_MATERIAL and base_material_rows:
+            # Allocate the whole entered pool by each line's physical output
+            # mass. Settle 4 dp rounding on the largest line so stored shares
+            # always add back to the exact pool used by approval.
+            pool = self.base_material_quantity.quantize(_BASE_QUANTUM, rounding=ROUND_HALF_UP)
+            total_output_weight = sum(
+                (ordered * output_weight for _form, _data, _good, ordered, output_weight in base_material_rows),
+                Decimal("0"),
             )
+            shares = [
+                (pool * ordered * output_weight / total_output_weight).quantize(
+                    _BASE_QUANTUM, rounding=ROUND_HALF_UP
+                )
+                for _form, _data, _good, ordered, output_weight in base_material_rows
+            ]
+            largest_share = max(range(len(shares)), key=shares.__getitem__)
+            shares[largest_share] += pool - sum(shares, Decimal("0"))
+            for (form, _data, _good, _ordered, _weight), share in zip(base_material_rows, shares):
+                form.instance.base_material_quantity = share
 
 
 OrderItemFormSet = inlineformset_factory(

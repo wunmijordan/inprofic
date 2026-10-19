@@ -244,8 +244,16 @@ class Order(BusinessOwnedModel):
             links += list(good.production_materials.all())
 
             for link in links:
-                qty = link.qty_per_batch * production_batches
-                qty += link.qty_per_batch * per_piece_factor
+                if (
+                    self.production_basis == self.BASIS_BASE_MATERIAL
+                    and item.production_basis == OrderItem.BASIS_BASE_MATERIAL
+                    and good.base_material_id == link.raw_material_id
+                    and item.base_material_quantity > 0
+                ):
+                    qty = item.base_material_quantity
+                else:
+                    qty = link.qty_per_batch * production_batches
+                    qty += link.qty_per_batch * per_piece_factor
                 mat = link.raw_material
                 current = needed.get(mat.id)
                 needed[mat.id] = (mat, (current[1] if current else Decimal("0")) + qty)

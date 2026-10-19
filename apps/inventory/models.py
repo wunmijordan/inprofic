@@ -183,6 +183,10 @@ class FinishedGood(BusinessOwnedModel):
     units_per_batch = models.DecimalField(max_digits=12, decimal_places=2, default=1,
         help_text="How many individual units one production batch makes, e.g. 41 loaves per batch. "
                    "Recipe quantities are per BATCH, not per unit. Leave at 1 if you don't produce in batches.")
+    output_weight_grams = models.DecimalField(
+        max_digits=12, decimal_places=3, default=0,
+        help_text="Finished weight of one base production unit in grams. Used to split shared base-material production across products.",
+    )
     base_material = models.ForeignKey(
         "RawMaterial", null=True, blank=True, on_delete=models.PROTECT, related_name="base_for_products",
         help_text=(

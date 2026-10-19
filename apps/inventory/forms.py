@@ -258,7 +258,7 @@ class RawMaterialForm(StyledModelForm):
 class FinishedGoodForm(StyledModelForm):
     class Meta:
         model = FinishedGood
-        fields = ["source_type", "name", "description", "variant_of", "storefront_option_label", "storefront_option_values", "product_category", "unit", "units_per_batch", "base_material", "stock", "reorder_level", "selling_price"]
+        fields = ["source_type", "name", "description", "variant_of", "storefront_option_label", "storefront_option_values", "product_category", "unit", "units_per_batch", "output_weight_grams", "base_material", "stock", "reorder_level", "selling_price"]
 
     def clean(self):
         cleaned = super().clean()
@@ -349,6 +349,10 @@ class FinishedGoodForm(StyledModelForm):
             self.fields["units_per_batch"].help_text = (
                 "How many base units one normal production batch yields. Example: 120 portions, 48 bottles, 30 pieces or 12 assembled units."
             )
+            self.fields["output_weight_grams"].label = "Finished output weight per unit (g)"
+            self.fields["output_weight_grams"].help_text = (
+                "Finished weight of one base production unit in grams. Required for Base material production so the shared material is split by actual output weight."
+            )
         if "base_material" in self.fields:
             self.fields["base_material"].required = False
             self.fields["base_material"].queryset = RawMaterial.objects.filter(
@@ -376,6 +380,7 @@ class FinishedGoodForm(StyledModelForm):
                 self.instance.source_type = FinishedGood.SOURCE_PURCHASED_FOR_RESALE
         if business and not business.uses_production:
             self.fields.pop("units_per_batch")
+            self.fields.pop("output_weight_grams")
             self.fields["unit"].label = "Stock / selling unit"
             self.fields["unit"].help_text = (
                 "The unit counted in stock and normally sold to customers, e.g. piece, pair, bottle, carton or case. "
@@ -400,6 +405,7 @@ class FinishedGoodForm(StyledModelForm):
             cleaned["reorder_level"] = Decimal("0")
         if source == FinishedGood.SOURCE_PURCHASED_FOR_RESALE:
             cleaned["base_material"] = None
+            cleaned["output_weight_grams"] = Decimal("0")
         return cleaned
 
 

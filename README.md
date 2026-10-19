@@ -35,7 +35,10 @@ what was borrowed and what was deliberately left out).
 - **Production orders** — the approval step: completing one deducts raw
   materials by recipe (per batch, rounded up to whole batches — you can't
   make a fraction of a batch) and adds finished stock, inside a database
-  transaction, with a shortage warning you can override.
+  transaction, with a shortage warning you can override. For stock production
+  sized by a shared base-material pool, product output weights split the exact
+  entered material across the planned products, and approval releases that full
+  amount.
 - **Reports** — a date-range monthly operational PDF with revenue, channel-origin, procurement, production and inventory charts/tables; CSV/Excel exports and a full JSON backup.
 - **Founder mailing workspace** — platform-level mailing staff can use reusable INPROFIC-branded topics, business/service/plan targeting, immediate delivery with retry-safe queued fallback, and campaign send analytics without receiving tenant access or Founder subscription controls.
 - **Trial re-registration protection** — existing tenant owner email, phone and exact business name cannot create a second free trial after expiry or cancellation; credentials from a tenant that was hard-deleted are intentionally eligible for registration again.
@@ -90,7 +93,10 @@ unit; reorder level stays in individual units. A Production Order's
 quantity is still in units (inherited from wherever it came from), but
 production always rounds up to whole batches — order 50 loaves at a
 41-per-batch size, and 2 batches (82) get made, with the extra 32 landing
-as shelf stock.
+as shelf stock. Production products can also record a finished unit weight in
+grams. Base-material stock orders use the weight of each product's planned
+output to allocate the whole entered pool across items; ordinary recipe and
+customer-order quantities continue to follow the registered batch yield.
 
 ## Quick start — run it today, locally
 
