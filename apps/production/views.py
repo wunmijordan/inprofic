@@ -630,7 +630,9 @@ def _run_base_pool(run, usage_entries):
             misfits.append({"order": order, "reason": reason})
         qty = drawn.get(order.pk, Decimal("0")) if fits else Decimal("0")
         rows.append({"order": order, "quantity": qty, "counted": qty > 0, "fits": fits or not material, "reason": reason})
-    used = sum((r["quantity"] for r in rows), Decimal("0"))
+    # Released quantities are exact fractions of a batch; round the draw to the pool's own
+    # 4 dp so sub-0.0001 noise can never show as an overflow or block approval.
+    used = sum((r["quantity"] for r in rows), Decimal("0")).quantize(_USAGE_QUANTUM, rounding=ROUND_HALF_UP)
     total = Decimal(run.base_material_quantity or 0)
     return {
         "material": material, "total": total, "used": used,

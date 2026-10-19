@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from django import forms
 from django.forms.models import BaseInlineFormSet, inlineformset_factory
 from django.db.models import Q
@@ -7,6 +7,9 @@ from inventory.models import FinishedGood, RawMaterial
 from sales.models import Customer
 from core.models import CashAccount
 from core.verticals import vertical_config
+
+# Base-material quantities are stored to 4 decimal places.
+_BASE_QUANTUM = Decimal("0.0001")
 
 INPUT_CLS = "w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 focus:border-[#8f172d]"
 
@@ -252,6 +255,7 @@ class OrderItemFormSetBase(BaseInlineFormSet):
 
         shared_material = None
         total_base_used = Decimal("0")
+        base_rows = 0
 
         for form in self.forms:
             data = getattr(form, "cleaned_data", None) or {}
@@ -293,8 +297,14 @@ class OrderItemFormSetBase(BaseInlineFormSet):
                     )
                     continue
 
-                production_equivalent = batch_qty + (piece_qty / upb)
-                row_base_used = recipe_row.qty_per_batch * production_equivalent
+                # The recipe's base quantity is what one standard batch (units_per_batch units)
+                # draws, so each unit draws qty_per_batch / units_per_batch. Multiplying
+                # before dividing and rounding to the stored 4 dp keeps a whole batch exact
+                # (e.g. 41 of a 41-unit, 20 kg batch is exactly 20 kg).
+                row_base_used = (recipe_row.qty_per_batch * ordered / upb).quantize(
+                    _BASE_QUANTUM, rounding=ROUND_HALF_UP
+                )
+                base_rows += 1
                 total_base_used += row_base_used
 
                 # Keep the existing line fields as an audit snapshot only. The
@@ -326,7 +336,8 @@ class OrderItemFormSetBase(BaseInlineFormSet):
         if (
             basis == Order.BASIS_BASE_MATERIAL
             and shared_material is not None
-            and total_base_used > self.base_material_quantity
+            # Each line is rounded to 4 dp, so allow that much slack per line.
+            and total_base_used > self.base_material_quantity + _BASE_QUANTUM * base_rows
         ):
             excess = total_base_used - self.base_material_quantity
             raise forms.ValidationError(

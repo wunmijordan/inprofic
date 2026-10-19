@@ -402,6 +402,49 @@ class BaseMaterialProductionTests(TestCase):
         self.assertEqual(order.production_basis, Order.BASIS_BASE_MATERIAL)
         self.assertEqual(order.base_material_quantity, Decimal("25"))
 
+    def set_standard_batch(self, good, base_qty, units_per_batch):
+        from inventory.models import RecipeItem
+
+        good.units_per_batch = Decimal(units_per_batch)
+        good.save()
+        RecipeItem.objects.filter(finished_good=good, raw_material=good.base_material).update(qty_per_batch=Decimal(base_qty))
+        good.refresh_from_db()
+
+    def test_standard_batch_figures_split_the_pool_to_the_exact_total(self):
+        # 20 kg of flour is the standard batch and it makes 41 loaves.
+        self.set_standard_batch(self.bread, "20", "41")
+        order, formset = self.base_formset([{"good": self.bread, "pieces": "41"}], allocated="20")
+
+        self.assertTrue(formset.is_valid(), formset.errors)
+        item = formset.forms[0].instance
+        self.assertEqual(item.base_material_quantity, Decimal("20.0000"))
+        self.assertEqual(item.total_units, Decimal("41"))
+
+        order.date = date.today()
+        order.save()
+        item.order = order
+        item.price = self.bread.selling_price
+        item.save()
+        self.assertEqual(order.base_material_used_quantity, Decimal("20.0000"))
+        self.assertEqual(order.base_material_remaining_quantity, Decimal("0"))
+        # Release follows the same recipe figures, so it agrees with the pool split.
+        self.assertEqual(order.material_requirements()[self.flour.pk][1], Decimal("20"))
+
+    def test_pool_split_is_still_capped_by_the_allocation(self):
+        self.set_standard_batch(self.bread, "20", "41")
+        _order, formset = self.base_formset([{"good": self.bread, "pieces": "42"}], allocated="20")
+        self.assertFalse(formset.is_valid())
+        self.assertIn("require 20.4878", str(formset.non_form_errors()))
+
+    def test_rounding_never_rejects_an_exactly_fitting_pool(self):
+        # 7 kg per 6-unit batch split over 1 + 1 + 4 pieces used to total 7.000...001 kg.
+        self.set_standard_batch(self.bread, "7", "6")
+        _order, formset = self.base_formset(
+            [{"good": self.bread, "pieces": "1"}, {"good": self.bread, "pieces": "1"}, {"good": self.bread, "pieces": "4"}],
+            allocated="7",
+        )
+        self.assertTrue(formset.is_valid(), formset.errors)
+
     def test_legacy_line_level_base_sizing_remains_readable(self):
         order = Order(
             business=self.business,
@@ -631,6 +674,25 @@ class SharedRunBaseMaterialPoolTests(TestCase):
         form = self.client.get(reverse("order_add"), {"run": run.pk, "independent": "1"})
         self.assertEqual(form.status_code, 200)
         self.assertEqual(form.context["form"].initial["base_material_quantity"], Decimal("10"))
+
+
+class SharedRunPoolRoundingTests(TestCase):
+    setUp = CentralFlexibleMaterialTests.setUp
+    make_order = CentralFlexibleMaterialTests.make_order
+    make_run = SharedRunBaseMaterialPoolTests.make_run
+
+    def test_sub_quantum_noise_never_shows_as_an_overflow(self):
+        from .views import _run_base_pool, _shared_run_release_plan
+
+        run = self.make_run("30")
+        _f, entries, _a, _s, _e = _shared_run_release_plan(run)
+        for entry in entries:
+            if entry["raw_material"].pk == self.rice.pk:
+                entry["actual_quantity"] += Decimal("1E-20")
+        pool = _run_base_pool(run, entries)
+        self.assertEqual(pool["used"], Decimal("30.0000"))
+        self.assertEqual(pool["overflow"], Decimal("0"))
+        self.assertEqual(pool["remaining"], Decimal("0"))
 
 
 class SharedRunBaseMaterialMergeTests(SharedRunBaseMaterialPoolTests.__bases__[0]):
