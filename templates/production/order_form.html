@@ -300,7 +300,7 @@
     const sharedBase = sharedBaseFromRows();
     syncSharedBaseProductOptions(sharedBase);
     const allocated = numberValue(baseInput);
-    let used = 0;
+    let totalOutputWeight = 0;
     const weightedRows = [];
     let hasInvalidProduct = false;
 
@@ -335,30 +335,39 @@
       }
       const rowUnits = batches * unitsPerBatch + pieces;
       const rowWeight = rowUnits * outputWeight;
-      used += rowWeight;
+      totalOutputWeight += rowWeight;
       weightedRows.push({ row, rowWeight, outputWeight, base });
     });
 
-    weightedRows.forEach(({ row, rowWeight, outputWeight, base }) => {
-      const share = used > 0 ? allocated * rowWeight / used : 0;
+    const shares = weightedRows.map(({ rowWeight }) => totalOutputWeight > 0
+      ? Math.round((allocated * rowWeight / totalOutputWeight) * 10000) / 10000
+      : 0);
+    if (shares.length) {
+      const largestShare = shares.reduce((largest, share, index) => share > shares[largest] ? index : largest, 0);
+      shares[largestShare] += allocated - shares.reduce((sum, share) => sum + share, 0);
+    }
+    weightedRows.forEach(({ row, rowWeight, outputWeight, base }, index) => {
+      const share = shares[index];
       setBaseRowHint(row, `${formatQuantity(share)} ${base.unit} ${base.name} allocated · ${formatQuantity(rowWeight)} g output weight at ${formatQuantity(outputWeight)} g per unit.`);
     });
 
-    const poolMapped = allocated > 0 && used > 0;
+    const poolUsed = shares.reduce((sum, share) => sum + share, 0);
+    const poolRemaining = Math.max(0, allocated - poolUsed);
+    const poolMapped = weightedRows.length > 0 && poolUsed > 0;
 
     if (summary) {
       summary.classList.remove('hidden', 'border-rose-200', 'bg-rose-50', 'text-rose-700', 'border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
       if (!sharedBase) {
         summary.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
         summary.textContent = allocated > 0
-          ? `${formatQuantity(allocated)} allocated. Select the first product to establish the shared base material; subsequent products must use that same configured base material.`
+          ? `${formatQuantity(allocated)} pool available. Select a product to assign it by finished output weight.`
           : 'Enter the shared base-material quantity, then select the first product. Its base material becomes the basis for every product in this order.';
       } else if (poolMapped) {
         summary.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
-        summary.textContent = `${sharedBase.name}: ${formatQuantity(allocated)} ${sharedBase.unit} will be fully released and split across ${formatQuantity(used)} g of finished output.`;
+        summary.textContent = `${sharedBase.name}: ${formatQuantity(poolUsed)} ${sharedBase.unit} allocated · ${formatQuantity(poolRemaining)} ${sharedBase.unit} remaining.`;
       } else {
         summary.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
-        summary.textContent = `${sharedBase.name}: enter product quantities to split the full ${formatQuantity(allocated)} ${sharedBase.unit} pool by finished output weight.`;
+        summary.textContent = `${sharedBase.name}: 0 ${sharedBase.unit} allocated · ${formatQuantity(allocated)} ${sharedBase.unit} remaining. Enter product quantities to allocate the pool by finished output weight.`;
       }
     }
 

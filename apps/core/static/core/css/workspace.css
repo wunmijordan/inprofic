@@ -1253,6 +1253,36 @@ main .sticky-table thead th:first-child {
   box-shadow: inset -1px 0 0 var(--ui-border);
 }
 
+/* Keep the first input column pinned on narrow screens, but constrain its
+   width so at least part of the next field remains visible beside it. */
+@media (max-width: 767px) {
+  main form table.sticky-table tbody tr > :first-child,
+  main form table.sticky-table tfoot tr > :first-child,
+  main form table.sticky-table thead th:first-child {
+    box-sizing: border-box;
+    width: clamp(6.1rem, 38vw, 10.8rem) !important;
+    min-width: clamp(6.1rem, 38vw, 10.8rem) !important;
+    max-width: clamp(6.1rem, 38vw, 10.8rem) !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  main form table.sticky-table tbody tr > :first-child :is(input, select, textarea, .inprofic-control-wrap),
+  main form table.sticky-table tfoot tr > :first-child :is(input, select, textarea, .inprofic-control-wrap) {
+    box-sizing: border-box;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow-x: auto;
+    text-overflow: clip;
+  }
+
+  main form table.sticky-table tbody tr > :first-child :is(input, select),
+  main form table.sticky-table tfoot tr > :first-child :is(input, select) {
+    white-space: nowrap;
+  }
+}
+
 @media print {
   .sticky-table-frame {
     max-height: none;

@@ -177,7 +177,7 @@
     {% endif %}
     <div class="border border-[#E7DFCC] rounded-md overflow-hidden">
       <div class="overflow-x-auto">
-        <table class="w-full min-w-[680px] text-sm">
+        <table class="w-full min-w-0 text-sm">
           <thead class="bg-[#F0EAD9] text-stone-600 text-xs"><tr><th class="text-left px-2 py-1.5">Channel</th><th class="text-right px-2 py-1.5">Price</th><th class="w-16"></th></tr></thead>
           <tbody>
             {% for f in channel_price_formset %}
@@ -236,6 +236,7 @@
     <div class="mb-4 max-w-md rounded-xl border border-[#E7DFCC] bg-[#FAF8F1] p-3">
       {% include "_field.html" with field=form.base_material %}
     </div>
+    <div id="base-material-output-check" class="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs leading-5 text-sky-900" aria-live="polite"></div>
 
     <span id="production-inputs-help-anchor" class="cf-form-section-title inline-flex items-center gap-1.5 mb-1 mt-5">{{ vertical_ui.production_inputs_label }}</span>
     <p data-form-help-text data-form-help-anchor="production-inputs-help-anchor" class="text-[11px] text-stone-400 mb-1">These are consumed per batch but sit outside the main {{ vertical_ui.recipe_label|lower }} — for example packaging, labels, fuel, or other per-production supplies. Quantities use each material's usage unit.</p>
@@ -434,6 +435,37 @@
     });
   }
 
+  function updateBaseMaterialOutputCheck() {
+    const panel = document.getElementById('base-material-output-check');
+    if (!panel) return;
+    const batchYield = Number(document.getElementById('id_units_per_batch')?.value || 0);
+    const unitWeight = Number(document.getElementById('id_output_weight_grams')?.value || 0);
+    const batchWeight = batchYield * unitWeight;
+    const baseSelect = document.getElementById('id_base_material');
+    const baseId = baseSelect?.value;
+    const baseName = baseSelect?.selectedOptions?.[0]?.textContent?.trim();
+    const recipeRow = Array.from(document.querySelectorAll('#recipe-rows tr')).find((row) => {
+      const materialSelect = row.querySelector('select[name$="-raw_material"]');
+      const deleted = row.querySelector('input[name$="-DELETE"]')?.checked;
+      return !deleted && materialSelect?.value === baseId;
+    });
+    const recipeInput = recipeRow?.querySelector('input[name$="-qty_per_batch"]');
+    const recipeQuantity = Number(recipeInput?.value || 0);
+    const usageUnit = rawMaterialUsageUnits[String(baseId)] || '';
+    const format = (value, maximum = 3) => Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: maximum });
+
+    if (batchYield > 0 && unitWeight > 0) {
+      const output = `Standard batch output: ${format(batchYield, 2)} units × ${format(unitWeight)} g = ${format(batchWeight)} g finished weight.`;
+      if (baseId && recipeInput && recipeQuantity > 0) {
+        panel.textContent = `${output} ${baseName}: ${format(recipeQuantity, 4)} ${usageUnit} of base material per batch.`;
+      } else {
+        panel.textContent = `${output} Select a base material and add its per-batch recipe quantity to see the material relationship.`;
+      }
+    } else {
+      panel.textContent = 'Enter units per batch and finished unit weight to see the finished batch weight beside the base-material recipe quantity.';
+    }
+  }
+
   document.addEventListener('change', (event) => {
     if (event.target.matches(
       '#recipe-rows select[name$="-raw_material"], #production-material-rows select[name$="-raw_material"]'
@@ -446,9 +478,24 @@
       }
       if (event.target.matches('#recipe-rows select[name$="-raw_material"]')) syncBaseMaterialChoices();
     }
+    if (event.target.matches('#id_base_material, #recipe-rows select[name$="-raw_material"]')) updateBaseMaterialOutputCheck();
   });
 
-  document.addEventListener('DOMContentLoaded', refreshAllUsageUnits);
+  document.addEventListener('input', (event) => {
+    if (event.target.matches('#id_units_per_batch, #id_output_weight_grams, #recipe-rows input[name$="-qty_per_batch"]')) {
+      updateBaseMaterialOutputCheck();
+    }
+  });
+  document.addEventListener('click', (event) => {
+    if (event.target.closest('#recipe-rows [data-existing-formset-remove]')) {
+      setTimeout(updateBaseMaterialOutputCheck, 0);
+    }
+  });
+
+  document.addEventListener('DOMContentLoaded', () => {
+    refreshAllUsageUnits();
+    updateBaseMaterialOutputCheck();
+  });
 </script>
 {% endif %}
 {% endblock %}
