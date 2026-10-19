@@ -71,6 +71,35 @@
     if (invalid) { wrap.classList.add('is-invalid'); if (msg) { msg.textContent = el.validationMessage || 'Check this field.'; msg.dataset.visible = 'true'; } }
     else { if ((el.value || '').trim() !== '' || el.required) wrap.classList.add('is-valid'); if (msg) msg.dataset.visible = 'false'; }
   }
+  // Show/hide toggle for password inputs (opt out with data-no-password-toggle).
+  const EYE_ON = '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>';
+  const EYE_OFF = '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path d="M4 4l16 16"/>';
+  function addPasswordToggle(el, wrap) {
+    wrap.classList.add('has-password-toggle');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'inprofic-password-toggle';
+    btn.appendChild(svg(EYE_ON, 'inprofic-password-toggle-icon'));
+    const paint = () => {
+      const shown = el.type !== 'password';
+      const label = shown ? 'Hide password' : 'Show password';
+      btn.setAttribute('aria-label', label); btn.setAttribute('aria-pressed', shown ? 'true' : 'false'); btn.title = label;
+      btn.firstChild.innerHTML = shown ? EYE_OFF : EYE_ON;
+    };
+    // Keep focus (and the on-screen keyboard) in the input when the button is pressed.
+    btn.addEventListener('mousedown', event => event.preventDefault());
+    btn.addEventListener('click', () => {
+      const focused = document.activeElement === el;
+      const start = el.selectionStart, end = el.selectionEnd;
+      el.type = el.type === 'password' ? 'text' : 'password';
+      if (focused) { try { el.setSelectionRange(start, end); } catch (e) { /* ignore */ } }
+      paint();
+    });
+    // Never leave a revealed password on screen after the form is submitted.
+    if (el.form) el.form.addEventListener('submit', () => { if (el.type !== 'password') { el.type = 'password'; paint(); } });
+    paint();
+    wrap.appendChild(btn);
+  }
   function enhance(el) {
     if (!eligible(el) || el.dataset.inproficEnhanced === '1') return;
     el.dataset.inproficEnhanced = '1';
@@ -84,6 +113,7 @@
     wrap.classList.add('has-validation-mark');
     wrap.appendChild(svg('<path d="m5 12 4 4L19 6"/>', 'inprofic-validation-mark', 'valid'));
     wrap.appendChild(svg('<path d="M7 7l10 10M17 7 7 17"/>', 'inprofic-validation-mark', 'invalid'));
+    if (el.type === 'password' && el.dataset.noPasswordToggle === undefined) addPasswordToggle(el, wrap);
     const msg = document.createElement('span'); msg.className = 'inprofic-client-message'; msg.setAttribute('aria-live', 'polite'); parent.insertBefore(msg, wrap.nextSibling);
     ['input', 'change'].forEach(type => el.addEventListener(type, () => { el.dataset.inproficDirty = '1'; stateFor(el, false); }));
     el.addEventListener('blur', () => { el.dataset.inproficDirty = '1'; stateFor(el, false); });

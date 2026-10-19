@@ -5,7 +5,7 @@
   <div>
     <div class="text-[10px] font-bold uppercase tracking-[.18em] text-stone-400">Users & Access · Add-on</div>
     <h2 class="mt-1 text-xl font-semibold font-display text-[#8f172d]">Staff payroll</h2>
-    <p class="mt-1 text-xs text-stone-500">Keep staff pay structures, configure payroll calculations and issue shareable payslips without making payroll a separate INPROFIC module.</p>
+    <p class="mt-1 text-xs text-stone-500">Keep staff pay structures, payroll calculations and issue shareable payslips without making payroll a separate INPROFIC module.</p>
   </div>
   <div class="flex flex-wrap gap-2">
     <a
@@ -67,7 +67,7 @@
             <td class="px-4 py-3"><strong>{{ staff.full_name }}</strong><div class="text-xs text-stone-500">{{ staff.job_title|default:"Staff" }}{% if staff.user_id %} · linked user{% endif %}{% if not staff.active %} · inactive{% endif %}</div></td>
             <td class="px-4 py-3">
               <span class="font-mono">{{ biz.currency_symbol }}{{ staff.base_pay|num }}</span>
-              <div class="text-xs text-stone-500">{{ staff.get_pay_frequency_display }} · {{ biz.currency_symbol }}{{ staff.recurring_net_pay|num }} before configured payroll rules</div>
+              <div class="text-xs text-stone-500">{{ staff.get_pay_frequency_display }} · {{ biz.currency_symbol }}{{ staff.recurring_net_pay|num }} before payroll rules</div>
               {% for item in staff.recurring_adjustments.all %}{% if item.active %}<div class="mt-1 text-[11px] text-stone-500">{% if item.kind == 'allowance' %}+{% else %}−{% endif %} {{ item.name }} · {{ biz.currency_symbol }}{{ item.amount|num }}</div>{% endif %}{% endfor %}
             </td>
             <td class="px-4 py-3 text-xs text-stone-500">{{ staff.email|default:"—" }}<br>{{ staff.whatsapp_number|default:"—" }}</td>
@@ -118,7 +118,7 @@
               </form>
             </td>
           </tr>
-          {% empty %}<tr><td colspan="4" class="px-4 py-8 text-center text-stone-500">No automatic pay calculations configured yet.</td></tr>{% endfor %}
+          {% empty %}<tr><td colspan="4" class="px-4 py-8 text-center text-stone-500">No automatic pay calculations yet.</td></tr>{% endfor %}
         </tbody>
       </table>
     </div>

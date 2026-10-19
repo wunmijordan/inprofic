@@ -148,7 +148,7 @@ def opening_status(settings, now=None):
         status["detail"] = "We are not taking orders right now."
         return status
     opens_at = upcoming[0]
-    status["headline"] = f"Closed, till {_day_word(opens_at, now)} {format_clock(timezone.localtime(opens_at).time())}"
+    status["headline"] = f"Closed, till {format_clock(timezone.localtime(opens_at).time())} {_day_word(opens_at, now)}"
     if status["slots"]:
         status["detail"] = f"You can browse the menu and schedule an order for {status['schedule_hint']}."
     else:

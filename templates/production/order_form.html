@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 {% if kitchen_mode %}<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Production entry</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit entry #{{ obj.display_number }}{% else %}New production entry{% endif %}</h2><p class="mt-1 max-w-3xl text-sm text-stone-500">Choose what was made and how it is sized. The order is saved as pending with no channel. You can adjust the flexible material from the order page, and a manager later assigns each portion to its channel.</p></div>{% else %}<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Production planning</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit{% else %}New{% endif %} {{ vertical_ui.orders|slice:":-1" }}</h2><p class="mt-1 max-w-3xl text-sm text-stone-500">Plan customer demand or stock production, then let INPROFIC calculate the material requirement from the product recipe.</p></div>{% endif %}
-{% if kitchen_mode %}<style>#order-form.kitchen-mode .production-plan-col,#order-form.kitchen-mode .kitchen-hide-col{display:none !important}</style>{% endif %}
+{% if kitchen_mode %}<style>#order-form.kitchen-mode .production-plan-col,#order-form.kitchen-mode .kitchen-hide-col{display:none !important}#order-form.kitchen-mode table.min-w-\[980px\]{min-width:0}</style>{% endif %}
 <div class="cf-form-shell">
 <div class="cf-form-body">
   {% if formset.non_field_errors %}
@@ -147,7 +147,7 @@
           <tbody id="order-rows">
             {% for f in formset %}
             <tr {% if forloop.first %}data-formset-row{% endif %} class="border-t border-[#E7DFCC]" data-row>
-              <td class="px-2 py-2">{{ f.id }}{{ f.finished_good }}<div class="base-material-row-hint mt-1 hidden text-[10px] leading-4 text-stone-500"></div>{% for error in f.finished_good.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}{% for error in f.non_field_errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
+              <td class="px-2 py-2 max-w-[100px]">{{ f.id }}{{ f.finished_good }}<div class="base-material-row-hint mt-1 hidden text-[10px] leading-4 text-stone-500"></div>{% for error in f.finished_good.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}{% for error in f.non_field_errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
               <td class="px-2 py-1.5">{{ f.batch_qty }}{% for error in f.batch_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
               <td class="px-2 py-1.5">{{ f.piece_qty }}{% for error in f.piece_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
               <td class="px-2 py-1.5 production-plan-col">{{ f.production_batch_qty }}{% for error in f.production_batch_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
@@ -314,7 +314,7 @@
       const base = product.base_material;
       if (!base) {
         hasInvalidProduct = true;
-        setBaseRowHint(row, 'This product has no configured base material and cannot use the shared base-material production basis.', true);
+        setBaseRowHint(row, 'This product has no base material and cannot use the shared base-material production basis.', true);
         return;
       }
       if (sharedBase && String(base.id) !== String(sharedBase.id)) {
@@ -348,8 +348,8 @@
       if (!sharedBase) {
         summary.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
         summary.textContent = allocated > 0
-          ? `${formatQuantity(allocated)} allocated. Select the first product to establish the shared base material; subsequent products must use that same configured base material.`
-          : 'Enter the shared base-material quantity, then select the first product. Its configured base material becomes the basis for every product in this order.';
+          ? `${formatQuantity(allocated)} allocated. Select the first product to establish the shared base material; subsequent products must use that same base material.`
+          : 'Enter the shared base-material quantity, then select the first product. Its base material becomes the basis for every product in this order.';
       } else if (remaining < -0.0000001) {
         summary.classList.add('border-rose-200', 'bg-rose-50', 'text-rose-700');
         summary.textContent = `${sharedBase.name}: ${formatQuantity(allocated)} ${sharedBase.unit} allocated · ${formatQuantity(used)} ${sharedBase.unit} mapped · over by ${formatQuantity(Math.abs(remaining))} ${sharedBase.unit}. Reduce product quantities before saving.`;

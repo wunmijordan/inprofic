@@ -271,7 +271,7 @@ class OrderItemFormSetBase(BaseInlineFormSet):
                 if not good.base_material_id:
                     form.add_error(
                         "finished_good",
-                        "This product needs a configured base material before it can share this production's base-material allocation.",
+                        "This product needs a base material before it can share this production's base-material allocation.",
                     )
                     continue
                 recipe_row = good.recipe_items.filter(raw_material_id=good.base_material_id).first()

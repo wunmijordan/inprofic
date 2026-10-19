@@ -667,7 +667,7 @@ def payroll_access_state(business):
 def assert_payroll_capacity(business, *, excluding_profile=None):
     state = payroll_access_state(business)
     if not state["enabled"]:
-        raise ValidationError("Payroll is available during a free trial or Founder lifetime access; otherwise choose a paid payroll add-on tier.")
+        raise ValidationError("Payroll is available during a Free-trial or Lifetime access; otherwise choose a paid payroll add-on tier.")
     limit = state["staff_limit"]
     if limit is None:
         return state
@@ -736,7 +736,7 @@ def assert_can_buy_batch(business, batch, quantity):
     state = payroll_access_state(business)
     subscription = state["subscription"]
     if state["included"]:
-        raise ValidationError("Payroll is already included with the current free-trial or Founder lifetime access.")
+        raise ValidationError("Payroll is already included with the current Free-trial or Lifetime access.")
     if not subscription or not state["enabled"]:
         raise ValidationError("Buy or renew a primary payroll package before adding extra staff.")
     addon = state["addon"]

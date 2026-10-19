@@ -55,7 +55,7 @@ class DeliverySettingsForm(StyledModelForm):
         if provider == DeliverySettings.PROVIDER_INHOUSE and account:
             self.add_error("default_provider_account", "Provider plug-in accounts are only used for external or hybrid dispatch.")
         if provider in {DeliverySettings.PROVIDER_THIRD_PARTY, DeliverySettings.PROVIDER_HYBRID} and account and not account.is_configured_for_dispatch:
-            self.add_error("default_provider_account", "Choose an active, configured delivery provider account.")
+            self.add_error("default_provider_account", "Choose an active delivery provider account.")
         if provider == DeliverySettings.PROVIDER_THIRD_PARTY and not account:
             self.add_error("default_provider_account", "Choose the external provider account used for delivery.")
         rider_repeat = cleaned.get("rider_alert_sound_repeat_minutes")
@@ -114,7 +114,7 @@ class DeliveryProviderAccountForm(StyledModelForm):
             "name": "Use a recognizable internal name for this courier connection.",
             "provider_code": "Custom delivery partner keeps INPROFIC in control of quoting, routing and tracking. Built-in adapters may add provider-specific automation.",
             "sandbox": "Keep this on while testing provider credentials. Turn it off only when the provider has issued production access.",
-            "auto_dispatch": "Optional for custom partners: send a paid delivery to the configured adapter endpoint automatically. Failed sends remain visible for manual dispatch.",
+            "auto_dispatch": "Optional for custom partners: send a paid delivery to the third-party Provider automatically. Failed sends remain visible for manual dispatch.",
             "use_live_quotes": "Dedicated built-in adapters may use provider live pricing. Custom partners use INPROFIC price bands so checkout remains provider-neutral.",
             "base_url": "Optional for manual partners. For API automation, enter the base URL of the provider or merchant-owned adapter service.",
             "health_endpoint": "Optional non-mutating GET endpoint used by the Test connection action for custom partners.",
@@ -237,7 +237,7 @@ class DeliveryProviderAccountForm(StyledModelForm):
                 if not has_auth:
                     self.add_error(
                         "api_key",
-                        "Automatic dispatch needs provider credentials, configured static headers, or metadata auth_type set to none.",
+                        "Automatic dispatch needs provider credentials, static headers, or metadata auth_type set to none.",
                     )
         return cleaned
 

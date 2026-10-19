@@ -68,7 +68,7 @@
     } catch (_) { config = null; }
     if (!config?.configured) {
       button.disabled = true;
-      status.textContent = 'Background Web Push is not configured on this INPROFIC installation yet.';
+      status.textContent = 'Background Push Notifications is not available on this INPROFIC installation yet.';
       return;
     }
     if (Notification.permission === 'denied') {

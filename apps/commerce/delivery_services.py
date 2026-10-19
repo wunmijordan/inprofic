@@ -306,12 +306,12 @@ def _validate_area_point(area, latitude, longitude):
     if not area:
         return
     if area.latitude is None or area.longitude is None:
-        raise ValidationError(f"{area.name} does not have a configured coverage centre.")
+        raise ValidationError(f"{area.name} does not have a coverage centre.")
     zone_distance = _haversine_km(area.latitude, area.longitude, latitude, longitude)
     permitted_reach = _area_reach_km(area, latitude, longitude)
     if zone_distance > permitted_reach:
         raise ValidationError(
-            f"This location is outside {area.name}'s configured delivery coverage. Choose another area or move the map pin."
+            f"This location is outside {area.name}'s delivery coverage. Choose another area or move the map pin."
         )
 
 
@@ -353,7 +353,7 @@ def resolve_delivery_location(*, business, address="", area_id=None, latitude=No
     matches = _geocode_results(address, area=area)
     if area:
         if area.latitude is None or area.longitude is None:
-            raise ValidationError(f"{area.name} does not have a configured coverage centre.")
+            raise ValidationError(f"{area.name} does not have a coverage centre.")
         matches = [row for row in matches if _haversine_km(area.latitude, area.longitude, row["latitude"], row["longitude"]) <= _area_reach_km(area, row["latitude"], row["longitude"])]
     if not matches:
         raise ValidationError("We could not locate that address inside the selected delivery area. Enter a more precise address or place the map pin.")
@@ -405,13 +405,13 @@ def _native_quote_data(*, business, origin, area, latitude, longitude, subtotal,
     if origin.latitude is None or origin.longitude is None:
         raise ValidationError("Configure coordinates on the delivery origin before using INPROFIC distance rates.")
     if latitude is None or longitude is None:
-        raise ValidationError("Choose a configured area or provide destination coordinates.")
+        raise ValidationError("Choose an area or provide destination coordinates.")
     distance = _haversine_km(origin.latitude, origin.longitude, latitude, longitude)
     band = _rate_band(business, distance, area=area, vehicle=vehicle)
     if not band:
         if vehicle == VEHICLE_CAR:
             raise ValidationError("Car delivery is not available for this destination.")
-        raise ValidationError("This destination is outside the configured delivery coverage.")
+        raise ValidationError("This destination is outside the delivery coverage.")
     if subtotal < band.minimum_order:
         raise ValidationError(
             f"Minimum order for this delivery area is {business.currency_symbol}{band.minimum_order:,.2f}."
@@ -557,7 +557,7 @@ def create_delivery_quote_options(*, business, subtotal, destination_address, ar
     def add_external(selection_source):
         account = settings.default_provider_account
         if not account or not account.active:
-            errors.append("The external delivery provider is not configured.")
+            errors.append("The external delivery provider is not available.")
             return
         candidates = []  # (quote data, vehicle mode)
         if account.provider_code == DeliveryProviderAccount.PROVIDER_SHIPBUBBLE:
@@ -1297,7 +1297,7 @@ def _method_quote_for_assignment(assignment, target_provider):
 def switch_delivery_method(*, assignment, target_provider, actor=None, manager_approved=False):
     """Switch a paid Hybrid delivery before pickup without changing customer charge."""
     if target_provider not in {DeliverySettings.PROVIDER_INHOUSE, DeliverySettings.PROVIDER_THIRD_PARTY}:
-        raise ValidationError("Choose In-house or the configured delivery partner.")
+        raise ValidationError("Choose In-house or a delivery partner.")
     if not business_has_module(assignment.business, "delivery"):
         raise ValidationError("Delivery is no longer included in this business plan.")
     current = DeliveryAssignment.raw_objects.select_related("intake", "quote", "provider_account", "business", "driver__user").get(pk=assignment.pk)

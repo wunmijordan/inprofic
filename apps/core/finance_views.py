@@ -493,7 +493,7 @@ def stock_adjustment_form(request):
                     form.add_error("quantity","Adjustment would make stock negative."); return render(request,"core/adjustment_form.html",{"form":form})
             else:
                 if x.finished_good.stock is None:
-                    form.add_error("finished_good","This product is not configured for physical-store stock."); return render(request,"core/adjustment_form.html",{"form":form})
+                    form.add_error("finished_good","This product is not in physical-store stock."); return render(request,"core/adjustment_form.html",{"form":form})
                 if x.quantity + x.finished_good.stock < 0:
                     form.add_error("quantity","Adjustment would make stock negative."); return render(request,"core/adjustment_form.html",{"form":form})
                 latest=x.finished_good.adjustments.order_by("-date","-id").first()

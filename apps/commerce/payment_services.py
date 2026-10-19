@@ -198,7 +198,7 @@ def eligible_payment_methods(business, *, surface="public"):
 
 def _assert_method_eligible(business, method, *, surface="public"):
     if method not in {row["code"] for row in eligible_payment_methods(business, surface=surface)}:
-        raise ValidationError("This payment method is not enabled and fully configured for this storefront.")
+        raise ValidationError("This payment method is not enabled for this storefront.")
 
 
 def _manual_instructions(config, method):
@@ -323,7 +323,7 @@ def _account_for(config, method, business, actor, payment=None):
     }.get(method)
     if configured and configured.active:
         if configured.business_id != business.pk:
-            raise ValidationError("The configured settlement account belongs to another business.")
+            raise ValidationError("The settlement account belongs to another business.")
         return configured
     # Existing intake payments can use a fallback account. Keep that
     # behavior for old records/endpoints; new checkout initiation requires an
@@ -390,7 +390,7 @@ def initiate_payment(*, intake=None, checkout=None, method, idempotency_key, ret
         else:
             route_choices = list(routes[:2])
             if not route_choices:
-                raise ValidationError("No active manual transfer route is configured for this business.")
+                raise ValidationError("No active manual transfer route is available for this business.")
             if len(route_choices) > 1 and surface == "public":
                 raise ValidationError("Choose which transfer account you want to use.")
             selected_transfer_route = route_choices[0]

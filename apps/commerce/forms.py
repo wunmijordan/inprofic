@@ -171,7 +171,7 @@ class StorefrontProductForm(forms.ModelForm):
             self.fields["distribution_min_quantity"].label = "Distribution / bulk minimum (from bulk options)"
             self.fields["distribution_min_quantity"].help_text = (
                 "Read-only because this product has active Bulk / Distribution options. "
-                "Each bulk option keeps its own minimum; this field shows the lowest configured bulk minimum as a summary."
+                "Each bulk option keeps its own minimum; this field shows the lowest bulk minimum as a summary."
             )
         else:
             self.fields["distribution_min_quantity"].help_text = (

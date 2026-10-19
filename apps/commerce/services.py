@@ -148,7 +148,7 @@ def create_intake(*, business, source, ordering_mode=None, sales_channel=None, c
             and active_bulk_packs(product.finished_good)
         ):
             raise ValidationError(
-                f"{product.display_name} uses configured Bulk / Distribution options. "
+                f"{product.display_name} uses Bulk / Distribution options. "
                 "Create the order through the checkout contract and choose a bulk option."
             )
         minimum = _channel_minimum(product, sales_channel)

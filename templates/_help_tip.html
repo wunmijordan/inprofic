@@ -29,7 +29,7 @@
     {% if help_hours %}
       <ul class="form-help-tip__list">
         {% for day in help_hours %}
-          <li class="form-help-tip__list-item"><strong class="form-help-tip__list-title">{{ day.name }}{% if day.today %} (today){% endif %}</strong><span class="form-help-tip__list-detail">{% if day.closed %}Closed{% else %}{{ day.open_label }} – {{ day.close_label }}{% endif %}</span></li>
+          <li class="form-help-tip__list-item {% if day.today %}bg-emerald-100{% else %}bg-stone-50{% endif %}"><strong class="form-help-tip__list-title">{{ day.name }}{% if day.today %}<span class="italic"> (today)</span>{% endif %}</strong><span class="form-help-tip__list-detail">{% if day.closed %}Closed{% else %}{{ day.open_label }} – {{ day.close_label }}{% endif %}</span></li>
         {% endfor %}
       </ul>
     {% elif help_items %}

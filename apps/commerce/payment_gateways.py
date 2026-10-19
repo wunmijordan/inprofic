@@ -60,7 +60,7 @@ def _require(value, message):
 
 
 def _paystack_secret(config):
-    return _require(config.paystack_secret_key, "Paystack is not fully configured for this business.")
+    return _require(config.paystack_secret_key, "Paystack is not available for this business.")
 
 
 def paystack_signature_valid(config, raw_body, signature):
@@ -162,7 +162,7 @@ def initialize_paystack_bank_transfer(payment, config):
 
 def initialize_paystack_terminal(payment, config):
     target = _payment_customer(payment)
-    terminal_id = _require(config.paystack_terminal_id, "Paystack Terminal ID is not configured for this business.")
+    terminal_id = _require(config.paystack_terminal_id, "Paystack Terminal ID is not available for this business.")
     customer_email = (target.customer_email or config.paystack_terminal_customer_email or "").strip()
     customer_code = _paystack_customer_code(
         config, email=customer_email, name=target.customer_name, phone=target.customer_phone
@@ -193,7 +193,7 @@ def initialize_paystack_terminal(payment, config):
     )
     state = presence.get("data") or {}
     if not presence.get("status") or not state.get("online") or not state.get("available"):
-        raise GatewayError("The configured Paystack Terminal is offline or currently busy.")
+        raise GatewayError("The Paystack Terminal is offline or currently busy.")
     event_response = _json_request(
         f"https://api.paystack.co/terminal/{quote(terminal_id, safe='')}/event",
         method="POST",
@@ -322,9 +322,9 @@ def verify_paystack(payment, config):
 
 def _monnify_credentials(config):
     return (
-        _require(config.monnify_api_key, "Monnify is not fully configured for this business."),
-        _require(config.monnify_secret_key, "Monnify is not fully configured for this business."),
-        _require(config.monnify_contract_code, "Monnify is not fully configured for this business."),
+        _require(config.monnify_api_key, "Monnify is not available for this business."),
+        _require(config.monnify_secret_key, "Monnify is not available for this business."),
+        _require(config.monnify_contract_code, "Monnify is not available for this business."),
     )
 
 
@@ -484,7 +484,7 @@ def initialize_gateway(payment: CommercePayment, config: CommercePaymentConfigur
         return initialize_monnify_bank_transfer(payment, config)
     if payment.method == CommercePayment.METHOD_POS_CARD and payment.gateway_provider == CommercePayment.GATEWAY_PAYSTACK:
         return initialize_paystack_terminal(payment, config)
-    raise GatewayError("This payment does not use a configured online gateway.")
+    raise GatewayError("This payment does not use an online gateway.")
 
 
 def verify_gateway(payment: CommercePayment, config: CommercePaymentConfiguration):
@@ -498,4 +498,4 @@ def verify_gateway(payment: CommercePayment, config: CommercePaymentConfiguratio
         return verify_monnify(payment, config)
     if payment.method == CommercePayment.METHOD_POS_CARD and payment.gateway_provider == CommercePayment.GATEWAY_PAYSTACK:
         return verify_paystack_terminal(payment, config)
-    raise GatewayError("This payment does not use a configured online gateway.")
+    raise GatewayError("This payment does not use an online gateway.")

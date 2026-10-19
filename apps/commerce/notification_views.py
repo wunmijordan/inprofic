@@ -189,7 +189,7 @@ def push_subscribe(request):
     from .push_subscriptions import sync_device_subscription
 
     if not configured():
-        return JsonResponse({"detail": "Web Push is not configured on this deployment."}, status=503)
+        return JsonResponse({"detail": "Push Notifications is not available."}, status=503)
     try:
         payload = json.loads(request.body or b"{}")
         endpoint = str(payload.get("endpoint") or "").strip()

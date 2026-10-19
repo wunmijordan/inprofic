@@ -46,7 +46,7 @@ def graph_request(path, *, method="GET", token="", params=None, body=None, timeo
 
 def exchange_signup_code(code):
     if not settings.META_WHATSAPP_APP_ID or not settings.META_WHATSAPP_APP_SECRET:
-        raise MetaWhatsAppError("Meta Embedded Signup is not configured on this installation.")
+        raise MetaWhatsAppError("Meta Embedded Signup is not available on this installation.")
     return graph_request(
         "oauth/access_token",
         params={

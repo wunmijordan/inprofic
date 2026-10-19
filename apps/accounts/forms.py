@@ -198,7 +198,7 @@ class FounderUserManagementForm(forms.ModelForm):
             self.fields["new_password"].required = True
         self.fields["is_staff"].help_text = "Django administration access flag. Leave this off for mailing-only project users."
         self.fields["platform_mail_access"].help_text = "Allows this project-level user to use only the INPROFIC mailing workspace and business mailing analytics."
-        self.fields["is_superuser"].help_text = "Grants unrestricted platform access. Use only for trusted founders."
+        self.fields["is_superuser"].help_text = "Grants unrestricted platform access. Use only for trusted Users."
 
     def clean(self):
         cleaned = super().clean()
@@ -1024,7 +1024,7 @@ class PayslipForm(forms.ModelForm):
         )
         self.fields["manual_deductions"].label = "Additional deduction for this period"
         self.fields["manual_deductions"].help_text = (
-            "Optional one-off amount. Named recurring deductions plus configured tax/pension rules are included separately."
+            "Optional one-off amount. Named recurring deductions plus tax/pension rules are included separately."
         )
         for field in self.fields.values():
             field.widget.attrs["class"] = CLS

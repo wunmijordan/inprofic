@@ -2059,7 +2059,7 @@ def storefront_pos(request):
                     staff_pos_confirmed=is_transfer,
                 )
                 return redirect(f"{reverse('commerce_storefront_pos')}?receipt={receipt.public_id}")
-            messages.info(request, "Payment request sent to the configured POS terminal. Complete the card payment on the terminal; INPROFIC will mark it paid after automatic confirmation.")
+            messages.info(request, "Payment request sent to the POS terminal. Complete the card payment on the terminal; INPROFIC will mark it paid after automatic confirmation.")
             return redirect(f"{reverse('commerce_storefront_pos')}?checkout={checkout.public_id}")
         except (ValidationError, GatewayError, InvalidOperation, TypeError, ValueError) as exc:
             if checkout is not None:

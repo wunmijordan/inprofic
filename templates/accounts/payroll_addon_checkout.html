@@ -58,6 +58,6 @@
     <button {% if payroll_state.included %}type="button" disabled{% endif %} class="w-full rounded-xl bg-[#8f172d] px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">{% if payroll_state.included %}Included with your current access{% else %}Continue to secure payment{% endif %}</button>
   </form>
   {% else %}
-  <div class="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">No payroll add-on tier has been configured for {{ subscription.plan.name }} yet.</div>
+  <div class="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">No payroll add-on tier available for {{ subscription.plan.name }} yet.</div>
   {% endif %}
 </div>{% endblock %}

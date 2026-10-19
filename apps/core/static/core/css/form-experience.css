@@ -132,6 +132,61 @@
   padding-right: 2.25rem !important;
 }
 
+/* Password show/hide toggle (form-experience.js). Sits at the right edge; the valid/invalid
+   mark moves left of it so the two never overlap. */
+.inprofic-control-wrap.has-password-toggle>input {
+  padding-right: 3.9rem !important;
+}
+
+.inprofic-control-wrap.has-password-toggle .inprofic-validation-mark {
+  right: 2.5rem;
+}
+
+.inprofic-password-toggle {
+  position: absolute;
+  right: .3rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: .45rem;
+  background: transparent;
+  color: var(--ui-surface-muted-text, #78716c);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.inprofic-password-toggle:hover,
+.inprofic-password-toggle[aria-pressed="true"] {
+  color: var(--tenant-button, #D14900);
+}
+
+.inprofic-password-toggle:focus-visible {
+  outline: 2px solid var(--tenant-button, #D14900);
+  outline-offset: 1px;
+}
+
+.inprofic-password-toggle-icon {
+  width: 1.1rem;
+  height: 1.1rem;
+  pointer-events: none;
+}
+
+.inprofic-password-toggle-icon path,
+.inprofic-password-toggle-icon circle {
+  vector-effect: non-scaling-stroke;
+}
+
+/* Hide the browser's own reveal control so only one eye shows. */
+.inprofic-control-wrap>input[type="password"]::-ms-reveal,
+.inprofic-control-wrap>input[type="password"]::-ms-clear {
+  display: none;
+}
+
 .inprofic-client-message {
   display: block;
   max-height: 0;

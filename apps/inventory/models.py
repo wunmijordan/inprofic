@@ -208,7 +208,7 @@ class FinishedGood(BusinessOwnedModel):
         default=0,
         help_text=(
             "Remaining shelf stock that entered through an explicit Market Stock transfer. "
-            "This is the only shelf-sale allowance for products not normally configured for Physical Store stock."
+            "This is the only shelf-sale allowance for products not normally in Physical Store stock."
         ),
     )
 

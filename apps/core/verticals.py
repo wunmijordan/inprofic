@@ -234,7 +234,7 @@ POS_CONFIG = {
     Business.VERTICAL_WHOLESALE: {
         "eyebrow": "Trade counter",
         "title": "Wholesale Counter",
-        "intro": "Build trade orders from available warehouse stock using wholesale pricing and configured minimum quantities.",
+        "intro": "Build trade orders from available warehouse stock using wholesale pricing and their minimum quantities.",
         "catalog_label": "Trade products",
         "basket_label": "Trade order",
         "search_placeholder": "Search stock products…",
@@ -252,7 +252,7 @@ POS_CONFIG = {
     Business.VERTICAL_RETAIL: {
         "eyebrow": "In-store selling",
         "title": "Retail POS",
-        "intro": "Ring up walk-in purchases from live shop stock with fast product search, basket controls and configured payment methods.",
+        "intro": "Ring up walk-in purchases from live shop stock with fast product search, basket controls and payment methods.",
         "catalog_label": "Products",
         "basket_label": "Basket",
         "search_placeholder": "Search products…",

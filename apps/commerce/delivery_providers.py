@@ -455,7 +455,7 @@ def dispatch_assignment_to_provider(assignment: DeliveryAssignment, *, actor=Non
         )
         audit(
             assignment.business, actor, "delivery_provider_dispatch", assignment,
-            f"Delivery {assignment.public_id} dispatched to configured delivery partner",
+            f"Delivery {assignment.public_id} dispatched to delivery partner",
             {"provider_account": account.pk, "tracking_number": provider_id, "provider_status": status},
         )
         queue_commerce_notification(
@@ -661,7 +661,7 @@ def consume_generic_provider_webhook(*, business, account_id, payload: dict, hea
     )
     audit(
         business, actor, "delivery_provider_webhook", assignment,
-        f"Configured delivery partner updated delivery {assignment.public_id}",
+        f"Delivery partner updated delivery {assignment.public_id}",
         {"provider_account": account.pk, "provider_status": status, "mapped_status": assignment.status},
     )
     if status:

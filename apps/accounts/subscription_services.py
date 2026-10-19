@@ -178,7 +178,7 @@ def build_plan_feature_matrix(plans, currency_symbol="\u20a6"):
         },
         {
             "label": "Staff payroll add-on",
-            "detail": "Supplementary payroll is included during a free trial and complimentary access; after that, platform-configured staff tiers are purchased separately.",
+            "detail": "Supplementary payroll is included during a free trial and complimentary access; after that, subsequent staff tiers are purchased separately.",
             "values": [payroll_value(plan) for plan in plans],
         },
     ]
@@ -244,7 +244,7 @@ def build_plan_feature_matrix(plans, currency_symbol="\u20a6"):
 
     rows.insert(0, group("Capacity & billing"))
     rows.append({"label": "Free trial", "detail": "How a new workspace starts on this plan.", "values": [trial_text(p) for p in plans]})
-    rows.append({"label": "Billing cycles", "detail": "Pay monthly, or commit to a longer cycle for a configured discount.", "values": [cycle_text(p) for p in plans]})
+    rows.append({"label": "Billing cycles", "detail": "Pay monthly, or commit to a longer cycle for a discount.", "values": [cycle_text(p) for p in plans]})
 
     rows.append(group("Workspace modules"))
     for module, label in feature_modules:
@@ -929,7 +929,7 @@ def create_payment_request(subscription, plan, *, months=1, billing_cycle="month
         addon = assert_can_buy_batch(subscription.primary_business, payroll_batch, quantity)
         amount, days = prorated_batch_amount(payroll_batch, quantity, addon.paid_until)
         if amount <= 0:
-            raise ValidationError("This extra-staff batch does not yet have a payable price configured.")
+            raise ValidationError("This extra-staff batch does not yet have a payable price.")
         from types import SimpleNamespace
         pending = SimpleNamespace(batch_id=payroll_batch.pk, batch=payroll_batch, quantity=quantity)
         snapshot = batch_snapshot([pending])
@@ -957,14 +957,14 @@ def create_payment_request(subscription, plan, *, months=1, billing_cycle="month
         if not subscription.is_effectively_active:
             raise ValidationError("Renew the business plan before purchasing the payroll add-on.")
         if not payroll_tier or not payroll_tier.active or payroll_tier.plan_id != subscription.plan_id:
-            raise ValidationError("Choose an active payroll add-on tier configured for the current plan.")
+            raise ValidationError("Choose an active payroll add-on tier for the current plan.")
         period_count = Decimal("12") if billing_cycle == SubscriptionPayment.CYCLE_YEARLY else Decimal(max(1, int(months or 1)))
         # Held extra-staff batches renew automatically at today's batch prices.
         addon = BusinessPayrollAddon.objects.filter(business=subscription.primary_business).select_related("tier").first()
         holdings = [] if payroll_tier.unlimited else held_batches_for_renewal(addon)
         amount = (renewal_monthly_total(payroll_tier, addon) * period_count).quantize(Decimal("0.01"))
         if amount <= 0:
-            raise ValidationError("This payroll add-on tier does not yet have a payable price configured.")
+            raise ValidationError("This payroll add-on tier does not yet have a payable price.")
         return SubscriptionPayment.objects.create(
             subscription=subscription,
             plan=subscription.plan,
@@ -987,7 +987,7 @@ def create_payment_request(subscription, plan, *, months=1, billing_cycle="month
     base_amount = payment_amount(plan, service_count, months, billing_cycle=billing_cycle, promotion=False)
     amount = payment_amount(plan, service_count, months, billing_cycle=billing_cycle, promotion=promotion)
     if amount <= 0:
-        raise ValidationError("This plan does not yet have a payable price configured. Contact the INPROFIC founder/superuser.")
+        raise ValidationError("This plan does not yet have a payable price. Contact the INPROFIC.")
     return SubscriptionPayment.objects.create(
         subscription=subscription,
         plan=plan,

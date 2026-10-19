@@ -192,7 +192,7 @@ def record_finished_good_movement(good, quantity, movement_type, *, note="", aff
             business_id=good.business_id,
         )
         if locked_good.stock is None:
-            raise ValueError(f"{locked_good.name} is not configured for physical-store stock.")
+            raise ValueError(f"{locked_good.name} is not in physical-store stock.")
         locked_good.stock = (locked_good.stock + quantity).quantize(Decimal("0.01"))
         locked_good.save(update_fields=["stock"])
         good.stock = locked_good.stock

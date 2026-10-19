@@ -824,7 +824,7 @@ def restore_backup_sqlite(uploaded_file, target_business, source_business_id, *,
             action="backup_restore",
             model_name="Business",
             object_id=str(target_business.pk),
-            description=f"Founder restored a business backup into {target_business.name}.",
+            description=f"Admin restored a business backup into {target_business.name}.",
             metadata={
                 "source_business_id": int(source_business_id),
                 "operational_rows": total_rows,
@@ -1479,7 +1479,7 @@ def restore_backup_fixture(uploaded_file, target_business, source_business_id, *
             action="backup_restore",
             model_name="Business",
             object_id=str(target_business.pk),
-            description=f"Founder restored a business backup into {target_business.name}.",
+            description=f"Admin restored a business backup into {target_business.name}.",
             metadata={
                 "source_business_id": int(source_business_id),
                 "backup_format": "django_json",

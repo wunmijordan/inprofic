@@ -489,7 +489,7 @@ def raw_material_inventory_pdf(request):
     if materials:
         story.append(stock_table)
     else:
-        story.append(Paragraph("No raw materials are configured yet.", cell))
+        story.append(Paragraph("No raw materials are available yet.", cell))
     story += [Spacer(1, 5*mm), legend]
     doc.build(story)
     response.write(buffer.getvalue())

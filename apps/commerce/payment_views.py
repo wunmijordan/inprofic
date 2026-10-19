@@ -317,7 +317,7 @@ def gateway_webhook(request, business_slug, provider):
     business = get_object_or_404(Business, slug=business_slug)
     config = CommercePaymentConfiguration.raw_objects.filter(business=business).first()
     if config is None:
-        return JsonResponse({"detail": "Payment provider is not configured."}, status=404)
+        return JsonResponse({"detail": "Payment provider is not available."}, status=404)
     try:
         payload = json.loads(request.body or b"{}")
     except json.JSONDecodeError:

@@ -380,7 +380,7 @@ def _send_pending(limit=40):
     try:
         from pywebpush import WebPushException, webpush
     except ImportError:
-        logger.error("WEB_PUSH is configured but pywebpush is not installed")
+        logger.error("WEB_PUSH is available but pywebpush is not installed")
         return {"sent": 0, "failed": 0, "expired": 0}
 
     now = timezone.now()

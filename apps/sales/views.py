@@ -140,7 +140,7 @@ def sale_form(request):
             if invalid_products:
                 formset.forms[0].add_error(
                     "finished_good",
-                    "Only products configured for physical-store shelf stock can be sold here.",
+                    "Only products in physical-store shelf stock can be sold here.",
                 )
             force = request.POST.get("force") == "1"
             shortages = []
@@ -149,7 +149,7 @@ def sale_form(request):
                     continue
                 good = f.cleaned_data["finished_good"]
                 if not good.can_sell_from_physical_store:
-                    shortages.append({"name": good.name, "unit": good.unit, "needed": Decimal("0"), "have": Decimal("0"), "short": Decimal("0"), "message": "Not configured for physical-store sales."})
+                    shortages.append({"name": good.name, "unit": good.unit, "needed": Decimal("0"), "have": Decimal("0"), "short": Decimal("0"), "message": "Not available for physical-store sales."})
                     continue
                 upb = good.units_per_batch or Decimal("1")
                 total_units = (f.cleaned_data.get("batch_qty") or Decimal("0")) * upb + (f.cleaned_data.get("piece_qty") or Decimal("0"))

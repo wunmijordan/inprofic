@@ -264,12 +264,12 @@
       <div id="stock-history-content" class="hidden p-3 sm:p-5">
         <div data-history-panel="workflow" class="hidden space-y-4">
         <div id="stock-history-flow-card" class="hidden rounded-xl border border-[#D9CFB4] bg-gradient-to-br from-[#FFFDF8] via-white to-[#F5EFE0] p-4 overflow-hidden">
-          <div class="flex flex-wrap items-start justify-between gap-2 mb-4"><div><div id="stock-history-flow-title" class="text-xs font-bold uppercase tracking-wider text-[#8f172d]">Operational Flow</div><div class="text-[10px] text-stone-500 mt-0.5">Select any stage to animate the workflow from that point, or replay the full journey.</div></div><div class="flex items-center gap-2"><span class="rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold text-stone-500 ring-1 ring-[#D9CFB4]">Configured workflow</span><button id="stock-history-flow-replay" type="button" class="rounded-full bg-[#8f172d] px-3 py-1 text-[10px] font-semibold text-white shadow-sm motion-safe:transition motion-safe:hover:-translate-y-0.5 hover:bg-[#4D1C25] focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30" aria-label="Replay product workflow animation">↻ Replay</button></div></div>
+          <div class="flex flex-wrap items-start justify-between gap-2 mb-4"><div><div id="stock-history-flow-title" class="text-xs font-bold uppercase tracking-wider text-[#8f172d]">Operational Flow</div><div class="text-[10px] text-stone-500 mt-0.5">Select any stage to animate the workflow from that point, or replay the full journey.</div></div><div class="flex items-center gap-2"><span class="rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold text-stone-500 ring-1 ring-[#D9CFB4]">Workflow</span><button id="stock-history-flow-replay" type="button" class="rounded-full bg-[#8f172d] px-3 py-1 text-[10px] font-semibold text-white shadow-sm motion-safe:transition motion-safe:hover:-translate-y-0.5 hover:bg-[#4D1C25] focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30" aria-label="Replay product workflow animation">↻ Replay</button></div></div>
           <div id="stock-history-flow" class="flex flex-col lg:flex-row items-stretch lg:items-center gap-2"></div>
         </div>
         <div id="stock-history-materials-card" class="hidden rounded-lg border border-[#E7DFCC] overflow-hidden">
           <div class="px-4 py-3 bg-[#F0EAD9] border-b border-[#E7DFCC] flex items-center justify-between gap-3">
-            <div><div class="text-xs font-bold uppercase tracking-wider text-stone-600">{{ vertical_ui.recipe_label }} & {{ vertical_ui.production_inputs_label }}</div><div class="text-[10px] text-stone-400 mt-0.5">Configured inputs are shown even before the first production movement.</div></div>
+            <div><div class="text-xs font-bold uppercase tracking-wider text-stone-600">{{ vertical_ui.recipe_label }} & {{ vertical_ui.production_inputs_label }}</div><div class="text-[10px] text-stone-400 mt-0.5">Inputs are shown even before the first production movement.</div></div>
           </div>
           <div class="overflow-x-auto">
             <table class="min-w-[640px] w-full text-sm">
@@ -304,7 +304,7 @@
           </div>
         </div>
 
-        <div id="stock-history-no-movements" class="hidden rounded-lg border border-stone-200 bg-stone-50 px-4 py-4 text-sm text-stone-500">No stock movement history is available for this product yet. Its configured workflow is shown above.</div>
+        <div id="stock-history-no-movements" class="hidden rounded-lg border border-stone-200 bg-stone-50 px-4 py-4 text-sm text-stone-500">No stock movement history is available for this product yet. Its workflow is shown above.</div>
         </div>
 
         <div data-history-panel="ledger" class="hidden">
@@ -792,8 +792,8 @@
         historyDailyCard.classList.add('hidden');
         historyNoMovements.classList.remove('hidden');
         historyNoMovements.textContent = hasMaterials
-          ? `No stock movement history is available yet. The configured ${inventoryVertical.recipe_label.toLowerCase()} and workflow are shown above.`
-          : 'No stock movement history is available yet. The configured product workflow is shown above.';
+          ? `No stock movement history is available yet. The ${inventoryVertical.recipe_label.toLowerCase()} and workflow are shown above.`
+          : 'No stock movement history is available yet. The product workflow is shown above.';
       } else {
         setHistoryState('empty');
       }
@@ -836,7 +836,7 @@
       console.error('Stock history error:', error);
       setHistoryState(
         'error',
-        'The stock history could not be loaded. Make sure the stock_history URL and view are configured.'
+        'The stock history could not be loaded.'
       );
     }
   }
