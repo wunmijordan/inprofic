@@ -38,8 +38,9 @@ what was borrowed and what was deliberately left out).
   transaction, with a shortage warning you can override. For stock production
   sized by a shared base-material pool, output weight divides the exact pool
   across products in the live allocation check and approval releases those
-  shares. Recipe quantities check that planned product quantities fit within
-  the pool.
+  shares. The first saved product mix establishes a fixed finished-weight
+  baseline (or staff can lock it earlier); later output increases are checked
+  against it while approval still releases the exact entered pool.
 - **Reports** — a date-range monthly operational PDF with revenue, channel-origin, procurement, production and inventory charts/tables; CSV/Excel exports and a full JSON backup.
 - **Founder mailing workspace** — platform-level mailing staff can use reusable INPROFIC-branded topics, business/service/plan targeting, immediate delivery with retry-safe queued fallback, and campaign send analytics without receiving tenant access or Founder subscription controls.
 - **Trial re-registration protection** — existing tenant owner email, phone and exact business name cannot create a second free trial after expiry or cancellation; credentials from a tenant that was hard-deleted are intentionally eligible for registration again.
@@ -97,8 +98,9 @@ production always rounds up to whole batches — order 50 loaves at a
 as shelf stock. Production products can also record a finished unit weight in
 grams. Base-material stock orders apportion the entered material pool by each
 product's finished output weight for the live allocation check and raw-material
-release. Recipe quantities per registered batch check that planned output does
-not exceed the pool's capacity.
+release. The first saved output mix becomes the pool's fixed weight baseline,
+or staff can lock that baseline while entering the order. Later increases are
+checked against it, and approval releases the exact pool.
 
 ## Quick start — run it today, locally
 

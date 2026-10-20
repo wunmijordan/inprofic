@@ -457,7 +457,8 @@
     if (batchYield > 0 && unitWeight > 0) {
       const output = `Standard batch output: ${format(batchYield, 2)} units × ${format(unitWeight)} g = ${format(batchWeight)} g finished weight.`;
       if (baseId && recipeInput && recipeQuantity > 0) {
-        panel.textContent = `${output} ${baseName}: ${format(recipeQuantity, 4)} ${usageUnit} of base material per batch.`;
+        const recipeRate = batchWeight > 0 ? recipeQuantity / (batchWeight / 1000) : 0;
+        panel.textContent = `${output} ${baseName}: ${format(recipeQuantity, 4)} ${usageUnit} per batch; recipe-reference rate ${format(recipeRate, 4)} ${usageUnit} per kg finished output.`;
       } else {
         panel.textContent = `${output} Select a base material and add its per-batch recipe quantity to see the material relationship.`;
       }

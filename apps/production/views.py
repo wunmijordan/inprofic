@@ -146,6 +146,8 @@ def order_form(request, pk=None):
             order_type=request.POST.get("order_type"),
             production_basis=request.POST.get("production_basis"),
             base_material_quantity=request.POST.get("base_material_quantity"),
+            base_material_output_rate=request.POST.get("base_material_output_rate"),
+            production_enabled=request.business.uses_production,
         )
         has_items = formset.is_valid() and any(
             f.cleaned_data and not f.cleaned_data.get("DELETE") for f in formset.forms
@@ -209,6 +211,18 @@ def order_form(request, pk=None):
                 order.production_destination = "store"
                 order.customer = None
                 order.customer_name = order.customer_region = order.customer_group = ""
+            if order.production_basis == Order.BASIS_BASE_MATERIAL:
+                if order.base_material_output_rate <= 0:
+                    # The first saved mix is the fixed output baseline for this
+                    # pool. Future edits use the same rate, so added output is
+                    # counted immediately instead of absorbing recipe headroom.
+                    output_kg = formset.current_output_weight_grams / Decimal("1000")
+                    order.base_material_output_rate = (
+                        formset.base_material_output_rate
+                        or (order.base_material_quantity / output_kg if output_kg > 0 else Decimal("0"))
+                    )
+            else:
+                order.base_material_output_rate = Decimal("0")
             order.save()
             formset.instance = order
             # Populate Django's deletion list, then save every active row. The
@@ -265,9 +279,14 @@ def order_form(request, pk=None):
             order_type=((obj.order_type if obj.order_type != Order.TYPE_UNASSIGNED else "physical_store") if obj else new_initial["order_type"]),
             production_basis=(obj.production_basis if obj else new_basis),
             base_material_quantity=(obj.base_material_quantity if obj else new_pool),
+            production_enabled=request.business.uses_production,
         )
     prices = _price_map()
-    return render(request, "production/order_form.html", {"form": form, "formset": formset, "prices": prices, "obj": obj, "target_run": target_run, "kitchen_mode": kitchen})
+    return render(request, "production/order_form.html", {
+        "form": form, "formset": formset, "prices": prices, "obj": obj,
+        "target_run": target_run, "kitchen_mode": kitchen,
+        "production_enabled": request.business.uses_production,
+    })
 
 
 @login_required

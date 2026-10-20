@@ -73,6 +73,13 @@ class Order(BusinessOwnedModel):
         max_digits=14, decimal_places=4, default=0, blank=True,
         help_text="Total quantity of the shared base material allocated across all products in this production order.",
     )
+    base_material_output_rate = models.DecimalField(
+        max_digits=34, decimal_places=12, default=0, blank=True,
+        help_text=(
+            "Fixed shared base-material quantity per kilogram of finished output, "
+            "calibrated from this order's initial output mix."
+        ),
+    )
     customer = models.ForeignKey("sales.Customer", null=True, blank=True, on_delete=models.SET_NULL, related_name="production_orders")
     customer_name = models.CharField(max_length=120, blank=True,
         help_text="Required for distribution and online orders; leave blank for a physical store restock.")

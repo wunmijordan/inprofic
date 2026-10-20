@@ -118,7 +118,7 @@
     <div class="mt-5 mb-2 flex flex-wrap items-end justify-between gap-3">
       <div>
         <span class="cf-form-section-title">Products & production size</span>
-        <p class="mt-1 max-w-4xl text-[11px] leading-5 text-stone-500">For customer orders, enter the requested product quantity. For eligible stock production, <b>Production basis</b> applies to the whole order. In <b>Base material</b> mode, the pool is split by finished output weight, and approval releases those shares. Recipe quantities check that planned output fits the pool. Set each product's unit weight in grams on its product form.</p>
+        <p class="mt-1 max-w-4xl text-[11px] leading-5 text-stone-500">For customer orders, enter the requested product quantity. For eligible stock production, <b>Production basis</b> applies to the whole order. In <b>Base material</b> mode, the pool is split by finished output weight and approval releases the exact pool. Set the intended output mix as the baseline; added weight is then checked against it immediately. Set each product's unit weight in grams on its product form.</p>
       </div>
     </div>
 
@@ -126,7 +126,12 @@
       <div class="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,16rem)_minmax(0,16rem)_1fr] md:items-end">
         <div>{% include "_field.html" with field=form.production_basis %}</div>
         <div id="order-base-material-quantity-wrap" class="hidden">{% include "_field.html" with field=form.base_material_quantity %}</div>
+        <input type="hidden" id="base-material-output-rate" name="base_material_output_rate" value="{{ formset.base_material_output_rate|default:'0' }}">
         <div id="base-material-allocation-summary" class="hidden rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-800"></div>
+        <div id="base-material-baseline-action" class="hidden md:col-span-3">
+          <button type="button" id="lock-base-material-baseline" class="rounded-md border border-sky-200 bg-white px-3 py-1.5 text-xs font-medium text-sky-800 hover:bg-sky-50">Use current output as pool baseline</button>
+          <span class="ml-2 text-[11px] text-stone-500">After setting it, added output increases mapped pool use.</span>
+        </div>
       </div>
     </div>
 
@@ -181,6 +186,7 @@
   const PRICE_DATA = JSON.parse(document.getElementById('fg-prices').textContent);
   const PRICES = PRICE_DATA.products || {};
   const CUSTOMER_OVERRIDES = PRICE_DATA.customer_overrides || {};
+  let currentBaseMaterialOutputWeight = 0;
 
   function toggleUnpaidReason() {
     const type = document.querySelector('select[name="transaction_type"]')?.value || document.querySelector('input[name="transaction_type"]:checked')?.value;
@@ -194,7 +200,8 @@
 
   function baseSizingAvailable() {
     const channel = currentChannel();
-    return channel === 'physical_store' || (channel === 'distribution' && Boolean(document.querySelector('[name="is_market_stock"]')?.checked));
+    const productionEnabled = {{ production_enabled|yesno:"true,false" }};
+    return productionEnabled && (channel === 'physical_store' || (channel === 'distribution' && Boolean(document.querySelector('[name="is_market_stock"]')?.checked)));
   }
 
   function usingSharedBaseMaterial() {
@@ -262,6 +269,7 @@
     const summary = document.getElementById('base-material-allocation-summary');
     const basisSelect = document.querySelector('[name="production_basis"]');
     const baseInput = document.querySelector('[name="base_material_quantity"]');
+    const outputRateInput = document.getElementById('base-material-output-rate');
     const addButton = document.getElementById('add-product-button');
     const available = baseSizingAvailable();
 
@@ -300,7 +308,6 @@
     const sharedBase = sharedBaseFromRows();
     syncSharedBaseProductOptions(sharedBase);
     const allocated = numberValue(baseInput);
-    let recipeNeed = 0;
     const recipeRows = [];
     let hasInvalidProduct = false;
 
@@ -346,14 +353,14 @@
         ? recipeQuantity * rowOutputWeight / batchOutputWeight
         : 0;
       recipeRows.push({ row, rowOutputWeight, batchOutputWeight, recipeQuantity, exactRowUse, base });
-      recipeNeed += exactRowUse;
     });
 
     const totalOutputWeight = recipeRows.reduce((sum, item) => sum + item.rowOutputWeight, 0);
+    currentBaseMaterialOutputWeight = totalOutputWeight;
     const shares = recipeRows.map(({ rowOutputWeight }) => totalOutputWeight > 0
       ? Math.round((allocated * rowOutputWeight / totalOutputWeight + Number.EPSILON) * 10000) / 10000
       : 0);
-    if (shares.length) {
+    if (shares.length && totalOutputWeight > 0) {
       const largestShare = shares.reduce((largest, share, index) => share > shares[largest] ? index : largest, 0);
       shares[largestShare] += allocated - shares.reduce((sum, share) => sum + share, 0);
     }
@@ -361,10 +368,18 @@
       setBaseRowHint(row, `${formatQuantity(shares[index])} ${base.unit} ${base.name} pool share · ${formatQuantity(exactRowUse)} ${base.unit} recipe reference · ${formatQuantity(rowOutputWeight)} g output (batch: ${formatQuantity(recipeQuantity)} ${base.unit} / ${formatQuantity(batchOutputWeight)} g).`);
     });
 
-    const poolUsed = recipeRows.length && totalOutputWeight > 0 ? allocated : 0;
+    const poolMapped = totalOutputWeight > 0;
+    const outputRate = numberValue(outputRateInput);
+    const baselineAction = document.getElementById('base-material-baseline-action');
+    if (baselineAction) baselineAction.classList.toggle('hidden', !usingBase || outputRate > 0);
+    // New orders establish their baseline on first save unless explicitly
+    // locked earlier. Saved orders retain it, so additions map above the pool.
+    const poolUsed = poolMapped
+      ? (outputRate > 0 ? outputRate * totalOutputWeight / 1000 : allocated)
+      : 0;
     const poolRemaining = Math.max(0, allocated - poolUsed);
-    const poolOver = recipeNeed > allocated + 0.000000001;
-    const poolMapped = recipeRows.length > 0;
+    const poolExcess = Math.max(0, poolUsed - allocated);
+    const poolOver = outputRate > 0 && poolExcess > 0.00000001;
 
     if (summary) {
       summary.classList.remove('hidden', 'border-rose-200', 'bg-rose-50', 'text-rose-700', 'border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
@@ -377,11 +392,11 @@
         if (poolOver || hasInvalidProduct) {
           summary.classList.add('border-rose-200', 'bg-rose-50', 'text-rose-700');
           summary.textContent = poolOver
-            ? `${sharedBase.name}: ${formatQuantity(poolUsed)} ${sharedBase.unit} allocated/released · ${formatQuantity(totalOutputWeight / 1000)} kg output · recipe reference exceeds pool by ${formatQuantity(recipeNeed - allocated)} ${sharedBase.unit}.`
-            : `${sharedBase.name}: ${formatQuantity(poolUsed)} ${sharedBase.unit} weight-allocated · ${formatQuantity(totalOutputWeight / 1000)} kg output · fix the product setup above.`;
+            ? `${sharedBase.name}: ${formatQuantity(allocated)} ${sharedBase.unit} pool · ${formatQuantity(poolUsed)} ${sharedBase.unit} mapped to output weight · ${formatQuantity(poolExcess)} ${sharedBase.unit} over pool · ${formatQuantity(totalOutputWeight / 1000)} kg output.`
+            : `${sharedBase.name}: ${formatQuantity(allocated)} ${sharedBase.unit} pool · ${formatQuantity(poolUsed)} ${sharedBase.unit} mapped by weight · ${formatQuantity(poolRemaining)} ${sharedBase.unit} remaining · ${formatQuantity(totalOutputWeight / 1000)} kg output. Fix the product setup above.`;
         } else {
           summary.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
-          summary.textContent = `${sharedBase.name}: ${formatQuantity(poolUsed)} ${sharedBase.unit} allocated/released by weight · ${formatQuantity(totalOutputWeight / 1000)} kg output.`;
+          summary.textContent = `${sharedBase.name}: ${formatQuantity(allocated)} ${sharedBase.unit} pool · ${formatQuantity(poolUsed)} ${sharedBase.unit} mapped to output weight · ${formatQuantity(poolRemaining)} ${sharedBase.unit} remaining · ${formatQuantity(totalOutputWeight / 1000)} kg output.${outputRate > 0 ? '' : ' Set this mix as baseline before adding more, or it will be set when saved.'}`;
         }
       } else {
         summary.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
@@ -587,6 +602,14 @@
   });
   document.querySelector('[name="production_basis"]')?.addEventListener('change', refreshBaseMaterialAllocation);
   document.querySelector('[name="base_material_quantity"]')?.addEventListener('input', refreshBaseMaterialAllocation);
+  document.getElementById('lock-base-material-baseline')?.addEventListener('click', () => {
+    const rateInput = document.getElementById('base-material-output-rate');
+    const currentPool = numberValue(document.querySelector('[name="base_material_quantity"]'));
+    if (rateInput && currentBaseMaterialOutputWeight > 0 && currentPool > 0) {
+      rateInput.value = String(currentPool / (currentBaseMaterialOutputWeight / 1000));
+      refreshBaseMaterialAllocation();
+    }
+  });
   document.querySelectorAll('input[name="order_type"]').forEach((el) => el.addEventListener('change', () => {
     toggleOrderType();
     refreshPrices();
@@ -597,6 +620,7 @@
 
   toggleOrderType();
   wireRows();
+  refreshBaseMaterialAllocation();
   toggleUnpaidReason();
 </script>
 {% endblock %}

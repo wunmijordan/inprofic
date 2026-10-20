@@ -187,17 +187,22 @@ class OrderItemFormSetBase(BaseInlineFormSet):
     """Apply product restrictions and the order-wide production basis.
 
     A Base material production order owns one shared material allocation.
-    Selected products divide that pool by finished output weight; their recipe
-    quantities guard that planned output against the available pool.
+    Selected products divide that pool by finished output weight. The first
+    saved output mix establishes a fixed weight baseline; later quantity
+    changes are measured against that baseline so added output cannot consume
+    the pool's initial unused recipe capacity before showing as excess.
     """
 
     def __init__(
         self, *args, store_replenishment=False, market_stock=False, order_type=None,
-        production_basis=None, base_material_quantity=None, **kwargs
+        production_basis=None, base_material_quantity=None,
+        base_material_output_rate=None,
+        production_enabled=True, **kwargs
     ):
         instance = kwargs.get("instance")
         self.order_type = order_type or getattr(instance, "order_type", None)
         self.market_stock = bool(market_stock)
+        self.production_enabled = bool(production_enabled)
         self.production_basis = production_basis or getattr(
             instance, "production_basis", Order.BASIS_PRODUCT_QUANTITY
         )
@@ -208,6 +213,18 @@ class OrderItemFormSetBase(BaseInlineFormSet):
         except Exception:
             self.base_material_quantity = Decimal("0")
         super().__init__(*args, **kwargs)
+        saved_rate = Decimal(str(getattr(self.instance, "base_material_output_rate", 0) or 0))
+        try:
+            posted_rate = Decimal(str(base_material_output_rate or 0))
+        except Exception:
+            posted_rate = Decimal("0")
+        # A saved order's baseline is immutable through the form. New orders
+        # may set it explicitly from the live "use current output" control.
+        self.has_saved_base_material_baseline = bool(
+            getattr(self.instance, "pk", None) and saved_rate > 0
+        )
+        self.base_material_output_rate = saved_rate if self.has_saved_base_material_baseline else posted_rate
+        self.current_output_weight_grams = Decimal("0")
         if not self.is_bound and getattr(self.instance, "pk", None):
             self.extra = 0 if self.get_queryset().exists() else 1
         made_in_house = FinishedGood.objects.filter(
@@ -246,6 +263,10 @@ class OrderItemFormSetBase(BaseInlineFormSet):
         base_allowed = self.order_type == "physical_store" or (
             self.order_type == "distribution" and self.market_stock
         )
+        if basis == Order.BASIS_BASE_MATERIAL and not self.production_enabled:
+            raise forms.ValidationError(
+                "Base-material pool sizing is available only for production-centric businesses."
+            )
         if basis == Order.BASIS_BASE_MATERIAL and not base_allowed:
             raise forms.ValidationError(
                 "Base material sizing is available for stock production that is not assigned to a customer."
@@ -254,7 +275,6 @@ class OrderItemFormSetBase(BaseInlineFormSet):
             raise forms.ValidationError("Enter the total base material available for this production order.")
 
         shared_material = None
-        total_base_used = Decimal("0")
         weighted_base_rows = []
 
         for form in self.forms:
@@ -304,14 +324,10 @@ class OrderItemFormSetBase(BaseInlineFormSet):
                         "Set this product's finished output weight in grams before using Base material production.",
                     )
                     continue
-                batch_output_weight = upb * output_weight
                 row_output_weight = ordered * output_weight
-                exact_base_used = recipe_row.qty_per_batch * row_output_weight / batch_output_weight
-                total_base_used += exact_base_used
                 weighted_base_rows.append((form, row_output_weight))
 
-                # Save the output-weight share used by both the live summary
-                # and raw-material release. Recipe use remains the capacity check.
+                # Save the output-weight share used by raw-material release.
                 form.instance.production_basis = OrderItem.BASIS_BASE_MATERIAL
                 form.instance.base_material_quantity = Decimal("0")
                 data["production_batch_qty"] = Decimal("0")
@@ -335,18 +351,23 @@ class OrderItemFormSetBase(BaseInlineFormSet):
                     f"Production plan ({production_plan:.2f}) cannot be below the customer order ({ordered:.2f}). Leave both production-plan fields at 0 to produce exactly the order quantity.",
                 )
 
+        self.current_output_weight_grams = sum(
+            (weight for _form, weight in weighted_base_rows), Decimal("0")
+        )
         if (
             basis == Order.BASIS_BASE_MATERIAL
             and shared_material is not None
-            and total_base_used > self.base_material_quantity
+            and self.base_material_output_rate > 0
         ):
-            excess = total_base_used - self.base_material_quantity
-            raise forms.ValidationError(
-                f"The selected product quantities require {total_base_used:.6f} {shared_material.usage_unit} "
-                f"of {shared_material.name}, but this production has {self.base_material_quantity:.4f} "
-                f"{shared_material.usage_unit} available. Reduce product quantities by {excess:.6f} "
-                f"{shared_material.usage_unit} or increase the pool."
-            )
+            mapped_use = self.base_material_output_rate * self.current_output_weight_grams / Decimal("1000")
+            excess = mapped_use - self.base_material_quantity
+            if excess > Decimal("0.00000001"):
+                raise forms.ValidationError(
+                    f"The selected output weight maps to {mapped_use:.4f} {shared_material.usage_unit} "
+                    f"of {shared_material.name}, exceeding this {self.base_material_quantity:.4f} "
+                    f"{shared_material.usage_unit} pool by {excess:.4f} {shared_material.usage_unit}. "
+                    "Reduce product quantities or increase the pool."
+                )
 
         if basis == Order.BASIS_BASE_MATERIAL and weighted_base_rows:
             pool = self.base_material_quantity.quantize(_BASE_QUANTUM, rounding=ROUND_HALF_UP)
