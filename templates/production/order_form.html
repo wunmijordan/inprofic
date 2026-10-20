@@ -89,9 +89,8 @@
     </div>{# /kitchen-hide #}
     <div class="grid grid-cols-1 {% if production_enabled %}sm:grid-cols-2{% endif %} gap-3">
       {% include "_field.html" with field=form.date %}
-      {% if production_enabled %}{% include "_field.html" with field=form.color_tag %}{% endif %}
+      {% if production_enabled %}<input type="hidden" id="id_color_tag" name="color_tag" value="{{ form.color_tag.value|default:'' }}">{% for error in form.color_tag.errors %}<span class="mb-1 block text-[11px] text-rose-600">{{ error }}</span>{% endfor %}<div class="cf-field mb-3 block"><div class="mb-1.5 flex items-center gap-1.5"><span class="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500">Production color</span></div><div id="daily-production-color-hint" class="flex min-h-[2.6rem] flex-wrap items-center justify-between gap-2 rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm" aria-live="polite"><span id="daily-production-color-copy" class="text-stone-500">Choose a date to check its scheduled color.</span><button id="apply-daily-production-color" type="button" class="hidden shrink-0 rounded-md border border-black/10 px-3 py-1.5 font-semibold shadow-sm transition hover:brightness-95">Apply to this order</button></div><p class="mt-1 text-[11px] text-stone-400">Colors are selected in Production Settings and applied here for the chosen date.</p></div>{% endif %}
     </div>
-    {% if production_enabled %}<div id="daily-production-color-hint" class="hidden mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#E7DFCC] bg-stone-50 px-3 py-2 text-xs text-stone-600" aria-live="polite"><span id="daily-production-color-copy"></span><button id="apply-daily-production-color" type="button" class="hidden shrink-0 rounded-md border border-[#8f172d]/30 bg-white px-2.5 py-1.5 font-semibold text-[#8f172d] hover:bg-[#FFF4F6]">Apply to this order</button></div>{% endif %}
     <div {% if kitchen_mode %}hidden{% endif %}>{# kitchen-hide: market stock, customer, payment #}
     <div id="distribution-market-wrap" class="hidden mb-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
       {% include "_field.html" with field=form.is_market_stock %}
@@ -122,7 +121,7 @@
     <div class="mt-5 mb-2 flex flex-wrap items-end justify-between gap-3">
       <div>
         <span class="cf-form-section-title">Products & production size</span>
-        <p class="mt-1 max-w-4xl text-[11px] leading-5 text-stone-500">For customer orders, enter the requested product quantity. For eligible stock production, <b>Production basis</b> applies to the whole order. In <b>{{ vertical_ui.base_pool_label }}</b> mode, choose the {{ vertical_ui.base_material_label|lower }} explicitly; its measured yield maps combined {{ vertical_ui.finished_output_label }} weight to pool use, while approval releases the exact pool. Product quantity mode continues to release each {{ vertical_ui.recipe_label|lower }} proportionally and shows the combined output weight.</p>
+        <p class="mt-1 max-w-4xl text-[11px] leading-5 text-stone-500">For customer orders, enter the requested product quantity. For eligible stock production, <b>Production basis</b> applies to the whole order. In <b>{{ vertical_ui.base_pool_label }}</b> mode, choose the {{ vertical_ui.base_material_label|lower }} explicitly; the whole pool is consumed and split across the products by their {{ vertical_ui.finished_output_label }} weight, and approval releases exactly that pool. The only limit is output: the pool cannot yield more than its measured yield allows. Product quantity mode continues to release each {{ vertical_ui.recipe_label|lower }} proportionally and shows the combined output weight.</p>
       </div>
     </div>
 
@@ -236,23 +235,41 @@
     const apply = document.getElementById('apply-daily-production-color');
     const date = document.querySelector('[name="date"]')?.value;
     const configured = PRODUCTION_DAY_COLORS[date];
-    if (!wrap || !copy || !apply) return;
-    wrap.classList.remove('hidden');
+    const colorField = document.getElementById('id_color_tag');
+    if (!wrap || !copy || !apply || !colorField) return;
     if (configured) {
-      copy.innerHTML = `<span class="mr-1 inline-block h-3 w-3 rounded-full border border-black/10 align-middle" style="background-color:${configured.color}"></span>${configured.label} is set for this production date.`;
+      copy.textContent = `A production color is scheduled for this date${configured.expiry_date ? ` · suggested expiry ${configured.expiry_date}` : ''}.`;
+      copy.classList.remove('text-stone-500');
+      copy.classList.add('text-stone-700');
       apply.classList.remove('hidden');
+      apply.textContent = 'Apply to this order';
+      apply.style.backgroundColor = configured.color;
+      apply.style.color = readableColorText(configured.color);
+      apply.setAttribute('aria-label', `Apply scheduled production color ${configured.color} to this order`);
       apply.onclick = () => {
-        const colorField = document.querySelector('[name="color_tag"]');
-        if (colorField) {
-          colorField.value = configured.color;
-          colorField.dispatchEvent(new Event('change', { bubbles: true }));
-        }
+        colorField.value = configured.color;
+        colorField.dispatchEvent(new Event('input', { bubbles: true }));
+        colorField.dispatchEvent(new Event('change', { bubbles: true }));
+        apply.textContent = 'Color applied';
       };
     } else {
-      copy.textContent = 'No daily production color is set for this date.';
+      copy.textContent = date ? 'No production color is scheduled for this date.' : 'Choose a date to check its scheduled color.';
+      copy.classList.remove('text-stone-700');
+      copy.classList.add('text-stone-500');
       apply.classList.add('hidden');
+      apply.textContent = 'Apply to this order';
+      apply.style.removeProperty('background-color');
+      apply.style.removeProperty('color');
       apply.onclick = null;
     }
+  }
+
+  function readableColorText(hex) {
+    if (!/^#[0-9a-f]{6}$/i.test(hex || '')) return '#211D1A';
+    const red = parseInt(hex.slice(1, 3), 16);
+    const green = parseInt(hex.slice(3, 5), 16);
+    const blue = parseInt(hex.slice(5, 7), 16);
+    return ((red * 299 + green * 587 + blue * 114) / 1000) > 150 ? '#211D1A' : '#FFFFFF';
   }
 
   function setBaseRowHint(row, text = '', invalid = false) {
@@ -367,7 +384,8 @@
       const batchOutputWeight = unitsPerBatch * outputWeight;
       const rowOutputWeight = rowUnits * outputWeight;
       const exactRowUse = recipeQuantity * (batches + pieces / unitsPerBatch);
-      recipeRows.push({ row, rowOutputWeight, batchOutputWeight, recipeQuantity, exactRowUse, base });
+      const productName = (productSelect.selectedOptions[0]?.textContent || '').trim();
+      recipeRows.push({ row, rowOutputWeight, batchOutputWeight, recipeQuantity, exactRowUse, base, productName, rowUnits, outputWeight });
       const total = recipeTotals.get(String(base.id)) || { base, quantity: 0, outputWeight: 0 };
       total.quantity += exactRowUse;
       total.outputWeight += rowOutputWeight;
@@ -384,8 +402,8 @@
       shares[largestShare] += allocated - shares.reduce((sum, share) => sum + share, 0);
     }
     if (usingBase) {
-      poolRows.forEach(({ row, rowOutputWeight, batchOutputWeight, recipeQuantity, exactRowUse, base }, index) => {
-        setBaseRowHint(row, `${formatQuantity(shares[index])} ${base.unit} ${base.name} pool share · ${formatQuantity(exactRowUse)} ${base.unit} ${recipeLabel} reference · ${formatQuantity(rowOutputWeight)} g ${outputLabel} (standard batch: ${formatQuantity(recipeQuantity)} ${base.unit} / ${formatQuantity(batchOutputWeight)} g).`);
+      poolRows.forEach(({ row, rowOutputWeight, rowUnits, outputWeight, base }, index) => {
+        setBaseRowHint(row, `${formatQuantity(rowUnits)} × ${formatQuantity(outputWeight)} g = ${formatQuantity(rowOutputWeight)} g ${outputLabel} → ${formatQuantity(shares[index])} ${base.unit} of the ${base.name} pool.`);
       });
     } else {
       recipeRows.forEach(({ row, rowOutputWeight, exactRowUse, base }) => {
@@ -398,9 +416,12 @@
     const outputRate = savedOutputRate > 0 ? savedOutputRate : outputYield > 0 ? 1000 / outputYield : 0;
     const poolMapped = totalOutputWeight > 0 && outputRate > 0;
     const poolUsed = poolMapped ? outputRate * totalOutputWeight / 1000 : 0;
-    const poolRemaining = Math.max(0, allocated - poolUsed);
     const poolExcess = Math.max(0, poolUsed - allocated);
     const poolOver = poolMapped && poolExcess > 0.00000001;
+    // The pool is always fully consumed: output weight maps onto the pool, never leaves a remainder.
+    const poolMaxOutput = outputRate > 0 ? allocated * 1000 / outputRate : 0;
+    const poolOutputOver = Math.max(0, totalOutputWeight - poolMaxOutput);
+    const effectiveYield = allocated > 0 ? totalOutputWeight / allocated : 0;
 
     if (summary) {
       summary.classList.remove('hidden', 'border-rose-200', 'bg-rose-50', 'text-rose-700', 'border-emerald-200', 'bg-emerald-50', 'text-emerald-800', 'border-amber-200', 'bg-amber-50', 'text-amber-800');
@@ -427,20 +448,28 @@
           : `Choose the shared ${baseMaterialLabel.toLowerCase()} and enter the pool quantity. Product rows do not select the pool material.`;
       } else if (totalOutputWeight > 0 && !outputRate) {
         summary.classList.add('border-amber-200', 'bg-amber-50', 'text-amber-800');
-        summary.textContent = `${sharedBase.name}: ${formatQuantity(allocated)} ${sharedBase.unit} pool · ${formatQuantity(totalOutputWeight / 1000)} kg output · measured production yield is missing, so mapped use and excess cannot yet be calculated.`;
+        summary.textContent = `${sharedBase.name}: ${formatQuantity(allocated)} ${sharedBase.unit} pool · ${formatQuantity(totalOutputWeight / 1000)} kg output · measured production yield is missing, so the output limit cannot yet be checked.`;
       } else if (poolMapped) {
-        if (poolOver || hasInvalidProduct) {
-          summary.classList.add('border-rose-200', 'bg-rose-50', 'text-rose-700');
-          summary.textContent = poolOver
-            ? `${sharedBase.name}: ${formatQuantity(allocated)} ${sharedBase.unit} pool · ${formatQuantity(poolUsed)} ${sharedBase.unit} mapped to output weight · ${formatQuantity(poolExcess)} ${sharedBase.unit} over pool · ${formatQuantity(totalOutputWeight / 1000)} kg output.`
-            : `${sharedBase.name}: ${formatQuantity(allocated)} ${sharedBase.unit} pool · ${formatQuantity(poolUsed)} ${sharedBase.unit} mapped by weight · ${formatQuantity(poolRemaining)} ${sharedBase.unit} remaining · ${formatQuantity(totalOutputWeight / 1000)} kg output. Fix the product setup above.`;
+        const bad = poolOver || hasInvalidProduct;
+        summary.classList.add(...(bad ? ['border-rose-200', 'bg-rose-50', 'text-rose-700'] : ['border-emerald-200', 'bg-emerald-50', 'text-emerald-800']));
+        const lines = [];
+        if (poolOver) {
+          lines.push(`${sharedBase.name}: output of ${formatQuantity(totalOutputWeight / 1000)} kg is ${formatQuantity(poolOutputOver / 1000)} kg over the ${formatQuantity(poolMaxOutput / 1000)} kg that a ${formatQuantity(allocated)} ${sharedBase.unit} pool can yield (${formatQuantity(poolExcess)} ${sharedBase.unit} over). Reduce product quantities or raise the pool.`);
         } else {
-          summary.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
-          summary.textContent = `${sharedBase.name}: ${formatQuantity(allocated)} ${sharedBase.unit} pool · ${formatQuantity(poolUsed)} ${sharedBase.unit} mapped from output weight · ${formatQuantity(poolRemaining)} ${sharedBase.unit} remaining · ${formatQuantity(totalOutputWeight / 1000)} kg output.`;
+          lines.push(`${sharedBase.name}: ${formatQuantity(allocated)} ${sharedBase.unit} pool fully consumed · ${formatQuantity(totalOutputWeight / 1000)} kg output · ${formatQuantity(effectiveYield)} g per ${sharedBase.unit} this run.${hasInvalidProduct ? ' Fix the product setup above.' : ''}`);
         }
+        poolRows.forEach(({ productName, rowUnits, outputWeight, rowOutputWeight, base }, index) => {
+          lines.push(`• ${productName}: ${formatQuantity(rowUnits)} × ${formatQuantity(outputWeight)} g = ${formatQuantity(rowOutputWeight)} g → ${formatQuantity(shares[index])} ${base.unit}`);
+        });
+        summary.replaceChildren(...lines.map((text, i) => {
+          const el = document.createElement('div');
+          if (i === 0) el.className = 'font-semibold';
+          el.textContent = text;
+          return el;
+        }));
       } else {
         summary.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
-        summary.textContent = `${sharedBase.name}: 0 ${sharedBase.unit} allocated · ${formatQuantity(allocated)} ${sharedBase.unit} remaining. Enter product quantities to split the pool.`;
+        summary.textContent = `${sharedBase.name}: ${formatQuantity(allocated)} ${sharedBase.unit} pool · add products and quantities to map the pool by output weight.`;
       }
     }
 

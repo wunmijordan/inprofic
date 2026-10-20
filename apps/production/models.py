@@ -1,6 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal
 from django.conf import settings
+from django.core.validators import RegexValidator
 from django.db import models, transaction
 from django.utils import timezone
 from core.models import BusinessOwnedModel, TimestampedModel
@@ -39,16 +40,7 @@ class Order(BusinessOwnedModel):
         ("pending", "Pending"), ("approved", "Approved"),
         ("completed", "Completed"), ("rejected", "Rejected"), ("reversed", "Reversed"),
     ]
-    COLOR_TAG_CHOICES = [
-        ("#ef4444", "Red"),
-        ("#f97316", "Orange"),
-        ("#eab308", "Yellow"),
-        ("#22c55e", "Green"),
-        ("#06b6d4", "Cyan"),
-        ("#3b82f6", "Blue"),
-        ("#8b5cf6", "Violet"),
-        ("#ec4899", "Pink"),
-    ]
+    COLOR_VALIDATOR = RegexValidator(r"^#[0-9A-Fa-f]{6}$", "Choose a six-digit hex color.")
     PAYMENT_CHOICES = [("Cash", "Cash"), ("Card", "Card"), ("Transfer", "Transfer")]
     TRANSACTION_CHOICES = [("paid", "Paid"), ("unpaid", "Unpaid")]
     DESTINATION_CHOICES = [
@@ -60,9 +52,9 @@ class Order(BusinessOwnedModel):
     date = models.DateField()
     color_tag = models.CharField(
         max_length=7,
-        choices=COLOR_TAG_CHOICES,
         blank=True,
         default="",
+        validators=[COLOR_VALIDATOR],
         help_text="Optional production-day color marker shown on this order and its products.",
     )
     order_number = models.PositiveBigIntegerField(editable=False)
@@ -308,7 +300,7 @@ class ProductionDaySetting(BusinessOwnedModel):
     """Optional color and expiry guidance for one business production date."""
 
     date = models.DateField()
-    color = models.CharField(max_length=7, choices=Order.COLOR_TAG_CHOICES)
+    color = models.CharField(max_length=7, validators=[Order.COLOR_VALIDATOR])
     expiry_date = models.DateField(null=True, blank=True)
 
     class Meta:

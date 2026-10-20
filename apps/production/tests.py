@@ -281,6 +281,15 @@ class BaseMaterialProductionTests(TestCase):
             qty_per_batch=Decimal("6"),
         )
 
+        # Measured yields (grams of finished output per kg of base) and piece weights.
+        self.rice.output_grams_per_usage_unit = Decimal("1500")
+        self.rice.save()
+        self.flour.output_grams_per_usage_unit = Decimal("1640")
+        self.flour.save()
+        for good, grams in ((self.jollof, "200"), (self.fried, "250"), (self.bread, "800")):
+            good.output_weight_grams = Decimal(grams)
+            good.save()
+
     def formset_data(self, rows):
         data = {
             "items-TOTAL_FORMS": str(len(rows)),
@@ -299,13 +308,15 @@ class BaseMaterialProductionTests(TestCase):
             })
         return data
 
-    def base_formset(self, rows, *, allocated="15", market_stock=True):
+    def base_formset(self, rows, *, allocated="20", market_stock=True, material=None):
+        material = material or self.rice
         order = Order(
             business=self.business,
             order_type="distribution",
             is_market_stock=market_stock,
             production_basis=Order.BASIS_BASE_MATERIAL,
             base_material_quantity=Decimal(allocated),
+            base_material=material,
         )
         return order, OrderItemFormSet(
             self.formset_data(rows),
@@ -314,56 +325,97 @@ class BaseMaterialProductionTests(TestCase):
             order_type="distribution",
             production_basis=Order.BASIS_BASE_MATERIAL,
             base_material_quantity=allocated,
+            base_material_id=material.pk,
+            business=self.business,
         )
 
-    def test_shared_base_material_is_consumed_by_all_product_quantities(self):
+    def test_pool_is_fully_consumed_and_split_by_output_weight(self):
+        # 75 Jollof @200 g + 60 Fried @250 g = 30,000 g; rice yields up to 1,500 g/kg -> 20 kg.
         order, formset = self.base_formset([
             {"good": self.jollof, "batches": "1", "pieces": "25"},
             {"good": self.fried, "batches": "1", "pieces": "20"},
-        ])
+        ], allocated="20")
 
-        self.assertTrue(formset.is_valid(), formset.errors)
-        jollof_item = formset.forms[0].instance
-        fried_item = formset.forms[1].instance
-        self.assertEqual(jollof_item.base_material_quantity, Decimal("7.5"))
-        self.assertEqual(fried_item.base_material_quantity, Decimal("6.0"))
+        self.assertTrue(formset.is_valid(), formset.errors or formset.non_form_errors())
+        jollof_item, fried_item = formset.forms[0].instance, formset.forms[1].instance
+        self.assertEqual(jollof_item.base_material_quantity, Decimal("10.0000"))
+        self.assertEqual(fried_item.base_material_quantity, Decimal("10.0000"))
         self.assertEqual(jollof_item.total_units, Decimal("75"))
         self.assertEqual(fried_item.total_units, Decimal("60"))
-        self.assertEqual(jollof_item.production_basis, OrderItem.BASIS_BASE_MATERIAL)
-        self.assertEqual(fried_item.production_basis, OrderItem.BASIS_BASE_MATERIAL)
 
+        order.date = date.today()
         order.save()
         for form in formset.forms:
             form.instance.order = order
             form.instance.price = form.instance.finished_good.selling_price
             form.instance.save()
-        self.assertEqual(order.base_material_used_quantity, Decimal("13.5000"))
-        self.assertEqual(order.base_material_remaining_quantity, Decimal("1.5000"))
-        self.assertEqual(order.material_requirements()[self.rice.pk][1], Decimal("13.5"))
+        self.assertEqual(order.base_material_used_quantity, Decimal("20.0000"))
+        self.assertEqual(order.base_material_remaining_quantity, Decimal("0"))
 
-        # Approval must use the same recipe-proportional requirement and must
-        # not deduct the order-level allocation a second time.
         from .views import _material_release_plan
-
-        _, usage_entries, aggregated, errors = _material_release_plan(order)
+        _, _entries, aggregated, errors = _material_release_plan(order)
         self.assertEqual(errors, [])
-        self.assertEqual(aggregated[self.rice.pk][1], Decimal("13.5"))
-        self.assertEqual(
-            sum(
-                (entry["actual_quantity"] for entry in usage_entries if entry["raw_material"].pk == self.rice.pk),
-                Decimal("0"),
-            ),
-            Decimal("13.5"),
-        )
+        self.assertEqual(aggregated[self.rice.pk][1], Decimal("20.0000"))   # approval releases exactly the pool
 
-    def test_shared_base_material_cannot_be_overallocated(self):
+    def test_pool_stays_fully_consumed_when_output_is_below_the_maximum(self):
+        # Far less output than the pool could yield: the pool is still all used, never a remainder.
+        _order, formset = self.base_formset([{"good": self.jollof, "pieces": "10"}], allocated="20")
+        self.assertTrue(formset.is_valid(), formset.errors or formset.non_form_errors())
+        self.assertEqual(formset.forms[0].instance.base_material_quantity, Decimal("20.0000"))
+
+    def test_output_over_what_the_pool_can_yield_is_blocked_in_output_weight(self):
+        # 150 Jollof @200 g + 40 Fried @250 g = 40,000 g against a 20 kg pool that yields at most 30,000 g.
         _, formset = self.base_formset([
             {"good": self.jollof, "batches": "3"},
             {"good": self.fried, "batches": "1"},
-        ], allocated="15")
+        ], allocated="20")
 
         self.assertFalse(formset.is_valid())
-        self.assertIn("require 19.0000 kg of Rice", str(formset.non_form_errors()))
+        message = str(formset.non_form_errors())
+        self.assertIn("10.0000 kg more than the 30.0000 kg", message)
+        self.assertIn("20.0000 kg of Rice", message)
+
+    def test_the_bakery_run_maps_10kg_of_flour_exactly(self):
+        # Real production: 10 kg of flour made 5 x 2-in-1 (540 g), 60 hotdog (70 g), 64 burger (120 g) = 14,580 g.
+        from inventory.models import RecipeItem
+
+        def product(name, upb, grams):
+            good = FinishedGood.raw_objects.create(
+                business=self.business, name=name, unit="pc", units_per_batch=Decimal(upb),
+                base_material=self.flour, stock=Decimal("0"), reorder_level=Decimal("0"),
+                selling_price=Decimal("500"), output_weight_grams=Decimal(grams),
+            )
+            RecipeItem.objects.create(finished_good=good, raw_material=self.flour, qty_per_batch=Decimal("20"))
+            return good
+
+        two_in_one, hotdog, burger = product("2-in-1 Bread", "60", "540"), product("Hotdog Buns", "465", "70"), product("Burger Buns", "270", "120")
+        _order, formset = self.base_formset([
+            {"good": two_in_one, "pieces": "5"},
+            {"good": hotdog, "pieces": "60"},
+            {"good": burger, "pieces": "64"},
+        ], allocated="10", material=self.flour)
+
+        self.assertTrue(formset.is_valid(), formset.errors or formset.non_form_errors())
+        shares = [f.instance.base_material_quantity for f in formset.forms]
+        self.assertEqual(sum(shares, Decimal("0")), Decimal("10.0000"))          # nothing left over
+        self.assertEqual(shares, [Decimal("1.8519"), Decimal("2.8807"), Decimal("5.2674")])
+        self.assertEqual(formset.current_output_weight_grams, Decimal("14580"))  # effective yield 1,458 g/kg
+
+        # Past 16,400 g (10 kg x 1,640 g/kg) the pool cannot physically yield it.
+        _order, over = self.base_formset([
+            {"good": two_in_one, "pieces": "5"}, {"good": hotdog, "pieces": "60"}, {"good": burger, "pieces": "80"},
+        ], allocated="10", material=self.flour)
+        self.assertFalse(over.is_valid())
+        self.assertIn("0.1000 kg more than the 16.4000 kg", str(over.non_form_errors()))   # 16,500 g vs 16,400 g
+
+    def test_an_exactly_fitting_pool_is_accepted_and_one_more_piece_is_not(self):
+        # 20 kg of flour yields at most 32,800 g = 41 loaves @800 g (the standard family-loaf batch).
+        _order, fits = self.base_formset([{"good": self.bread, "pieces": "41"}], allocated="20", material=self.flour)
+        self.assertTrue(fits.is_valid(), fits.errors or fits.non_form_errors())
+        self.assertEqual(fits.forms[0].instance.base_material_quantity, Decimal("20.0000"))
+        _order, over = self.base_formset([{"good": self.bread, "pieces": "42"}], allocated="20", material=self.flour)
+        self.assertFalse(over.is_valid())
+        self.assertIn("0.8000 kg more than the 32.8000 kg", str(over.non_form_errors()))
 
     def test_all_products_must_use_the_same_shared_base_material(self):
         _, formset = self.base_formset([
@@ -392,6 +444,7 @@ class BaseMaterialProductionTests(TestCase):
                 "order_type": "distribution",
                 "is_market_stock": "on",
                 "production_basis": Order.BASIS_BASE_MATERIAL,
+                "base_material": str(self.rice.pk),
                 "base_material_quantity": "25",
             },
             business=self.business,
@@ -401,49 +454,6 @@ class BaseMaterialProductionTests(TestCase):
         order = form.save(commit=False)
         self.assertEqual(order.production_basis, Order.BASIS_BASE_MATERIAL)
         self.assertEqual(order.base_material_quantity, Decimal("25"))
-
-    def set_standard_batch(self, good, base_qty, units_per_batch):
-        from inventory.models import RecipeItem
-
-        good.units_per_batch = Decimal(units_per_batch)
-        good.save()
-        RecipeItem.objects.filter(finished_good=good, raw_material=good.base_material).update(qty_per_batch=Decimal(base_qty))
-        good.refresh_from_db()
-
-    def test_standard_batch_figures_split_the_pool_to_the_exact_total(self):
-        # 20 kg of flour is the standard batch and it makes 41 loaves.
-        self.set_standard_batch(self.bread, "20", "41")
-        order, formset = self.base_formset([{"good": self.bread, "pieces": "41"}], allocated="20")
-
-        self.assertTrue(formset.is_valid(), formset.errors)
-        item = formset.forms[0].instance
-        self.assertEqual(item.base_material_quantity, Decimal("20.0000"))
-        self.assertEqual(item.total_units, Decimal("41"))
-
-        order.date = date.today()
-        order.save()
-        item.order = order
-        item.price = self.bread.selling_price
-        item.save()
-        self.assertEqual(order.base_material_used_quantity, Decimal("20.0000"))
-        self.assertEqual(order.base_material_remaining_quantity, Decimal("0"))
-        # Release follows the same recipe figures, so it agrees with the pool split.
-        self.assertEqual(order.material_requirements()[self.flour.pk][1], Decimal("20"))
-
-    def test_pool_split_is_still_capped_by_the_allocation(self):
-        self.set_standard_batch(self.bread, "20", "41")
-        _order, formset = self.base_formset([{"good": self.bread, "pieces": "42"}], allocated="20")
-        self.assertFalse(formset.is_valid())
-        self.assertIn("require 20.4878", str(formset.non_form_errors()))
-
-    def test_rounding_never_rejects_an_exactly_fitting_pool(self):
-        # 7 kg per 6-unit batch split over 1 + 1 + 4 pieces used to total 7.000...001 kg.
-        self.set_standard_batch(self.bread, "7", "6")
-        _order, formset = self.base_formset(
-            [{"good": self.bread, "pieces": "1"}, {"good": self.bread, "pieces": "1"}, {"good": self.bread, "pieces": "4"}],
-            allocated="7",
-        )
-        self.assertTrue(formset.is_valid(), formset.errors)
 
     def test_legacy_line_level_base_sizing_remains_readable(self):
         order = Order(
@@ -485,6 +495,8 @@ class CentralFlexibleMaterialTests(TestCase):
             )
 
         self.rice = material("Rice")
+        self.rice.output_grams_per_usage_unit = Decimal("1500")   # 1 kg of base -> at most 1.5 kg output
+        self.rice.save()
         self.sugar = material("Sugar")
 
         def good(name, upb, sugar_per_batch):
@@ -492,6 +504,7 @@ class CentralFlexibleMaterialTests(TestCase):
                 business=self.business, name=name, unit="portion", units_per_batch=Decimal(upb),
                 base_material=self.rice, stock=Decimal("0"), reorder_level=Decimal("0"),
                 selling_price=Decimal("1000"),
+                output_weight_grams=Decimal("200") if name == "Jollof" else Decimal("250"),
             )
             RecipeItem.objects.create(finished_good=fg, raw_material=self.rice, qty_per_batch=Decimal("5"))
             RecipeItem.objects.create(
@@ -512,6 +525,8 @@ class CentralFlexibleMaterialTests(TestCase):
             OrderItem.objects.create(
                 order=order, finished_good=fg, batch_qty=Decimal("1"), piece_qty=Decimal(pieces),
                 price=Decimal("1000"), production_basis=basis,
+                # A base-material order's 50 kg pool is split by output weight (15,000 g each) when saved.
+                base_material_quantity=Decimal("25") if basis == Order.BASIS_BASE_MATERIAL else Decimal("0"),
             )
         return Order.objects.get(pk=order.pk)
 
@@ -544,7 +559,7 @@ class CentralFlexibleMaterialTests(TestCase):
         self.assertEqual(self.usage_by_good(entries), {"Jollof": Decimal("6"), "Fried": Decimal("3")})
         self.assertEqual(aggregated[self.sugar.pk][1], Decimal("9"))
         # The non-flexible base material is untouched by the central override.
-        self.assertEqual(aggregated[self.rice.pk][1], Decimal("15"))
+        self.assertEqual(aggregated[self.rice.pk][1], Decimal("50"))   # the whole pool, split 25 / 25
 
     def test_allotment_never_loses_or_invents_quantity_to_rounding(self):
         from .views import _material_release_plan
@@ -601,8 +616,9 @@ class CentralFlexibleMaterialTests(TestCase):
 
 
 class SharedRunBaseMaterialPoolTests(TestCase):
-    """A shared run can carry one overall base-material pool that all member
-    orders draw from, with the remainder available to an independent order."""
+    """A shared run carries one overall base-material pool that is fully consumed:
+    it is mapped onto every member product by output weight, and the only limit is
+    the output the pool can yield (pool x configured yield)."""
 
     setUp = CentralFlexibleMaterialTests.setUp
     make_order = CentralFlexibleMaterialTests.make_order
@@ -625,31 +641,50 @@ class SharedRunBaseMaterialPoolTests(TestCase):
         _f, entries, _a, _s, _e = _shared_run_release_plan(run)
         return _run_base_pool(run, entries)
 
-    def test_pool_totals_what_member_orders_draw_and_what_is_left(self):
+    def test_pool_is_fully_consumed_and_mapped_by_output_weight(self):
+        # 2 orders x (75 Jollof @200 g + 60 Fried @250 g) = 60,000 g; rice yields 1,500 g/kg -> 40 kg is the most output.
+        for pool_qty in ("40", "100", "33.3333"):
+            pool = self.pool(self.make_run(pool_qty))
+            total = Decimal(pool_qty)
+            self.assertEqual(pool["used"], total, pool_qty)
+            self.assertEqual(sum((i["share"] for i in pool["items"]), Decimal("0")), total, pool_qty)
+            self.assertNotIn("remaining", pool)
         pool = self.pool(self.make_run("40"))
-        self.assertEqual((pool["used"], pool["remaining"], pool["overflow"]), (Decimal("30"), Decimal("10"), Decimal("0")))
+        self.assertEqual(pool["overflow"], Decimal("0"))
+        self.assertEqual(pool["output_g"], Decimal("60000"))
+        self.assertEqual({i["share"] for i in pool["items"]}, {Decimal("10")})
+        self.assertEqual(pool["effective_yield"], Decimal("1500"))
 
-    def test_pool_reports_overflow_when_orders_need_more_than_the_pool(self):
+    def test_pool_is_mapped_by_weight_not_by_recipe(self):
+        # The heavier product takes the bigger share, whatever its recipe says.
+        self.fried.output_weight_grams = Decimal("500")   # 60 x 500 = 30,000 g vs 15,000 g for Jollof
+        self.fried.save()
+        pool = self.pool(self.make_run("90"))
+        shares = {i["good"].name: i["share"] for i in pool["items"]}
+        self.assertEqual(shares["Jollof"] * 2, shares["Fried"])
+        self.assertEqual(pool["used"], Decimal("90"))
+
+    def test_output_over_what_the_pool_can_yield_is_reported_in_output_weight(self):
         pool = self.pool(self.make_run("20"))
-        self.assertEqual((pool["remaining"], pool["overflow"]), (Decimal("0"), Decimal("10")))
+        self.assertEqual(pool["max_output_g"], Decimal("30000"))
+        self.assertEqual(pool["over_output_g"], Decimal("30000"))
+        self.assertEqual((pool["needed"], pool["overflow"]), (Decimal("40"), Decimal("20")))
 
     def test_product_quantity_runs_have_no_pool(self):
         from .models import ProductionRun
         run = ProductionRun.raw_objects.create(business=self.business, date=date(2026, 9, 2), run_number="RUN-PLAIN")
         self.assertIsNone(self.pool(ProductionRun.objects.get(pk=run.pk)))
 
-    def test_independent_order_cannot_exceed_the_remaining_pool_or_use_another_base(self):
+    def test_new_order_in_the_run_must_share_the_runs_base_material(self):
         from types import SimpleNamespace
         from .views import _run_order_errors
 
         run = self.make_run("40")
-        form = lambda qty: SimpleNamespace(cleaned_data={"production_basis": Order.BASIS_BASE_MATERIAL, "base_material_quantity": Decimal(qty)})
+        form = SimpleNamespace(cleaned_data={"production_basis": Order.BASIS_PRODUCT_QUANTITY})
         formset = SimpleNamespace(forms=[SimpleNamespace(cleaned_data={"finished_good": self.jollof})])
-        self.assertEqual(_run_order_errors(run, form("10"), formset), [])
-        self.assertEqual(len(_run_order_errors(run, form("10.5"), formset)), 1)
-        other = SimpleNamespace(forms=[SimpleNamespace(cleaned_data={"finished_good": self.jollof})])
+        self.assertEqual(_run_order_errors(run, form, formset), [])
         self.jollof.base_material = self.sugar
-        self.assertEqual(len(_run_order_errors(run, form("1"), other)), 1)
+        self.assertEqual(len(_run_order_errors(run, form, formset)), 1)
 
     def test_approval_is_blocked_when_orders_overdraw_the_pool_and_allowed_when_they_fit(self):
         user = CustomUser.objects.create_superuser(username="run-admin", password="safe-password-123", fullname="Admin")
@@ -663,17 +698,18 @@ class SharedRunBaseMaterialPoolTests(TestCase):
         fits.refresh_from_db()
         self.assertEqual(fits.status, "approved")
 
-    def test_run_page_shows_pool_and_the_independent_order_action(self):
+    def test_run_page_shows_the_mapping_and_no_remainder(self):
         user = CustomUser.objects.create_superuser(username="run-viewer", password="safe-password-123", fullname="Admin")
         self.client.force_login(user)
         run = self.make_run("40")
         page = self.client.get(reverse("production_run_detail", args=[run.pk]))
-        self.assertContains(page, "Overall base material")
-        self.assertContains(page, "Remaining")
-        self.assertContains(page, "independent=1")
-        form = self.client.get(reverse("order_add"), {"run": run.pk, "independent": "1"})
-        self.assertEqual(form.status_code, 200)
-        self.assertEqual(form.context["form"].initial["base_material_quantity"], Decimal("10"))
+        self.assertContains(page, "Fully consumed")
+        self.assertContains(page, "75 × 200 g = 15000 g")
+        self.assertNotContains(page, "independent=1")
+        self.assertNotContains(page, "unallocated")
+        self.assertNotContains(page, "Remaining")
+        over = self.client.get(reverse("production_run_detail", args=[self.make_run("20").pk]))
+        self.assertContains(over, "of output over what the pool can yield")
 
 
 class SharedRunPoolRoundingTests(TestCase):
@@ -684,15 +720,14 @@ class SharedRunPoolRoundingTests(TestCase):
     def test_sub_quantum_noise_never_shows_as_an_overflow(self):
         from .views import _run_base_pool, _shared_run_release_plan
 
-        run = self.make_run("30")
+        run = self.make_run("40")
         _f, entries, _a, _s, _e = _shared_run_release_plan(run)
         for entry in entries:
             if entry["raw_material"].pk == self.rice.pk:
                 entry["actual_quantity"] += Decimal("1E-20")
         pool = _run_base_pool(run, entries)
-        self.assertEqual(pool["used"], Decimal("30.0000"))
+        self.assertEqual(pool["used"], Decimal("40.0000"))
         self.assertEqual(pool["overflow"], Decimal("0"))
-        self.assertEqual(pool["remaining"], Decimal("0"))
 
 
 class SharedRunBaseMaterialMergeTests(SharedRunBaseMaterialPoolTests.__bases__[0]):
@@ -892,15 +927,15 @@ class RunPoolAdjustmentTests(TestCase):
 
     def test_short_pool_can_be_raised_to_what_orders_need_then_approved(self):
         self.login()
-        run = self.make_run("20")  # orders need 30
+        run = self.make_run("20")  # 60 kg of output needs 40 kg of rice at 1,500 g/kg
         page = self.client.get(reverse("production_run_detail", args=[run.pk]))
-        self.assertContains(page, "Raise pool to 30")
+        self.assertContains(page, "Raise pool to 40")
         self.client.post(reverse("production_run_approve", args=[run.pk]))
         run.refresh_from_db()
         self.assertEqual(run.status, "draft")
         self.client.post(reverse("production_run_adjust_pool", args=[run.pk]), {"use_needed": "1"})
         run.refresh_from_db()
-        self.assertEqual(run.base_material_quantity, Decimal("30.0000"))
+        self.assertEqual(run.base_material_quantity, Decimal("40.0000"))
         self.client.post(reverse("production_run_approve", args=[run.pk]))
         run.refresh_from_db()
         self.assertEqual(run.status, "approved")
@@ -943,10 +978,10 @@ class RunPoolWithMisfitOrdersTests(TestCase):
         return type(run).objects.get(pk=run.pk)
 
     def test_short_pool_stays_visible_when_an_order_without_a_base_material_is_attached(self):
-        run = self.attach(self.make_run("20"), self.no_base_order())   # two rice orders need 30 of 20
+        run = self.attach(self.make_run("20"), self.no_base_order())   # two rice orders need 40 kg of output capacity
         pool = self.pool(run)
         self.assertEqual(pool["material"], self.rice)
-        self.assertEqual((pool["used"], pool["overflow"]), (Decimal("30"), Decimal("10")))   # not "fresh"
+        self.assertEqual((pool["used"], pool["overflow"]), (Decimal("20"), Decimal("20")))   # pool fully drawn, 20 short
         self.assertEqual(len(pool["misfits"]), 1)
         self.assertIn("no single base material", pool["misfits"][0]["reason"])
 
@@ -954,8 +989,8 @@ class RunPoolWithMisfitOrdersTests(TestCase):
         self.login()
         run = self.attach(self.make_run("100"), self.no_base_order())
         page = self.client.get(reverse("production_run_detail", args=[run.pk]))
-        self.assertContains(page, "not counted against the pool")
-        self.assertContains(page, "draw from this pool")
+        self.assertContains(page, "not mapped to the pool")
+        self.assertContains(page, "no single base material")
         self.client.post(reverse("production_run_approve", args=[run.pk]))
         run.refresh_from_db()
         self.assertEqual(run.status, "draft")
@@ -992,13 +1027,14 @@ class RunPoolWithMisfitOrdersTests(TestCase):
         self.assertEqual(_run_order_errors(run, customer_form, fits), [])   # short pool is NOT a creation error
 
     def test_an_orders_own_base_quantity_never_changes_the_run_pool(self):
-        run = self.make_run("40")                                       # two rice orders use 30
+        run = self.make_run("40")                                       # two rice orders map onto 40
         independent = self.make_order(Order.BASIS_BASE_MATERIAL)        # its own allotment is 50
         self.assertEqual(independent.base_material_quantity, Decimal("50"))
         run = self.attach(run, independent)
         pool = self.pool(run)
         self.assertEqual(pool["total"], Decimal("40"))                  # pool unchanged by the order's 50
-        self.assertEqual(pool["used"], Decimal("45"))                   # counts what its products use (15), not 50
+        self.assertEqual(pool["used"], Decimal("40"))                   # still fully consumed, never 50
+        self.assertEqual(pool["overflow"], Decimal("20"))               # 3 orders = 90 kg of output needs 60 kg
         self.assertEqual(run.base_material_quantity, Decimal("40.0000"))
 
 

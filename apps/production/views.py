@@ -1,5 +1,5 @@
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -268,16 +268,6 @@ def order_form(request, pk=None):
     else:
         new_initial = {"date": today(), "order_type": "physical_store" if kitchen else "distribution"}
         new_basis, new_pool = Order.BASIS_PRODUCT_QUANTITY, Decimal("0")
-        if target_run and target_run.production_basis == ProductionRun.BASIS_BASE_MATERIAL and request.GET.get("independent"):
-            # Independent order that stretches the run to its overall base material.
-            _flex, _entries, _agg, _summary, _errs = _shared_run_release_plan(target_run)
-            pool = _run_base_pool(target_run, _entries)
-            new_basis, new_pool = Order.BASIS_BASE_MATERIAL, (pool["remaining"] if pool else Decimal("0"))
-            new_initial.update({
-                "order_type": "physical_store", "production_basis": new_basis,
-                "base_material": pool["material"] if pool else None,
-                "base_material_quantity": new_pool,
-            })
         form = OrderForm(instance=obj, initial=None if obj else new_initial, business=request.business)
         store_replenishment = bool(
             obj and obj.order_type == "physical_store" and obj.production_destination == "store"
@@ -299,7 +289,6 @@ def order_form(request, pk=None):
     daily_colors = {
         entry.date.isoformat(): {
             "color": entry.color,
-            "label": entry.get_color_display(),
             "expiry_date": entry.expiry_date.isoformat() if entry.expiry_date else "",
         }
         for entry in ProductionDaySetting.objects.filter(business=request.business)
@@ -466,7 +455,7 @@ def _material_release_plan(order, post_data=None):
     )
 
 
-def _plan_release(orders, post_data=None, *, central=False, scope=None):
+def _plan_release(orders, post_data=None, *, central=False, scope=None, item_shares=None):
     """Return flexible controls, per-item usage snapshots, and total release.
 
     Recipe quantities remain fixed unless the RecipeItem is explicitly marked
@@ -507,15 +496,25 @@ def _plan_release(orders, post_data=None, *, central=False, scope=None):
             for link, is_recipe in links:
                 planned_per_batch = link.qty_per_batch
                 actual_per_batch = planned_per_batch
-                allocated_base_material = bool(
+                # A shared run maps its whole pool onto every product by output
+                # weight; that share replaces any recipe-proportional draw.
+                forced_share = (
+                    item_shares.get(item.pk)
+                    if item_shares is not None and is_recipe and good.base_material_id == link.raw_material_id
+                    else None
+                )
+                allocated_base_material = forced_share is not None or bool(
                     order.production_basis == Order.BASIS_BASE_MATERIAL
                     and item.production_basis == OrderItem.BASIS_BASE_MATERIAL
                     and is_recipe
                     and good.base_material_id == link.raw_material_id
                 )
-                planned_quantity = (
-                    item.base_material_quantity if allocated_base_material else planned_per_batch * multiplier
-                )
+                if forced_share is not None:
+                    planned_quantity = forced_share
+                else:
+                    planned_quantity = (
+                        item.base_material_quantity if allocated_base_material else planned_per_batch * multiplier
+                    )
                 flexible = bool(
                     is_recipe and getattr(link, "flexible_usage", False) and not allocated_base_material
                 )
@@ -643,6 +642,63 @@ def _plan_release(orders, post_data=None, *, central=False, scope=None):
     return flexible_rows, usage_entries, aggregated, errors
 
 
+def _run_pool_plan(run, orders=None):
+    """Map a base-material run's whole pool onto its products by output weight.
+
+    The pool is physically consumed in full: it is split across every product of
+    every member order that uses the run's base material, in proportion to that
+    product's output weight (units x grams). Nothing is left over. The only limit
+    is output: the pool cannot yield more than ``pool x configured yield``.
+    """
+    if run.production_basis != ProductionRun.BASIS_BASE_MATERIAL:
+        return None
+    material = run_base_material(run)
+    if material is None:
+        return None
+    if orders is None:
+        orders = _run_orders_in_attach_order(run)
+    pool = Decimal(run.base_material_quantity or 0)
+    rows, errors = [], []
+    for order in orders:
+        for item in order.items.all():
+            good = item.finished_good
+            if good.base_material_id != material.pk:
+                continue
+            units = Decimal(item.production_total_units or 0)
+            unit_weight = Decimal(good.output_weight_grams or 0)
+            if units > 0 and unit_weight <= 0:
+                errors.append(
+                    f"Set {good.name}'s finished output weight in grams before it can share the run's "
+                    f"{material.name} pool (Order #{order.display_number})."
+                )
+                continue
+            rows.append({
+                "order": order, "item": item, "good": good,
+                "units": units, "unit_weight": unit_weight, "weight": units * unit_weight,
+            })
+    total_weight = sum((r["weight"] for r in rows), Decimal("0"))
+    yield_g = Decimal(material.output_grams_per_usage_unit or 0)
+    if rows and yield_g <= 0:
+        errors.append(f"Configure {material.name}'s measured output yield before using it as a run pool.")
+    shares = {}
+    if rows and total_weight > 0 and pool > 0:
+        for row, share in zip(rows, _allocate_proportionally(pool, [r["weight"] for r in rows])):
+            row["share"] = share
+            shares[row["item"].pk] = share
+    for row in rows:
+        row.setdefault("share", Decimal("0"))
+    needed = (total_weight / yield_g).quantize(_USAGE_QUANTUM, rounding=ROUND_CEILING) if yield_g > 0 else Decimal("0")
+    max_output = pool * yield_g
+    over_output = max(Decimal("0"), total_weight - max_output) if yield_g > 0 else Decimal("0")
+    excess = max(Decimal("0"), needed - pool.quantize(_USAGE_QUANTUM)) if yield_g > 0 else Decimal("0")
+    return {
+        "material": material, "pool": pool, "rows": rows, "shares": shares, "errors": errors,
+        "output_g": total_weight, "max_output_g": max_output, "over_output_g": over_output,
+        "needed": needed, "excess": excess,
+        "effective_yield": (total_weight / pool) if pool > 0 else Decimal("0"),
+    }
+
+
 def _shared_run_release_plan(production_run, post_data=None):
     """Aggregate the normal proportional material release of member orders.
 
@@ -660,9 +716,13 @@ def _shared_run_release_plan(production_run, post_data=None):
         # One overall base-material pool means one merged total per flexible
         # ingredient across the WHOLE run, allotted to every product of every
         # member order in proportion to its planned requirement.
+        pool_plan = _run_pool_plan(production_run, orders)
         flexible_rows, usage_entries, aggregated, errors = _plan_release(
-            orders, post_data, central=True, scope=f"run{production_run.pk}"
+            orders, post_data, central=True, scope=f"run{production_run.pk}",
+            item_shares=pool_plan["shares"] if pool_plan else None,
         )
+        if pool_plan:
+            errors = list(errors) + pool_plan["errors"]
     else:
         flexible_rows, usage_entries, aggregated, errors = [], [], {}, []
         for order in orders:
@@ -743,13 +803,19 @@ def _run_base_pool(run, usage_entries):
             misfits.append({"order": order, "reason": reason})
         qty = drawn.get(order.pk, Decimal("0")) if fits else Decimal("0")
         rows.append({"order": order, "quantity": qty, "counted": qty > 0, "fits": fits or not material, "reason": reason})
-    # Released quantities are exact fractions of a batch; round the draw to the pool's own
-    # 4 dp so sub-0.0001 noise can never show as an overflow or block approval.
+    # Shares are rounded to the pool's own 4 dp, so the draw adds up to the pool exactly.
     used = sum((r["quantity"] for r in rows), Decimal("0")).quantize(_USAGE_QUANTUM, rounding=ROUND_HALF_UP)
     total = Decimal(run.base_material_quantity or 0)
+    plan = _run_pool_plan(run)
     return {
         "material": material, "total": total, "used": used,
-        "remaining": max(Decimal("0"), total - used), "overflow": max(Decimal("0"), used - total),
+        "overflow": plan["excess"] if plan else Decimal("0"),
+        "needed": plan["needed"] if plan else Decimal("0"),
+        "output_g": plan["output_g"] if plan else Decimal("0"),
+        "max_output_g": plan["max_output_g"] if plan else Decimal("0"),
+        "over_output_g": plan["over_output_g"] if plan else Decimal("0"),
+        "effective_yield": plan["effective_yield"] if plan else Decimal("0"),
+        "items": plan["rows"] if plan else [],
         "rows": rows, "misfits": misfits,
     }
 
@@ -759,9 +825,9 @@ def _run_order_errors(target_run, form, formset):
 
     Every order in such a run must draw from the run's base material, so every
     product on the new order must use it (or, while the run has no base yet,
-    share one). This applies to customer/product-quantity orders too. A short
-    pool is not an error here: the run page shows it and the pool can be raised.
-    An independent base-material order must also fit what is left in the pool.
+    share one). This applies to customer/product-quantity orders too. The run's
+    pool is always fully consumed: the run page maps it onto every product by output
+    weight and blocks approval if the output exceeds what the pool can yield.
     """
     if target_run.production_basis != ProductionRun.BASIS_BASE_MATERIAL:
         return []
@@ -795,14 +861,6 @@ def _run_order_errors(target_run, form, formset):
         elif len(ids) > 1:
             errors.append("The products on this order use different base materials; a base-material run needs one shared base material.")
 
-    if form.cleaned_data.get("production_basis") == Order.BASIS_BASE_MATERIAL:
-        quantity = Decimal(form.cleaned_data.get("base_material_quantity") or 0)
-        unit = f" {material.usage_unit} of {material.name}" if material else ""
-        if pool and quantity > pool["remaining"]:
-            errors.append(
-                f"This order's base material ({quantity:g}) is more than what is left in the run's pool "
-                f"({pool['remaining']:g}{unit})."
-            )
     return errors
 
 
@@ -900,7 +958,7 @@ def production_run_adjust_pool(request, pk):
     if request.POST.get("use_needed"):
         _flex, entries, _agg, _summary, _errs = _shared_run_release_plan(run)
         pool = _run_base_pool(run, entries)
-        new_total = pool["used"] if pool else Decimal("0")
+        new_total = pool["needed"] if pool else Decimal("0")
     else:
         try:
             new_total = Decimal(str(request.POST.get("base_material_quantity", "")).strip())
@@ -951,8 +1009,10 @@ def production_run_approve(request, pk):
         ]
     if base_pool and base_pool["overflow"] > 0:
         errors = list(errors) + [
-            f"Member orders need {base_pool['used']:g} {base_pool['material'].usage_unit} of {base_pool['material'].name}, "
-            f"but the run's overall pool is {base_pool['total']:g}. Reduce an order or raise the pool before approving."
+            f"The run's products weigh {base_pool['output_g'] / 1000:.4f} kg, which is "
+            f"{base_pool['over_output_g'] / 1000:.4f} kg more than the {base_pool['max_output_g'] / 1000:.4f} kg that "
+            f"{base_pool['total']:g} {base_pool['material'].usage_unit} of {base_pool['material'].name} can yield. "
+            "Reduce an order or raise the pool before approving."
         ]
     if errors:
         for error in errors:

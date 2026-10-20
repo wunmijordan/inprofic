@@ -27,6 +27,7 @@ class ProductionDaySettingForm(StyledModelForm):
         fields = ["date", "color", "expiry_date"]
         widgets = {
             "date": forms.DateInput(attrs={"type": "date"}),
+            "color": forms.TextInput(attrs={"type": "color"}),
             "expiry_date": forms.DateInput(attrs={"type": "date"}),
         }
 
@@ -462,10 +463,15 @@ class OrderItemFormSetBase(BaseInlineFormSet):
             mapped_use = self.base_material_output_rate * self.current_output_weight_grams / Decimal("1000")
             excess = mapped_use - self.base_material_quantity
             if excess > Decimal("0.00000001"):
+                # The pool is always fully consumed by the products; the only
+                # error is asking it to yield more output than it physically can.
+                max_output = self.base_material_quantity * Decimal("1000") / self.base_material_output_rate
+                over_output = self.current_output_weight_grams - max_output
                 raise forms.ValidationError(
-                    f"The selected output weight maps to {mapped_use:.4f} {shared_material.usage_unit} "
-                    f"of {shared_material.name}, exceeding this {self.base_material_quantity:.4f} "
-                    f"{shared_material.usage_unit} pool by {excess:.4f} {shared_material.usage_unit}. "
+                    f"The products weigh {self.current_output_weight_grams / 1000:.4f} kg, which is "
+                    f"{over_output / 1000:.4f} kg more than the {max_output / 1000:.4f} kg that "
+                    f"{self.base_material_quantity:.4f} {shared_material.usage_unit} of {shared_material.name} "
+                    f"can yield ({excess:.4f} {shared_material.usage_unit} over the pool). "
                     "Reduce product quantities or increase the pool."
                 )
 

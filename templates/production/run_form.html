@@ -23,7 +23,7 @@
       </section>
       <section class="cf-form-section" data-run-basis>
         <div class="cf-form-section-title mb-1">{{ vertical_ui.base_pool_label }} basis <span class="text-[11px] font-normal text-stone-400">(optional)</span></div>
-        <p class="mb-3 text-xs leading-5 text-stone-500">Enter one overall {{ vertical_ui.base_pool_label|lower }} quantity for the whole run. The {{ vertical_ui.base_material_label|lower }} is the one set on the products of the orders you add, so every member order must share it. Product quantities map to each product's {{ vertical_ui.recipe_label|lower }} use, with {{ vertical_ui.finished_output_label }} weight shown as a live check. The run page totals recipe use against the pool.</p>
+        <p class="mb-3 text-xs leading-5 text-stone-500">Enter one overall {{ vertical_ui.base_pool_label|lower }} quantity for the whole run. The {{ vertical_ui.base_material_label|lower }} is the one set on the products of the orders you add, so every member order must share it. The whole pool is consumed: it is mapped onto every product of every member order by its {{ vertical_ui.finished_output_label }} weight, and the run page blocks approval only if the output weighs more than the pool can yield.</p>
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
           {% include "_field.html" with field=form.production_basis %}
           <div data-run-basis-fields>{% include "_field.html" with field=form.base_material_quantity %}</div>
