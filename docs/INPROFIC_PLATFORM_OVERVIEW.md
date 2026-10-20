@@ -29,7 +29,7 @@ A typical INPROFIC operating cycle looks like this:
 
 The objective is not simply to record transactions. It is to make the business able to explain how stock, production, customer orders, supplier obligations, money and delivery outcomes relate to one another.
 
-For stock production sized by a shared base-material pool, each made-in-house product can record its finished unit weight in grams. The order form apportions the exact pool across selected products by planned finished output weight, and approval releases those saved shares. Standard-batch recipe quantities remain visible and warn when the planned output requires more base material than the pool contains. Other recipe inputs remain tied to each product's registered batch yield.
+For stock production sized by a shared base-material pool, each made-in-house product can record its finished unit weight in grams. The live order-form allocation apportions the pool across selected products by planned finished output weight, and approval releases those saved shares. Standard-batch recipe quantities remain visible and warn when planned output requires more base material than the pool contains. Other recipe inputs remain tied to each product's registered batch yield.
 
 ## Businesses and tenant separation
 

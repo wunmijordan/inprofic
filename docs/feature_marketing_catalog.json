@@ -94,7 +94,7 @@
     "name": "Output-weighted base-material production",
     "group": "production",
     "audience": "bakery and production teams",
-    "proof": "Record finished unit weight on products, apportion a shared base-material pool across outputs by weight, and release the full pool at approval while checking planned output against recipe capacity.",
+    "proof": "Record finished unit weight on products, apportion a shared base-material pool across outputs by weight, release those shares at approval, and warn when planned output exceeds recipe capacity.",
     "highlight": "NEW",
     "added_on": "2026-10-19"
   },

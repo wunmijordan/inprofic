@@ -340,8 +340,8 @@ class OrderNumberSequence(BusinessOwnedModel):
 
 
 class OrderItem(TimestampedModel):
-    # Retained on line items for historical compatibility and as an audit
-    # snapshot of how much of the shared base-material pool each product used.
+    # Retained on line items as an audit snapshot of each product's
+    # output-weight share of the order's base-material pool.
     BASIS_PRODUCT_QUANTITY = Order.BASIS_PRODUCT_QUANTITY
     BASIS_BASE_MATERIAL = Order.BASIS_BASE_MATERIAL
     PRODUCTION_BASIS_CHOICES = Order.PRODUCTION_BASIS_CHOICES

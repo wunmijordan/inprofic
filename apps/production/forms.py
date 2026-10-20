@@ -310,9 +310,8 @@ class OrderItemFormSetBase(BaseInlineFormSet):
                 total_base_used += exact_base_used
                 weighted_base_rows.append((form, row_output_weight))
 
-                # Save the eventual output-weight share of the exact pool.
-                # Recipe use remains the guard against planning more than the
-                # pool can support; approval releases these saved pool shares.
+                # Save the output-weight share used by both the live summary
+                # and raw-material release. Recipe use remains the capacity check.
                 form.instance.production_basis = OrderItem.BASIS_BASE_MATERIAL
                 form.instance.base_material_quantity = Decimal("0")
                 data["production_batch_qty"] = Decimal("0")

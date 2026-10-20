@@ -118,7 +118,7 @@
     <div class="mt-5 mb-2 flex flex-wrap items-end justify-between gap-3">
       <div>
         <span class="cf-form-section-title">Products & production size</span>
-        <p class="mt-1 max-w-4xl text-[11px] leading-5 text-stone-500">For customer orders, enter the requested product quantity. For eligible stock production, <b>Production basis</b> applies to the whole order. In <b>Base material</b> mode, enter the shared quantity, then each product's batches/pieces. The pool is allocated across rows by finished output weight and released in full; recipe quantities check that the planned output fits. Set each product's unit weight in grams on its product form.</p>
+        <p class="mt-1 max-w-4xl text-[11px] leading-5 text-stone-500">For customer orders, enter the requested product quantity. For eligible stock production, <b>Production basis</b> applies to the whole order. In <b>Base material</b> mode, the pool is split by finished output weight, and approval releases those shares. Recipe quantities check that planned output fits the pool. Set each product's unit weight in grams on its product form.</p>
       </div>
     </div>
 
@@ -357,8 +357,8 @@
       const largestShare = shares.reduce((largest, share, index) => share > shares[largest] ? index : largest, 0);
       shares[largestShare] += allocated - shares.reduce((sum, share) => sum + share, 0);
     }
-    recipeRows.forEach(({ row, rowOutputWeight, batchOutputWeight, recipeQuantity, base }, index) => {
-      setBaseRowHint(row, `${formatQuantity(shares[index])} ${base.unit} ${base.name} from pool · ${formatQuantity(rowOutputWeight)} g output; batch recipe is ${formatQuantity(recipeQuantity)} ${base.unit} for ${formatQuantity(batchOutputWeight)} g output.`);
+    recipeRows.forEach(({ row, rowOutputWeight, batchOutputWeight, recipeQuantity, exactRowUse, base }, index) => {
+      setBaseRowHint(row, `${formatQuantity(shares[index])} ${base.unit} ${base.name} pool share · ${formatQuantity(exactRowUse)} ${base.unit} recipe reference · ${formatQuantity(rowOutputWeight)} g output (batch: ${formatQuantity(recipeQuantity)} ${base.unit} / ${formatQuantity(batchOutputWeight)} g).`);
     });
 
     const poolUsed = recipeRows.length && totalOutputWeight > 0 ? allocated : 0;
@@ -377,11 +377,11 @@
         if (poolOver || hasInvalidProduct) {
           summary.classList.add('border-rose-200', 'bg-rose-50', 'text-rose-700');
           summary.textContent = poolOver
-            ? `${sharedBase.name}: recipe demand ${formatQuantity(recipeNeed)} ${sharedBase.unit} exceeds the ${formatQuantity(allocated)} ${sharedBase.unit} pool by ${formatQuantity(recipeNeed - allocated)} ${sharedBase.unit}.`
-            : `${sharedBase.name}: ${formatQuantity(poolUsed)} ${sharedBase.unit} allocated · fix the product setup above.`;
+            ? `${sharedBase.name}: ${formatQuantity(poolUsed)} ${sharedBase.unit} allocated/released · ${formatQuantity(totalOutputWeight / 1000)} kg output · recipe reference exceeds pool by ${formatQuantity(recipeNeed - allocated)} ${sharedBase.unit}.`
+            : `${sharedBase.name}: ${formatQuantity(poolUsed)} ${sharedBase.unit} weight-allocated · ${formatQuantity(totalOutputWeight / 1000)} kg output · fix the product setup above.`;
         } else {
           summary.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
-          summary.textContent = `${sharedBase.name}: ${formatQuantity(poolUsed)} ${sharedBase.unit} allocated · ${formatQuantity(poolRemaining)} ${sharedBase.unit} remaining.`;
+          summary.textContent = `${sharedBase.name}: ${formatQuantity(poolUsed)} ${sharedBase.unit} allocated/released by weight · ${formatQuantity(totalOutputWeight / 1000)} kg output.`;
         }
       } else {
         summary.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
