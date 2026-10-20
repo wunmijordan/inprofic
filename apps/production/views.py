@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.contrib import messages
@@ -10,11 +11,11 @@ from django.utils.crypto import get_random_string
 
 from procurement.models import RawMaterialCostSnapshot
 
-from .forms import (OrderForm, OrderItemFormSet, ProductionCompletionForm, ProductionQualityCheckForm, ProductionReconciliationForm, ProductionRunForm, PlannedOffcutAllocationFormSet)
+from .forms import (OrderForm, OrderItemFormSet, ProductionCompletionForm, ProductionDaySettingForm, ProductionQualityCheckForm, ProductionReconciliationForm, ProductionRunForm, PlannedOffcutAllocationFormSet)
 from accounts.services import is_kitchen_restricted
 from . import allocations as channel_allocations
 from .kitchen import kitchen_report, summarize_report
-from .models import (Order, OrderFlexibleMaterialReport, OrderNumberSequence, OrderItem, OrderMaterialUsage, ProductionBatch, ProductionBatchReconciliation, ProductionQualityCheck, ProductionCostSnapshot, ProductionCostLine, ProductionRun, ProductionOffcutAllocation)
+from .models import (Order, OrderFlexibleMaterialReport, OrderNumberSequence, OrderItem, OrderMaterialUsage, ProductionBatch, ProductionBatchReconciliation, ProductionDaySetting, ProductionQualityCheck, ProductionCostSnapshot, ProductionCostLine, ProductionRun, ProductionOffcutAllocation)
 from sales.models import CustomerProductPrice
 from inventory.models import FinishedGood, RawMaterial
 from inventory.services import (
@@ -71,6 +72,14 @@ def _price_map():
         source_type=FinishedGood.SOURCE_MADE_IN_HOUSE
     ).select_related("base_material").prefetch_related("channel_prices", "recipe_items"))
     products = {}
+    base_materials = {
+        str(material.pk): {
+            "name": material.name,
+            "unit": material.usage_unit,
+            "output_grams_per_usage_unit": f"{material.output_grams_per_usage_unit or 0}",
+        }
+        for material in RawMaterial.objects.filter(category=RawMaterial.CATEGORY_INGREDIENT)
+    }
     for g in goods:
         channel_prices = {
             str(row.channel): f"{row.price}"
@@ -93,12 +102,13 @@ def _price_map():
                 "name": g.base_material.name,
                 "unit": g.base_material.usage_unit,
                 "qty_per_batch": f"{base_recipe.qty_per_batch}",
+                "output_grams_per_usage_unit": f"{g.base_material.output_grams_per_usage_unit or 0}",
             } if g.base_material_id and base_recipe and base_recipe.qty_per_batch > 0 else None),
         }
     customer_overrides = {}
     for row in CustomerProductPrice.objects.select_related("customer").all():
         customer_overrides.setdefault(str(row.customer_id), {}).setdefault(str(row.finished_good_id), {})[row.channel] = f"{row.price}"
-    return {"products": products, "customer_overrides": customer_overrides}
+    return {"products": products, "customer_overrides": customer_overrides, "base_materials": base_materials}
 
 
 @login_required
@@ -146,7 +156,8 @@ def order_form(request, pk=None):
             order_type=request.POST.get("order_type"),
             production_basis=request.POST.get("production_basis"),
             base_material_quantity=request.POST.get("base_material_quantity"),
-            base_material_output_rate=request.POST.get("base_material_output_rate"),
+            base_material_id=request.POST.get("base_material") or getattr(obj, "base_material_id", None),
+            business=request.business,
             production_enabled=request.business.uses_production,
         )
         has_items = formset.is_valid() and any(
@@ -212,16 +223,10 @@ def order_form(request, pk=None):
                 order.customer = None
                 order.customer_name = order.customer_region = order.customer_group = ""
             if order.production_basis == Order.BASIS_BASE_MATERIAL:
-                if order.base_material_output_rate <= 0:
-                    # The first saved mix is the fixed output baseline for this
-                    # pool. Future edits use the same rate, so added output is
-                    # counted immediately instead of absorbing recipe headroom.
-                    output_kg = formset.current_output_weight_grams / Decimal("1000")
-                    order.base_material_output_rate = (
-                        formset.base_material_output_rate
-                        or (order.base_material_quantity / output_kg if output_kg > 0 else Decimal("0"))
-                    )
+                order.base_material = form.cleaned_data.get("base_material")
+                order.base_material_output_rate = formset.base_material_output_rate
             else:
+                order.base_material = None
                 order.base_material_output_rate = Decimal("0")
             order.save()
             formset.instance = order
@@ -268,7 +273,11 @@ def order_form(request, pk=None):
             _flex, _entries, _agg, _summary, _errs = _shared_run_release_plan(target_run)
             pool = _run_base_pool(target_run, _entries)
             new_basis, new_pool = Order.BASIS_BASE_MATERIAL, (pool["remaining"] if pool else Decimal("0"))
-            new_initial.update({"order_type": "physical_store", "production_basis": new_basis, "base_material_quantity": new_pool})
+            new_initial.update({
+                "order_type": "physical_store", "production_basis": new_basis,
+                "base_material": pool["material"] if pool else None,
+                "base_material_quantity": new_pool,
+            })
         form = OrderForm(instance=obj, initial=None if obj else new_initial, business=request.business)
         store_replenishment = bool(
             obj and obj.order_type == "physical_store" and obj.production_destination == "store"
@@ -279,13 +288,83 @@ def order_form(request, pk=None):
             order_type=((obj.order_type if obj.order_type != Order.TYPE_UNASSIGNED else "physical_store") if obj else new_initial["order_type"]),
             production_basis=(obj.production_basis if obj else new_basis),
             base_material_quantity=(obj.base_material_quantity if obj else new_pool),
+            base_material_id=(
+                (obj.base_material_id or getattr(obj.shared_base_material, "pk", None))
+                if obj else None
+            ),
+            business=request.business,
             production_enabled=request.business.uses_production,
         )
     prices = _price_map()
+    daily_colors = {
+        entry.date.isoformat(): {
+            "color": entry.color,
+            "label": entry.get_color_display(),
+            "expiry_date": entry.expiry_date.isoformat() if entry.expiry_date else "",
+        }
+        for entry in ProductionDaySetting.objects.filter(business=request.business)
+    } if request.business.uses_production else {}
     return render(request, "production/order_form.html", {
         "form": form, "formset": formset, "prices": prices, "obj": obj,
         "target_run": target_run, "kitchen_mode": kitchen,
         "production_enabled": request.business.uses_production,
+        "daily_colors": daily_colors,
+    })
+
+
+@login_required
+def production_settings(request):
+    if not request.business.uses_production:
+        messages.error(request, "Production settings are not available for this service.")
+        return redirect("dashboard")
+    if not _can_reset_order_numbering(request):
+        return render(request, "403.html", status=403)
+
+    settings_qs = ProductionDaySetting.objects.filter(business=request.business)
+    editing = get_object_or_404(settings_qs, pk=request.GET.get("edit")) if request.GET.get("edit") else None
+    if request.method == "POST":
+        delete_id = request.POST.get("delete_id")
+        if delete_id:
+            day_setting = get_object_or_404(settings_qs, pk=delete_id)
+            with transaction.atomic():
+                audit(request.business, request.user, "delete", day_setting, "Production day setting removed", {
+                    "date": day_setting.date.isoformat(), "color": day_setting.color,
+                    "expiry_date": day_setting.expiry_date.isoformat() if day_setting.expiry_date else None,
+                })
+                day_setting.delete()
+            messages.success(request, "Production day color removed.")
+            return redirect("production_settings")
+
+        posted_date = None
+        try:
+            posted_date = date.fromisoformat(request.POST.get("date", ""))
+        except (TypeError, ValueError):
+            pass
+        existing_for_date = settings_qs.filter(date=posted_date).first() if posted_date else None
+        instance = editing or existing_for_date
+        form = ProductionDaySettingForm(request.POST, instance=instance)
+        if form.is_valid():
+            day_setting = form.save(commit=False)
+            is_new = day_setting.pk is None
+            day_setting.business = request.business
+            if is_new:
+                day_setting.created_by = request.user
+            with transaction.atomic():
+                day_setting.save()
+                audit(request.business, request.user, "create" if is_new else "update", day_setting,
+                      "Production day setting saved", {
+                          "date": day_setting.date.isoformat(), "color": day_setting.color,
+                          "expiry_date": day_setting.expiry_date.isoformat() if day_setting.expiry_date else None,
+                      })
+            messages.success(request, "Production day color saved.")
+            return redirect("production_settings")
+    else:
+        form = ProductionDaySettingForm(instance=editing, initial={"date": today()})
+
+    return render(request, "production/settings.html", {
+        "form": form,
+        "editing": editing,
+        "day_colors": settings_qs,
     })
 
 
@@ -301,6 +380,7 @@ def order_recreate(request, pk):
     with transaction.atomic():
         new_order = Order.objects.create(
             business=source.business, created_by=request.user, date=today(),
+            color_tag=source.color_tag,
             order_type=source.order_type,
             is_market_stock=source.is_market_stock,
             production_destination=source.production_destination,
@@ -745,7 +825,7 @@ def production_run_form(request, pk=None):
         return redirect("production_run_detail", pk=run.pk)
     instance = run or ProductionRun(business=request.business)
     if request.method == "POST":
-        form = ProductionRunForm(request.POST, instance=instance)
+        form = ProductionRunForm(request.POST, instance=instance, business=request.business)
         if form.is_valid():
             with transaction.atomic():
                 obj = form.save(commit=False)
@@ -768,7 +848,7 @@ def production_run_form(request, pk=None):
         initial = {}
         if not run:
             initial = {"date": today(), "run_number": f"RUN-{today().strftime('%y%m%d')}-{get_random_string(4).upper()}"}
-        form = ProductionRunForm(instance=instance, initial=initial)
+        form = ProductionRunForm(instance=instance, initial=initial, business=request.business)
     return render(request, "production/run_form.html", {"form": form, "run": run, "order_bases": form.order_base_map})
 
 
@@ -1153,6 +1233,9 @@ def order_complete(request, pk):
     order = get_object_or_404(Order.objects.select_related("customer"), pk=pk)
     if order.status != "approved":
         return redirect("orders_list")
+    scheduled_day_color = ProductionDaySetting.objects.filter(
+        business=order.business, date=order.date
+    ).first()
 
     items = list(order.items.select_related("finished_good").prefetch_related(
         Prefetch("material_usages", queryset=OrderMaterialUsage.objects.select_related("raw_material"))
@@ -1574,6 +1657,7 @@ def order_complete(request, pk):
     return render(request, "production/order_complete.html", {
         "order": order,
         "completion_forms": completion_forms,
+        "scheduled_day_color": scheduled_day_color,
     })
 
 

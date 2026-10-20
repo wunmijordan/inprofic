@@ -80,6 +80,7 @@ def change_raw_material_measurement(*, business, material, new_measurement, conv
         "package_unit": locked.package_unit,
         "usage_unit": locked.usage_unit,
         "usage_conversion_factor": str(locked.usage_conversion_factor),
+        "output_grams_per_usage_unit": str(locked.output_grams_per_usage_unit),
         "stock": str(locked.stock),
         "reorder_level": str(locked.reorder_level),
         "usage_unit_cost": str(locked.cost_per_unit),
@@ -90,6 +91,7 @@ def change_raw_material_measurement(*, business, material, new_measurement, conv
         "package_unit": (new_measurement.get("package_unit") or "").strip(),
         "usage_unit": (new_measurement.get("usage_unit") or "").strip(),
         "usage_conversion_factor": str(new_measurement.get("usage_conversion_factor") or Decimal("1")),
+        "output_grams_per_usage_unit": str(new_measurement.get("output_grams_per_usage_unit") or Decimal("0")),
     }
     ratio = Decimal(conversion_ratio or 1)
     if ratio <= 0:
@@ -122,9 +124,10 @@ def change_raw_material_measurement(*, business, material, new_measurement, conv
     locked.package_unit = new["package_unit"]
     locked.usage_unit = new["usage_unit"]
     locked.usage_conversion_factor = Decimal(new["usage_conversion_factor"])
+    locked.output_grams_per_usage_unit = Decimal(new["output_grams_per_usage_unit"])
     locked.save(update_fields=[
         "purchase_unit", "package_qty", "package_unit", "usage_unit",
-        "usage_conversion_factor", "stock", "reorder_level", "cost_per_unit", "updated_at",
+        "usage_conversion_factor", "output_grams_per_usage_unit", "stock", "reorder_level", "cost_per_unit", "updated_at",
     ])
 
     # Future production-cost lookups need a cost snapshot expressed in the new

@@ -218,11 +218,28 @@ def market_stock(request):
 
 
 def _market_form_response(request, form, *, title, intro, submit_label):
+    available_by_product = {}
+    lots = MarketStockLot.objects.filter(
+        business=request.business,
+        active=True,
+        quantity_available__gt=0,
+    ).filter(
+        Q(expiry_date__isnull=True) | Q(expiry_date__gte=timezone.localdate())
+    ).values("finished_good_id", "finished_good__unit").annotate(
+        available=Sum("quantity_available")
+    )
+    for row in lots:
+        available_by_product[str(row["finished_good_id"])] = {
+            "available": str(row["available"] or 0),
+            "unit": row["finished_good__unit"],
+        }
     return render(request, "inventory/market_stock_form.html", {
         "form": form,
         "title": title,
         "intro": intro,
         "submit_label": submit_label,
+        "available_by_product": available_by_product,
+        "market_stock_action": "transfer" if isinstance(form, MarketStockTransferForm) else "release",
     })
 
 
@@ -513,6 +530,7 @@ def raw_material_form(request, pk=None):
                         "package_unit": form.cleaned_data.get("package_unit"),
                         "usage_unit": form.cleaned_data.get("usage_unit"),
                         "usage_conversion_factor": form.cleaned_data.get("usage_conversion_factor"),
+                        "output_grams_per_usage_unit": form.cleaned_data.get("output_grams_per_usage_unit"),
                     },
                     conversion_ratio=form.cleaned_data.get("usage_unit_change_factor") or Decimal("1"),
                     reason=form.cleaned_data.get("measurement_change_reason", ""),
@@ -614,7 +632,7 @@ def finished_good_form(request, pk=None):
     composition_good_choices = None
     if request.method != "POST":
         raw_option_rows = list(
-            RawMaterial.objects.only("id", "name", "category", "usage_unit")
+            RawMaterial.objects.only("id", "name", "category", "usage_unit", "output_grams_per_usage_unit")
             .order_by("category", "name")
         )
         good_option_rows = list(
@@ -884,12 +902,16 @@ def finished_good_form(request, pk=None):
         ) if uses_production else None
 
     if raw_option_rows is None:
-        raw_option_rows = list(RawMaterial.objects.only("id", "usage_unit"))
+        raw_option_rows = list(RawMaterial.objects.only("id", "usage_unit", "output_grams_per_usage_unit"))
     if good_option_rows is None:
         good_option_rows = list(
             FinishedGood.objects.only("id", "unit")
         )
     raw_material_units = {str(material.pk): material.usage_unit for material in raw_option_rows}
+    raw_material_output_yields = {
+        str(material.pk): str(material.output_grams_per_usage_unit or 0)
+        for material in raw_option_rows
+    }
     finished_good_units = {str(good.pk): good.unit for good in good_option_rows}
     return render(request, "inventory/finishedgood_form.html", {
         "form": form,
@@ -902,6 +924,7 @@ def finished_good_form(request, pk=None):
         "composition_formset": composition_formset,
         "obj": obj,
         "raw_material_units": raw_material_units,
+        "raw_material_output_yields": raw_material_output_yields,
         "finished_good_units": finished_good_units,
         "profile_choices": profile_choices,
         "show_production_fields": show_production_fields,

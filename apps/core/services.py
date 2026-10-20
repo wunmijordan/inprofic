@@ -48,7 +48,7 @@ def tenant_backup_querysets(business):
     )
     from production.models import (
         Order, OrderNumberSequence, OrderItem, OrderAllocation, OrderAllocationLine, OrderMaterialUsage,
-        OrderFlexibleMaterialReport, ProductionRun,
+        OrderFlexibleMaterialReport, ProductionDaySetting, ProductionRun,
         ProductionRunOrder, ProductionRunMaterial, ProductionBatch,
         ProductionOffcutAllocation, ProductionBatchReconciliation,
         ProductionQualityCheck, ProductionCostSnapshot, ProductionCostLine,
@@ -88,6 +88,7 @@ def tenant_backup_querysets(business):
         OrderItem.objects.filter(order__business=business),
         OrderMaterialUsage.raw_objects.filter(business=business),
         OrderFlexibleMaterialReport.raw_objects.filter(business=business),
+        ProductionDaySetting.raw_objects.filter(business=business),
         ProductionRun.raw_objects.filter(business=business),
         ProductionRunOrder.objects.filter(production_run__business=business),
         ProductionRunMaterial.raw_objects.filter(business=business),

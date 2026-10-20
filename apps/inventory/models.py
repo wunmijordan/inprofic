@@ -40,6 +40,16 @@ class RawMaterial(BusinessOwnedModel):
         help_text="How many usage units in ONE package_unit. Standard: kg→g is 1000, litre→ml is 1000, "
                    "same unit both ways is 1. Non-standard (spoon, cap…): count it yourself, e.g. "
                    "'my spoon holds 5g' → if package_unit is kg, that's 200 spoons per kg → 200.")
+    output_grams_per_usage_unit = models.DecimalField(
+        max_digits=18,
+        decimal_places=6,
+        default=0,
+        help_text=(
+            "Production yield: finished output grams produced per one recipe usage unit "
+            "of this material. Set from actual production records; for example, 1,458 g "
+            "finished output per kg of flour."
+        ),
+    )
     stock = models.DecimalField(max_digits=13, decimal_places=3, default=0)
     reorder_level = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     # Stored in usage units. Higher precision prevents tiny per-gram/per-ml

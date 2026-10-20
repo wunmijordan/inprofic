@@ -107,7 +107,8 @@ class RawMaterialForm(StyledModelForm):
         # stock & cost_per_unit deliberately excluded — captured above in
         # purchase-unit terms and converted in save().
         fields = ["name", "category", "purchase_unit", "package_qty", "package_unit",
-                  "usage_unit", "usage_conversion_factor", "reorder_level_purchase_units"]
+                  "usage_unit", "usage_conversion_factor", "output_grams_per_usage_unit",
+                  "reorder_level_purchase_units"]
 
     def clean_name(self):
         value = (self.cleaned_data.get("name") or "").strip()
@@ -134,6 +135,7 @@ class RawMaterialForm(StyledModelForm):
                 "package_unit": current.package_unit,
                 "usage_unit": current.usage_unit,
                 "usage_conversion_factor": current.usage_conversion_factor,
+                "output_grams_per_usage_unit": current.output_grams_per_usage_unit,
             }
         else:
             self.fields.pop("measurement_change_confirm", None)
@@ -160,6 +162,17 @@ class RawMaterialForm(StyledModelForm):
 
         if business:
             vocabulary = vertical_config(business)
+            if not vocabulary["uses_production"]:
+                self.fields.pop("output_grams_per_usage_unit", None)
+            else:
+                self.fields["output_grams_per_usage_unit"].required = False
+                self.fields["output_grams_per_usage_unit"].min_value = Decimal("0")
+                self.fields["output_grams_per_usage_unit"].label = vocabulary["measured_output_label"]
+                self.fields["output_grams_per_usage_unit"].help_text = (
+                    f"{vocabulary['measured_output_example']} This measured rate powers live "
+                    f"{vocabulary['base_pool_label']} checks; it does not change recipe releases "
+                    "in Product quantity orders."
+                )
             self.fields["usage_unit"].help_text = (
                 f"The fine unit the {vocabulary['recipe_label'].lower()} consumes — kg, g, "
                 "mL, spoon, cap…"
@@ -235,6 +248,11 @@ class RawMaterialForm(StyledModelForm):
         usage_changed = cleaned.get("usage_unit") != self.original_measurement.get("usage_unit")
         if usage_changed and not cleaned.get("usage_unit_change_factor"):
             self.add_error("usage_unit_change_factor", "Enter how many new usage units equal one old usage unit.")
+        elif usage_changed:
+            ratio = cleaned.get("usage_unit_change_factor") or Decimal("1")
+            cleaned["output_grams_per_usage_unit"] = (
+                self.original_measurement.get("output_grams_per_usage_unit", Decimal("0")) / ratio
+            )
         if not usage_changed:
             cleaned["usage_unit_change_factor"] = Decimal("1")
         return cleaned
@@ -303,6 +321,7 @@ class FinishedGoodForm(StyledModelForm):
     def __init__(self, *args, business=None, ingredient_choices=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.business = business
+        vocabulary = vertical_config(business)
         self.fields["stock"].required = False
         self.fields["reorder_level"].required = False
         self.fields["selling_price"].required = False
@@ -349,9 +368,11 @@ class FinishedGoodForm(StyledModelForm):
             self.fields["units_per_batch"].help_text = (
                 "How many base units one normal production batch yields. Example: 120 portions, 48 bottles, 30 pieces or 12 assembled units."
             )
-            self.fields["output_weight_grams"].label = "Finished output weight per unit (g)"
+            self.fields["output_weight_grams"].label = vocabulary["output_weight_field_label"]
             self.fields["output_weight_grams"].help_text = (
-                "Finished weight of one base production unit in grams. Required for Base material production to apportion the shared pool by output weight. The live check shows batch output weight and the recipe-reference base-material rate."
+                f"Weight of one {vocabulary['finished_output_label']} unit in grams. Required for "
+                f"{vocabulary['base_pool_label']} production to apportion the pool by output weight. "
+                "The live check compares standard batch output weight with the recipe quantity."
             )
         if "base_material" in self.fields:
             self.fields["base_material"].required = False
@@ -360,9 +381,9 @@ class FinishedGoodForm(StyledModelForm):
             ).order_by("name")
             if not self.is_bound:
                 _set_static_model_choices(self.fields["base_material"], ingredient_choices)
-            self.fields["base_material"].label = "Base material"
+            self.fields["base_material"].label = vocabulary["base_material_label"] if business else "Base material"
             self.fields["base_material"].help_text = (
-                "Optional. Choose a main recipe material if you sometimes size production by how much of that material you want to use. "
+                f"Optional. Choose the {self.fields['base_material'].label.lower()} used to size some production. "
                 "It must also appear in the recipe below."
             )
         if business:

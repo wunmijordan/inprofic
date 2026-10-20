@@ -477,6 +477,7 @@ main :is([data-pos-category][aria-pressed="true"],
   [data-commerce-tab][aria-selected="true"],
   [data-founder-tab][aria-selected="true"],
   .financial-period-btn[aria-pressed="true"],
+  .financial-mode-btn[aria-pressed="true"],
   .stock-period-btn[aria-pressed="true"]) {
   border-color: var(--ui-accent) !important;
   background: var(--ui-accent) !important;
@@ -484,11 +485,42 @@ main :is([data-pos-category][aria-pressed="true"],
   box-shadow: 0 3px 9px color-mix(in srgb, var(--ui-accent) 30%, transparent) !important;
 }
 
+/* Modal and page tabs share the same active state, including Alpine-driven
+   dashboard search tabs and the inventory detail modal. */
+main [role="tab"][aria-selected="true"] {
+  border-color: var(--ui-accent) !important;
+  background: color-mix(in srgb, var(--ui-accent) 12%, var(--ui-surface)) !important;
+  color: var(--ui-surface-text) !important;
+  box-shadow: inset 0 -2px var(--ui-accent);
+}
+
+main [role="tab"][aria-selected="false"] {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--ui-surface-muted-text) !important;
+  box-shadow: none;
+}
+
+main [role="tab"][aria-selected="false"]:hover {
+  background: color-mix(in srgb, var(--ui-accent) 8%, var(--ui-surface)) !important;
+  color: var(--ui-surface-text) !important;
+}
+
+main .stock-history-legend {
+  color: var(--ui-surface-text) !important;
+  font-weight: 600;
+}
+
+main .stock-history-legend > span {
+  color: var(--ui-surface-text) !important;
+}
+
 main :is([data-pos-category][aria-pressed="false"],
   [data-material-tab][aria-selected="false"],
   [data-commerce-tab][aria-selected="false"],
   [data-founder-tab][aria-selected="false"],
   .financial-period-btn[aria-pressed="false"],
+  .financial-mode-btn[aria-pressed="false"],
   .stock-period-btn[aria-pressed="false"]) {
   border-color: var(--ui-border) !important;
   background: var(--ui-surface) !important;

@@ -14,6 +14,8 @@
   /* Search results follow the active theme: surface, divider, hover and chip all come from tokens. */
   .dashboard-search-menu { border: 1px solid var(--ui-border); background: var(--ui-surface) !important; }
   .dashboard-search-result { border-bottom: 1px solid var(--ui-border); background: transparent; color: var(--ui-surface-text); }
+  .dashboard-search-result .text-stone-800 { color: var(--ui-surface-text) !important; }
+  .dashboard-search-result .text-stone-400, .dashboard-search-result .text-stone-500 { color: var(--ui-surface-muted-text) !important; }
   .dashboard-search-result:last-child { border-bottom: 0; }
   .dashboard-search-result:hover, .dashboard-search-result:focus-visible { background: color-mix(in srgb, var(--ui-accent) 14%, var(--ui-surface-muted)) !important; }
   .dashboard-search-chip { background: var(--ui-surface-muted) !important; color: var(--ui-surface-text) !important; border: 1px solid var(--ui-border); }
@@ -130,9 +132,9 @@
         <button @click="closeDetail()" type="button" class="shrink-0 grid h-9 w-9 place-items-center rounded-full bg-stone-100 text-stone-500 hover:bg-stone-200 hover:text-stone-800 text-xl leading-none" aria-label="Close search detail">&times;</button>
       </div>
 
-      <nav class="shrink-0 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-[#E7DFCC] bg-white px-4 md:px-6" aria-label="Search detail sections">
+      <nav class="shrink-0 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-[#E7DFCC] bg-white px-4 md:px-6" role="tablist" aria-label="Search detail sections">
         <template x-for="tab in detailTabs()" :key="tab.key">
-          <button type="button" @click="detailTab = tab.key" class="whitespace-nowrap border-b-2 px-3 py-3 text-xs font-semibold transition" :class="detailTab === tab.key ? 'border-[#8f172d] text-[#8f172d]' : 'border-transparent text-stone-400 hover:text-stone-700'" x-text="tab.label"></button>
+          <button type="button" role="tab" :aria-selected="detailTab === tab.key ? 'true' : 'false'" @click="detailTab = tab.key" class="whitespace-nowrap border-b-2 border-transparent px-3 py-3 text-xs font-semibold transition" x-text="tab.label"></button>
         </template>
       </nav>
 

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-{% if kitchen_mode %}<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Production entry</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit entry #{{ obj.display_number }}{% else %}New production entry{% endif %}</h2><p class="mt-1 max-w-3xl text-sm text-stone-500">Choose what was made and how it is sized. The order is saved as pending with no channel. You can adjust the flexible material from the order page, and a manager later assigns each portion to its channel.</p></div>{% else %}<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Production planning</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit{% else %}New{% endif %} {{ vertical_ui.orders|slice:":-1" }}</h2><p class="mt-1 max-w-3xl text-sm text-stone-500">Plan customer demand or stock production, then let INPROFIC calculate the material requirement from the product recipe.</p></div>{% endif %}
+{% if kitchen_mode %}<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Production entry</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit entry #{{ obj.display_number }}{% else %}New production entry{% endif %}</h2><p class="mt-1 max-w-3xl text-sm text-stone-500">Choose what was made and how it is sized. The order is saved as pending with no channel. You can adjust the flexible material from the order page, and a manager later assigns each portion to its channel.</p></div>{% else %}<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Production planning</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit{% else %}New{% endif %} {{ vertical_ui.orders|slice:":-1" }}</h2><p class="mt-1 max-w-3xl text-sm text-stone-500">Plan customer demand or stock production, then let INPROFIC calculate the material requirement from each product's {{ vertical_ui.recipe_label|lower }}.</p></div>{% endif %}
 {% if kitchen_mode %}<style>#order-form.kitchen-mode .production-plan-col,#order-form.kitchen-mode .kitchen-hide-col{display:none !important}#order-form.kitchen-mode table.min-w-\[980px\]{min-width:0}</style>{% endif %}
 <div class="cf-form-shell">
 <div class="cf-form-body">
@@ -87,7 +87,11 @@
     </div>
 
     </div>{# /kitchen-hide #}
-    {% include "_field.html" with field=form.date %}
+    <div class="grid grid-cols-1 {% if production_enabled %}sm:grid-cols-2{% endif %} gap-3">
+      {% include "_field.html" with field=form.date %}
+      {% if production_enabled %}{% include "_field.html" with field=form.color_tag %}{% endif %}
+    </div>
+    {% if production_enabled %}<div id="daily-production-color-hint" class="hidden mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#E7DFCC] bg-stone-50 px-3 py-2 text-xs text-stone-600" aria-live="polite"><span id="daily-production-color-copy"></span><button id="apply-daily-production-color" type="button" class="hidden shrink-0 rounded-md border border-[#8f172d]/30 bg-white px-2.5 py-1.5 font-semibold text-[#8f172d] hover:bg-[#FFF4F6]">Apply to this order</button></div>{% endif %}
     <div {% if kitchen_mode %}hidden{% endif %}>{# kitchen-hide: market stock, customer, payment #}
     <div id="distribution-market-wrap" class="hidden mb-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
       {% include "_field.html" with field=form.is_market_stock %}
@@ -118,20 +122,16 @@
     <div class="mt-5 mb-2 flex flex-wrap items-end justify-between gap-3">
       <div>
         <span class="cf-form-section-title">Products & production size</span>
-        <p class="mt-1 max-w-4xl text-[11px] leading-5 text-stone-500">For customer orders, enter the requested product quantity. For eligible stock production, <b>Production basis</b> applies to the whole order. In <b>Base material</b> mode, the pool is split by finished output weight and approval releases the exact pool. Set the intended output mix as the baseline; added weight is then checked against it immediately. Set each product's unit weight in grams on its product form.</p>
+        <p class="mt-1 max-w-4xl text-[11px] leading-5 text-stone-500">For customer orders, enter the requested product quantity. For eligible stock production, <b>Production basis</b> applies to the whole order. In <b>{{ vertical_ui.base_pool_label }}</b> mode, choose the {{ vertical_ui.base_material_label|lower }} explicitly; its measured yield maps combined {{ vertical_ui.finished_output_label }} weight to pool use, while approval releases the exact pool. Product quantity mode continues to release each {{ vertical_ui.recipe_label|lower }} proportionally and shows the combined output weight.</p>
       </div>
     </div>
 
-    <div id="production-basis-wrap" class="mb-3 hidden rounded-xl border border-[#E7DFCC] bg-stone-50/60 p-3">
+    <div id="production-basis-wrap" data-base-output-rate="{{ formset.base_material_output_rate|default:'0' }}" class="mb-3 hidden rounded-xl border border-[#E7DFCC] bg-stone-50/60 p-3">
       <div class="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,16rem)_minmax(0,16rem)_1fr] md:items-end">
         <div>{% include "_field.html" with field=form.production_basis %}</div>
+        <div id="order-base-material-select-wrap" class="hidden">{% include "_field.html" with field=form.base_material %}</div>
         <div id="order-base-material-quantity-wrap" class="hidden">{% include "_field.html" with field=form.base_material_quantity %}</div>
-        <input type="hidden" id="base-material-output-rate" name="base_material_output_rate" value="{{ formset.base_material_output_rate|default:'0' }}">
         <div id="base-material-allocation-summary" class="hidden rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-800"></div>
-        <div id="base-material-baseline-action" class="hidden md:col-span-3">
-          <button type="button" id="lock-base-material-baseline" class="rounded-md border border-sky-200 bg-white px-3 py-1.5 text-xs font-medium text-sky-800 hover:bg-sky-50">Use current output as pool baseline</button>
-          <span class="ml-2 text-[11px] text-stone-500">After setting it, added output increases mapped pool use.</span>
-        </div>
       </div>
     </div>
 
@@ -169,7 +169,7 @@
           </tbody>
         </table>
       </div>
-      <button id="add-product-button" type="button" onclick="addOrderProductRow()" class="w-full text-xs text-[#8f172d] font-medium py-2 hover:bg-[#F0EAD9] disabled:cursor-not-allowed disabled:opacity-45">+ Add Product</button>
+      <button id="add-product-button" type="button" onclick="addOrderProductRow()" class="w-full text-xs text-[#8f172d] font-medium py-2 hover:bg-[#F0EAD9]">+ Add Product</button>
     </div>
 
     {% include "_field.html" with field=form.notes %}
@@ -182,11 +182,17 @@
 </div>
 </div>
 {{ prices|json_script:"fg-prices" }}
+{{ daily_colors|json_script:"production-day-colors" }}
 <script>
   const PRICE_DATA = JSON.parse(document.getElementById('fg-prices').textContent);
   const PRICES = PRICE_DATA.products || {};
+  const BASE_MATERIALS = PRICE_DATA.base_materials || {};
   const CUSTOMER_OVERRIDES = PRICE_DATA.customer_overrides || {};
-  let currentBaseMaterialOutputWeight = 0;
+  const PRODUCTION_DAY_COLORS = JSON.parse(document.getElementById('production-day-colors').textContent || '{}');
+  const baseMaterialLabel = '{{ vertical_ui.base_material_label|escapejs }}';
+  const poolLabel = '{{ vertical_ui.base_pool_label|escapejs }}';
+  const recipeLabel = '{{ vertical_ui.recipe_label|lower|escapejs }}';
+  const outputLabel = '{{ vertical_ui.finished_output_label|escapejs }}';
 
   function toggleUnpaidReason() {
     const type = document.querySelector('select[name="transaction_type"]')?.value || document.querySelector('input[name="transaction_type"]:checked')?.value;
@@ -224,6 +230,31 @@
     return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 4 });
   }
 
+  function refreshDailyProductionColor() {
+    const wrap = document.getElementById('daily-production-color-hint');
+    const copy = document.getElementById('daily-production-color-copy');
+    const apply = document.getElementById('apply-daily-production-color');
+    const date = document.querySelector('[name="date"]')?.value;
+    const configured = PRODUCTION_DAY_COLORS[date];
+    if (!wrap || !copy || !apply) return;
+    wrap.classList.remove('hidden');
+    if (configured) {
+      copy.innerHTML = `<span class="mr-1 inline-block h-3 w-3 rounded-full border border-black/10 align-middle" style="background-color:${configured.color}"></span>${configured.label} is set for this production date.`;
+      apply.classList.remove('hidden');
+      apply.onclick = () => {
+        const colorField = document.querySelector('[name="color_tag"]');
+        if (colorField) {
+          colorField.value = configured.color;
+          colorField.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      };
+    } else {
+      copy.textContent = 'No daily production color is set for this date.';
+      apply.classList.add('hidden');
+      apply.onclick = null;
+    }
+  }
+
   function setBaseRowHint(row, text = '', invalid = false) {
     const hint = row.querySelector('.base-material-row-hint');
     if (!hint) return;
@@ -231,15 +262,6 @@
     hint.classList.toggle('hidden', !text);
     hint.classList.toggle('text-rose-600', Boolean(text) && invalid);
     hint.classList.toggle('text-stone-500', !invalid);
-  }
-
-  function sharedBaseFromRows() {
-    for (const row of activeOrderRows()) {
-      const productId = row.querySelector('select[name$="-finished_good"]')?.value;
-      const base = PRICES[productId]?.base_material;
-      if (base) return base;
-    }
-    return null;
   }
 
   function syncSharedBaseProductOptions(sharedBase) {
@@ -268,15 +290,17 @@
     const baseQuantityWrap = document.getElementById('order-base-material-quantity-wrap');
     const summary = document.getElementById('base-material-allocation-summary');
     const basisSelect = document.querySelector('[name="production_basis"]');
+    const sharedBaseSelect = document.querySelector('[name="base_material"]');
+    const sharedBaseWrap = document.getElementById('order-base-material-select-wrap');
     const baseInput = document.querySelector('[name="base_material_quantity"]');
-    const outputRateInput = document.getElementById('base-material-output-rate');
-    const addButton = document.getElementById('add-product-button');
     const available = baseSizingAvailable();
 
     if (basisWrap) basisWrap.style.display = available ? 'block' : 'none';
     if (!available && basisSelect) basisSelect.value = 'product_quantity';
 
     const usingBase = available && basisSelect?.value === 'base_material';
+    if (sharedBaseWrap) sharedBaseWrap.style.display = usingBase ? 'block' : 'none';
+    if (sharedBaseSelect) sharedBaseSelect.disabled = !usingBase;
     if (baseQuantityWrap) baseQuantityWrap.style.display = usingBase ? 'block' : 'none';
     if (baseInput) {
       baseInput.disabled = !usingBase;
@@ -290,25 +314,14 @@
       if (lockProductionPlan) input.value = '0';
     });
 
-    if (!usingBase) {
-      syncSharedBaseProductOptions(null);
-      activeOrderRows().forEach((row) => {
-        setBaseRowHint(row);
-        const productSelect = row.querySelector('select[name$="-finished_good"]');
-        if (productSelect) productSelect.disabled = false;
-      });
-      if (summary) summary.classList.add('hidden');
-      if (addButton) {
-        addButton.disabled = false;
-        addButton.title = '';
-      }
-      return;
-    }
-
-    const sharedBase = sharedBaseFromRows();
+    const selectedBase = sharedBaseSelect?.value
+      ? { id: sharedBaseSelect.value, ...BASE_MATERIALS[String(sharedBaseSelect.value)] }
+      : null;
+    const sharedBase = usingBase ? selectedBase : null;
     syncSharedBaseProductOptions(sharedBase);
     const allocated = numberValue(baseInput);
     const recipeRows = [];
+    const recipeTotals = new Map();
     let hasInvalidProduct = false;
 
     activeOrderRows().forEach((row) => {
@@ -320,14 +333,18 @@
       }
 
       const base = product.base_material;
-      if (!base) {
+      if (usingBase && !base) {
         hasInvalidProduct = true;
-        setBaseRowHint(row, 'This product has no base material and cannot use the shared base-material production basis.', true);
+        setBaseRowHint(row, `This product has no configured ${baseMaterialLabel.toLowerCase()} in its ${recipeLabel}.`, true);
         return;
       }
-      if (sharedBase && String(base.id) !== String(sharedBase.id)) {
+      if (usingBase && sharedBase && String(base.id) !== String(sharedBase.id)) {
         hasInvalidProduct = true;
         setBaseRowHint(row, `This product uses ${base.name}; this production is already drawing from ${sharedBase.name}.`, true);
+        return;
+      }
+      if (!base) {
+        setBaseRowHint(row);
         return;
       }
 
@@ -336,58 +353,81 @@
       const unitsPerBatch = Math.max(Number(product.units_per_batch || 1), 0.0000001);
       const outputWeight = Math.max(Number(product.output_weight_grams || 0), 0);
       const recipeQuantity = Math.max(Number(base.qty_per_batch || 0), 0);
-      if (outputWeight <= 0) {
+      if (usingBase && outputWeight <= 0) {
         hasInvalidProduct = true;
-        setBaseRowHint(row, 'Set this product\'s finished output weight in grams on its product form before using Base material production.', true);
+        setBaseRowHint(row, `Set this product's ${outputLabel} weight in grams on its product form before using ${poolLabel} production.`, true);
         return;
       }
       if (recipeQuantity <= 0) {
         hasInvalidProduct = true;
-        setBaseRowHint(row, `Set a positive ${base.name} quantity in this product's recipe before using Base material production.`, true);
+        setBaseRowHint(row, `Set a positive ${base.name} quantity in this product's ${recipeLabel}.`, true);
         return;
       }
       const rowUnits = batches * unitsPerBatch + pieces;
       const batchOutputWeight = unitsPerBatch * outputWeight;
       const rowOutputWeight = rowUnits * outputWeight;
-      const exactRowUse = batchOutputWeight > 0
-        ? recipeQuantity * rowOutputWeight / batchOutputWeight
-        : 0;
+      const exactRowUse = recipeQuantity * (batches + pieces / unitsPerBatch);
       recipeRows.push({ row, rowOutputWeight, batchOutputWeight, recipeQuantity, exactRowUse, base });
+      const total = recipeTotals.get(String(base.id)) || { base, quantity: 0, outputWeight: 0 };
+      total.quantity += exactRowUse;
+      total.outputWeight += rowOutputWeight;
+      recipeTotals.set(String(base.id), total);
     });
 
-    const totalOutputWeight = recipeRows.reduce((sum, item) => sum + item.rowOutputWeight, 0);
-    currentBaseMaterialOutputWeight = totalOutputWeight;
-    const shares = recipeRows.map(({ rowOutputWeight }) => totalOutputWeight > 0
+    const poolRows = usingBase ? recipeRows.filter(({ base }) => sharedBase && String(base.id) === String(sharedBase.id)) : [];
+    const totalOutputWeight = poolRows.reduce((sum, item) => sum + item.rowOutputWeight, 0);
+    const shares = poolRows.map(({ rowOutputWeight }) => totalOutputWeight > 0
       ? Math.round((allocated * rowOutputWeight / totalOutputWeight + Number.EPSILON) * 10000) / 10000
       : 0);
     if (shares.length && totalOutputWeight > 0) {
       const largestShare = shares.reduce((largest, share, index) => share > shares[largest] ? index : largest, 0);
       shares[largestShare] += allocated - shares.reduce((sum, share) => sum + share, 0);
     }
-    recipeRows.forEach(({ row, rowOutputWeight, batchOutputWeight, recipeQuantity, exactRowUse, base }, index) => {
-      setBaseRowHint(row, `${formatQuantity(shares[index])} ${base.unit} ${base.name} pool share · ${formatQuantity(exactRowUse)} ${base.unit} recipe reference · ${formatQuantity(rowOutputWeight)} g output (batch: ${formatQuantity(recipeQuantity)} ${base.unit} / ${formatQuantity(batchOutputWeight)} g).`);
-    });
+    if (usingBase) {
+      poolRows.forEach(({ row, rowOutputWeight, batchOutputWeight, recipeQuantity, exactRowUse, base }, index) => {
+        setBaseRowHint(row, `${formatQuantity(shares[index])} ${base.unit} ${base.name} pool share · ${formatQuantity(exactRowUse)} ${base.unit} ${recipeLabel} reference · ${formatQuantity(rowOutputWeight)} g ${outputLabel} (standard batch: ${formatQuantity(recipeQuantity)} ${base.unit} / ${formatQuantity(batchOutputWeight)} g).`);
+      });
+    } else {
+      recipeRows.forEach(({ row, rowOutputWeight, exactRowUse, base }) => {
+        setBaseRowHint(row, `${formatQuantity(exactRowUse)} ${base.unit} ${base.name} ${recipeLabel} release · ${formatQuantity(rowOutputWeight)} g ${outputLabel}.`);
+      });
+    }
 
-    const poolMapped = totalOutputWeight > 0;
-    const outputRate = numberValue(outputRateInput);
-    const baselineAction = document.getElementById('base-material-baseline-action');
-    if (baselineAction) baselineAction.classList.toggle('hidden', !usingBase || outputRate > 0);
-    // New orders establish their baseline on first save unless explicitly
-    // locked earlier. Saved orders retain it, so additions map above the pool.
-    const poolUsed = poolMapped
-      ? (outputRate > 0 ? outputRate * totalOutputWeight / 1000 : allocated)
-      : 0;
+    const outputYield = Number(sharedBase?.output_grams_per_usage_unit || 0);
+    const savedOutputRate = Number(document.getElementById('production-basis-wrap')?.dataset.baseOutputRate || 0);
+    const outputRate = savedOutputRate > 0 ? savedOutputRate : outputYield > 0 ? 1000 / outputYield : 0;
+    const poolMapped = totalOutputWeight > 0 && outputRate > 0;
+    const poolUsed = poolMapped ? outputRate * totalOutputWeight / 1000 : 0;
     const poolRemaining = Math.max(0, allocated - poolUsed);
     const poolExcess = Math.max(0, poolUsed - allocated);
-    const poolOver = outputRate > 0 && poolExcess > 0.00000001;
+    const poolOver = poolMapped && poolExcess > 0.00000001;
 
     if (summary) {
-      summary.classList.remove('hidden', 'border-rose-200', 'bg-rose-50', 'text-rose-700', 'border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
-      if (!sharedBase) {
+      summary.classList.remove('hidden', 'border-rose-200', 'bg-rose-50', 'text-rose-700', 'border-emerald-200', 'bg-emerald-50', 'text-emerald-800', 'border-amber-200', 'bg-amber-50', 'text-amber-800');
+      if (!usingBase) {
+        const lines = Array.from(recipeTotals.values());
+        if (!lines.length) {
+          summary.classList.add('hidden');
+        } else {
+          const mismatch = lines.some(({ base }) => Number(base.output_grams_per_usage_unit || 0) <= 0);
+          summary.classList.add(mismatch ? 'border-amber-200' : 'border-emerald-200', mismatch ? 'bg-amber-50' : 'bg-emerald-50', mismatch ? 'text-amber-800' : 'text-emerald-800');
+          summary.textContent = lines.map(({ base, quantity, outputWeight }) => {
+            const yieldValue = Number(base.output_grams_per_usage_unit || 0);
+            const mapped = yieldValue > 0 ? outputWeight / yieldValue : 0;
+            return yieldValue > 0
+              ? `${base.name}: ${formatQuantity(quantity)} ${base.unit} ${recipeLabel} release · ${formatQuantity(mapped)} ${base.unit} at configured yield · ${formatQuantity(outputWeight / 1000)} kg ${outputLabel}`
+              : `${base.name}: ${formatQuantity(quantity)} ${base.unit} ${recipeLabel} release · ${formatQuantity(outputWeight / 1000)} kg ${outputLabel} · production yield not configured`;
+          }).join(' | ');
+          summary.classList.remove('hidden');
+        }
+      } else if (!sharedBase) {
         summary.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
         summary.textContent = allocated > 0
-          ? `${formatQuantity(allocated)} pool quantity available. Select a product to see its allocation.`
-          : 'Enter the shared base-material quantity, then select the first product. Its base material becomes the basis for every product in this order.';
+          ? `Choose the shared ${baseMaterialLabel.toLowerCase()} above. ${formatQuantity(allocated)} pool quantity is available.`
+          : `Choose the shared ${baseMaterialLabel.toLowerCase()} and enter the pool quantity. Product rows do not select the pool material.`;
+      } else if (totalOutputWeight > 0 && !outputRate) {
+        summary.classList.add('border-amber-200', 'bg-amber-50', 'text-amber-800');
+        summary.textContent = `${sharedBase.name}: ${formatQuantity(allocated)} ${sharedBase.unit} pool · ${formatQuantity(totalOutputWeight / 1000)} kg output · measured production yield is missing, so mapped use and excess cannot yet be calculated.`;
       } else if (poolMapped) {
         if (poolOver || hasInvalidProduct) {
           summary.classList.add('border-rose-200', 'bg-rose-50', 'text-rose-700');
@@ -396,7 +436,7 @@
             : `${sharedBase.name}: ${formatQuantity(allocated)} ${sharedBase.unit} pool · ${formatQuantity(poolUsed)} ${sharedBase.unit} mapped by weight · ${formatQuantity(poolRemaining)} ${sharedBase.unit} remaining · ${formatQuantity(totalOutputWeight / 1000)} kg output. Fix the product setup above.`;
         } else {
           summary.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
-          summary.textContent = `${sharedBase.name}: ${formatQuantity(allocated)} ${sharedBase.unit} pool · ${formatQuantity(poolUsed)} ${sharedBase.unit} mapped to output weight · ${formatQuantity(poolRemaining)} ${sharedBase.unit} remaining · ${formatQuantity(totalOutputWeight / 1000)} kg output.${outputRate > 0 ? '' : ' Set this mix as baseline before adding more, or it will be set when saved.'}`;
+          summary.textContent = `${sharedBase.name}: ${formatQuantity(allocated)} ${sharedBase.unit} pool · ${formatQuantity(poolUsed)} ${sharedBase.unit} mapped from output weight · ${formatQuantity(poolRemaining)} ${sharedBase.unit} remaining · ${formatQuantity(totalOutputWeight / 1000)} kg output.`;
         }
       } else {
         summary.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
@@ -404,12 +444,6 @@
       }
     }
 
-    if (addButton) {
-      addButton.disabled = allocated <= 0 || hasInvalidProduct || poolOver;
-      addButton.title = addButton.disabled
-        ? (poolOver ? 'Reduce product quantities to fit the shared base-material pool.' : 'Complete the shared base-material setup before adding another product.')
-        : '';
-    }
   }
 
   function toggleOrderType() {
@@ -589,8 +623,6 @@
 
   function addOrderProductRow() {
     refreshBaseMaterialAllocation();
-    const addButton = document.getElementById('add-product-button');
-    if (addButton?.disabled) return;
     const newRow = addFormsetRow('items', 'order-rows');
     if (newRow) wireRows();
   }
@@ -601,24 +633,19 @@
     }
   });
   document.querySelector('[name="production_basis"]')?.addEventListener('change', refreshBaseMaterialAllocation);
+  document.querySelector('[name="base_material"]')?.addEventListener('change', refreshBaseMaterialAllocation);
   document.querySelector('[name="base_material_quantity"]')?.addEventListener('input', refreshBaseMaterialAllocation);
-  document.getElementById('lock-base-material-baseline')?.addEventListener('click', () => {
-    const rateInput = document.getElementById('base-material-output-rate');
-    const currentPool = numberValue(document.querySelector('[name="base_material_quantity"]'));
-    if (rateInput && currentBaseMaterialOutputWeight > 0 && currentPool > 0) {
-      rateInput.value = String(currentPool / (currentBaseMaterialOutputWeight / 1000));
-      refreshBaseMaterialAllocation();
-    }
-  });
   document.querySelectorAll('input[name="order_type"]').forEach((el) => el.addEventListener('change', () => {
     toggleOrderType();
     refreshPrices();
   }));
+  document.querySelector('[name="date"]')?.addEventListener('change', refreshDailyProductionColor);
   document.querySelector('[name="customer"]')?.addEventListener('change', refreshPrices);
   document.querySelector('[name="customer_payment_status"]')?.addEventListener('change', toggleCustomerPaymentFields);
   document.querySelector('[name="transaction_type"]')?.addEventListener('change', toggleUnpaidReason);
 
   toggleOrderType();
+  refreshDailyProductionColor();
   wireRows();
   refreshBaseMaterialAllocation();
   toggleUnpaidReason();

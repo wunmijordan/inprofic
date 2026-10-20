@@ -36,7 +36,7 @@
     <tbody>
       {% for o in orders %}
       <tr class="border-t border-[#E7DFCC]">
-        <td class="px-3 py-2 font-mono text-xs font-semibold">#{{ o.display_number }}</td>
+        <td class="px-3 py-2 font-mono text-xs font-semibold">{% if o.color_tag %}<span class="mr-1 inline-block h-3 w-3 rounded-full border border-black/10 align-middle" style="background-color:{{ o.color_tag }}" title="Daily production color tag"></span>{% endif %}#{{ o.display_number }}</td>
         <td class="px-3 py-2 font-mono text-xs">{{ o.date }}</td>
         {% if not kitchen_view %}
         <td class="px-3 py-2">

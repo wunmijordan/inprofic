@@ -48,6 +48,13 @@
       {% include "_field.html" with field=form.package_unit %}
       {% include "_field.html" with field=form.usage_unit %}
     </div>
+    {% if vertical_ui.uses_production and form.output_grams_per_usage_unit %}
+    <div class="mb-4 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+      <p class="mb-2 text-xs font-semibold text-amber-900">{{ vertical_ui.measured_output_label }}</p>
+      {% include "_field.html" with field=form.output_grams_per_usage_unit %}
+      <p class="text-[11px] leading-5 text-amber-800">This measured rate powers {{ vertical_ui.base_pool_label|lower }} mapping and excess checks. It does not alter {{ vertical_ui.recipe_label|lower }}-based material release in Product quantity orders.</p>
+    </div>
+    {% endif %}
 
     <section class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4" aria-labelledby="conversion-trigger-title">
       <div><div class="cf-form-section-title text-sky-700">2 · Conversion</div><h3 id="conversion-trigger-title" class="mt-1 text-sm font-semibold text-sky-950">Need to convert units or a manual stock count?</h3><p class="mt-0.5 text-[11px] text-sky-800/75">Open the calculator only when you need it; applied values still feed the fields in this {% if vertical_ui.uses_production %}material{% else %}supply{% endif %} form.</p></div>

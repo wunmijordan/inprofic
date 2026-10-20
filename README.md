@@ -38,9 +38,17 @@ what was borrowed and what was deliberately left out).
   transaction, with a shortage warning you can override. For stock production
   sized by a shared base-material pool, output weight divides the exact pool
   across products in the live allocation check and approval releases those
-  shares. The first saved product mix establishes a fixed finished-weight
-  baseline (or staff can lock it earlier); later output increases are checked
-  against it while approval still releases the exact entered pool.
+  shares. The material is selected explicitly on the order, and its measured
+  finished-output yield maps combined product weight to pool use and excess.
+  Enter that measured yield on the Raw Material form; the product form's
+  recipe-derived comparison is informational and does not overwrite it.
+  Product quantity orders continue to release the registered recipe quantities
+  while showing the combined finished weight and configured-yield comparison.
+  Production Settings can schedule a color and optional expiry date by production
+  date; staff can apply the color to an order and its product rows, then apply
+  the expiry date to each batch at completion. Market Stock release and Physical Store transfer
+  forms show live available, entered and remaining quantities for the selected
+  product.
 - **Reports** — a date-range monthly operational PDF with revenue, channel-origin, procurement, production and inventory charts/tables; CSV/Excel exports and a full JSON backup.
 - **Founder mailing workspace** — platform-level mailing staff can use reusable INPROFIC-branded topics, business/service/plan targeting, immediate delivery with retry-safe queued fallback, and campaign send analytics without receiving tenant access or Founder subscription controls.
 - **Trial re-registration protection** — existing tenant owner email, phone and exact business name cannot create a second free trial after expiry or cancellation; credentials from a tenant that was hard-deleted are intentionally eligible for registration again.
@@ -96,11 +104,12 @@ quantity is still in units (inherited from wherever it came from), but
 production always rounds up to whole batches — order 50 loaves at a
 41-per-batch size, and 2 batches (82) get made, with the extra 32 landing
 as shelf stock. Production products can also record a finished unit weight in
-grams. Base-material stock orders apportion the entered material pool by each
-product's finished output weight for the live allocation check and raw-material
-release. The first saved output mix becomes the pool's fixed weight baseline,
-or staff can lock that baseline while entering the order. Later increases are
-checked against it, and approval releases the exact pool.
+grams. Production-centric businesses can record a measured finished-output
+yield per raw-material usage unit. Base-material stock orders use this fixed
+material setting to map combined output weight to pool use and excess, then
+apportion the exact entered material pool by each product's finished output
+weight for release. Product quantity orders keep recipe-based raw-material
+release and show the configured-yield comparison beside total output weight.
 
 ## Quick start — run it today, locally
 

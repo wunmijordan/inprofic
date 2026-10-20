@@ -15,7 +15,7 @@
         {% include "_field.html" with field=form.product_category %}
       </div>
       {% include "_field.html" with field=form.description %}
-      <div class="max-w-xl">{% include "_field.html" with field=form.variant_of %}<p class="-mt-2 mb-3 text-[11px] leading-5 text-stone-500">Variants appear as size choices on the main storefront card when both products are published and available. Each remains a separate product with its own recipe, stock and pricing.</p></div>
+      <div class="max-w-xl">{% include "_field.html" with field=form.variant_of %}<p class="-mt-2 mb-3 text-[11px] leading-5 text-stone-500">Variants appear as size choices on the main storefront card when both products are published and available. Each remains a separate product with its own {{ vertical_ui.recipe_label|lower }}, stock and pricing.</p></div>
       <div class="grid gap-3 md:grid-cols-2">{% include "_field.html" with field=form.storefront_option_label %}{% include "_field.html" with field=form.storefront_option_values %}</div>
       <p class="-mt-2 mb-3 text-[11px] leading-5 text-stone-500">Optional no-extra-cost choice such as flavor, color, or sliced / unsliced. Enter one choice per line.</p>
       <p data-form-help-text data-form-help-for="{{ form.product_category.id_for_label }}" class="-mt-1 mb-3 text-[11px] text-stone-500">Need another storefront grouping? <a href="{% url 'product_categories' %}" class="font-semibold text-[#8f172d] hover:underline">Manage product categories</a>. Category is independent from whether the product is made in-house or procured for resale.</p>
@@ -281,6 +281,7 @@
 </div>
 
 {{ raw_material_units|json_script:"raw-material-usage-units" }}
+{{ raw_material_output_yields|json_script:"raw-material-output-yields" }}
 {{ finished_good_units|json_script:"finished-good-units" }}
 <script>
   const portionRawUnits = JSON.parse(document.getElementById('raw-material-usage-units')?.textContent || '{}');
@@ -403,6 +404,12 @@
   const rawMaterialUsageUnits = JSON.parse(
     document.getElementById('raw-material-usage-units').textContent || '{}'
   );
+  const rawMaterialOutputYields = JSON.parse(
+    document.getElementById('raw-material-output-yields').textContent || '{}'
+  );
+  const baseMaterialTerm = '{{ vertical_ui.base_material_label|lower|escapejs }}';
+  const poolTerm = '{{ vertical_ui.base_pool_label|lower|escapejs }}';
+  const finishedOutputTerm = '{{ vertical_ui.finished_output_label|escapejs }}';
 
   function refreshUsageUnits(containerId) {
     document.querySelectorAll(`#${containerId} tr`).forEach((row) => {
@@ -457,13 +464,14 @@
     if (batchYield > 0 && unitWeight > 0) {
       const output = `Standard batch output: ${format(batchYield, 2)} units × ${format(unitWeight)} g = ${format(batchWeight)} g finished weight.`;
       if (baseId && recipeInput && recipeQuantity > 0) {
-        const recipeRate = batchWeight > 0 ? recipeQuantity / (batchWeight / 1000) : 0;
-        panel.textContent = `${output} ${baseName}: ${format(recipeQuantity, 4)} ${usageUnit} per batch; recipe-reference rate ${format(recipeRate, 4)} ${usageUnit} per kg finished output.`;
+        const recipeOutputYield = recipeQuantity > 0 ? batchWeight / recipeQuantity : 0;
+        const configuredYield = Number(rawMaterialOutputYields[String(baseId)] || 0);
+        panel.textContent = `${output} ${baseName}: ${format(recipeQuantity, 4)} ${usageUnit} per batch; recipe-reference yield ${format(recipeOutputYield, 3)} g ${finishedOutputTerm} per ${usageUnit}. ${configuredYield > 0 ? `Measured production yield: ${format(configuredYield, 3)} g per ${usageUnit}.` : `Set the measured yield on the Raw Material form to enable ${poolTerm} checks.`}`;
       } else {
-        panel.textContent = `${output} Select a base material and add its per-batch recipe quantity to see the material relationship.`;
+        panel.textContent = `${output} Select a ${baseMaterialTerm} and add its per-batch recipe quantity to see the material relationship.`;
       }
     } else {
-      panel.textContent = 'Enter units per batch and finished unit weight to see the finished batch weight beside the base-material recipe quantity.';
+      panel.textContent = `Enter units per batch and finished unit weight to see the finished batch weight beside the ${baseMaterialTerm} recipe quantity.`;
     }
   }
 

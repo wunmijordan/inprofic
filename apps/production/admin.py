@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Order, OrderAllocation, OrderAllocationLine, OrderNumberSequence, OrderItem, ProductionBatch, ProductionQualityCheck, ProductionRun, ProductionOffcutAllocation
+from .models import Order, OrderAllocation, OrderAllocationLine, OrderNumberSequence, OrderItem, ProductionBatch, ProductionDaySetting, ProductionQualityCheck, ProductionRun, ProductionOffcutAllocation
 
 admin.site.register(Order)
 admin.site.register(OrderItem)
@@ -9,6 +9,7 @@ admin.site.register(ProductionBatch)
 admin.site.register(ProductionQualityCheck)
 
 admin.site.register(ProductionRun)
+admin.site.register(ProductionDaySetting)
 
 admin.site.register(OrderNumberSequence)
 

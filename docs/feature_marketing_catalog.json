@@ -90,6 +90,15 @@
     "added_on": ""
   },
   {
+    "id": "production-day-settings",
+    "name": "Production day color and expiry settings",
+    "group": "production",
+    "audience": "production teams, storekeepers and owners",
+    "proof": "Schedule a color and optional expiry date by production date, then apply them to orders and completed batches when needed.",
+    "highlight": "NEW",
+    "added_on": "2026-10-20"
+  },
+  {
     "id": "weighted-base-material-allocation",
     "name": "Output-weighted base-material production",
     "group": "production",

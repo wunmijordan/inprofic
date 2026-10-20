@@ -7,7 +7,7 @@
     <a href="{% url 'production_runs' %}" class="rounded-xl px-3 py-2 text-sm text-stone-500 hover:bg-stone-100">Back to runs</a>
   </div>
 
-  <div class="mb-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900"><strong>How it works:</strong> select existing pending orders, save the run, then add more orders from the run page if needed. INPROFIC keeps each order's own recipe scale—including any Base material sizing already chosen—and combines the required materials when the run is approved.</div>
+  <div class="mb-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900"><strong>How it works:</strong> select existing pending orders, save the run, then add more orders from the run page if needed. INPROFIC keeps each order's own {{ vertical_ui.recipe_label|lower }} scale—including any {{ vertical_ui.base_pool_label }} sizing already chosen—and combines the required materials when the run is approved.</div>
 
   <form method="post" class="cf-form-shell">{% csrf_token %}
     <div class="cf-form-body space-y-5">
@@ -17,13 +17,13 @@
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
           {% include "_field.html" with field=form.date %}
           {% include "_field.html" with field=form.run_number %}
-          <div class="md:col-span-2">{% include "_field.html" with field=form.orders %}<p data-form-help-text data-form-help-for="{{ form.orders.id_for_label }}" class="-mt-2 text-[11px] leading-5 text-stone-500">Open the dropdown and tick one or more pending orders. With a base-material basis it only offers orders whose products share one base material.</p></div>
+          <div class="md:col-span-2">{% include "_field.html" with field=form.orders %}<p data-form-help-text data-form-help-for="{{ form.orders.id_for_label }}" class="-mt-2 text-[11px] leading-5 text-stone-500">Open the dropdown and tick one or more pending orders. With a {{ vertical_ui.base_pool_label|lower }} basis it only offers orders whose products share one {{ vertical_ui.base_material_label|lower }}.</p></div>
           <div class="md:col-span-2">{% include "_field.html" with field=form.notes %}</div>
         </div>
       </section>
       <section class="cf-form-section" data-run-basis>
-        <div class="cf-form-section-title mb-1">Base material basis <span class="text-[11px] font-normal text-stone-400">(optional)</span></div>
-        <p class="mb-3 text-xs leading-5 text-stone-500">Enter one overall pool quantity for the whole run. The base material itself is the one set on the products of the orders you add, so every member order (customer orders included) must share it. Product quantities map to each product's recipe use, with finished output weight shown as a live check. The run page totals recipe use against the pool.</p>
+        <div class="cf-form-section-title mb-1">{{ vertical_ui.base_pool_label }} basis <span class="text-[11px] font-normal text-stone-400">(optional)</span></div>
+        <p class="mb-3 text-xs leading-5 text-stone-500">Enter one overall {{ vertical_ui.base_pool_label|lower }} quantity for the whole run. The {{ vertical_ui.base_material_label|lower }} is the one set on the products of the orders you add, so every member order must share it. Product quantities map to each product's {{ vertical_ui.recipe_label|lower }} use, with {{ vertical_ui.finished_output_label }} weight shown as a live check. The run page totals recipe use against the pool.</p>
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
           {% include "_field.html" with field=form.production_basis %}
           <div data-run-basis-fields>{% include "_field.html" with field=form.base_material_quantity %}</div>
@@ -58,7 +58,7 @@
         sync();
       })();
       </script>
-      <div class="rounded-2xl border border-[#E7DFCC] bg-stone-50 p-4 text-xs leading-5 text-stone-600"><strong>No extra material quantities are needed here.</strong> With a base-material basis, flexible ingredients become one merged total for the whole run on the run page. Each selected order already carries its own recipe and production size. Flexible recipe items remain adjustable during approval where the product allows it.</div>
+      <div class="rounded-2xl border border-[#E7DFCC] bg-stone-50 p-4 text-xs leading-5 text-stone-600"><strong>No extra material quantities are needed here.</strong> With a {{ vertical_ui.base_pool_label|lower }} basis, flexible {{ vertical_ui.recipe_item_label|lower }}s become one merged total for the whole run on the run page. Each selected order already carries its own {{ vertical_ui.recipe_label|lower }} and production size. Flexible {{ vertical_ui.recipe_label|lower }} items remain adjustable during approval where the product allows it.</div>
       <div class="flex justify-end"><button type="submit" class="rounded-xl bg-[#8f172d] px-5 py-2.5 text-sm font-semibold text-white">Save shared run</button></div>
     </div>
   </form>

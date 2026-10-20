@@ -18,6 +18,12 @@ VERTICAL_CONFIG = {
         "product_label": "Finished Goods",
         "recipe_label": "Recipe",
         "recipe_item_label": "Ingredient",
+        "base_material_label": "Base ingredient",
+        "base_pool_label": "Base ingredient pool",
+        "measured_output_label": "Measured baked output per usage unit (g)",
+        "finished_output_label": "baked output",
+        "output_weight_field_label": "Finished product weight per unit (g)",
+        "measured_output_example": "Example: if 10 kg of flour yields 14.58 kg of baked products, enter 1,458 g per kg of flour.",
         "production_inputs_label": "Production Inputs",
         "process_label": "Bake / Prepare",
         "platform_label": "Bakery operations",
@@ -59,6 +65,12 @@ VERTICAL_CONFIG = {
         "product_label": "Menu Items",
         "recipe_label": "Recipe",
         "recipe_item_label": "Ingredient",
+        "base_material_label": "Main ingredient",
+        "base_pool_label": "Shared ingredient pool",
+        "measured_output_label": "Measured prepared output per usage unit (g)",
+        "finished_output_label": "prepared food output",
+        "output_weight_field_label": "Prepared product weight per unit (g)",
+        "measured_output_example": "Use a measured production result. For example, 10 kg of an ingredient yielding 14.58 kg of prepared food is 1,458 g per kg.",
         "production_inputs_label": "Kitchen Inputs",
         "process_label": "Prepare / Cook",
         "platform_label": "Restaurant operations",
@@ -100,6 +112,12 @@ VERTICAL_CONFIG = {
         "product_label": "Finished Goods",
         "recipe_label": "Formula / BOM",
         "recipe_item_label": "Component",
+        "base_material_label": "Base material",
+        "base_pool_label": "Shared base-material pool",
+        "measured_output_label": "Measured finished output per usage unit (g)",
+        "finished_output_label": "finished output",
+        "output_weight_field_label": "Finished output weight per unit (g)",
+        "measured_output_example": "Use a measured production result. For example, 10 kg of base material yielding 14.58 kg of finished output is 1,458 g per kg.",
         "production_inputs_label": "Production Inputs",
         "process_label": "Manufacture / Assemble",
         "platform_label": "Production operations",
@@ -340,6 +358,12 @@ def vertical_config(business):
     config = dict(VERTICAL_CONFIG.get(key, VERTICAL_CONFIG[Business.VERTICAL_GENERAL]))
     config["pos"] = POS_CONFIG.get(key, POS_CONFIG[Business.VERTICAL_GENERAL])
     config["product_sources"] = PRODUCT_SOURCE_LABELS.get(key, PRODUCT_SOURCE_LABELS[Business.VERTICAL_GENERAL])
+    config.setdefault("base_material_label", "Base material")
+    config.setdefault("base_pool_label", "Shared base-material pool")
+    config.setdefault("measured_output_label", "Measured finished output per usage unit (g)")
+    config.setdefault("finished_output_label", "finished output")
+    config.setdefault("output_weight_field_label", "Finished output weight per unit (g)")
+    config.setdefault("measured_output_example", "Enter measured output per usage unit from actual production.")
     return config
 
 

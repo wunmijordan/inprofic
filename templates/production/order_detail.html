@@ -10,6 +10,7 @@
     {% elif order.status == 'completed' %}bg-emerald-50 text-emerald-800 border-emerald-300
     {% elif order.status == 'reversed' %}bg-amber-50 text-amber-800 border-amber-300
     {% else %}bg-stone-100 text-stone-500 border-stone-300{% endif %}">{{ order.get_status_display }}</span>
+  {% if order.color_tag %}<span class="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-2 py-0.5 text-[11px] font-medium text-stone-700"><span class="inline-block h-3 w-3 rounded-full border border-black/10" style="background-color:{{ order.color_tag }}"></span>{{ order.get_color_tag_display }} production tag</span>{% endif %}
 </div>
 {% if order.is_customer_order %}
 <div class="flex flex-wrap gap-2 mb-3"><span class="px-2 py-1 rounded-full text-[11px] font-semibold {% if order.customer_payment_status == 'paid' %}bg-emerald-50 text-emerald-800 border border-emerald-200{% else %}bg-amber-50 text-amber-800 border border-amber-200{% endif %}">{% if order.customer_payment_status == 'paid' %}Received{% else %}Customer receivable{% endif %}</span></div>
@@ -54,11 +55,11 @@
 {% if order.production_basis == 'base_material' %}
 {% with base=order.shared_base_material %}
 <div class="mb-4 max-w-4xl rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-  <div class="font-semibold">Production basis · Shared base material</div>
+  <div class="font-semibold">Production basis · {{ vertical_ui.base_pool_label }}</div>
   {% if base %}
-  <div class="mt-1 text-xs">{{ base.name }}: {{ order.base_material_used_quantity|num }} {{ base.usage_unit }} allocated and released by finished output weight from the {{ order.base_material_quantity|num }} {{ base.usage_unit }} pool · {{ order.base_material_remaining_quantity|num }} {{ base.usage_unit }} unallocated.</div>
+  <div class="mt-1 text-xs">{{ base.name }}: {{ order.base_material_used_quantity|num }} {{ base.usage_unit }} allocated and released by {{ vertical_ui.finished_output_label }} weight from the {{ order.base_material_quantity|num }} {{ base.usage_unit }} pool · {{ order.base_material_remaining_quantity|num }} {{ base.usage_unit }} unallocated.</div>
   {% else %}
-  <div class="mt-1 text-xs">This order uses the shared base-material basis. Its product rows retain the material-use snapshots used for production and costing.</div>
+  <div class="mt-1 text-xs">This order uses the shared {{ vertical_ui.base_pool_label|lower }} basis. Its product rows retain the material-use snapshots used for production and costing.</div>
   {% endif %}
 </div>
 {% endwith %}
@@ -71,8 +72,8 @@
     </tr></thead>
     <tbody>
       {% for i in order.items.all %}
-      <tr class="border-t border-[#E7DFCC]">
-        <td class="px-2 py-1.5">{% if i.commerce_addon_name %}<span class="text-[10px] font-bold uppercase tracking-wide text-stone-500">Add-on · </span>{% endif %}{{ i.finished_good.name }}{% if i.commerce_addon_name %}<div class="text-xs text-stone-500">{{ i.commerce_addon_name }}</div>{% endif %}{% if i.product_option_value %}<div class="text-xs text-stone-500">{{ i.product_option_label }}: {{ i.product_option_value }}</div>{% endif %}</td>
+      <tr class="border-t border-[#E7DFCC]"{% if order.color_tag %} style="border-left:4px solid {{ order.color_tag }}"{% endif %}>
+        <td class="px-2 py-1.5">{% if order.color_tag %}<span class="mr-1 inline-block h-2.5 w-2.5 rounded-full border border-black/10 align-middle" style="background-color:{{ order.color_tag }}" title="Order production color"></span>{% endif %}{% if i.commerce_addon_name %}<span class="text-[10px] font-bold uppercase tracking-wide text-stone-500">Add-on · </span>{% endif %}{{ i.finished_good.name }}{% if i.commerce_addon_name %}<div class="text-xs text-stone-500">{{ i.commerce_addon_name }}</div>{% endif %}{% if i.product_option_value %}<div class="text-xs text-stone-500">{{ i.product_option_label }}: {{ i.product_option_value }}</div>{% endif %}</td>
         <td class="px-2 py-1.5 text-xs">{% if order.production_basis == 'base_material' and i.finished_good.base_material %}<span class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 font-semibold text-emerald-800">Shared base pool</span><div class="mt-1 text-[10px] text-stone-500">{{ i.base_material_quantity|num }} {{ i.finished_good.base_material.usage_unit }} {{ i.finished_good.base_material.name }} allocated and released to this row by output weight.</div>{% elif i.production_basis == 'base_material' and i.finished_good.base_material %}<span class="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 font-semibold text-amber-800">Legacy base sizing</span><div class="mt-1 text-[10px] text-stone-500">{{ i.base_material_quantity|num }} {{ i.finished_good.base_material.usage_unit }} {{ i.finished_good.base_material.name }}</div>{% else %}<span class="rounded-full border border-stone-200 bg-stone-50 px-2 py-1 text-stone-600">Product quantity</span>{% endif %}</td>
         <td class="px-2 py-1.5 text-right font-mono">{{ i.batch_qty|num }}</td>
         <td class="px-2 py-1.5 text-right font-mono">{{ i.piece_qty|num }}</td>
@@ -115,7 +116,7 @@
 {% if order.status == 'pending' and flexible_usages %}
 <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4 max-w-3xl">
   <h3 class="text-sm font-semibold text-amber-900">Flexible {{ vertical_ui.recipe_label|lower }} usage</h3>
-  <p class="text-xs text-amber-700 mt-1 mb-3">Only {{ vertical_ui.recipe_item_label|lower }} quantities marked Flexible on the product {{ vertical_ui.recipe_label|lower }} can be changed here.{% if order.production_basis == 'base_material' %} This order is sized from one shared base material, so enter the <b>total</b> actually used across all products. It is allotted to each product in proportion to its planned amount.{% else %} Enter the actual quantity per batch to release for this order.{% endif %}</p>
+  <p class="text-xs text-amber-700 mt-1 mb-3">Only {{ vertical_ui.recipe_item_label|lower }} quantities marked Flexible on the product {{ vertical_ui.recipe_label|lower }} can be changed here.{% if order.production_basis == 'base_material' %} This order is sized from one shared {{ vertical_ui.base_material_label|lower }}, so enter the <b>total</b> actually used across all products. It is allotted to each product in proportion to its planned amount.{% else %} Enter the actual quantity per batch to release for this order.{% endif %}</p>
   <div class="space-y-3">
     {% for row in flexible_usages %}
     {% if row.central %}

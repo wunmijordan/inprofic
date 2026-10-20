@@ -39,6 +39,16 @@ class Order(BusinessOwnedModel):
         ("pending", "Pending"), ("approved", "Approved"),
         ("completed", "Completed"), ("rejected", "Rejected"), ("reversed", "Reversed"),
     ]
+    COLOR_TAG_CHOICES = [
+        ("#ef4444", "Red"),
+        ("#f97316", "Orange"),
+        ("#eab308", "Yellow"),
+        ("#22c55e", "Green"),
+        ("#06b6d4", "Cyan"),
+        ("#3b82f6", "Blue"),
+        ("#8b5cf6", "Violet"),
+        ("#ec4899", "Pink"),
+    ]
     PAYMENT_CHOICES = [("Cash", "Cash"), ("Card", "Card"), ("Transfer", "Transfer")]
     TRANSACTION_CHOICES = [("paid", "Paid"), ("unpaid", "Unpaid")]
     DESTINATION_CHOICES = [
@@ -48,6 +58,13 @@ class Order(BusinessOwnedModel):
     CUSTOMER_PAYMENT_CHOICES = [("paid", "Received"), ("unpaid", "Receivable")]
 
     date = models.DateField()
+    color_tag = models.CharField(
+        max_length=7,
+        choices=COLOR_TAG_CHOICES,
+        blank=True,
+        default="",
+        help_text="Optional production-day color marker shown on this order and its products.",
+    )
     order_number = models.PositiveBigIntegerField(editable=False)
     order_type = models.CharField(max_length=15, choices=TYPE_CHOICES, default="physical_store")
     is_market_stock = models.BooleanField(
@@ -73,11 +90,15 @@ class Order(BusinessOwnedModel):
         max_digits=14, decimal_places=4, default=0, blank=True,
         help_text="Total quantity of the shared base material allocated across all products in this production order.",
     )
+    base_material = models.ForeignKey(
+        "inventory.RawMaterial", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="base_material_orders",
+        help_text="The explicitly selected shared base ingredient for this production order.",
+    )
     base_material_output_rate = models.DecimalField(
         max_digits=34, decimal_places=12, default=0, blank=True,
         help_text=(
-            "Fixed shared base-material quantity per kilogram of finished output, "
-            "calibrated from this order's initial output mix."
+            "Snapshot of the configured base-material usage units per kilogram of finished output."
         ),
     )
     customer = models.ForeignKey("sales.Customer", null=True, blank=True, on_delete=models.SET_NULL, related_name="production_orders")
@@ -180,6 +201,8 @@ class Order(BusinessOwnedModel):
     def shared_base_material(self):
         if self.production_basis != self.BASIS_BASE_MATERIAL:
             return None
+        if self.base_material_id:
+            return self.base_material
         materials = []
         material_ids = set()
         for item in self._basis_items():
@@ -279,6 +302,23 @@ class Order(BusinessOwnedModel):
                     "short": needed - mat.stock,
                 })
         return result
+
+
+class ProductionDaySetting(BusinessOwnedModel):
+    """Optional color and expiry guidance for one business production date."""
+
+    date = models.DateField()
+    color = models.CharField(max_length=7, choices=Order.COLOR_TAG_CHOICES)
+    expiry_date = models.DateField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-date", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["business", "date"], name="unique_production_day_setting_per_business"),
+        ]
+
+    def __str__(self):
+        return f"Production settings for {self.date}"
 
 
 class OrderFlexibleMaterialReport(BusinessOwnedModel):
