@@ -1,7 +1,29 @@
 from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models.functions import Lower
 from core.models import BusinessOwnedModel, TimestampedModel
+
+
+class Supplier(BusinessOwnedModel):
+    """Tenant supplier directory, independent from individual procurement history."""
+
+    name = models.CharField(max_length=120)
+    contact_name = models.CharField(max_length=120, blank=True, default="")
+    phone = models.CharField(max_length=40, blank=True, default="")
+    email = models.EmailField(blank=True, default="")
+    address = models.CharField(max_length=255, blank=True, default="")
+    notes = models.TextField(blank=True, default="")
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["name", "id"]
+        constraints = [
+            models.UniqueConstraint(Lower("name"), "business", name="supplier_biz_name_ci_uniq"),
+        ]
+
+    def __str__(self):
+        return self.name
 
 
 class PurchaseOrder(BusinessOwnedModel):
@@ -11,6 +33,9 @@ class PurchaseOrder(BusinessOwnedModel):
 
     date = models.DateField()
     supplier = models.CharField(max_length=120, blank=True)
+    supplier_master = models.ForeignKey(
+        Supplier, null=True, blank=True, on_delete=models.SET_NULL, related_name="purchase_orders"
+    )
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="draft")
     received_date = models.DateField(null=True, blank=True)
     payment_status = models.CharField(max_length=10, choices=PAYMENT_STATUS_CHOICES, default="paid")
@@ -114,6 +139,9 @@ class RawMaterialCostSnapshot(BusinessOwnedModel):
     purchase_unit_cost = models.DecimalField(max_digits=12, decimal_places=2)
     usage_unit_cost = models.DecimalField(max_digits=16, decimal_places=6)
     supplier = models.CharField(max_length=120, blank=True)
+    supplier_master = models.ForeignKey(
+        Supplier, null=True, blank=True, on_delete=models.SET_NULL, related_name="cost_snapshots"
+    )
 
     class Meta:
         ordering = ["-effective_date", "-id"]
@@ -129,6 +157,9 @@ class RawMaterialCostSnapshot(BusinessOwnedModel):
 class SupplierPayment(BusinessOwnedModel):
     date = models.DateField()
     supplier = models.CharField(max_length=120)
+    supplier_master = models.ForeignKey(
+        Supplier, null=True, blank=True, on_delete=models.SET_NULL, related_name="payments"
+    )
     amount = models.DecimalField(max_digits=16, decimal_places=2)
     payment_method = models.CharField(max_length=10, choices=[("Cash", "Cash"), ("Card", "Card"), ("Transfer", "Transfer")], default="Transfer")
     reference = models.CharField(max_length=80, blank=True, default="")

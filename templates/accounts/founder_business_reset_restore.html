@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mx-auto max-w-3xl">
+  <div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-amber-700">Founder platform management · Reset recovery</p><h1 class="mt-1 text-2xl font-semibold font-display">Restore {{ business.name }}</h1><p class="mt-2 text-sm leading-6 text-stone-600">This restores the selected records and stock balances saved immediately before the reset on {{ snapshot.created_at|date:"j M Y, H:i" }}.</p></div>
+
+  <section class="rounded-xl border border-[#E7DFCC] bg-white p-5 shadow-sm">
+    <div class="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950"><strong>Restoring replaces current records in the saved groups.</strong> Records entered in those groups after the reset will be removed. Business setup, customers, suppliers, users and current audit entries are preserved; earlier audit records from the snapshot are restored too. The operation is transactional and can only be used once before expiry.</div>
+
+    <h2 class="mt-5 font-semibold">Saved reset contents</h2>
+    <div class="mt-3 flex flex-wrap gap-2">{% for group in snapshot.restore_group_labels %}<span class="rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-xs">{{ group }}</span>{% endfor %}<span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs">Audit history</span></div>
+    <div class="mt-4 flex flex-wrap gap-2">{% for label, count in snapshot.record_counts.items %}<span class="rounded-full border border-stone-200 bg-white px-3 py-1 text-xs"><strong>{{ count }}</strong> {{ label }}</span>{% empty %}<span class="text-sm text-stone-500">No operational rows were present in the saved groups.</span>{% endfor %}</div>
+    <p class="mt-4 text-xs text-stone-500">Restore available until {{ snapshot.expires_at|date:"j M Y, H:i" }}. Current master data must still contain any setup records referenced by the saved transactions.</p>
+
+    {% if error %}<div class="mt-4 rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800">{{ error }}</div>{% endif %}
+    <form method="post" class="mt-5 border-t border-stone-200 pt-5">{% csrf_token %}
+      <label for="confirm-restore" class="block text-sm font-semibold">Type <span class="font-mono text-rose-700">{{ business.slug }}</span> to confirm</label>
+      <input id="confirm-restore" name="confirm_business" value="{{ confirmed }}" autocomplete="off" class="mt-2 w-full max-w-md rounded-md border border-stone-300 px-3 py-2 text-sm focus:border-rose-600 focus:outline-none focus:ring-2 focus:ring-rose-200">
+      <div class="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><a href="{% url 'founder_platform_business_reset' business.pk %}" class="rounded-md border border-stone-300 bg-white px-4 py-2 text-center text-sm font-semibold">Cancel</a><button class="rounded-md bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800">Restore saved data</button></div>
+    </form>
+  </section>
+</div>
+{% endblock %}

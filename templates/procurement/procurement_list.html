@@ -9,9 +9,24 @@
   <div class="flex gap-2">
     <a href="{% url 'export_procurement_xlsx' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export Excel</a>
     <a href="{% url 'export_procurement_csv' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export CSV</a>
+    {% if module_permissions.procurement.edit %}<a href="{% url 'supplier_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-white text-[#8f172d] hover:bg-[#FFFCF5] border border-[#D9CFB4]">+ Add supplier</a>{% endif %}
     {% if module_permissions.procurement.edit %}<a href="{% url 'po_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ New Purchase Order</a>{% endif %}
   </div>
 </div>
+
+<section class="mb-6 rounded-lg border border-[#E7DFCC] bg-[#FFFDF8] p-4">
+  <div class="mb-3"><h3 class="font-semibold text-[#8f172d]">Supplier directory</h3><p class="text-xs text-stone-500">Names typed on purchase orders are added here automatically.</p></div>
+  <div class="max-h-[30rem] overflow-auto rounded-md border border-[#E7DFCC]">
+    <table class="min-w-[76rem] w-full text-xs">
+      <thead class="sticky top-0 z-20 bg-[#F0EAD9] text-stone-600"><tr>
+        <th class="sticky left-0 z-30 min-w-48 border-b border-[#D9CFB4] bg-[#F0EAD9] px-3 py-2 text-left">Supplier</th><th class="min-w-40 border-b border-[#D9CFB4] px-3 py-2 text-left">Contact name</th><th class="min-w-36 border-b border-[#D9CFB4] px-3 py-2 text-left">Phone</th><th class="min-w-48 border-b border-[#D9CFB4] px-3 py-2 text-left">Email</th><th class="min-w-48 border-b border-[#D9CFB4] px-3 py-2 text-left">Address</th><th class="min-w-56 border-b border-[#D9CFB4] px-3 py-2 text-left">Notes</th><th class="border-b border-[#D9CFB4] px-3 py-2 text-left">Status</th><th class="border-b border-[#D9CFB4] px-3 py-2"></th>
+      </tr></thead>
+      <tbody>{% for supplier in suppliers %}<tr class="border-t border-[#EFE8D7] align-middle">
+        <td class="sticky left-0 z-10 border-t border-[#EFE8D7] bg-[#FFFDF8] px-3 py-2 font-semibold text-stone-800">{{ supplier.name }}</td><td class="px-3 py-2">{{ supplier.contact_name|default:"—" }}</td><td class="px-3 py-2">{{ supplier.phone|default:"—" }}</td><td class="px-3 py-2">{{ supplier.email|default:"—" }}</td><td class="px-3 py-2">{{ supplier.address|default:"—" }}</td><td class="max-w-64 px-3 py-2"><span class="line-clamp-2" title="{{ supplier.notes }}">{{ supplier.notes|default:"—" }}</span></td><td class="px-3 py-2">{% if supplier.active %}<span class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-medium text-emerald-800">Active</span>{% else %}<span class="rounded-full border border-stone-200 bg-stone-100 px-2 py-0.5 text-stone-500">Inactive</span>{% endif %}</td><td class="px-3 py-2 text-right">{% if module_permissions.procurement.edit %}<a href="{% url 'supplier_edit' supplier.pk %}" class="font-semibold text-[#8f172d] hover:underline">Edit</a>{% endif %}</td>
+      </tr>{% empty %}<tr><td colspan="8" class="px-3 py-8 text-center text-stone-400">No suppliers saved yet. Add a supplier or enter a new name on a purchase order.</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+</section>
 
 {% if not orders %}
   <div class="text-center py-10 text-sm text-stone-400 italic">No Purchase Orders yet.</div>

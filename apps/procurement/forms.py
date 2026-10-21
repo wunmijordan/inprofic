@@ -3,7 +3,7 @@ from decimal import Decimal
 from django import forms
 from django.forms import inlineformset_factory
 from core.forms import ExistingAwareInlineFormSet
-from .models import PurchaseOrder, PurchaseOrderItem
+from .models import PurchaseOrder, PurchaseOrderItem, Supplier
 from inventory.models import FinishedGood, RawMaterial
 from core.models import CashAccount
 from core.verticals import vertical_config
@@ -37,6 +37,7 @@ class PurchaseOrderForm(StyledModelForm):
         super().__init__(*args, **kwargs)
         self.fields["account"].queryset = CashAccount.objects.filter(active=True).order_by("name")
         self.fields["account"].required = False
+        self.fields["supplier"].widget.attrs["list"] = "supplier-name-options"
 
     def clean(self):
         cleaned = super().clean()
@@ -52,6 +53,13 @@ class PurchaseOrderForm(StyledModelForm):
             self.add_error("amount_paid", "An unpaid order cannot have an initial payment. Choose Partially Paid instead.")
 
         return cleaned
+
+
+class SupplierForm(StyledModelForm):
+    class Meta:
+        model = Supplier
+        fields = ["name", "contact_name", "phone", "email", "address", "notes", "active"]
+        widgets = {"notes": forms.Textarea(attrs={"rows": 2})}
 
 
 class PurchaseOrderItemForm(StyledModelForm):

@@ -1,19 +1,21 @@
 from decimal import Decimal
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import OuterRef, Prefetch, Subquery
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
-from .forms import PurchaseOrderForm, PurchaseOrderItemFormSet
-from .models import PurchaseOrder, PurchaseOrderItem, RawMaterialCostSnapshot, SupplierPayment
+from .forms import PurchaseOrderForm, PurchaseOrderItemFormSet, SupplierForm
+from .models import PurchaseOrder, PurchaseOrderItem, RawMaterialCostSnapshot, Supplier, SupplierPayment
 from inventory.models import ProductionMaterial, RawMaterial, RecipeItem
 from inventory.services import record_finished_good_movement, record_raw_material_movement
 from inventory.models import FinishedGood, StockMovement
 from core.invoice import purchase_order_pdf
 from core.services import record_cash, audit
 from core.models import FinancialTransaction
+from accounts.services import user_has_permission
+from .services import resolve_supplier
 
 
 def today():
@@ -72,7 +74,44 @@ def procurement_list(request):
     return render(request, "procurement/procurement_list.html", {
         "orders": orders,
         "raw_material_categories": raw_material_categories,
+        "suppliers": Supplier.objects.filter(business=request.business).order_by("name"),
     })
+
+
+@login_required
+def supplier_add(request):
+    if not user_has_permission(request.user, request.business, "procurement", "edit"):
+        return render(request, "403.html", status=403)
+    form = SupplierForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        supplier = form.save(commit=False)
+        supplier.business = request.business
+        supplier.created_by = request.user
+        try:
+            supplier.save()
+        except IntegrityError:
+            form.add_error("name", "A supplier with that name already exists in this business.")
+        else:
+            messages.success(request, f"Supplier {supplier.name} saved.")
+            return redirect("procurement_list")
+    return render(request, "procurement/supplier_form.html", {"form": form})
+
+
+@login_required
+def supplier_edit(request, pk):
+    if not user_has_permission(request.user, request.business, "procurement", "edit"):
+        return render(request, "403.html", status=403)
+    supplier = get_object_or_404(Supplier, pk=pk, business=request.business)
+    form = SupplierForm(request.POST or None, instance=supplier)
+    if request.method == "POST" and form.is_valid():
+        try:
+            form.save()
+        except IntegrityError:
+            form.add_error("name", "A supplier with that name already exists in this business.")
+        else:
+            messages.success(request, f"Supplier {supplier.name} updated.")
+            return redirect("procurement_list")
+    return render(request, "procurement/supplier_form.html", {"form": form, "supplier": supplier})
 
 
 @login_required
@@ -146,6 +185,11 @@ def po_form(request, pk=None):
                     with transaction.atomic():
                         po = form.save(commit=False)
                         po.business = request.business
+                        supplier_name = (po.supplier or "").strip()
+                        po.supplier = supplier_name
+                        po.supplier_master = resolve_supplier(
+                            request.business, supplier_name, created_by=request.user
+                        )
                         if obj is None:
                             po.created_by = request.user
                         po.save()
@@ -164,6 +208,7 @@ def po_form(request, pk=None):
                                 created_by=request.user,
                                 date=po.date,
                                 supplier=po.supplier or "Unnamed supplier",
+                                supplier_master=po.supplier_master,
                                 amount=amount_paid,
                                 payment_method=po.payment_method,
                                 reference=f"PO-{po.pk}-INITIAL",
@@ -193,7 +238,10 @@ def po_form(request, pk=None):
         **{f"raw:{m.pk}": f"{m.cost_per_purchase_unit:.2f}" for m in raw_materials},
         **{f"finished:{g.pk}": f"{g.est_cost:.2f}" for g in products},
     }
-    return render(request, "procurement/po_form.html", {"form": form, "formset": formset, "obj": obj, "current_costs": current_costs})
+    return render(request, "procurement/po_form.html", {
+        "form": form, "formset": formset, "obj": obj, "current_costs": current_costs,
+        "suppliers": Supplier.objects.filter(business=request.business, active=True).order_by("name"),
+    })
 
 
 @login_required
@@ -247,6 +295,7 @@ def po_receive(request, pk):
                         purchase_unit_cost=item.unit_cost,
                         usage_unit_cost=usage_cost,
                         supplier=po.supplier or "",
+                        supplier_master=po.supplier_master,
                     )
                     # This remains the material's current/latest procurement cost.
                     mat.cost_per_unit = usage_cost

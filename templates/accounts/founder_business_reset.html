@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mx-auto max-w-4xl">
+  <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+    <div><p class="text-[11px] font-bold uppercase tracking-[.18em] text-amber-700">Founder platform management · Business reset</p><h1 class="mt-1 text-2xl font-semibold font-display">Reset {{ business.name }}</h1><p class="mt-2 max-w-3xl text-sm leading-6 text-stone-600">Choose the operational records to clear. Inventory activity and the old audit log are always cleared, and raw material and finished good stock totals are set to zero. Finance records can be selected below. A new audit entry records the reset.</p></div>
+    <a href="{% url 'founder_subscriptions' %}?workspace=management#platform-management" class="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-medium">Back to Founder Console</a>
+  </div>
+
+  <div class="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950"><strong>Review outside payment and delivery activity first.</strong> This removes records from INPROFIC; it does not refund or cancel charges with payment providers, contact customers, or cancel courier jobs. Pending provider webhooks for this business are cleared from the local queue. If you leave a transaction group unchecked, its records remain while stock totals still reset to zero; select every group for a full clean restart.</div>
+  <section class="rounded-xl border border-[#E7DFCC] bg-white p-5 shadow-sm">
+    <h2 class="font-semibold">Live preview</h2>
+    <p class="mt-1 text-xs text-stone-500">The preview changes as you select or clear groups.</p>
+    <div data-live-reset-preview aria-live="polite" class="mt-3 flex flex-wrap gap-2">
+      {% for option in group_options %}<span data-preview-group="{{ option.key }}" {% if not option.selected %}hidden{% endif %} class="rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-xs"><strong>{{ option.count }}</strong> {{ option.label }}</span>{% endfor %}
+      <span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs"><strong>{{ audit_log_count }}</strong> old audit entries cleared</span>
+      <span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs"><strong>{{ audit_query_count }}</strong> audit queries cleared</span>
+      <span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs">All raw material and finished good stock totals set to zero</span>
+    </div>
+
+    <form method="post" class="mt-5">
+      {% csrf_token %}
+      <input type="hidden" name="preview_signature" value="{{ preview_signature }}">
+      <fieldset>
+        <legend class="text-sm font-semibold text-stone-800">Choose data groups</legend>
+        <div class="mt-3 grid gap-2 sm:grid-cols-2">
+          {% for option in group_options %}
+          <label class="flex items-start gap-3 rounded-lg border border-stone-200 p-3 text-sm {% if option.required %}bg-stone-50{% else %}cursor-pointer hover:border-[#8f172d]{% endif %}">
+            <input type="checkbox" name="groups" value="{{ option.key }}" data-reset-group="{{ option.key }}" class="mt-0.5 accent-[#8f172d]" {% if option.selected %}checked{% endif %} {% if option.required %}disabled{% endif %}>
+            <span><span class="font-medium">{{ option.label }}</span>{% if option.required %}<span class="block text-xs text-stone-500">Required to set stock to zero</span>{% endif %}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      {% if error %}<div class="mt-4 rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800">{{ error }}</div>{% endif %}
+      <div class="mt-5 border-t border-stone-200 pt-5">
+        <label for="confirm-business" class="block text-sm font-semibold">Type <span class="font-mono text-rose-700">{{ business.slug }}</span> to confirm</label>
+        <input id="confirm-business" name="confirm_business" value="{{ confirmed }}" autocomplete="off" class="mt-2 w-full max-w-md rounded-md border border-stone-300 px-3 py-2 text-sm focus:border-rose-600 focus:outline-none focus:ring-2 focus:ring-rose-200">
+        <div class="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><a href="{% url 'founder_subscriptions' %}?workspace=management#platform-management" class="rounded-md border border-stone-300 bg-white px-4 py-2 text-center text-sm font-semibold">Cancel</a><button class="rounded-md bg-rose-700 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-800">Reset selected data</button></div>
+      </div>
+    </form>
+  </section>
+
+  <details class="mt-4 rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-600">
+    <summary class="cursor-pointer font-semibold text-stone-800">What stays in the business?</summary>
+    <div class="mt-3 flex flex-wrap gap-2">{% for label in retained_data_labels %}<span class="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-900">{{ label }}</span>{% endfor %}</div>
+    <p class="mt-3 leading-6">Cash account opening balances are preserved.{% if 'finance' in selected_groups %} Because the financial transaction log is selected for clearing, displayed balances return to those opening balances.{% endif %}</p>
+  </details>
+
+  <section class="mt-5 rounded-xl border border-[#E7DFCC] bg-white p-5">
+    <h2 class="font-semibold">Restore a recent reset</h2>
+    <p class="mt-1 text-sm text-stone-500">Each reset can be restored once, for seven days after it ran. Restoring replaces the selected groups’ current data with that reset’s saved records.</p>
+    <div class="mt-3 overflow-auto rounded-lg border border-[#E7DFCC]">
+      <table class="min-w-full text-left text-xs">
+        <thead class="sticky top-0 z-20 bg-[#F0EAD9] text-stone-600"><tr><th class="px-3 py-2">Reset time</th><th class="px-3 py-2">Groups saved</th><th class="px-3 py-2">Restore expires</th><th class="px-3 py-2"></th></tr></thead>
+        <tbody>{% for snapshot in reset_snapshots %}<tr class="border-t border-[#EFE8D7] align-top"><td class="whitespace-nowrap px-3 py-2">{{ snapshot.created_at|date:"j M Y, H:i" }}</td><td class="min-w-60 px-3 py-2"><div class="flex flex-wrap gap-1">{% for label in snapshot.reset_group_labels %}<span class="rounded-full border border-stone-200 bg-stone-50 px-2 py-0.5">{{ label }}</span>{% endfor %}<span class="rounded-full border border-stone-200 bg-stone-50 px-2 py-0.5">Audit history</span></div></td><td class="whitespace-nowrap px-3 py-2">{{ snapshot.expires_at|date:"j M Y, H:i" }}</td><td class="whitespace-nowrap px-3 py-2 text-right">{% if snapshot.restored_at %}<span class="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 font-semibold text-emerald-800">Restored {{ snapshot.restored_at|date:"j M, H:i" }}</span>{% else %}<a href="{% url 'founder_platform_business_reset_restore' business.pk snapshot.pk %}" class="inline-block rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 font-semibold text-amber-900">Review restore</a>{% endif %}</td></tr>{% empty %}<tr><td colspan="4" class="px-3 py-5 text-center text-stone-500">No unexpired reset snapshots for this business.</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </section>
+</div>
+<script>
+  (() => {
+    const checkboxes = [...document.querySelectorAll('[data-reset-group]')];
+    const pills = [...document.querySelectorAll('[data-preview-group]')];
+    function updateResetPreview() {
+      const selected = new Set(checkboxes.filter((box) => box.checked).map((box) => box.dataset.resetGroup));
+      pills.forEach((pill) => { pill.hidden = !selected.has(pill.dataset.previewGroup); });
+    }
+    checkboxes.forEach((box) => box.addEventListener('change', updateResetPreview));
+    updateResetPreview();
+  })();
+</script>
+{% endblock %}

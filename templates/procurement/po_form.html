@@ -8,6 +8,7 @@
     <div class="grid grid-cols-2 gap-3">
       {% include "_field.html" with field=form.date %}
       {% include "_field.html" with field=form.supplier %}
+      <datalist id="supplier-name-options">{% for supplier in suppliers %}<option value="{{ supplier.name }}"></option>{% endfor %}</datalist>
       {% include "_field.html" with field=form.payment_status %}
       <div id="initial-payment-wrap">{% include "_field.html" with field=form.amount_paid %}</div>
       {% include "_field.html" with field=form.payment_method %}

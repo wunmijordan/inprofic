@@ -442,9 +442,10 @@ def supplier_payment_form(request):
     form=SupplierPaymentForm(request.POST or None,initial={"date":today()})
     if request.method=="POST" and form.is_valid():
         with transaction.atomic():
-            x=form.save(commit=False); x.business=request.business; x.created_by=request.user; x.save()
+            x=form.save(commit=False); x.business=request.business; x.created_by=request.user
             if x.purchase_order:
                 po=x.purchase_order
+                x.supplier_master = po.supplier_master
                 paid_before=sum((p.amount for p in po.payments.exclude(pk=x.pk)), Decimal("0"))
                 outstanding=max(Decimal("0"), po.total-paid_before)
                 new_paid=paid_before+x.amount
@@ -454,6 +455,12 @@ def supplier_payment_form(request):
                 supplier=po.supplier or x.supplier
             else:
                 supplier=x.supplier
+            from procurement.services import resolve_supplier
+            x.supplier_master = x.supplier_master or resolve_supplier(
+                request.business, supplier, created_by=request.user
+            )
+            x.supplier = supplier or x.supplier
+            x.save()
             record_cash(request.business,request.user,date=x.date,amount=x.amount,transaction_type=FinancialTransaction.OUTFLOW,category="Supplier payment",description=f"Payment to {supplier}",payment_method=x.payment_method,reference=x.reference or f"SUPPAY-{x.pk}",account=x.account)
             audit(request.business,request.user,"create",x,"Supplier payment recorded",{"amount":str(x.amount),"purchase_order":getattr(x.purchase_order,"pk",None)})
         messages.success(request,"Supplier payment recorded and payable updated."); return redirect("finance_dashboard")

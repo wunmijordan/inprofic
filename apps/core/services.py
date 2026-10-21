@@ -44,7 +44,7 @@ def tenant_backup_querysets(business):
         DistributionReturn, StockMovement,
     )
     from procurement.models import (
-        PurchaseOrder, PurchaseOrderItem, RawMaterialCostSnapshot, SupplierPayment,
+        Supplier, PurchaseOrder, PurchaseOrderItem, RawMaterialCostSnapshot, SupplierPayment,
     )
     from production.models import (
         Order, OrderNumberSequence, OrderItem, OrderAllocation, OrderAllocationLine, OrderMaterialUsage,
@@ -75,6 +75,7 @@ def tenant_backup_querysets(business):
         DistributionReturn.raw_objects.filter(business=business),
         StockMovement.raw_objects.filter(business=business),
 
+        Supplier.raw_objects.filter(business=business),
         PurchaseOrder.raw_objects.filter(business=business),
         PurchaseOrderItem.objects.filter(purchase_order__business=business),
         RawMaterialCostSnapshot.raw_objects.filter(business=business),

@@ -1687,3 +1687,25 @@ class FounderPushSubscription(models.Model):
 
     def __str__(self):
         return f"Founder device for {self.user}"
+
+
+class BusinessResetSnapshot(BusinessOwnedModel):
+    """Compressed, short-lived recovery point created before a Founder reset."""
+
+    groups = models.JSONField(default=list)
+    record_counts = models.JSONField(default=dict)
+    stock_before_reset = models.JSONField(default=dict)
+    compressed_payload = models.BinaryField()
+    payload_sha256 = models.CharField(max_length=64)
+    expires_at = models.DateTimeField(db_index=True)
+    restored_at = models.DateTimeField(null=True, blank=True)
+    restored_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="business_reset_snapshots_restored",
+    )
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"Reset snapshot for {self.business} · {self.created_at:%Y-%m-%d %H:%M}"

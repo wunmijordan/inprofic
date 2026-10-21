@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mx-auto max-w-2xl">
+  <div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Procurement</p><h1 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if supplier %}Edit supplier{% else %}Add supplier{% endif %}</h1><p class="mt-1 text-sm text-stone-500">{% if supplier %}Update {{ supplier.name }} in the business supplier directory. Historical purchase records retain their saved supplier name.{% else %}Add a supplier to the business directory. Names typed on purchase orders are also added automatically.{% endif %}</p></div>
+  <form method="post" class="cf-form-shell"><div class="cf-form-body">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="mb-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="grid gap-3 sm:grid-cols-2">{% for field in form %}<div>{% include "_field.html" with field=field %}</div>{% endfor %}</div>
+    <div class="mt-5 flex justify-end gap-2"><a href="{% url 'procurement_list' %}" class="rounded-md border border-stone-300 px-4 py-2 text-sm font-medium">Cancel</a><button class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">{% if supplier %}Save changes{% else %}Create supplier{% endif %}</button></div>
+  </div></form>
+</div>
+{% endblock %}

@@ -1,3 +1,4 @@
+import hashlib
 import json
 from decimal import Decimal
 
@@ -714,6 +715,163 @@ def founder_platform_business_delete(request, pk):
                 messages.success(request, f"{business_name} and its connected records were deleted.")
                 return redirect(f"{reverse('founder_subscriptions')}?workspace=management#platform-management")
     return render(request, "accounts/founder_platform_confirm_delete.html", context)
+
+
+@login_required
+def founder_platform_business_reset(request, pk):
+    """Preview and selectively clear one business's operational records."""
+    if not request.user.is_superuser:
+        return render(request, "403.html", status=403)
+    from django.db.models.deletion import ProtectedError, RestrictedError
+    from .business_reset import (
+        GROUP_LABELS, execute_business_reset, reset_group_counts, reset_groups, reset_preview,
+    )
+    from .models import BusinessResetSnapshot
+    from django.utils import timezone
+
+    business = get_object_or_404(Business, pk=pk)
+    now = timezone.now()
+    BusinessResetSnapshot.raw_objects.filter(business_id=business.pk, expires_at__lte=now).delete()
+    all_groups = list(reset_groups())
+    selected_groups = all_groups if request.method == "GET" else request.POST.getlist("groups")
+    selected, counts = reset_preview(business, selected_groups)
+    group_counts = reset_group_counts(business)
+
+    def preview_signature(all_group_counts):
+        value = json.dumps(
+            [business.pk, sorted(all_group_counts.items())],
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+    context = {
+        "business": business,
+        "group_labels": GROUP_LABELS,
+        "group_options": [
+            {
+                "key": key,
+                "label": label,
+                "count": group_counts[key],
+                "selected": key in selected,
+                "required": key == "inventory",
+            }
+            for key, label in GROUP_LABELS.items()
+        ],
+        "selected_groups": selected,
+        "counts": counts,
+        "group_counts": group_counts,
+        "audit_log_count": group_counts["audit_log"],
+        "audit_query_count": group_counts["audit_queries"],
+        "preview_signature": preview_signature(group_counts),
+        "confirmed": request.POST.get("confirm_business", "") if request.method == "POST" else "",
+        "error": "",
+        "reset_snapshots": list(BusinessResetSnapshot.raw_objects.filter(
+            business_id=business.pk, expires_at__gt=now,
+        ).order_by("-created_at", "-id")),
+        "retained_data_labels": [
+            "Business and settings", "Users, roles, permissions and subscriptions",
+            "Raw materials, units, yields and recipes", "Finished goods and product setup",
+            "Cash accounts and opening balances", "Commerce, delivery and alert settings",
+            "Customers and storefront customer profiles", "Supplier directory",
+        ],
+    }
+    for reset_snapshot in context["reset_snapshots"]:
+        reset_snapshot.reset_group_labels = [
+            GROUP_LABELS[key] for key in reset_snapshot.groups if key in GROUP_LABELS
+        ]
+    if request.method == "POST":
+        confirmation = request.POST.get("confirm_business", "").strip()
+        supplied_signature = request.POST.get("preview_signature", "")
+        if confirmation != business.slug:
+            context["error"] = "Enter the exact business slug to confirm this reset."
+        elif supplied_signature != context["preview_signature"]:
+            context["error"] = "The selected data changed since preview. Review the refreshed counts and confirm again."
+        else:
+            try:
+                with transaction.atomic():
+                    locked_business = Business.objects.select_for_update().get(pk=business.pk)
+                    current_group_counts = reset_group_counts(locked_business)
+                    if current_group_counts != group_counts:
+                        selected, counts = reset_preview(locked_business, selected)
+                        context["group_counts"] = current_group_counts
+                        context["counts"] = counts
+                        context["group_options"] = [
+                            {
+                                "key": key,
+                                "label": label,
+                                "count": current_group_counts[key],
+                                "selected": key in selected,
+                                "required": key == "inventory",
+                            }
+                            for key, label in GROUP_LABELS.items()
+                        ]
+                        context["audit_log_count"] = current_group_counts["audit_log"]
+                        context["audit_query_count"] = current_group_counts["audit_queries"]
+                        context["selected_groups"] = selected
+                        context["preview_signature"] = preview_signature(current_group_counts)
+                        context["error"] = "The selected data changed since preview. Review the refreshed counts and confirm again."
+                    else:
+                        _deleted, snapshot = execute_business_reset(
+                            business=locked_business,
+                            selected_groups=selected,
+                            actor=request.user,
+                            preview_counts=counts,
+                        )
+            except (IntegrityError, ProtectedError, RestrictedError):
+                # The atomic block rolls back all mutations on dependency errors.
+                context["error"] = "Reset could not complete because a protected record or concurrent update blocked deletion. No changes were committed. Refresh the preview and try again."
+            else:
+                if not context["error"]:
+                    messages.success(request, f"Operational data for {business.name} was reset. A reset audit entry was recorded and can be restored until {snapshot.expires_at:%d %b %Y, %H:%M} UTC.")
+                    return redirect(f"{reverse('founder_subscriptions')}?workspace=management#platform-management")
+    return render(request, "accounts/founder_business_reset.html", context)
+
+
+@login_required
+def founder_platform_business_reset_restore(request, pk, snapshot_pk):
+    """Restore one unexpired reset snapshot for its owning business."""
+    if not request.user.is_superuser:
+        return render(request, "403.html", status=403)
+    from django.db import DatabaseError, IntegrityError
+    from django.db.models.deletion import ProtectedError, RestrictedError
+    from django.core.serializers.base import DeserializationError
+    from django.utils import timezone
+    from accounts.models import BusinessResetSnapshot
+    from .business_reset import GROUP_LABELS, restore_business_reset_snapshot
+
+    business = get_object_or_404(Business, pk=pk)
+    now = timezone.now()
+    BusinessResetSnapshot.raw_objects.filter(business_id=business.pk, expires_at__lte=now).delete()
+    snapshot = get_object_or_404(
+        BusinessResetSnapshot.raw_objects,
+        pk=snapshot_pk,
+        business_id=business.pk,
+        expires_at__gt=now,
+        restored_at__isnull=True,
+    )
+    snapshot.restore_group_labels = [GROUP_LABELS[key] for key in snapshot.groups if key in GROUP_LABELS]
+    context = {
+        "business": business,
+        "snapshot": snapshot,
+        "confirmed": "",
+        "error": "",
+    }
+    if request.method == "POST":
+        context["confirmed"] = request.POST.get("confirm_business", "").strip()
+        if context["confirmed"] != business.slug:
+            context["error"] = "Enter the exact business slug to confirm this restore."
+        else:
+            try:
+                restored_count = restore_business_reset_snapshot(snapshot=snapshot, actor=request.user)
+            except (
+                ValueError, OSError, UnicodeError, KeyError, DeserializationError,
+                IntegrityError, ProtectedError, RestrictedError, DatabaseError,
+            ):
+                context["error"] = "Restore could not complete. The saved snapshot or current setup may no longer match; no changes were committed."
+            else:
+                messages.success(request, f"Restored {restored_count} records for {business.name}. A restore audit entry was recorded.")
+                return redirect("founder_platform_business_reset", pk=business.pk)
+    return render(request, "accounts/founder_business_reset_restore.html", context)
 
 
 @login_required
