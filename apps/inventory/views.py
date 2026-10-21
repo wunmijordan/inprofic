@@ -130,7 +130,7 @@ def operational_supply_dispense(request):
                 record_raw_material_movement(
                     obj.raw_material, -obj.quantity, StockMovement.OPERATIONAL_DISPENSE,
                     note=obj.description, reference=f"DISP-{obj.pk}",
-                    location=obj.location,
+                    location=obj.location, on_date=obj.date,
                 )
                 audit(request.business, request.user, "create", obj, f"Operational supply {obj.raw_material.name} dispensed", {"quantity": str(obj.quantity), "reason": obj.reason})
                 messages.success(request, "Operational supply dispensed and stock updated.")

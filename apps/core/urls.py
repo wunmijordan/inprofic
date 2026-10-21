@@ -4,6 +4,8 @@ from . import finance_views as finance
 from . import operations
 from . import pwa
 from . import audit_views
+from . import ledger_views
+from . import complete_dashboard
 from expenses import views as expense_views
 
 urlpatterns = [
@@ -22,6 +24,11 @@ urlpatterns = [
     path("marketing/location-enrich/", views.marketing_location_enrich, name="marketing_location_enrich"),
     path("", views.marketing_home, name="marketing_home"),
     path("dashboard/", views.dashboard, name="dashboard"),
+    path("dashboard/complete/", complete_dashboard.complete_dashboard, name="complete_dashboard"),
+    path("dashboard/complete/<slug:group>/<slug:section>/", complete_dashboard.complete_dashboard_section, name="complete_dashboard_section"),
+    path("ledger/", ledger_views.ledger_workspace, name="ledger_workspace"),
+    path("ledger/action/", ledger_views.ledger_action, name="ledger_action"),
+    path("ledger/mode/", ledger_views.ledger_mode, name="ledger_mode"),
     path("dashboard/tour/complete/", views.onboarding_tour_complete, name="onboarding_tour_complete"),
     path("audit/", audit_views.audit_workspace, name="audit_workspace"),
     path("audit/query/", audit_views.audit_query_create, name="audit_query_create"),

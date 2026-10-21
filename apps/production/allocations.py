@@ -175,18 +175,21 @@ def post_item_allocations(order, item, batch, *, unit_cost, location, user, comp
                 good, delivered, StockMovement.FG_PRODUCTION,
                 note=f"Planned store production — batch {batch.batch_number}",
                 reference=batch.batch_number, affects_stock=True, unit_value=unit_cost, location=location,
+                on_date=completed_date,
             )
         elif allocation.is_non_stock:
             record_finished_good_movement(
                 good, delivered, StockMovement.FG_PRODUCTION,
                 note=f"Non-stock production ({allocation.non_stock_purpose}) — batch {batch.batch_number}",
                 reference=batch.batch_number, affects_stock=False, unit_value=unit_cost, location=location,
+                on_date=completed_date,
             )
         else:
             record_finished_good_movement(
                 good, delivered, StockMovement.FG_PRODUCTION,
                 note=f"Customer-order production batch {batch.batch_number} for {allocation.customer_display or 'customer'}",
                 reference=batch.batch_number, affects_stock=False, unit_value=unit_cost, location=location,
+                on_date=completed_date,
             )
             customer_units += delivered
             sale = _customer_sale(order, allocation, sales, user=user, completed_date=completed_date)

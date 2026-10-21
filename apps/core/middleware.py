@@ -9,7 +9,7 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 
 from .models import Business
-from .context import begin_request_cache, end_request_cache, get_request_cache, set_current_business
+from .context import begin_request_cache, end_request_cache, get_request_cache, set_current_business, set_ledger_context
 from accounts.services import is_live_tester, user_has_permission
 
 
@@ -18,6 +18,17 @@ class BusinessMiddleware:
 
     def __init__(self, get_response):
         self.get_response = get_response
+
+    def process_exception(self, request, exception):
+        from .ledger import LedgerDateError
+        if not isinstance(exception, LedgerDateError):
+            return None
+        return render(request, "core/ledger_date_error.html", {
+            "error": exception, "backlog_entry_allowed": bool(
+                getattr(request, "business", None)
+                and user_has_permission(request.user, request.business, "ledger", "edit")
+            ),
+        }, status=400)
 
     def __call__(self, request):
         # Render probes this endpoint frequently. Keep it completely outside
@@ -38,13 +49,43 @@ class BusinessMiddleware:
         # lookups before resolving this request's membership.
         cache_token = begin_request_cache()
         set_current_business(None)
+        set_ledger_context(None, None)
         try:
             business = self._resolve_business(request)
             request.business = business
             set_current_business(business)
+            request.ledger_scope = "all"
+            request.ledger_cutover = None
+            if business:
+                from .models import LedgerCutover
+                cutover = LedgerCutover.raw_objects.filter(business=business).order_by("-id").first()
+                request.ledger_cutover = cutover
+                mode = request.session.get("ledger_mode", "live")
+                if cutover and cutover.status == LedgerCutover.STATUS_ARCHIVED:
+                    request.ledger_scope = "live"
+                    set_ledger_context("live", cutover.cutover_date)
+                elif cutover and cutover.status != LedgerCutover.STATUS_MERGED:
+                    if mode == "all":
+                        request.ledger_scope = "all"
+                    elif mode == "backlog" and cutover.status in {LedgerCutover.STATUS_OPEN, LedgerCutover.STATUS_COMPLETE}:
+                        if not user_has_permission(request.user, business, "ledger", "edit"):
+                            mode = "live"
+                            request.session["ledger_mode"] = mode
+                        else:
+                            request.ledger_scope = "backlog"
+                    else:
+                        mode = "live"
+                        request.session["ledger_mode"] = mode
+                    if request.ledger_scope not in {"backlog", "all"}:
+                        request.ledger_scope = "live"
+                    set_ledger_context(request.ledger_scope, cutover.cutover_date)
+                else:
+                    request.ledger_scope = "all"
+                    request.session["ledger_mode"] = "live"
             return self.get_response(request)
         finally:
             set_current_business(None)
+            set_ledger_context(None, None)
             end_request_cache(cache_token)
 
     @staticmethod

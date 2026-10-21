@@ -1,13 +1,15 @@
 import csv
 import json
 from collections import defaultdict
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
+from django.apps import apps
 from django.conf import settings
 from django.core.files.storage import default_storage
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import FieldDoesNotExist
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django.core import serializers
@@ -1052,8 +1054,8 @@ def _period_row(
     }
 
 
-def _search_results(q):
-    """Return a deliberately small, labelled result set for the dashboard.
+def _search_results(q, request=None):
+    """Return labelled matches from business records exposed in the dashboard.
 
     Results are identifiers, not full objects. The detail endpoint is only
     called after the user chooses a result, which keeps the dashboard fast.
@@ -1064,6 +1066,18 @@ def _search_results(q):
 
     results = []
     needle = q.lower()
+    from accounts.services import user_has_permission
+    permission_cache = {}
+    def can_search(module):
+        if not request:
+            return False
+        if module not in permission_cache:
+            permission_cache[module] = user_has_permission(request.user, request.business, module, "view")
+        return permission_cache[module]
+
+    can_search_inventory = can_search("inventory")
+    can_search_procurement = can_search("procurement")
+    can_search_sales = can_search("sales")
 
     raw_qs = RawMaterial.objects.filter(
         Q(name__icontains=q) |
@@ -1071,7 +1085,7 @@ def _search_results(q):
         Q(purchase_unit__icontains=q) |
         Q(package_unit__icontains=q) |
         Q(usage_unit__icontains=q)
-    ).order_by("name")[:12]
+    ).order_by("name")[:12] if can_search_inventory else []
     for m in raw_qs:
         results.append({
             "key": f"raw:{m.pk}",
@@ -1083,7 +1097,7 @@ def _search_results(q):
 
     fg_qs = FinishedGood.objects.filter(
         Q(name__icontains=q) | Q(unit__icontains=q)
-    ).order_by("name")[:12]
+    ).order_by("name")[:12] if can_search_inventory else []
     for g in fg_qs:
         results.append({
             "key": f"fg:{g.pk}",
@@ -1095,7 +1109,7 @@ def _search_results(q):
 
     suppliers = PurchaseOrder.objects.filter(
         supplier__icontains=q
-    ).values_list("supplier", flat=True).distinct()[:12]
+    ).values_list("supplier", flat=True).distinct()[:12] if can_search_procurement else []
     for supplier in suppliers:
         if supplier:
             results.append({
@@ -1114,7 +1128,7 @@ def _search_results(q):
         Q(customer_group__icontains=q)
     ).exclude(customer_name="").values_list(
         "customer_name", "order_type"
-    ).distinct()[:30]
+    ).distinct()[:30] if can_search_sales else []
     seen = set()
     for name, order_type in customer_rows:
         channel = {
@@ -1139,7 +1153,7 @@ def _search_results(q):
     # Regions and groups are useful search objects in their own right.
     regions = Order.objects.filter(customer_region__icontains=q).exclude(
         customer_region=""
-    ).values_list("customer_region", flat=True).distinct()[:8]
+    ).values_list("customer_region", flat=True).distinct()[:8] if can_search_sales else []
     for region in regions:
         results.append({
             "key": f"region:{region}",
@@ -1151,7 +1165,7 @@ def _search_results(q):
 
     groups = Order.objects.filter(customer_group__icontains=q).exclude(
         customer_group=""
-    ).values_list("customer_group", flat=True).distinct()[:8]
+    ).values_list("customer_group", flat=True).distinct()[:8] if can_search_sales else []
     for group in groups:
         results.append({
             "key": f"group:{group}",
@@ -1161,10 +1175,101 @@ def _search_results(q):
             "meta": "Distribution and online activity",
         })
 
+    # Search every business-owned record family exposed on the Complete
+    # Dashboard. The registry supplies the permission boundary and fields
+    # used to describe each result; the query itself remains tenant-scoped.
+    from .complete_dashboard import GROUPS
+    business = getattr(request, "business", None)
+    user = getattr(request, "user", None)
+    seen_records = set()
+    if business and user:
+        for _group_key, _group_label, sections in GROUPS:
+            for _section_key, section_label, module, model_label, display_fields in sections:
+                if not model_label or model_label in {"inventory.RawMaterial", "inventory.FinishedGood"}:
+                    continue
+                if not can_search(module):
+                    continue
+                model = apps.get_model(model_label)
+                try:
+                    model._meta.get_field("business")
+                except FieldDoesNotExist:
+                    continue
+                text_fields = [
+                    field.name for field in model._meta.concrete_fields
+                    if field.get_internal_type() in {"CharField", "TextField"}
+                ]
+                for path in display_fields:
+                    related_model = model
+                    try:
+                        for part in path.split("__"):
+                            field = related_model._meta.get_field(part)
+                            related_model = field.related_model if field.is_relation else related_model
+                        if field.get_internal_type() in {"CharField", "TextField"}:
+                            text_fields.append(path)
+                    except FieldDoesNotExist:
+                        continue
+                text_fields = list(dict.fromkeys(text_fields))
+                if not text_fields:
+                    continue
+                match = Q()
+                for field_name in text_fields:
+                    match |= Q(**{f"{field_name}__icontains": q})
+                if q.isdigit():
+                    match |= Q(pk=int(q))
+                    for field in model._meta.concrete_fields:
+                        if field.get_internal_type() in {"IntegerField", "BigIntegerField", "PositiveIntegerField", "PositiveSmallIntegerField", "SmallIntegerField"}:
+                            match |= Q(**{field.name: int(q)})
+                try:
+                    numeric_query = Decimal(q)
+                except Exception:
+                    numeric_query = None
+                if numeric_query is not None:
+                    for field in model._meta.concrete_fields:
+                        if field.get_internal_type() in {"DecimalField", "FloatField"}:
+                            match |= Q(**{field.name: numeric_query})
+                try:
+                    date_query = date.fromisoformat(q)
+                except ValueError:
+                    date_query = None
+                if date_query:
+                    for field in model._meta.concrete_fields:
+                        if field.get_internal_type() in {"DateField", "DateTimeField"}:
+                            match |= Q(**{field.name: date_query})
+                queryset = model.objects.filter(business=business).filter(match).order_by("-pk")
+                for obj in queryset[:5]:
+                    identity = (model_label, obj.pk)
+                    if identity in seen_records:
+                        continue
+                    if model_label == "procurement.Supplier" and any(
+                        item["type"] == "supplier" and item["label"].lower() == str(getattr(obj, "name", "")).lower()
+                        for item in results
+                    ):
+                        continue
+                    seen_records.add(identity)
+                    label_field = next((name for name in ("name", "order_number", "run_number", "batch_number", "reference", "subject", "description") if hasattr(obj, name)), None)
+                    label = str(getattr(obj, label_field)) if label_field else str(obj)
+                    snippets = []
+                    for field_name in display_fields:
+                        value = obj
+                        for part in field_name.split("__"):
+                            value = getattr(value, part, "") if value is not None else ""
+                        if value not in (None, ""):
+                            snippets.append(str(value))
+                        if len(snippets) == 2:
+                            break
+                    results.append({
+                        "key": f"record:{model_label}:{obj.pk}",
+                        "type": "record",
+                        "model": model_label,
+                        "label": label[:120],
+                        "identifier": str(model._meta.verbose_name).title(),
+                        "meta": " · ".join(snippets) or section_label,
+                    })
+
     # Exact-name matches first, then alphabetical. This makes a search for
     # "Flour" open the material/product candidates before broader metadata.
     results.sort(key=lambda r: (0 if r["label"].lower() == needle else 1, r["label"].lower(), r["identifier"]))
-    return results[:30]
+    return results[:50]
 
 
 def _raw_search_detail(material):
@@ -1739,7 +1844,7 @@ def dashboard_stock_ticker(request):
 @login_required
 def dashboard_search(request):
     q = request.GET.get("q", "")
-    return JsonResponse({"results": _search_results(q)})
+    return JsonResponse({"results": _search_results(q, request)})
 
 
 @login_required
@@ -1748,6 +1853,12 @@ def dashboard_search_detail(request):
     pk = request.GET.get("id", "")
     channel = request.GET.get("channel", "")
     value = request.GET.get("value", "")
+    model_label = request.GET.get("model", "")
+
+    from accounts.services import user_has_permission
+    required_module = {"raw": "inventory", "fg": "inventory", "supplier": "procurement", "customer": "sales", "region": "sales", "group": "sales"}.get(kind)
+    if required_module and not user_has_permission(request.user, request.business, required_module, "view"):
+        return JsonResponse({"error": "This record type is not available to your role."}, status=403)
 
     detail = None
     if kind == "raw" and pk.isdigit():
@@ -1764,6 +1875,34 @@ def dashboard_search_detail(request):
         detail = _customer_search_detail(value, channel)
     elif kind in ("region", "group") and value:
         detail = _segment_search_detail(kind, value)
+    elif kind == "record" and pk.isdigit() and model_label:
+        from .complete_dashboard import GROUPS
+        allowed_fields = None
+        for _group_key, _group_label, sections in GROUPS:
+            for _section_key, _section_label, module, registered_model, fields in sections:
+                if registered_model == model_label and user_has_permission(request.user, request.business, module, "view"):
+                    allowed_fields = fields
+                    break
+            if allowed_fields is not None:
+                break
+        if allowed_fields is not None:
+            model = apps.get_model(model_label)
+            try:
+                model._meta.get_field("business")
+            except FieldDoesNotExist:
+                obj = None
+            else:
+                obj = model.objects.filter(business=request.business, pk=int(pk)).first()
+            if obj:
+                summary = {}
+                for field_name in allowed_fields:
+                    value_at_field = obj
+                    for part in field_name.split("__"):
+                        value_at_field = getattr(value_at_field, part, "") if value_at_field is not None else ""
+                    if hasattr(value_at_field, "isoformat"):
+                        value_at_field = value_at_field.isoformat()
+                    summary[field_name.replace("__", " · ").replace("_", " ").title()] = "" if value_at_field is None else str(value_at_field)
+                detail = {"type": str(model._meta.verbose_name).title(), "identifier": "Business record", "title": str(obj), "summary": summary}
 
     if not detail:
         return JsonResponse({"error": "Search object not found."}, status=404)
@@ -1784,6 +1923,26 @@ def reports_full_required(view_func):
 
 @login_required
 def dashboard(request):
+    preferred_view = request.COOKIES.get(f"dashboard_view_{request.business.pk}") if request.business else None
+    membership = UserBusiness.objects.filter(
+        user=request.user, business=request.business, active=True,
+    ).select_related("role").first() if request.business else None
+    can_access_complete_dashboard = (
+        is_business_admin(request.user, request.business)
+        or bool(membership and membership.role.key in {"manager", "md_director"})
+    )
+    requested_complete = request.GET.get("view") == "complete"
+    preferred_complete = request.GET.get("view") != "simple" and preferred_view == "complete"
+    if can_access_complete_dashboard and (requested_complete or preferred_complete):
+        return redirect("complete_dashboard")
+    if (
+        can_access_complete_dashboard
+        and request.GET.get("view") != "simple"
+        and preferred_view != "simple"
+        and membership
+        and membership.role.key in {"manager", "md_director"}
+    ):
+        return redirect("complete_dashboard")
     dashboard_date = today()
     month_start = dashboard_date.replace(day=1)
     year_start = dashboard_date.replace(month=1, day=1)

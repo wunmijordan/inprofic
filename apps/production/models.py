@@ -8,6 +8,7 @@ from core.models import BusinessOwnedModel, TimestampedModel
 
 
 class Order(BusinessOwnedModel):
+    ledger_date_field = "date"
     """A production order — either for a specific customer (made to order,
     delivered directly, never touches shelf stock) or a physical store
     restock (adds to shelf stock on completion, not tied to any customer).
@@ -50,6 +51,7 @@ class Order(BusinessOwnedModel):
     CUSTOMER_PAYMENT_CHOICES = [("paid", "Received"), ("unpaid", "Receivable")]
 
     date = models.DateField()
+    carried_from_date = models.DateField(null=True, blank=True)
     color_tag = models.CharField(
         max_length=7,
         blank=True,
@@ -631,6 +633,7 @@ class OrderMaterialUsage(BusinessOwnedModel):
 
 
 class ProductionRun(BusinessOwnedModel):
+    ledger_date_field = "date"
     """Optional parent production event spanning several customer/store orders.
 
     A shared run coordinates several commercial Orders as one production
@@ -717,6 +720,7 @@ class ProductionRunMaterial(BusinessOwnedModel):
 
 
 class ProductionBatch(BusinessOwnedModel):
+    ledger_date_field = "production_date"
     """A traceable production output record for one finished-good order line.
 
     The batch records planned output, gross production, wastage and saleable

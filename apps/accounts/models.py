@@ -128,6 +128,7 @@ class RoleModulePermission(models.Model):
         ("delivery_rider", "Delivery Rider"),
         ("kitchen", "Production Entry"),
         ("audit", "Audit Workspace"),
+        ("ledger", "Ledger Backlog Entry"),
         ("pos", "In-Premise POS"),
     ]
     role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name="module_permissions")
@@ -1045,6 +1046,7 @@ class PayrollCalculationRule(BusinessOwnedModel):
 
 
 class PayrollRun(BusinessOwnedModel):
+    ledger_date_field = "period_start"
     """One posted wage run that groups issued payslips and Finance outflows."""
 
     KIND_BULK = "bulk"
@@ -1115,6 +1117,7 @@ class PayrollRunFunding(models.Model):
 
 
 class Payslip(BusinessOwnedModel):
+    ledger_date_field = "period_end"
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     staff = models.ForeignKey(PayrollStaffProfile, on_delete=models.PROTECT, related_name="payslips")
     payroll_run = models.ForeignKey(

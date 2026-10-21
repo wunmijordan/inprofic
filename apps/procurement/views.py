@@ -254,6 +254,7 @@ def po_receive(request, pk):
             po = PurchaseOrder.objects.select_for_update().get(pk=po.pk)
             if po.status == "received":
                 return redirect("procurement_list")
+            receipt_date = po.received_date or po.date
             items = list(po.items.select_related("raw_material", "finished_good"))
             invalid_item = next((
                 item for item in items
@@ -277,7 +278,6 @@ def po_receive(request, pk):
                 if item.raw_material_id:
                     mat = item.raw_material
                     factor = mat.total_conversion_factor or 1
-                    # item.qty / item.unit_cost are in the material's purchase
                     # unit (e.g. bags); stock and cost_per_unit are always in
                     # its usage unit (e.g. kg) — convert on the way in.
                     usage_cost = (item.unit_cost / factor).quantize(Decimal("0.000001"))
@@ -286,20 +286,23 @@ def po_receive(request, pk):
                         item.qty * factor,
                         StockMovement.RAW_PURCHASE,
                         note="Purchase order received", reference=f"PO-{po.pk}", unit_value=usage_cost,
+                        on_date=receipt_date,
                     )
                     RawMaterialCostSnapshot.objects.create(
                         business=po.business,
                         raw_material=mat,
                         purchase_order_item=item,
-                        effective_date=po.received_date or today(),
+                        effective_date=receipt_date,
                         purchase_unit_cost=item.unit_cost,
                         usage_unit_cost=usage_cost,
                         supplier=po.supplier or "",
                         supplier_master=po.supplier_master,
                     )
                     # This remains the material's current/latest procurement cost.
-                    mat.cost_per_unit = usage_cost
-                    mat.save(update_fields=["cost_per_unit"])
+                    from core.ledger import segment_for
+                    if segment_for(po.business, receipt_date) == "live":
+                        mat.cost_per_unit = usage_cost
+                        mat.save(update_fields=["cost_per_unit"])
                 else:
                     good = item.finished_good
                     if good.business_id != po.business_id or good.stock is None:
@@ -311,9 +314,10 @@ def po_receive(request, pk):
                         note=f"Stock arrival from {po.supplier or 'supplier'}",
                         reference=f"PO-{po.pk}",
                         unit_value=item.unit_cost,
+                        on_date=receipt_date,
                     )
             po.status = "received"
-            po.received_date = today()
+            po.received_date = receipt_date
             po.save()
             if po.payment_status == "paid":
                 _ensure_po_payment_recorded(po, request.user)

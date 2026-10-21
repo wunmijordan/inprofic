@@ -170,23 +170,30 @@ def default_location(business):
 
 
 @transaction.atomic
-def record_raw_material_movement(material, quantity, movement_type, *, note="", reference="", unit_value=None, location=None):
+def record_raw_material_movement(material, quantity, movement_type, *, note="", reference="", unit_value=None, location=None, on_date=None):
     quantity = Decimal(quantity)
-    material.stock = (material.stock + quantity).quantize(Decimal("0.001"))
-    material.save(update_fields=["stock"])
+    on_date = on_date or timezone.localdate()
+    from core.ledger import segment_for
+    backlog = segment_for(material.business, on_date) == "backlog"
+    if not backlog:
+        material.stock = (material.stock + quantity).quantize(Decimal("0.001"))
+        material.save(update_fields=["stock"])
     StockMovement.objects.create(
         business=material.business, raw_material=material, movement_type=movement_type,
-        quantity=quantity, affects_stock=True, balance_after=material.stock, note=note,
+        quantity=quantity, affects_stock=True, balance_after=None if backlog else material.stock, note=note,
         reference=reference, unit_value=Decimal(unit_value if unit_value is not None else material.cost_per_unit),
-        location=location or default_location(material.business),
+        location=location or default_location(material.business), business_date=on_date,
     )
     return material.stock
 
 
 @transaction.atomic
-def record_finished_good_movement(good, quantity, movement_type, *, note="", affects_stock=True, reference="", unit_value=None, location=None):
+def record_finished_good_movement(good, quantity, movement_type, *, note="", affects_stock=True, reference="", unit_value=None, location=None, on_date=None):
     quantity = Decimal(quantity)
-    if affects_stock:
+    on_date = on_date or timezone.localdate()
+    from core.ledger import segment_for
+    backlog = segment_for(good.business, on_date) == "backlog"
+    if affects_stock and not backlog:
         # Serialise concurrent receipts, sales, and production movements for
         # this product so a stale in-memory balance cannot overwrite another
         # committed stock change.
@@ -201,24 +208,47 @@ def record_finished_good_movement(good, quantity, movement_type, *, note="", aff
         good.stock = locked_good.stock
     StockMovement.objects.create(
         business=good.business, finished_good=good, movement_type=movement_type,
-        quantity=quantity, affects_stock=affects_stock, balance_after=good.stock if affects_stock else None,
+        quantity=quantity, affects_stock=affects_stock, balance_after=good.stock if affects_stock and not backlog else None,
         note=note, reference=reference, unit_value=Decimal(unit_value if unit_value is not None else good.est_cost),
-        location=location or default_location(good.business),
+        location=location or default_location(good.business), business_date=on_date,
     )
     return good.stock
 
 
 def _sellable_market_lots(good, on_date, *, lock=False):
-    queryset = MarketStockLot.raw_objects.filter(
+    queryset = MarketStockLot.objects.filter(
         business=good.business,
         finished_good=good,
-        active=True,
-        quantity_available__gt=0,
         received_date__lte=on_date,
     ).filter(
         models.Q(expiry_date__isnull=True) | models.Q(expiry_date__gte=on_date)
     ).order_by(models.F("expiry_date").asc(nulls_last=True), "received_date", "id")
-    return queryset.select_for_update() if lock else queryset
+    if lock:
+        queryset = queryset.select_for_update()
+    lots = list(queryset)
+    from core.ledger import segment_for
+    if segment_for(good.business, on_date) == "backlog":
+        for lot in lots:
+            lot.quantity_available = _market_lot_balance(lot, on_date)
+            lot.active = lot.quantity_available > 0
+        return [lot for lot in lots if lot.quantity_available > 0]
+    return [lot for lot in lots if lot.active and lot.quantity_available > 0]
+
+
+def _market_lot_balance(lot, on_date):
+    movement_total = MarketStockMovement.raw_objects.filter(
+        business=lot.business, lot=lot, date__lte=on_date,
+    ).aggregate(total=models.Sum("quantity"))["total"]
+    if movement_total is not None:
+        return Decimal(movement_total).quantize(Decimal("0.01"))
+    return Decimal(lot.quantity_received).quantize(Decimal("0.01"))
+
+
+def _market_lot_movement_balance(lot, on_date):
+    movement_total = MarketStockMovement.raw_objects.filter(
+        business=lot.business, lot=lot, date__lte=on_date,
+    ).aggregate(total=models.Sum("quantity"))["total"]
+    return Decimal(movement_total or 0).quantize(Decimal("0.01"))
 
 
 def market_stock_available(good, on_date):
@@ -229,6 +259,7 @@ def market_stock_available(good, on_date):
 
 
 def _record_market_movement(lot, *, date, movement_type, quantity, user, customer=None, sale=None, note=""):
+    balance_after = (_market_lot_movement_balance(lot, date) + Decimal(quantity)).quantize(Decimal("0.01"))
     return MarketStockMovement.raw_objects.create(
         business=lot.business,
         created_by=user,
@@ -236,7 +267,7 @@ def _record_market_movement(lot, *, date, movement_type, quantity, user, custome
         date=date,
         movement_type=movement_type,
         quantity=quantity,
-        balance_after=lot.quantity_available,
+        balance_after=balance_after,
         customer=customer,
         sale=sale,
         unit_value=lot.unit_cost,
@@ -282,6 +313,7 @@ def receive_market_production(batch, quantity, *, user):
         reference=batch.batch_number,
         affects_stock=False,
         unit_value=batch.unit_cost,
+        on_date=batch.production_date,
     )
     return lot
 
@@ -302,6 +334,8 @@ def release_market_stock(*, business, good, customer, quantity, date, payment_st
         raise ValidationError("Select the active business account that received payment.")
 
     good = FinishedGood.raw_objects.select_for_update().get(pk=good.pk, business=business)
+    from core.ledger import segment_for
+    is_backlog = segment_for(business, date) == "backlog"
     lots = list(_sellable_market_lots(good, date, lock=True))
     available = sum((Decimal(lot.quantity_available) for lot in lots), Decimal("0"))
     if quantity > available:
@@ -330,11 +364,14 @@ def release_market_stock(*, business, good, customer, quantity, date, payment_st
         if remaining <= 0:
             break
         taken = min(remaining, Decimal(lot.quantity_available))
+        from core.ledger import segment_for
+        backlog = segment_for(business, date) == "backlog"
         lot.quantity_available = (Decimal(lot.quantity_available) - taken).quantize(Decimal("0.01"))
-        if lot.quantity_available == 0:
-            lot.active = False
-            lot.closed_reason = "released"
-        lot.save(update_fields=["quantity_available", "active", "closed_reason", "updated_at"])
+        if not backlog:
+            if lot.quantity_available == 0:
+                lot.active = False
+                lot.closed_reason = "released"
+            lot.save(update_fields=["quantity_available", "active", "closed_reason", "updated_at"])
         upb = good.units_per_batch or Decimal("1")
         batches = taken // upb if upb else Decimal("0")
         pieces = taken - (batches * upb)
@@ -366,11 +403,13 @@ def release_market_stock(*, business, good, customer, quantity, date, payment_st
             reference=f"SALE-{sale.pk}",
             affects_stock=False,
             unit_value=lot.unit_cost,
+            on_date=date,
         )
         remaining -= taken
 
-    good.total_delivered_to_customers += quantity
-    good.save(update_fields=["total_delivered_to_customers", "updated_at"])
+    if segment_for(business, date) != "backlog":
+        good.total_delivered_to_customers += quantity
+        good.save(update_fields=["total_delivered_to_customers", "updated_at"])
     if sale.transaction_type == "paid":
         record_cash(
             business,
@@ -406,6 +445,8 @@ def transfer_market_stock_to_physical(*, business, good, quantity, date, user, r
     if good.business_id != business.pk:
         raise ValidationError("Product must belong to the active business.")
     good = FinishedGood.raw_objects.select_for_update().get(pk=good.pk, business=business)
+    from core.ledger import segment_for
+    is_backlog = segment_for(business, date) == "backlog"
     lots = list(_sellable_market_lots(good, date, lock=True))
     available = sum((Decimal(lot.quantity_available) for lot in lots), Decimal("0"))
     if quantity > available:
@@ -418,11 +459,12 @@ def transfer_market_stock_to_physical(*, business, good, quantity, date, user, r
             break
         taken = min(remaining, Decimal(lot.quantity_available))
         total_value += taken * lot.unit_cost
-        lot.quantity_available = (Decimal(lot.quantity_available) - taken).quantize(Decimal("0.01"))
-        if lot.quantity_available == 0:
-            lot.active = False
-            lot.closed_reason = "transferred_physical"
-        lot.save(update_fields=["quantity_available", "active", "closed_reason", "updated_at"])
+        if not is_backlog:
+            lot.quantity_available = (Decimal(lot.quantity_available) - taken).quantize(Decimal("0.01"))
+            if lot.quantity_available == 0:
+                lot.active = False
+                lot.closed_reason = "transferred_physical"
+            lot.save(update_fields=["quantity_available", "active", "closed_reason", "updated_at"])
         _record_market_movement(
             lot,
             date=date,
@@ -433,7 +475,7 @@ def transfer_market_stock_to_physical(*, business, good, quantity, date, user, r
         )
         remaining -= taken
 
-    if good.stock is None:
+    if good.stock is None and not is_backlog:
         good.stock = Decimal("0")
         good.save(update_fields=["stock", "updated_at"])
     unit_value = total_value / quantity if quantity else Decimal("0")
@@ -445,9 +487,11 @@ def transfer_market_stock_to_physical(*, business, good, quantity, date, user, r
         reference=f"MARKET-TRANSFER-{date:%Y%m%d}",
         affects_stock=True,
         unit_value=unit_value,
+        on_date=date,
     )
-    good.transferred_market_stock = Decimal(good.transferred_market_stock or 0) + quantity
-    good.save(update_fields=["transferred_market_stock", "updated_at"])
+    if not is_backlog:
+        good.transferred_market_stock = Decimal(good.transferred_market_stock or 0) + quantity
+        good.save(update_fields=["transferred_market_stock", "updated_at"])
     audit(
         business,
         user,
@@ -528,6 +572,7 @@ def record_distribution_return(*, business, sale_item, quantity, date, condition
             reference=f"RETURN-{returned.pk}",
             affects_stock=False,
             unit_value=unit_value,
+            on_date=date,
         )
     else:
         record_finished_good_movement(
@@ -538,6 +583,7 @@ def record_distribution_return(*, business, sale_item, quantity, date, condition
             reference=f"RETURN-{returned.pk}",
             affects_stock=False,
             unit_value=unit_value,
+            on_date=date,
         )
     audit(
         business,
@@ -558,15 +604,19 @@ def reconcile_expired_market_lot(*, business, lot, date, user, reason):
     lot = MarketStockLot.raw_objects.select_for_update().select_related("finished_good").get(
         pk=lot.pk, business=business
     )
+    from core.ledger import segment_for
+    if segment_for(business, date) == "backlog":
+        lot.quantity_available = _market_lot_balance(lot, date)
     if not lot.expiry_date or lot.expiry_date >= date:
         raise ValidationError("Only a lot whose expiry date has passed can be reconciled as expired.")
     quantity = Decimal(lot.quantity_available)
     if quantity <= 0:
         raise ValidationError("This expired lot has no remaining quantity to reconcile.")
-    lot.quantity_available = Decimal("0")
-    lot.active = False
-    lot.closed_reason = "expired"
-    lot.save(update_fields=["quantity_available", "active", "closed_reason", "updated_at"])
+    if segment_for(business, date) != "backlog":
+        lot.quantity_available = Decimal("0")
+        lot.active = False
+        lot.closed_reason = "expired"
+        lot.save(update_fields=["quantity_available", "active", "closed_reason", "updated_at"])
     _record_market_movement(
         lot,
         date=date,
@@ -583,6 +633,7 @@ def reconcile_expired_market_lot(*, business, lot, date, user, reason):
         reference=f"EXPIRED-LOT-{lot.pk}",
         affects_stock=False,
         unit_value=lot.unit_cost,
+        on_date=date,
     )
     audit(
         business,
@@ -609,10 +660,12 @@ def reverse_market_production_lot(*, batch, date, user):
     quantity = Decimal(lot.quantity_available)
     if quantity != Decimal(lot.quantity_received):
         raise ValidationError("Market Stock from this batch is no longer untouched.")
-    lot.quantity_available = Decimal("0")
-    lot.active = False
-    lot.closed_reason = "reversed"
-    lot.save(update_fields=["quantity_available", "active", "closed_reason", "updated_at"])
+    from core.ledger import segment_for
+    if segment_for(batch.business, date) != "backlog":
+        lot.quantity_available = Decimal("0")
+        lot.active = False
+        lot.closed_reason = "reversed"
+        lot.save(update_fields=["quantity_available", "active", "closed_reason", "updated_at"])
     _record_market_movement(
         lot,
         date=date,
@@ -629,6 +682,7 @@ def reverse_market_production_lot(*, batch, date, user):
         reference=f"REV-{batch.batch_number}",
         affects_stock=False,
         unit_value=batch.unit_cost,
+        on_date=date,
     )
     return True
 

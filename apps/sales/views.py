@@ -208,9 +208,9 @@ def sale_form(request):
                     ).order_by("-production_date", "-id").first()
                     latest_purchase = good.stock_movements.filter(
                         movement_type=StockMovement.FG_PURCHASE,
-                        occurred_at__date__lte=sale.date,
+                        business_date__lte=sale.date,
                         quantity__gt=0,
-                    ).order_by("-occurred_at", "-id").first()
+                    ).order_by("-business_date", "-id").first()
                     if not request.business.uses_production and latest_purchase:
                         item.unit_cost = latest_purchase.unit_value
                     else:
@@ -227,6 +227,7 @@ def sale_form(request):
                         note="Wholesale stock release" if sale_channel == "distribution" else "Walk-in sale",
                         affects_stock=True,
                         unit_value=item.unit_cost,
+                        on_date=sale.date,
                     )
                     consume_transferred_physical_stock(good, item.total_units)
 

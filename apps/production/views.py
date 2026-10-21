@@ -1052,7 +1052,7 @@ def production_run_approve(request, pk):
             record_raw_material_movement(
                 mat, -needed, StockMovement.RAW_CONSUMPTION,
                 note=f"Materials released for shared production run {run.run_number}",
-                reference=f"RUN-{run.pk}", unit_value=material_cost,
+                reference=f"RUN-{run.pk}", unit_value=material_cost, on_date=run.date,
             )
         approved_date = today()
         Order.objects.filter(pk__in=[o.pk for o in locked_orders]).update(status="approved", approved_date=approved_date)
@@ -1190,7 +1190,7 @@ def order_approve(request, pk):
             record_raw_material_movement(
                 mat, -needed, StockMovement.RAW_CONSUMPTION,
                 note=f"Materials released for order #{order.display_number}", reference=f"PROD-{order.pk}", unit_value=material_cost,
-                location=movement_location,
+                location=movement_location, on_date=order.date,
             )
         order.status = "approved"
         order.approved_date = today()
@@ -1481,7 +1481,7 @@ def order_complete(request, pk):
                             good, -wastage, StockMovement.FG_WASTAGE,
                             note=form.cleaned_data.get("wastage_reason") or f"Production wastage for batch {batch.batch_number}",
                             reference=batch.batch_number, affects_stock=False, unit_value=snapshot.unit_cost,
-                            location=movement_location,
+                            location=movement_location, on_date=batch.production_date,
                         )
 
                     if destination_committed > 0:
@@ -1496,7 +1496,7 @@ def order_complete(request, pk):
                                 good, destination_committed, StockMovement.FG_PRODUCTION,
                                 note=f"Planned store production — batch {batch.batch_number}",
                                 reference=batch.batch_number, affects_stock=True, unit_value=snapshot.unit_cost,
-                                location=movement_location,
+                                location=movement_location, on_date=batch.production_date,
                             )
                         else:
                             record_finished_good_movement(
@@ -1505,7 +1505,7 @@ def order_complete(request, pk):
                                     f"Non-stock production ({order.non_stock_purpose}) — batch {batch.batch_number}"
                                     if order.order_type == "physical_store" and order.production_destination == "non_stock"
                                     else f"Customer-order production batch {batch.batch_number}"
-                                ), location=movement_location,
+                                ), location=movement_location, on_date=batch.production_date,
                                 reference=batch.batch_number, affects_stock=False, unit_value=snapshot.unit_cost,
                             )
                             if customer_order:
@@ -1516,7 +1516,7 @@ def order_complete(request, pk):
                             good, planned_surplus_stock, StockMovement.FG_PRODUCTION,
                             note=f"Uncommitted planned offcut retained in general finished-goods stock — batch {batch.batch_number}",
                             reference=batch.batch_number, affects_stock=True, unit_value=snapshot.unit_cost,
-                            location=movement_location,
+                            location=movement_location, on_date=batch.production_date,
                         )
 
                     offcut_sales = []
@@ -1558,7 +1558,7 @@ def order_complete(request, pk):
                                 good, quantity, StockMovement.FG_PRODUCTION,
                                 note=f"Planned offcut allocated to {customer.name} via {channel.title()} — batch {batch.batch_number}",
                                 reference=batch.batch_number, affects_stock=False, unit_value=snapshot.unit_cost,
-                                location=movement_location,
+                                location=movement_location, on_date=batch.production_date,
                             )
                             good.total_delivered_to_customers += quantity
 
@@ -1573,7 +1573,7 @@ def order_complete(request, pk):
                             good, excess_stock, StockMovement.FG_PRODUCTION,
                             note=f"Excess production retained in Physical Store stock — batch {batch.batch_number}",
                             reference=batch.batch_number, affects_stock=True, unit_value=snapshot.unit_cost,
-                            location=movement_location,
+                            location=movement_location, on_date=batch.production_date,
                         )
 
                     if excess_non_stock > 0:
@@ -1581,7 +1581,7 @@ def order_complete(request, pk):
                             good, excess_non_stock, StockMovement.FG_PRODUCTION,
                             note=f"Excess production for {batch.excess_non_stock_purpose} — batch {batch.batch_number}",
                             reference=batch.batch_number, affects_stock=False, unit_value=snapshot.unit_cost,
-                            location=movement_location,
+                            location=movement_location, on_date=batch.production_date,
                         )
 
                     update_fields = ["total_produced"]
@@ -1811,7 +1811,7 @@ def production_batch_reconcile(request, pk):
                     source_good, -quantity, StockMovement.ADJUSTMENT,
                     note=f"Shortage reconciliation to batch {target.batch_number} from {source.batch_number}",
                     reference=f"RECON-{source.batch_number}-{target.batch_number}",
-                    affects_stock=True, unit_value=source.unit_cost,
+                    affects_stock=True, unit_value=source.unit_cost, on_date=today(),
                 )
                 target.finished_good.total_delivered_to_customers += quantity
                 target.finished_good.save(update_fields=["total_delivered_to_customers", "updated_at"])
@@ -1923,7 +1923,7 @@ def order_reverse(request, pk):
             raw_totals.setdefault(usage.raw_material_id, [usage.raw_material, Decimal("0")])[1] += usage.actual_quantity
         for material, qty in raw_totals.values():
             if qty > 0:
-                record_raw_material_movement(material, qty, StockMovement.ADJUSTMENT, note=f"Reversal of raw-material release for order #{order.display_number}", reference=f"REV-ORDER-{order.pk}")
+                record_raw_material_movement(material, qty, StockMovement.ADJUSTMENT, note=f"Reversal of raw-material release for order #{order.display_number}", reference=f"REV-ORDER-{order.pk}", on_date=today())
         for batch in order.production_batches.select_for_update().select_related("finished_good"):
             good = batch.finished_good
             remove_from_stock = batch.planned_surplus_stock_units + batch.excess_stock_units
@@ -1942,7 +1942,7 @@ def order_reverse(request, pk):
             ) or (order.is_market_stock_order and not reversed_market_lot):
                 remove_from_stock += min(batch.saleable_units, batch.planned_units)
             if remove_from_stock > 0:
-                record_finished_good_movement(good, -remove_from_stock, StockMovement.ADJUSTMENT, note=f"Reversal of finished-good stock from order #{order.display_number} — batch {batch.batch_number}", reference=f"REV-{batch.batch_number}", affects_stock=True, unit_value=batch.unit_cost)
+                record_finished_good_movement(good, -remove_from_stock, StockMovement.ADJUSTMENT, note=f"Reversal of finished-good stock from order #{order.display_number} — batch {batch.batch_number}", reference=f"REV-{batch.batch_number}", affects_stock=True, unit_value=batch.unit_cost, on_date=today())
             good.total_produced = max(Decimal("0"), Decimal(good.total_produced or 0) - batch.saleable_units)
             delivered = Decimal("0")
             if order.is_customer_order:

@@ -117,7 +117,7 @@ def daily_components(business, start, end):
     money_field, line_total, cogs, _units = _sale_expressions()
     revenue, cost_of_goods = defaultdict(Decimal), defaultdict(Decimal)
     for row in (
-        Sale.raw_objects.filter(business=business, date__range=(start, end), transaction_type="paid")
+        Sale.objects.filter(business=business, date__range=(start, end), transaction_type="paid")
         .values("date").annotate(sales=Sum(line_total, output_field=money_field), cogs=Sum(cogs, output_field=money_field))
     ):
         revenue[row["date"]] = row["sales"] or ZERO
@@ -125,14 +125,14 @@ def daily_components(business, start, end):
 
     expenses = defaultdict(lambda: defaultdict(Decimal))
     unpaid_expenses = defaultdict(Decimal)
-    for row in Expense.raw_objects.filter(business=business, date__range=(start, end)).values("date", "category", "payment_status").annotate(total=Sum("amount")):
+    for row in Expense.objects.filter(business=business, date__range=(start, end)).values("date", "category", "payment_status").annotate(total=Sum("amount")):
         expenses[row["category"]][row["date"]] += row["total"] or ZERO
         if row["payment_status"] == "unpaid":
             unpaid_expenses[row["date"]] += row["total"] or ZERO
 
     payroll = defaultdict(Decimal)
     for row in (
-        Payslip.raw_objects.filter(business=business)
+        Payslip.objects.filter(business=business)
         .annotate(cost_date=Coalesce("payroll_run__pay_date", "period_end"))
         .filter(cost_date__range=(start, end)).values("cost_date").annotate(total=Sum("employer_cost"))
     ):
@@ -140,7 +140,7 @@ def daily_components(business, start, end):
 
     supplies = defaultdict(Decimal)
     for row in (
-        OperationalSupplyDispense.raw_objects.filter(business=business, date__range=(start, end))
+        OperationalSupplyDispense.objects.filter(business=business, date__range=(start, end))
         .values("date").annotate(total=Sum(ExpressionWrapper(F("quantity") * F("raw_material__cost_per_unit"), output_field=money_field)))
     ):
         supplies[row["date"]] = row["total"] or ZERO
@@ -149,13 +149,13 @@ def daily_components(business, start, end):
     # stock) offsets earlier losses, so the cost is the negated value.
     write_offs = defaultdict(Decimal)
     for row in (
-        StockAdjustment.raw_objects.filter(business=business, date__range=(start, end), reversed=False, reason__in=WRITE_OFF_REASONS)
+        StockAdjustment.objects.filter(business=business, date__range=(start, end), reversed=False, reason__in=WRITE_OFF_REASONS)
         .values("date").annotate(total=Sum(ExpressionWrapper(F("quantity") * F("unit_value"), output_field=money_field)))
     ):
         write_offs[row["date"]] = -(row["total"] or ZERO)
 
     unpaid_sales = defaultdict(Decimal)
-    for sale in Sale.raw_objects.filter(business=business, date__range=(start, end)).exclude(transaction_type="paid").prefetch_related("items__finished_good"):
+    for sale in Sale.objects.filter(business=business, date__range=(start, end)).exclude(transaction_type="paid").prefetch_related("items__finished_good"):
         unpaid_sales[sale.date] += sale.total
 
     # Plain dicts (not defaultdicts with lambdas) so the result can be cached.

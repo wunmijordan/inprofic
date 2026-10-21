@@ -6,6 +6,8 @@ from contextvars import ContextVar
 
 _current_business_id = ContextVar("current_business_id", default=None)
 _request_cache = ContextVar("request_cache", default=None)
+_ledger_scope = ContextVar("ledger_scope", default=None)
+_ledger_cutover_date = ContextVar("ledger_cutover_date", default=None)
 
 
 def set_current_business(business):
@@ -14,6 +16,19 @@ def set_current_business(business):
 
 def get_current_business_id():
     return _current_business_id.get()
+
+
+def set_ledger_context(scope=None, cutover_date=None):
+    _ledger_scope.set(scope)
+    _ledger_cutover_date.set(cutover_date)
+
+
+def get_ledger_scope():
+    return _ledger_scope.get()
+
+
+def get_ledger_cutover_date():
+    return _ledger_cutover_date.get()
 
 
 def begin_request_cache():

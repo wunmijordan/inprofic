@@ -4,7 +4,7 @@ from django.db import models
 from decimal import Decimal
 from pathlib import Path
 import uuid
-from .context import get_current_business_id
+from .context import get_current_business_id, get_ledger_cutover_date, get_ledger_scope
 
 
 def business_storefront_logo_upload_to(instance, filename):
@@ -211,6 +211,12 @@ class BusinessManager(models.Manager):
         business_id = get_current_business_id()
         if business_id is not None:
             qs = qs.filter(business_id=business_id)
+        date_field = getattr(self.model, "ledger_date_field", None)
+        scope = get_ledger_scope()
+        cutover_date = get_ledger_cutover_date()
+        if date_field and scope and cutover_date and scope != "all":
+            lookup = f"{date_field}__{'lt' if scope == 'backlog' else 'gte'}"
+            qs = qs.filter(**{lookup: cutover_date})
         return qs
 
 
@@ -231,6 +237,54 @@ class BusinessOwnedModel(TimestampedModel):
     class Meta:
         abstract = True
 
+
+class LedgerCutover(BusinessOwnedModel):
+    STATUS_OPEN = "open"
+    STATUS_COMPLETE = "complete"
+    STATUS_MERGED = "merged"
+    STATUS_ARCHIVED = "archived"
+    STATUS_CHOICES = [
+        (STATUS_OPEN, "Open"), (STATUS_COMPLETE, "Complete"),
+        (STATUS_MERGED, "Merged"), (STATUS_ARCHIVED, "Archived"),
+    ]
+    cutover_date = models.DateField()
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=STATUS_OPEN)
+    backlog_complete_at = models.DateTimeField(null=True, blank=True)
+    merged_at = models.DateTimeField(null=True, blank=True)
+    merge_snapshot = models.JSONField(default=dict, blank=True)
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        constraints = [models.UniqueConstraint(
+            fields=["business"], condition=~models.Q(status="archived"),
+            name="one_active_ledger_cutover_per_business",
+        )]
+
+
+class OpeningPosition(BusinessOwnedModel):
+    SEGMENT_BACKLOG = "backlog"
+    SEGMENT_LIVE = "live"
+    KIND_CHOICES = [(key, label) for key, label in (
+        ("raw", "Raw material"), ("fg", "Finished good"), ("cash", "Cash account"),
+        ("receivable", "Receivable"), ("payable", "Payable"),
+    )]
+    SOURCE_CHOICES = [(key, label) for key, label in (
+        ("derived", "Derived"), ("counted", "Counted"), ("merged", "Merged"),
+    )]
+    cutover = models.ForeignKey(LedgerCutover, on_delete=models.CASCADE, related_name="opening_positions")
+    segment = models.CharField(max_length=10, choices=[(SEGMENT_BACKLOG, "Backlog"), (SEGMENT_LIVE, "Live")])
+    kind = models.CharField(max_length=16, choices=KIND_CHOICES)
+    object_id = models.PositiveBigIntegerField()
+    quantity = models.DecimalField(max_digits=18, decimal_places=3, null=True, blank=True)
+    amount = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
+    source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default="counted")
+    note = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        constraints = [models.UniqueConstraint(
+            fields=["cutover", "segment", "kind", "object_id"], name="unique_ledger_opening_position",
+        )]
+
 class CashAccount(BusinessOwnedModel):
     """A cash/bank/card ledger account used for actual money movement."""
     ACCOUNT_CHOICES = [("cash", "Cash"), ("bank", "Bank / Transfer"), ("card", "Card / POS"), ("other", "Other")]
@@ -250,10 +304,35 @@ class CashAccount(BusinessOwnedModel):
         calculated = getattr(self, "_calculated_balance", None)
         if calculated is not None:
             return calculated
+        from .context import get_ledger_cutover_date, get_ledger_scope
+        scope = get_ledger_scope()
+        cutover_date = get_ledger_cutover_date()
+        from .ledger import active_cutover
+        cutover = active_cutover(self.business)
+        if not cutover and scope == "live" and cutover_date:
+            cutover = LedgerCutover.raw_objects.filter(
+                business_id=self.business_id, status=LedgerCutover.STATUS_ARCHIVED,
+            ).order_by("-id").first()
+        if cutover and cutover.status == LedgerCutover.STATUS_MERGED:
+            position = OpeningPosition.raw_objects.filter(
+                business_id=self.business_id, cutover=cutover,
+                segment="live", kind="cash", object_id=self.pk,
+            ).first()
+            opening = position.amount if position and position.amount is not None else self.opening_balance
+            live_transactions = self.transactions.filter(date__gte=cutover.cutover_date)
+            return opening + sum((t.signed_amount for t in live_transactions), Decimal("0"))
+        if scope in {"live", "backlog"} and cutover_date:
+            position = OpeningPosition.raw_objects.filter(
+                business_id=self.business_id, cutover=cutover,
+                segment=scope, kind="cash", object_id=self.pk,
+            ).first()
+            opening = (position.amount if position and position.amount is not None else self.opening_balance)
+            return opening + sum((t.signed_amount for t in self.transactions.all()), Decimal("0"))
         return self.opening_balance + sum((t.signed_amount for t in self.transactions.all()), Decimal("0"))
 
 
 class FinancialTransaction(BusinessOwnedModel):
+    ledger_date_field = "date"
     """Immutable-style cash ledger entry. Positive income, negative outflow."""
     INCOME = "income"
     OUTFLOW = "outflow"

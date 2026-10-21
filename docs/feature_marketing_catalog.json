@@ -475,5 +475,14 @@
     "proof": "Assign one production order's output, product by product, to Physical Store stock, online or bulk/distribution customers, or market stock - each customer with its own sale and payment - while materials are released once and every batch keeps its cost snapshot. It works whatever the production basis, and whoever entered the order.",
     "highlight": "NEW",
     "added_on": "2026-10-16"
+  },
+  {
+    "id": "ledger-cutover-complete-dashboard",
+    "name": "Ledger cut-over and Complete Dashboard",
+    "group": "finance",
+    "audience": "business admins, owners and operating managers",
+    "proof": "Set a live ledger start date, review opening stock and cash, work older dated records in a permission-controlled backlog, and review a lazy, permission-filtered Complete Dashboard alongside the existing Simple view.",
+    "highlight": "NEW",
+    "added_on": "2026-10-21"
   }
 ]

@@ -511,7 +511,7 @@ main .stock-history-legend {
   font-weight: 600;
 }
 
-main .stock-history-legend > span {
+main .stock-history-legend>span {
   color: var(--ui-surface-text) !important;
 }
 
@@ -1274,8 +1274,8 @@ main .sticky-table tfoot tr> :first-child {
   position: sticky;
   left: 0;
   z-index: 3;
-  background-color: var(--ui-bg, #fff);
-  background-image: linear-gradient(var(--ui-surface), var(--ui-surface));
+  background-color: inherit;
+  background-image: none;
   box-shadow: inset -1px 0 0 var(--ui-border);
 }
 
@@ -1288,8 +1288,9 @@ main .sticky-table thead th:first-child {
 /* Keep the first input column pinned on narrow screens, but constrain its
    width so at least part of the next field remains visible beside it. */
 @media (max-width: 767px) {
-  main form table.sticky-table tbody tr > :first-child,
-  main form table.sticky-table tfoot tr > :first-child,
+
+  main form table.sticky-table tbody tr> :first-child,
+  main form table.sticky-table tfoot tr> :first-child,
   main form table.sticky-table thead th:first-child {
     box-sizing: border-box;
     width: clamp(6.1rem, 38vw, 10.8rem) !important;
@@ -1299,8 +1300,8 @@ main .sticky-table thead th:first-child {
     overflow-y: hidden;
   }
 
-  main form table.sticky-table tbody tr > :first-child :is(input, select, textarea, .inprofic-control-wrap),
-  main form table.sticky-table tfoot tr > :first-child :is(input, select, textarea, .inprofic-control-wrap) {
+  main form table.sticky-table tbody tr> :first-child :is(input, select, textarea, .inprofic-control-wrap),
+  main form table.sticky-table tfoot tr> :first-child :is(input, select, textarea, .inprofic-control-wrap) {
     box-sizing: border-box;
     width: 100% !important;
     min-width: 0 !important;
@@ -1309,8 +1310,8 @@ main .sticky-table thead th:first-child {
     text-overflow: clip;
   }
 
-  main form table.sticky-table tbody tr > :first-child :is(input, select),
-  main form table.sticky-table tfoot tr > :first-child :is(input, select) {
+  main form table.sticky-table tbody tr> :first-child :is(input, select),
+  main form table.sticky-table tfoot tr> :first-child :is(input, select) {
     white-space: nowrap;
   }
 }

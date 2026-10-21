@@ -48,7 +48,7 @@ def _track_subscription_event(event_type, subscription, *, user=None, metadata=N
 # This prevents a cashier from needing broad Commerce access simply to operate
 # the in-premise counter.
 PLAN_ENTITLEMENT_MODULES = tuple(
-    (module, label) for module, label in RoleModulePermission.MODULE_CHOICES if module not in {"pos", "delivery_rider", "kitchen"}
+    (module, label) for module, label in RoleModulePermission.MODULE_CHOICES if module not in {"pos", "delivery_rider", "kitchen", "ledger"}
 )
 
 

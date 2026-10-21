@@ -6,6 +6,7 @@ from core.models import BusinessOwnedModel, TimestampedModel
 
 
 class Expense(BusinessOwnedModel):
+    ledger_date_field = "date"
     PAYMENT_STATUS_CHOICES = [("paid", "Paid"), ("unpaid", "Unpaid")]
     PAYMENT_METHOD_CHOICES = [("Cash", "Cash"), ("Card", "Card"), ("Transfer", "Transfer")]
 
@@ -49,6 +50,7 @@ class Expense(BusinessOwnedModel):
 
 
 class ExpensePayment(BusinessOwnedModel):
+    ledger_date_field = "date"
     date = models.DateField()
     expense = models.ForeignKey(Expense, on_delete=models.PROTECT, related_name="payments")
     amount = models.DecimalField(max_digits=16, decimal_places=2)

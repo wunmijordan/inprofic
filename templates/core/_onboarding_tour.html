@@ -5,6 +5,7 @@
   .ip-tour { position:fixed; inset:0; z-index:170; pointer-events:none; }
   .ip-tour-backdrop { position:absolute; inset:0; background:rgba(20,17,15,.62); backdrop-filter:blur(1px); pointer-events:auto; }
   .ip-tour-focus { position:fixed; z-index:172; border:2px solid color-mix(in srgb,var(--tenant-button) 75%,white); border-radius:18px; box-shadow:0 0 0 9999px rgba(20,17,15,.22), 0 0 0 5px color-mix(in srgb,var(--tenant-button) 22%,transparent), 0 18px 50px rgba(0,0,0,.25); transition:left .22s ease,top .22s ease,width .22s ease,height .22s ease; pointer-events:none; }
+  [data-tour-target].ip-tour-nav-highlight { outline:2px solid color-mix(in srgb,var(--tenant-button) 72%,white); outline-offset:-2px; box-shadow:0 0 0 4px color-mix(in srgb,var(--tenant-button) 18%,transparent); }
   .ip-tour-card { position:fixed; z-index:174; width:min(410px,calc(100vw - 28px)); background:#FFFDF8; color:#44403c; color-scheme:light; border:1px solid #E7DFCC; border-radius:24px; box-shadow:0 28px 90px rgba(0,0,0,.32); padding:18px; pointer-events:auto; transition:left .22s ease,top .22s ease; }
   .ip-tour-art { position:relative; height:92px; overflow:hidden; border-radius:16px; background:linear-gradient(135deg,#f7efe2,#fff 58%,#f3e8d8); border:1px solid #eadfcd; }
   .ip-tour-media[hidden] { display:none !important; }
@@ -192,10 +193,31 @@
     { target:'settings', kind:'settings', title:'Finish your Business setup', body:'Business Settings holds tenant-level configuration. Revisit it when branding, operational defaults or integration settings change.', cta:'Review business identity, defaults and integrations once before relying on the workspace for live operations.', actionLabel:'Open Business Settings' },
   ].map(step => ({...step, media:tourMedia[step.kind] || ''}));
 
-  const visibleTarget = (name) => Array.from(document.querySelectorAll(`[data-tour-target="${name}"]`)).find(el => {
+  const matchingTargets = (name) => Array.from(document.querySelectorAll(`[data-tour-target="${name}"]`));
+  const isVisible = (el) => {
     const r = el.getBoundingClientRect();
     return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
-  });
+  };
+  const visibleTarget = (name) => matchingTargets(name).find(isVisible);
+  let highlightedTarget = null;
+  function revealTourTarget(name) {
+    highlightedTarget?.classList.remove('ip-tour-nav-highlight');
+    highlightedTarget = null;
+    const targets = matchingTargets(name);
+    targets.forEach(target => {
+      const category = target.closest('[data-nav-category]');
+      if (category) {
+        const categories = category.parentElement.querySelectorAll('[data-nav-category]');
+        categories.forEach(item => { item.open = item === category; });
+      }
+    });
+    const target = targets.find(isVisible) || targets[0];
+    if (target) {
+      target.classList.add('ip-tour-nav-highlight');
+      highlightedTarget = target;
+    }
+    return target;
+  }
   const steps = definitions.filter((step, index) => index < 2 || document.querySelector(`[data-tour-target="${step.target}"]`));
   if (!steps.length) return;
 
@@ -362,6 +384,7 @@
   }
   function render() {
     const step=steps[index];
+    revealTourTarget(step.target);
     let target=visibleTarget(step.target);
     if (target && (target.getBoundingClientRect().top < 0 || target.getBoundingClientRect().bottom > innerHeight)) {
       target.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'center'});

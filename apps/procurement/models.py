@@ -27,11 +27,13 @@ class Supplier(BusinessOwnedModel):
 
 
 class PurchaseOrder(BusinessOwnedModel):
+    ledger_date_field = "date"
     STATUS_CHOICES = [("draft", "Draft"), ("ordered", "Ordered"), ("received", "Received")]
     PAYMENT_STATUS_CHOICES = [("paid", "Paid"), ("partial", "Partially Paid"), ("unpaid", "Unpaid")]
     PAYMENT_METHOD_CHOICES = [("Cash", "Cash"), ("Card", "Card"), ("Transfer", "Transfer")]
 
     date = models.DateField()
+    carried_from_date = models.DateField(null=True, blank=True)
     supplier = models.CharField(max_length=120, blank=True)
     supplier_master = models.ForeignKey(
         Supplier, null=True, blank=True, on_delete=models.SET_NULL, related_name="purchase_orders"
@@ -128,6 +130,7 @@ class PurchaseOrderItem(TimestampedModel):
 
 
 class RawMaterialCostSnapshot(BusinessOwnedModel):
+    ledger_date_field = "effective_date"
     """Historical procurement price that becomes available when a purchase is received.
 
     Production costing uses the latest received snapshot at the production date;
@@ -155,6 +158,7 @@ class RawMaterialCostSnapshot(BusinessOwnedModel):
 
 
 class SupplierPayment(BusinessOwnedModel):
+    ledger_date_field = "date"
     date = models.DateField()
     supplier = models.CharField(max_length=120)
     supplier_master = models.ForeignKey(

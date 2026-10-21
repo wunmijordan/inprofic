@@ -83,6 +83,7 @@ def business(request):
         "module_permissions": permissions,
         "available_businesses": available_businesses,
         "can_manage_business": can_manage_business,
+        "backlog_entry_allowed": bool(biz and getattr(request.user, "is_authenticated", False) and user_has_permission(request.user, biz, "ledger", "edit")),
         "can_use_storefront_pos": bool(biz and getattr(request.user, "is_authenticated", False) and can_use_commerce_storefront(request.user, biz)),
         "is_live_tester": bool(biz and getattr(request.user, "is_authenticated", False) and is_live_tester(request.user, biz)),
         "vertical_ui": vertical_config(biz),

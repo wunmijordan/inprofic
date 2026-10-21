@@ -8,7 +8,39 @@ from core.alert_tunes import ALERT_TUNE_CHOICES
 from core.models import BusinessOwnedModel, TimestampedModel
 
 
-class RawMaterial(BusinessOwnedModel):
+class LedgerStockMixin:
+    """Present the active segment's derived stock balance in request context."""
+    def __getattribute__(self, name):
+        value = super().__getattribute__(name)
+        if name != "stock":
+            return value
+        try:
+            if super().__getattribute__("_meta").model_name == "finishedgood" and value is None:
+                return None
+        except AttributeError:
+            return value
+        try:
+            from core.context import get_ledger_cutover_date, get_ledger_scope
+            scope = get_ledger_scope()
+            cutover_date = get_ledger_cutover_date()
+            if scope not in {"live", "backlog"} or not cutover_date:
+                return value
+            business_id = super().__getattribute__("business_id")
+            pk = super().__getattribute__("pk")
+            if not business_id or not pk:
+                return value
+            from core.ledger import active_cutover, movement_balance
+            business = super().__getattribute__("business")
+            cutover = active_cutover(business)
+            if cutover:
+                kind = "raw" if super().__getattribute__("_meta").model_name == "rawmaterial" else "fg"
+                return movement_balance(business, self, kind, scope)
+        except (AttributeError, TypeError):
+            return value
+        return value
+
+
+class RawMaterial(LedgerStockMixin, BusinessOwnedModel):
     CATEGORY_INGREDIENT = "ingredient"
     CATEGORY_PACKAGING = "packaging"
     CATEGORY_PRODUCTION_SUPPLY = "production_supply"
@@ -165,7 +197,7 @@ class RawMaterialMeasurementChange(BusinessOwnedModel):
         return f"{self.raw_material.name} measurement change — {self.created_at:%Y-%m-%d}"
 
 
-class FinishedGood(BusinessOwnedModel):
+class FinishedGood(LedgerStockMixin, BusinessOwnedModel):
     SOURCE_MADE_IN_HOUSE = "made_in_house"
     SOURCE_PURCHASED_FOR_RESALE = "purchased_for_resale"
     SOURCE_CHOICES = [
@@ -795,6 +827,7 @@ class InventoryLocation(BusinessOwnedModel):
 
 
 class StockAdjustment(BusinessOwnedModel):
+    ledger_date_field = "date"
     REASON_CHOICES = [
         ("count", "Physical count correction"), ("wastage", "Wastage / spoilage"),
         ("damage", "Damage"), ("return_customer", "Customer return"),
@@ -820,6 +853,7 @@ class StockAdjustment(BusinessOwnedModel):
 
 
 class OperationalSupplyDispense(BusinessOwnedModel):
+    ledger_date_field = "date"
     """Records operational supplies consumed outside production recipes.
 
     Quantities are entered in the material's usage unit and create a stock
@@ -856,6 +890,7 @@ class OperationalSupplyDispense(BusinessOwnedModel):
 
 
 class MarketStockLot(BusinessOwnedModel):
+    ledger_date_field = "received_date"
     """A batch-aware pool reserved exclusively for future Distribution sales."""
 
     SOURCE_PRODUCTION = "production"
@@ -929,6 +964,7 @@ class MarketStockLot(BusinessOwnedModel):
 
 
 class MarketStockMovement(BusinessOwnedModel):
+    ledger_date_field = "date"
     PRODUCTION_IN = "production_in"
     RELEASE = "release"
     RETURN_IN = "return_in"
@@ -975,6 +1011,7 @@ class MarketStockMovement(BusinessOwnedModel):
 
 
 class DistributionReturn(BusinessOwnedModel):
+    ledger_date_field = "date"
     REDISTRIBUTABLE = "redistributable"
     DAMAGED = "damaged"
     CONDITION_CHOICES = [
@@ -1018,6 +1055,7 @@ class DistributionReturn(BusinessOwnedModel):
 
 
 class StockMovement(BusinessOwnedModel):
+    ledger_date_field = "business_date"
     RAW_PURCHASE = "raw_purchase"
     RAW_CONSUMPTION = "raw_consumption"
     FG_PRODUCTION = "fg_production"
@@ -1096,6 +1134,7 @@ class StockMovement(BusinessOwnedModel):
     )
 
     occurred_at = models.DateTimeField(auto_now_add=True)
+    business_date = models.DateField(null=True, blank=True, db_index=True)
 
     note = models.CharField(max_length=255, blank=True, default="")
     reference = models.CharField(max_length=80, blank=True, default="")

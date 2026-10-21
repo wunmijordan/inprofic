@@ -59,13 +59,13 @@ def _finance_open_items(business):
         .values("total")[:1]
     )
     sale_paid_sq = (
-        CustomerPayment.raw_objects.filter(sale_id=OuterRef("pk"))
+        CustomerPayment.objects.filter(sale_id=OuterRef("pk"))
         .values("sale_id")
         .annotate(total=Sum("amount"))
         .values("total")[:1]
     )
     open_sales = list(
-        Sale.raw_objects.filter(
+        Sale.objects.filter(
             business=business,
             source__in=("distribution_order", "online_order", "walkin"),
             transaction_type__in=("unpaid", "partial"),
@@ -114,13 +114,13 @@ def _finance_open_items(business):
         .values("total")[:1]
     )
     po_paid_sq = (
-        SupplierPayment.raw_objects.filter(purchase_order_id=OuterRef("pk"))
+        SupplierPayment.objects.filter(purchase_order_id=OuterRef("pk"))
         .values("purchase_order_id")
         .annotate(total=Sum("amount"))
         .values("total")[:1]
     )
     open_pos = list(
-        PurchaseOrder.raw_objects.filter(
+        PurchaseOrder.objects.filter(
             business=business, payment_status__in=("unpaid", "partial"), status="received"
         ).only(
             "id", "supplier", "date", "received_date", "payment_status", "status"
@@ -146,8 +146,40 @@ def _finance_open_items(business):
             if len(settlement_po_ids) < 8:
                 settlement_po_ids.append(po.pk)
 
+    from .context import get_ledger_cutover_date, get_ledger_scope
+    from .models import LedgerCutover, OpeningPosition
+    ledger_scope = get_ledger_scope()
+    cutover_date = get_ledger_cutover_date()
+    cutover = None
+    if cutover_date and ledger_scope == "live":
+        cutover = LedgerCutover.raw_objects.filter(business=business).order_by("-id").first()
+    if cutover and cutover.status in {LedgerCutover.STATUS_OPEN, LedgerCutover.STATUS_COMPLETE, LedgerCutover.STATUS_ARCHIVED}:
+        from sales.models import Customer
+        from procurement.models import Supplier
+        for kind, model, target, rows in (
+            ("receivable", Customer, "receivables", outstanding_sales),
+            ("payable", Supplier, "purchase_payables", outstanding_pos),
+        ):
+            positions = OpeningPosition.raw_objects.filter(
+                business=business, cutover=cutover, segment="live", kind=kind,
+                amount__gt=0,
+            ).order_by("object_id")
+            for position in positions:
+                party = model.objects.filter(pk=position.object_id, business=business).first()
+                if not party:
+                    continue
+                balance = position.amount
+                if target == "receivables":
+                    receivables += balance
+                    outstanding_sales_count += 1
+                    rows.append({"sale": None, "name": party.name, "balance": balance, "opening_position": True})
+                else:
+                    purchase_payables += balance
+                    outstanding_pos_count += 1
+                    rows.append({"po": None, "name": party.name, "balance": balance, "opening_position": True})
+
     unpaid_expenses = list(
-        Expense.raw_objects.filter(business=business, payment_status="unpaid")
+        Expense.objects.filter(business=business, payment_status="unpaid")
         .only("id", "date", "description", "amount")
         .annotate(
             _all_unpaid_total=Window(expression=Sum("amount")),
@@ -182,7 +214,20 @@ def _finance_open_items(business):
 
 
 def _cash_account_balances(business, *, active_only=False):
-    account_qs = CashAccount.raw_objects.filter(business=business)
+    from .context import get_ledger_cutover_date, get_ledger_scope
+    from .models import LedgerCutover, OpeningPosition
+    from .ledger import active_cutover
+    scope = get_ledger_scope()
+    cutover_date = get_ledger_cutover_date()
+    cutover = active_cutover(business)
+    if not cutover and scope == "live" and cutover_date:
+        cutover = LedgerCutover.raw_objects.filter(
+            business=business, status=LedgerCutover.STATUS_ARCHIVED,
+        ).order_by("-id").first()
+    if cutover and cutover.status == LedgerCutover.STATUS_MERGED:
+        scope = "live"
+        cutover_date = cutover.cutover_date
+    account_qs = CashAccount.objects.filter(business=business)
     if active_only:
         account_qs = account_qs.filter(active=True)
     accounts = list(
@@ -198,8 +243,30 @@ def _cash_account_balances(business, *, active_only=False):
         )
     )
     for account in accounts:
+        opening = account.opening_balance
+        if scope in {"live", "backlog"} and cutover_date:
+            position = OpeningPosition.raw_objects.filter(
+                business=business, cutover=cutover, segment=scope,
+                kind="cash", object_id=account.pk,
+            ).first() if cutover else None
+            if position and position.amount is not None:
+                opening = position.amount
+            if scope == "live":
+                account._money_in = sum((item.amount for item in account.transactions.filter(
+                    transaction_type=FinancialTransaction.INCOME, date__gte=cutover_date,
+                )), Decimal("0"))
+                account._money_out = sum((item.amount for item in account.transactions.filter(
+                    transaction_type=FinancialTransaction.OUTFLOW, date__gte=cutover_date,
+                )), Decimal("0"))
+            else:
+                account._money_in = sum((item.amount for item in account.transactions.filter(
+                    transaction_type=FinancialTransaction.INCOME, date__lt=cutover_date,
+                )), Decimal("0"))
+                account._money_out = sum((item.amount for item in account.transactions.filter(
+                    transaction_type=FinancialTransaction.OUTFLOW, date__lt=cutover_date,
+                )), Decimal("0"))
         account._calculated_balance = (
-            account.opening_balance
+            opening
             + (account._money_in or Decimal("0"))
             - (account._money_out or Decimal("0"))
         )
@@ -508,9 +575,9 @@ def stock_adjustment_form(request):
             x.save()
             ref=f"ADJ-{x.pk}"
             if x.raw_material:
-                record_raw_material_movement(x.raw_material,x.quantity,StockMovement.ADJUSTMENT,note=x.description,reference=ref,unit_value=x.unit_value,location=x.location)
+                record_raw_material_movement(x.raw_material,x.quantity,StockMovement.ADJUSTMENT,note=x.description,reference=ref,unit_value=x.unit_value,location=x.location,on_date=x.date)
             else:
-                record_finished_good_movement(x.finished_good,x.quantity,StockMovement.ADJUSTMENT,note=x.description,reference=ref,unit_value=x.unit_value,location=x.location)
+                record_finished_good_movement(x.finished_good,x.quantity,StockMovement.ADJUSTMENT,note=x.description,reference=ref,unit_value=x.unit_value,location=x.location,on_date=x.date)
             audit(request.business,request.user,"create",x,"Stock adjustment recorded",{"quantity":str(x.quantity),"reason":x.reason})
         messages.success(request,"Stock adjustment recorded."); return redirect("finance_dashboard")
     return render(request,"core/adjustment_form.html",{"form":form})

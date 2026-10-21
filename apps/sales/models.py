@@ -51,6 +51,20 @@ class Customer(BusinessOwnedModel):
                 Decimal("0"),
                 sale.total - sum((payment.amount for payment in sale.payments.all()), Decimal("0")),
             )
+        from core.context import get_ledger_cutover_date, get_ledger_scope
+        cutover_date = get_ledger_cutover_date()
+        if get_ledger_scope() == "live" and cutover_date:
+            from core.models import LedgerCutover, OpeningPosition
+            cutover = LedgerCutover.raw_objects.filter(business_id=self.business_id).order_by("-id").first()
+            if cutover and cutover.status in {
+                LedgerCutover.STATUS_OPEN, LedgerCutover.STATUS_COMPLETE, LedgerCutover.STATUS_ARCHIVED,
+            }:
+                position = OpeningPosition.raw_objects.filter(
+                    business_id=self.business_id, cutover=cutover, segment="live",
+                    kind="receivable", object_id=self.pk,
+                ).first()
+                if position and position.amount:
+                    total += position.amount
         return total
 
 
@@ -94,6 +108,7 @@ class CustomerProductPrice(BusinessOwnedModel):
 
 
 class Sale(BusinessOwnedModel):
+    ledger_date_field = "date"
     """A completed stock/sales event. Physical-store rows may be paid or
     unpaid product issues; Distribution/Online rows may remain receivables
     until Finance records one or more CustomerPayment entries."""
@@ -208,6 +223,7 @@ class SaleItem(TimestampedModel):
 
 
 class CustomerPayment(BusinessOwnedModel):
+    ledger_date_field = "date"
     date = models.DateField()
     customer = models.CharField(max_length=120)
     customer_master = models.ForeignKey(Customer, null=True, blank=True, on_delete=models.SET_NULL, related_name="payments")
