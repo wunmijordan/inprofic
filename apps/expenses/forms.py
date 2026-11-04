@@ -82,15 +82,17 @@ class ExpensePaymentForm(StyledModelForm):
         super().__init__(*args, **kwargs)
         self.fields["account"].queryset = CashAccount.objects.filter(active=True).order_by("name")
         self.fields["account"].required = True
-        qs = Expense.objects.filter(payment_status="unpaid").order_by("-date", "-id")
+        from .services import with_outstanding, outstanding_amount
+        qs = with_outstanding(Expense.objects.filter(payment_status="unpaid")).filter(_remaining_balance__gt=0).order_by("-date", "-id")
         self.fields["expense"].queryset = qs
-        self.fields["expense"].label_from_instance = lambda e: f"Expense #{e.pk} — {e.description} — outstanding {e.amount:,.2f}"
+        self.fields["expense"].label_from_instance = lambda e: f"Expense #{e.pk} — {e.description} — outstanding {outstanding_amount(e):,.2f}"
 
     def clean_amount(self):
         amount = self.cleaned_data.get("amount")
         if amount is None or amount <= 0:
             raise forms.ValidationError("Amount must be greater than zero.")
         expense = self.cleaned_data.get("expense")
-        if expense and amount > expense.amount:
+        from .services import outstanding_amount
+        if expense and amount > outstanding_amount(expense):
             raise forms.ValidationError("Payment exceeds the outstanding expense amount.")
         return amount

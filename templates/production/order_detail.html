@@ -99,7 +99,7 @@
 
 {% if order.order_type == 'unassigned' and order.status == 'pending' and not kitchen_view and not kitchen_summary %}
   <div class="mb-4 max-w-3xl rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">This order has no channel yet. Choose where it goes before approving.
-    <div class="mt-2 flex flex-wrap gap-2"><a href="{% url 'order_edit' order.pk %}" class="rounded-md bg-[#8f172d] px-3 py-1.5 font-semibold text-white">Choose channel</a><a href="{% url 'order_split' order.pk %}" class="rounded-md border border-amber-300 bg-white px-3 py-1.5 font-semibold text-amber-900">Assign across channels</a></div>
+    <div class="mt-2 flex flex-wrap gap-2"><a data-button-surface href="{% url 'order_edit' order.pk %}" class="rounded-md bg-[#8f172d] px-3 py-1.5 font-semibold text-white">Choose channel</a><a data-button-surface href="{% url 'order_split' order.pk %}" class="rounded-md border border-amber-300 bg-white px-3 py-1.5 font-semibold text-amber-900">Assign across channels</a></div>
   </div>{% endif %}
 {% if kitchen_summary %}
 <div class="bg-white border border-[#E7DFCC] rounded-lg p-4 mb-4 max-w-3xl">
@@ -108,7 +108,7 @@
   {% for line in kitchen_summary.lines %}<div class="text-xs flex flex-wrap justify-between gap-2 border-t border-[#EFE7D2] py-1.5"><span class="font-medium">{{ line.product }}</span><span class="font-mono">{% if line.produced is not None %}output {{ line.produced|num }}{% endif %}{% if line.wastage %} · wasted {{ line.wastage|num }}{% endif %}</span></div>{% endfor %}
   {% if order.order_type == 'unassigned' and order.status == 'pending' and not kitchen_view %}
   <div class="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">This order has no channel yet. Choose where it goes before approving.
-    <div class="mt-2 flex flex-wrap gap-2"><a href="{% url 'order_edit' order.pk %}" class="rounded-md bg-[#8f172d] px-3 py-1.5 font-semibold text-white">Choose channel</a><a href="{% url 'order_split' order.pk %}" class="rounded-md border border-amber-300 bg-white px-3 py-1.5 font-semibold text-amber-900">Assign across channels</a></div>
+    <div class="mt-2 flex flex-wrap gap-2"><a data-button-surface href="{% url 'order_edit' order.pk %}" class="rounded-md bg-[#8f172d] px-3 py-1.5 font-semibold text-white">Choose channel</a><a data-button-surface href="{% url 'order_split' order.pk %}" class="rounded-md border border-amber-300 bg-white px-3 py-1.5 font-semibold text-amber-900">Assign across channels</a></div>
   </div>{% endif %}
 </div>
 {% endif %}
@@ -141,7 +141,7 @@
   </div>
   {% if kitchen_view %}
   <form id="flexible-save-form" method="post" action="{% url 'order_flexible_save' order.pk %}" class="mt-3">{% csrf_token %}
-    <button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save flexible amounts</button>
+    <button data-button-surface type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save flexible amounts</button>
     <span class="ml-2 text-[11px] text-amber-700">Saved amounts are filled in when this order is approved.</span>
   </form>
   {% endif %}
@@ -165,6 +165,14 @@ document.querySelectorAll('[data-flex-central]').forEach(function (box) {
 </script>
 {% endif %}
 
+{% for w in pool_ratio_warnings %}
+<div class="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-md p-3 mb-4 max-w-2xl">
+  <div class="font-semibold mb-1">Ingredient ratio check: {{ w.product }}</div>
+  <p class="text-xs leading-5">{{ w.pool }} {{ w.unit }} of {{ w.base }} is allocated, but the ordered quantity needs {{ w.recipe_need }} {{ w.unit }} by the recipe. The whole allocation is released; other ingredients are released for the ordered quantity only, so they are {{ w.direction }} than the recipe ratio to {{ w.base }}:</p>
+  <ul class="mt-1.5 text-xs space-y-0.5">{% for o in w.others %}<li>{{ o.name }}: releasing <strong>{{ o.released }}</strong>; at the recipe ratio for the full allocation it would be <strong>{{ o.at_ratio }}</strong></li>{% endfor %}</ul>
+</div>
+{% endfor %}
+
 {% if shortages %}
 <div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-4 max-w-2xl">
   <div class="text-lg mb-1">
@@ -181,9 +189,9 @@ document.querySelectorAll('[data-flex-central]').forEach(function (box) {
   </ul>
   {% if confirm_approve %}
   <form method="post" action="{% url 'order_approve' order.pk %}" class="mt-2">
-    {% csrf_token %}<input type="hidden" name="force" value="1">
+    {% csrf_token %}<input type="hidden" name="force" value="1"><input type="hidden" name="event_date" value="{{ request.POST.event_date }}">
     {% for row in flexible_usages %}<input type="hidden" name="{{ row.input_name }}" value="{{ row.input_value }}">{% endfor %}
-    <button type="submit" class="px-3 py-1.5 text-xs rounded-md font-medium bg-rose-600 text-white hover:bg-rose-700">Approve anyway (Raw Materials go negative)</button>
+    <button data-button-surface type="submit" class="px-3 py-1.5 text-xs rounded-md font-medium bg-rose-600 text-white hover:bg-rose-700">Approve anyway (Raw Materials go negative)</button>
   </form>
   {% endif %}
 </div>
@@ -194,33 +202,34 @@ document.querySelectorAll('[data-flex-central]').forEach(function (box) {
 {% endif %}
 
 <div class="flex w-full max-w-4xl flex-wrap items-center gap-2">
-  {% if not kitchen_view %}<a href="{% url 'order_invoice' order.pk %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Download PDF</a>{% endif %}
+  {% if not kitchen_view %}<a data-button-surface href="{% url 'order_invoice' order.pk %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Download PDF</a>{% endif %}
   {% if order.status == 'pending' %}
-  <a href="{% url 'order_edit' order.pk %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Edit</a>
-  {% if not kitchen_view and order.order_type != 'unassigned' %}<a href="{% url 'order_split' order.pk %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Assign across channels</a>{% endif %}
+  <a data-button-surface href="{% url 'order_edit' order.pk %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Edit</a>
+  {% if not kitchen_view and order.order_type != 'unassigned' %}<a data-button-surface href="{% url 'order_split' order.pk %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Assign across channels</a>{% endif %}
   {% if production_run and production_run.status == 'draft' %}
-  <a href="{% url 'production_run_detail' production_run.pk %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-sky-50 text-sky-800 border border-sky-200">Approve via Shared Run</a>
+  <a data-button-surface href="{% url 'production_run_detail' production_run.pk %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-sky-50 text-sky-800 border border-sky-200">Approve via Shared Run</a>
   {% elif not kitchen_view %}
-  <form id="approve-order-form" method="post" action="{% url 'order_approve' order.pk %}">{% csrf_token %}
-    <button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Approve — release Raw Materials</button>
+  <form id="approve-order-form" method="post" action="{% url 'order_approve' order.pk %}" class="flex flex-wrap items-center gap-2">{% csrf_token %}
+    {% include "partials/_event_date.html" with label="Approve on" min=order.date|date:"Y-m-d" value=request.POST.event_date %}
+    <button data-button-surface type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Approve — release Raw Materials</button>
   </form>
   <form method="post" action="{% url 'order_reject' order.pk %}" onsubmit="return confirm('Reject this order?');">{% csrf_token %}
-    <button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200">Reject</button>
+    <button data-button-surface type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200">Reject</button>
   </form>
   {% endif %}
   {% endif %}
   {% if order.status == 'approved' %}
-  <a href="{% url 'order_complete' order.pk %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#16332A]">Complete Production</a>
+  <a data-button-surface href="{% url 'order_complete' order.pk %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#16332A]">Complete Production</a>
   {% endif %}
   {% if order.status == 'completed' %}
   <form method="post" action="{% url 'order_reverse' order.pk %}" class="flex min-w-0 w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center" onsubmit="return confirm('Reverse this completed order? This will restore raw materials and reverse eligible stock/cash effects.');">{% csrf_token %}
     <input name="reason" required placeholder="Reason for reversal" class="min-w-0 w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm sm:w-auto">
-    <button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200">Reverse Order</button>
+    <button data-button-surface type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200">Reverse Order</button>
   </form>
   {% endif %}
   {% if order.status == 'reversed' %}
   <form method="post" action="{% url 'order_recreate' order.pk %}">{% csrf_token %}
-    <button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Edit as New Order</button>
+    <button data-button-surface type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Edit as New Order</button>
   </form>
   {% endif %}
   {% if not kitchen_view and order.status == 'pending' or not kitchen_view and order.status == 'rejected' or not kitchen_view and order.status == 'reversed' %}

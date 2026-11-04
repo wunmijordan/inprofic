@@ -12,7 +12,7 @@
       {% include "_field.html" with field=field %}
       {% if field.name == "quantity" %}<div id="market-stock-release-summary" class="hidden rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs leading-5 text-sky-900" aria-live="polite"></div>{% endif %}
     {% endfor %}
-    <div class="flex gap-2 pt-2"><a href="{% url 'market_stock' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a><button class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white">{{ submit_label }}</button></div>
+    <div class="flex gap-2 pt-2"><a href="{% url 'market_stock' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a><button data-button-surface class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white">{{ submit_label }}</button></div>
   </form>
 </div>
 {{ available_by_product|json_script:"market-stock-available" }}

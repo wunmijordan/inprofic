@@ -12,8 +12,10 @@ what was borrowed and what was deliberately left out).
   chain: buy in bags, track in kg, dispense in grams/spoons/caps — see
   "Units" below) and finished goods, each with a recipe (bill of materials)
   and an optional batch size.
-- **Procurement** — purchase orders; receiving one converts through the
-  unit chain and updates stock + cost per unit automatically.
+- **Procurement** — submit a purchase request, have a business administrator
+  approve quantities, then receive approved goods. Reductions and removals
+  retain requested quantities and reasons. Receipt converts units and updates
+  stock/cost once. Advance payments remain separate from stock receipt.
 - **Wholesale & retail** — stock-first workspaces procure sellable products
   directly, track every supplier arrival per product, and sell from warehouse
   or shop stock without forcing those products through Production. Their product
@@ -33,9 +35,9 @@ what was borrowed and what was deliberately left out).
   something, either as a general restock or linked to a specific pending
   customer order line (which fills in the product and quantity for you).
 - **Production orders** — the approval step: completing one deducts raw
-  materials by recipe (per batch, rounded up to whole batches — you can't
-  make a fraction of a batch) and adds finished stock, inside a database
-  transaction, with a shortage warning you can override. For stock production
+  materials by recipe in proportion to output against the registered batch
+  yield, and completion adds finished stock inside a database transaction.
+  Explicit shortage overrides remain auditable. For stock production
   sized by a shared base-material pool, output weight divides the exact pool
   across products in the live allocation check and approval releases those
   shares. The material is selected explicitly on the order, and its measured
@@ -50,7 +52,9 @@ what was borrowed and what was deliberately left out).
   forms show live available, entered and remaining quantities for the selected
   product.
 - **Reports** — a date-range monthly operational PDF with revenue, channel-origin, procurement, production and inventory charts/tables; CSV/Excel exports and a full JSON backup.
-- **Ledger cut-over and Complete Dashboard** — business admins can set a live start date, review opening stock and cash positions, enter older records in a permission-controlled backlog, and preview/merge/archive that backlog with an undo path. The dashboard offers a lazy, permission-filtered Complete view alongside the existing Simple view; both follow the active Live/Backlog/Combined scope.
+- **Daily brief** — open Daily brief below Dashboard in the desktop or mobile menu; read yesterday's summary, share an paper-style PNG snapshot or text with a sign-in link to the Executive dashboard, or configure morning email and approved-template WhatsApp delivery.
+- **Books and tax** — authorised Finance users can open Books, Tax & VAT and E-invoices from the shared Finance toolbar; review derived double-entry books, configure VAT-inclusive reporting, and prepare sale invoices for provider submission or manual clearance tracking. See [the setup guide](docs/BOOKS_TAX_AND_WHATSAPP.md).
+- **Ledger cut-over and Executive Dashboard** — business admins can set a live start date, review opening stock and cash positions, enter older records in a permission-controlled backlog, and preview/merge/archive that backlog with an undo path. The dashboard offers a lazy, permission-filtered Executive view alongside the Basic view; both follow the active Live/Backlog/Combined scope.
 - **Founder mailing workspace** — platform-level mailing staff can use reusable INPROFIC-branded topics, business/service/plan targeting, immediate delivery with retry-safe queued fallback, and campaign send analytics without receiving tenant access or Founder subscription controls.
 - **Trial re-registration protection** — existing tenant owner email, phone and exact business name cannot create a second free trial after expiry or cancellation; credentials from a tenant that was hard-deleted are intentionally eligible for registration again.
 - **Shared operational alert tray** — one movable, access-aware tray keeps Commerce/Delivery, Inventory and Finance attention together without merging their underlying record state; Inventory has separate Raw Materials and Finished Goods tabs, while authorised Finance users see unpaid invoices, receivables, payables and balancing anomalies from the live finance records.
@@ -101,10 +105,9 @@ not rewritten.
 A finished good can have a batch size (`units_per_batch`) — e.g. 41 loaves
 per batch of Family Loaf. Recipe quantities are **per batch**, not per
 unit; reorder level stays in individual units. A Production Order's
-quantity is still in units (inherited from wherever it came from), but
-production always rounds up to whole batches — order 50 loaves at a
-41-per-batch size, and 2 batches (82) get made, with the extra 32 landing
-as shelf stock. Production products can also record a finished unit weight in
+quantity is in units. Recipe usage scales proportionally: 50 loaves at a
+41-per-batch yield use 50/41 of each recipe quantity. Planned extra output,
+unexpected excess, wastage and customer demand remain distinct. Production products can also record a finished unit weight in
 grams. Production-centric businesses can record a measured finished-output
 yield per raw-material usage unit. Base-material stock orders use this fixed
 material setting to map combined output weight to pool use and excess, then
@@ -264,3 +267,88 @@ External storefronts/connectors/headless API expose Online and Distribution/Bulk
 - **Individual/plain selling options:** expose channel-aware add-ons/standalone portions from the same Finished Good stock/recipe, alongside composed Standard Portions and Bulk Packs. External surfaces remain Online + Distribution/Bulk only.
 
 - **Native interactive product demos:** the marketing page includes a service-aware click-through overview, flip-to-preview module cards, and a detailed storefront/POS-to-fulfilment flow without relying on third-party demo hosting.
+
+### Shared UI and automatic browser checks
+
+Interactive controls use owned shadcn/Radix components alongside the Tailwind
+workspace styles. Routine add/edit forms can open in dialogs with the original
+Django validation; direct full-page URLs remain available. Build with
+`npm run build`, install Chromium with `npx playwright install --with-deps chromium`,
+and run `npm run test:ui`. The runner uses a disposable local database.
+See [the UI guide](docs/WORKSPACE_UI.md) for component conventions, theme/logo
+handling, the official Playwright CLI skill and verification details.
+
+### Integrity release (29 October 2026)
+
+See [system integrity fixes](docs/SYSTEM_INTEGRITY_FIXES.md) for procurement
+approval, compensating cash corrections, protected records, historical quantity
+snapshots, complete stock valuation and tenant backup v2. Run `python manage.py
+migrate` before using the new fields. WhatsApp checkout links require `SITE_URL`.
+
+### Workspace sharing and assistant (4 November 2026)
+
+Procurement add/edit offers **Save and share**. Save validates the normal form and
+creates the request before opening sharing tools; sharing itself does not approve,
+receive stock, or send a WhatsApp message automatically. Read-only sharing is also
+available from each request row as a details preview, including approved requests and advances.
+Share actions sit in the heading dropdown on procurement forms/previews and distribution summaries. Approval
+opens the complete quantity/reason review in the shared dialog.
+
+Daily Brief and Weekly Summary now provide a holistic executive report: all
+material/product stock positions with registered units and reorder status, sales
+by channel/product/customer, canonical Finance P&L, cash movements and account
+balances, outstanding customer/supplier/expense balances, purchasing, and relevant
+production/distribution, commerce and delivery activity. Both separate selected-period
+activity from current positions, respect the sender's module permissions, and keep
+production-only sections out of purchased-stock businesses. The paper-style image
+has at most 8 headline rows plus the net-profit card; the full report text is passed
+unchanged to native image sharing, Copy text and manual WhatsApp text, with the
+Executive dashboard link and selected period. No text details are cut to fit the
+image. On devices without file sharing, sharing saves the image and attempts to
+copy the full accompanying text. Distribution summaries link to
+`#distribution-summary` and `#distribution-returns` on the distribution workspace.
+The umbrella distribution snapshot includes received stock, customer releases,
+Physical Store transfers, destinations and remaining quantities. Production
+profiles use Market Stock movement records; wholesale/retail profiles use their
+registered warehouse/shop balances and recorded distribution sales. Only actual
+recorded returns are shared separately; there is no possible-returns forecast.
+Product stock units remain separate.
+
+The **Assistant** tab lives in the shared activity tray, including on mobile.
+Business admins can add up to 30 questions mapped to existing record-backed
+reports in Assistant settings. Custom questions work without a provider, respect
+all report permissions and platform switches, and match their configured wording.
+See [Staff assistant](docs/STAFF_ASSISTANT.md).
+
+Snapshot exports use the shared cream paper layout, dark text, maroon highlights, total card and QR footer across procurement, Daily Brief, Weekly Summary and distribution summaries. Workspace theme choices continue to style the sharing controls. Global switches keep a neutral track in both states: a white X thumb when off, and an accent-filled double-check thumb when on.
+
+Daily and weekly report contents can be selected independently per member and business;
+these choices also apply to scheduled email and shared text/image highlights. Payables
+identify supplier/vendor names when recorded. Executive dashboard access remains limited
+to its existing admin-level roles, with module restrictions applied inside each section.
+
+The distribution page includes a read-only post-distribution review for members with
+Finance access: original invoice value, selling-value returns, net retained value,
+collections and invoice outstanding. Estimated balances after returns and overpayment
+review do not post credits/refunds or alter invoices. Customer settlement is not a
+measure of end-customer sell-through or profit; transfers to Physical Store are not sales.
+Payments/returns span ledger periods for the selected distribution invoices.
+
+Multi-vendor procurement uses one request envelope with a separate PurchaseOrder for
+each vendor. Enter a vendor per item (or use a default); edit, approve and share the
+combined request, then receive and pay each vendor independently. An initial partial
+payment names the vendor receiving that advance. Existing single-vendor orders remain
+valid. Vendor PDFs and Finance balances continue to represent individual invoices;
+request grouping does not merge debt, stock receipt or payment history.
+
+Distribution sharing now follows a chosen date. Its bounded paper image groups each
+product's made/received quantity, customer allocations and current stock remaining,
+with up to six financial cards. It shows at most eight products and sixteen destination
+lines, explicitly linking to omitted detail. Full text retains all rows and payment
+method breakdowns. Remaining stock and invoice settlement are current positions, not
+historical closing balances for the chosen date.
+
+Customer payment entry accepts Cash, Card and Transfer parts in one receipt, each with
+its own account/reference. Partial receipts leave a Finance receivable; subsequent
+receipts clear it only when cumulative collections cover the invoice. Each positive
+part creates one CustomerPayment and one auditable cash movement in one transaction.

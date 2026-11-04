@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .brief-tabs { display: inline-flex; gap: .25rem; padding: .25rem; border: 1px solid rgba(120,113,108,.35); border-radius: 999px; }
+  .brief-tab { padding: .35rem 1rem; border-radius: 999px; font-size: .8125rem; font-weight: 600; text-decoration: none; color: inherit; opacity: .7; }
+  .brief-tab[aria-current="page"] { background: rgba(120,113,108,.2); opacity: 1; }
+  .brief-nav { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
+  .brief-step { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; border: 1px solid rgba(120,113,108,.35); border-radius: 999px; text-decoration: none; color: inherit; font-size: 1.1rem; }
+  .brief-step[aria-disabled="true"] { opacity: .3; pointer-events: none; }
+  .brief-date { min-height: 2.25rem; padding: .25rem .6rem; font-size: .8125rem; }
+  .brief-quick { font-size: .75rem; text-decoration: underline; text-underline-offset: 2px; }
+  .brief-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin-top: 1rem; }
+  .brief-kpi { padding: .9rem 1rem; }
+  .brief-kpi-label { font-size: .6875rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; opacity: .6; }
+  .brief-kpi-value { margin-top: .25rem; font-size: 1.35rem; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .brief-kpi-trend { margin-top: .25rem; font-size: .75rem; font-weight: 600; }
+  .brief-table { width: 100%; border-collapse: collapse; font-size: .875rem; font-variant-numeric: tabular-nums; }
+  .brief-table th, .brief-table td { padding: .5rem 0; text-align: left; vertical-align: baseline; }
+  .brief-table td:last-child { text-align: right; white-space: nowrap; padding-left: 1rem; }
+  .brief-table tr + tr th, .brief-table tr + tr td { border-top: 1px solid rgba(120,113,108,.2); }
+  .brief-table .is-sub th { padding-left: 1rem; font-weight: 400; font-size: .8125rem; opacity: .75; }
+  .brief-table .is-subtotal th, .brief-table .is-subtotal td, .brief-table .is-total th, .brief-table .is-total td { font-weight: 600; }
+  .brief-table .is-total th, .brief-table .is-total td { border-top: 2px solid rgba(120,113,108,.5); }
+  .brief-note { display: block; font-size: .6875rem; font-weight: 400; opacity: .65; }
+  .brief-facts { margin: .75rem 0 0; padding: 0; list-style: none; font-size: .8125rem; line-height: 1.5; }
+  .brief-facts li + li { margin-top: .25rem; }
+</style>
+<div class="mx-auto max-w-xl">
+  <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">{% if view == "weekly" %}Weekly summary{% else %}Daily brief{% endif %}</p>
+  <h1 class="mt-1 text-2xl font-semibold font-display text-stone-800">{% if view == "weekly" %}{% if brief.partial %}This week so far{% elif is_default %}Last week in numbers{% else %}Week in numbers{% endif %}{% elif is_default %}Yesterday in a few lines{% elif anchor == today %}Today so far{% else %}{{ anchor|date:"l j F" }}{% endif %}</h1>
+  <p class="mt-1 text-xs leading-5 text-stone-500">{% if view == "weekly" %}Profit and loss for {{ label }}, ready to read, copy or send.{% else %}Stock, sales, profit, cash and operations in one business report, ready to share.{% endif %}</p>
+
+  <div class="mt-4 brief-tabs" role="navigation" aria-label="Report type">
+    <a class="brief-tab" href="?view=daily{% if view == 'daily' and not is_default %}&amp;date={{ anchor|date:'Y-m-d' }}{% endif %}"{% if view == "daily" %} aria-current="page"{% endif %}>Daily</a>
+    <a class="brief-tab" href="?view=weekly{% if view == 'weekly' and not is_default %}&amp;date={{ anchor|date:'Y-m-d' }}{% endif %}"{% if view == "weekly" %} aria-current="page"{% endif %}>Weekly</a>
+  </div>
+
+  <form method="get" id="brief-nav" class="brief-nav" aria-label="Choose {% if view == 'weekly' %}week{% else %}date{% endif %}">
+    <input type="hidden" name="view" value="{{ view }}">
+    <a class="brief-step" href="?view={{ view }}&amp;date={{ prev_date|date:'Y-m-d' }}" aria-label="Previous {% if view == 'weekly' %}week{% else %}day{% endif %}" rel="prev">&lsaquo;</a>
+    <label class="sr-only" for="brief-date">{% if view == "weekly" %}Any date in the week{% else %}Date{% endif %}</label>
+    <input id="brief-date" class="brief-date" type="date" name="date" value="{{ anchor|date:'Y-m-d' }}" max="{{ today|date:'Y-m-d' }}">
+    {% if next_date %}<a class="brief-step" href="?view={{ view }}&amp;date={{ next_date|date:'Y-m-d' }}" aria-label="Next {% if view == 'weekly' %}week{% else %}day{% endif %}" rel="next">&rsaquo;</a>{% else %}<span class="brief-step" aria-disabled="true" aria-hidden="true">&rsaquo;</span>{% endif %}
+    <noscript><button class="workspace-action">Show</button></noscript>
+    <span class="text-xs text-stone-500">{% if view == "weekly" %}Weeks run Monday to Sunday.{% else %}{{ label }}{% endif %}</span>
+    <span class="ml-auto">
+      {% if view == "weekly" %}
+        <a class="brief-quick" href="?view=weekly">Last week</a> · <a class="brief-quick" href="?view=weekly&amp;date={{ today|date:'Y-m-d' }}">This week</a>
+      {% else %}
+        <a class="brief-quick" href="?view=daily">Yesterday</a> · <a class="brief-quick" href="?view=daily&amp;date={{ today|date:'Y-m-d' }}">Today</a>
+      {% endif %}
+    </span>
+  </form>
+  {% if note %}<p role="status" class="mt-2 text-xs text-amber-700">{{ note }}</p>{% endif %}
+
+  <details class="workspace-card mt-4 p-4" id="report-contents">
+    <summary class="cursor-pointer text-sm font-semibold">Choose report contents</summary>
+    <p class="mt-2 text-xs text-stone-500">Choose what to include in this {{ view }} report, its image, copied text and scheduled email. Choices apply only to your account in this business.</p>
+    <form method="post" class="mt-4">{% csrf_token %}<input type="hidden" name="action" value="report_sections">
+      <div class="grid gap-3 sm:grid-cols-2">
+      {% for option in brief.report_options %}<label class="flex items-center justify-between gap-3 text-sm"><span>{{ option.label }}</span><span class="cf-switch shrink-0"><input type="checkbox" name="section" value="{{ option.key }}" {% if option.checked %}checked{% endif %}><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label>{% endfor %}
+      </div><button class="workspace-action workspace-action-primary mt-4">Save report contents</button>
+    </form>
+  </details>
+
+  {% if view == "weekly" and brief.executive_pl %}
+  <div class="brief-kpis">
+    <div class="workspace-card brief-kpi">
+      <div class="brief-kpi-label">Revenue</div>
+      <div class="brief-kpi-value">{{ rows.0.value }}</div>
+      <div class="brief-kpi-trend {% if brief.revenue_change.direction == 'up' %}text-emerald-700{% elif brief.revenue_change.direction == 'down' %}text-red-700{% else %}text-stone-500{% endif %}">{{ revenue_trend }} <span class="font-normal text-stone-500">vs {{ against }}</span></div>
+    </div>
+    <div class="workspace-card brief-kpi">
+      <div class="brief-kpi-label">{% if brief.pl.net_profit < 0 %}Net loss{% else %}Net profit{% endif %}</div>
+      <div class="brief-kpi-value">{{ net_value }}</div>
+      <div class="brief-kpi-trend {% if brief.net_change.direction == 'up' %}text-emerald-700{% elif brief.net_change.direction == 'down' %}text-red-700{% else %}text-stone-500{% endif %}">{{ net_trend }} <span class="font-normal text-stone-500">vs {{ against }}</span></div>
+    </div>
+  </div>
+
+  <section class="workspace-card mt-3 p-4" aria-label="Profit and loss for {{ label }}">
+    <table class="brief-table">
+      <caption class="sr-only">Profit and loss, {{ label }}</caption>
+      <tbody>
+        {% for row in rows %}<tr class="is-{{ row.kind }}"><th scope="row">{{ row.label }}{% if row.note %}<span class="brief-note">{{ row.note }}</span>{% endif %}</th><td>{{ row.value }}</td></tr>{% endfor %}
+      </tbody>
+    </table>
+    <ul class="brief-facts text-stone-600">
+      <li>{{ brief.sales_count }} sale{{ brief.sales_count|pluralize }} recorded{% if brief.best_day %}; best day {{ brief.best_day.0|date:"D j M" }}{% endif %}.</li>
+      {% if brief.pl.unpaid_sales %}<li>Not counted as revenue yet: unpaid sales worth {{ unpaid_sales_text }}.</li>{% endif %}
+      {% if brief.pl.unpaid_expenses %}<li>Of the expenses above, {{ unpaid_expenses_text }} is still unpaid.</li>{% endif %}
+      {% if brief.partial %}<li>This week is not over, so the comparison uses the same days of the previous week.</li>{% endif %}
+    </ul>
+    <p class="mt-3 text-[11px] leading-4 text-stone-400">Revenue counts fully paid sales, the same as Finance &rsaquo; Profit &amp; loss. The Books income statement recognises sales when recorded, so it can differ.</p>
+  </section>
+
+  <details class="mt-3" open>
+    <summary class="cursor-pointer text-xs font-semibold text-stone-600">Full business report and sharing text</summary>
+    <pre id="brief-text" class="workspace-card mt-2 whitespace-pre-wrap break-words p-4 font-sans text-sm leading-6">{{ text }}</pre>
+  </details>
+  {% else %}
+  <pre id="brief-text" class="workspace-card mt-4 whitespace-pre-wrap break-words p-4 font-sans text-sm leading-6">{{ text }}</pre>
+  {% endif %}
+
+  <p class="mt-4 text-xs text-stone-500">The image highlights the key indicators. Sharing or copying text includes the complete report permitted by your access, with the dashboard link.</p>
+  {% include "partials/_snapshot_share.html" with snapshot_image_url=share_image_url snapshot_id="brief-share" snapshot_text=share_text snapshot_filename=view snapshot_whatsapp_url=wa_link %}
+  <div class="mt-3 flex flex-wrap gap-2">
+    <form method="post" action="" class="inline">{% csrf_token %}<input type="hidden" name="action" value="email_now"><button class="workspace-action">Email me this</button></form>
+  </div>
+  <p class="mt-2 text-[11px] leading-4 text-stone-400">This sends the {% if view == "weekly" %}week{% else %}date{% endif %} shown above. The WhatsApp button opens a chat for you to send{% if not request.user.phone %}. Add your phone number to your profile to open your own chat directly{% endif %}. Nothing is sent automatically.</p>
+
+
+
+  <form method="post" action="" class="workspace-card mt-6 p-4">{% csrf_token %}
+    <input type="hidden" name="action" value="email">
+    <label class="flex items-start gap-3 text-sm text-stone-700">
+      <span class="cf-switch shrink-0"><input type="checkbox" name="send_email" value="1" {% if pref.send_email %}checked{% endif %} class="mt-1"><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span>
+      <span><span class="font-semibold">Email me the daily brief every morning</span><br><span class="text-xs text-stone-500">Sent once a day after 7am to {{ request.user.email|default:"(no email on your profile yet)" }}.</span></span>
+    </label>
+    <div class="mt-3 text-right"><button class="workspace-action workspace-action-primary">Save email preference</button></div>
+  </form>
+
+  <form method="post" action="" class="workspace-card mt-4 p-4">{% csrf_token %}
+    <input type="hidden" name="action" value="weekly">
+    <label class="flex items-start gap-3 text-sm text-stone-700">
+      <span class="cf-switch shrink-0"><input type="checkbox" name="send_weekly_email" value="1" {% if pref.send_weekly_email %}checked{% endif %} class="mt-1"><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span>
+      <span><span class="font-semibold">Email me the weekly summary every Monday</span><br><span class="text-xs text-stone-500">Profit and loss for the week just ended, sent after 7am to {{ request.user.email|default:"(no email on your profile yet)" }}. The first one arrives next Monday.</span></span>
+    </label>
+    <div class="mt-3 text-right"><button class="workspace-action workspace-action-primary">Save weekly preference</button></div>
+  </form>
+
+  <section class="workspace-card mt-6 p-4" aria-labelledby="brief-whatsapp-title">
+    <h2 id="brief-whatsapp-title" class="text-sm font-semibold">Automatic WhatsApp delivery</h2>
+    <p class="mt-2 text-xs text-stone-500">Automatic delivery needs an approved message template first. Copy text and Send to WhatsApp above work without a template.</p>
+    {% if not connection %}
+      <p class="mt-3 text-sm">Ask a business admin to connect the business WhatsApp number and configure its approved brief template. You can use manual sharing and morning email now.</p>
+    {% elif not template_ready %}
+      <p class="mt-3 text-sm">The business number is connected. A business admin needs to save the approved template name below before automatic delivery can start.</p>
+    {% endif %}
+    {% if connection %}
+    <form method="post" action="" class="mt-4 space-y-3">{% csrf_token %}
+      <input type="hidden" name="action" value="whatsapp">
+      <label class="block text-xs font-semibold text-stone-700" for="brief-whatsapp-number">Your WhatsApp number, including country code</label>
+      <input id="brief-whatsapp-number" type="tel" name="whatsapp_number" autocomplete="tel" value="{{ pref.whatsapp_number }}" placeholder="2348012345678" class="block w-full px-3 py-2 text-sm" aria-describedby="brief-whatsapp-help">
+      <p id="brief-whatsapp-help" class="text-xs text-stone-500">Delivery settings apply to your own account in this business.</p>
+      <label class="flex items-start gap-2 text-xs"><span class="cf-switch shrink-0"><input type="checkbox" name="whatsapp_consent" value="1"{% if pref.whatsapp_consent_at %} checked{% endif %}><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span><span>I consent to receive this business's daily brief on WhatsApp.</span></label>
+      <label class="flex items-start gap-2 text-xs"><span class="cf-switch shrink-0"><input type="checkbox" name="whatsapp_enabled" value="1"{% if pref.whatsapp_enabled %} checked{% endif %}><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span><span>Send it to me every morning</span></label>
+      <p class="text-xs text-stone-500">When WhatsApp delivery fails, the brief is sent to your profile email if available.</p>
+      {% if pref.last_whatsapp_status %}<p class="text-xs">Last attempt: {{ pref.last_whatsapp_status }}{% if pref.last_whatsapp_on %} · {{ pref.last_whatsapp_on|date:"j M Y" }}{% endif %}{% if pref.last_whatsapp_error %}<br>{{ pref.last_whatsapp_error }}{% endif %}</p>{% endif %}
+      <button class="workspace-action workspace-action-primary">Save WhatsApp preference</button>
+    </form>
+    {% if template_ready and pref.whatsapp_enabled and pref.whatsapp_consent_at %}
+    <form method="post" class="mt-3">{% csrf_token %}
+      <input type="hidden" name="action" value="test">
+      <button class="workspace-action">Send me a test now</button>
+      <p class="mt-2 text-xs text-stone-500">Up to three test messages per day.</p>
+    </form>
+    {% endif %}
+    {% if can_manage %}
+    <details class="mt-5 border-t pt-4">
+      <summary class="cursor-pointer text-sm font-semibold">Business template setup</summary>
+      <p class="mt-3 text-xs text-stone-500">Register this body as a utility template in WhatsApp Manager. Once Meta approves it, save its exact name and language here.</p>
+      <pre class="mt-3 whitespace-pre-wrap text-xs leading-5">{{ template_body }}</pre>
+      <form method="post" class="mt-4 space-y-3">{% csrf_token %}
+        <input type="hidden" name="action" value="template">
+        <label class="block text-xs font-semibold" for="brief-template-name">Approved template name</label>
+        <input id="brief-template-name" name="brief_template_name" maxlength="100" value="{{ connection.brief_template_name }}" placeholder="daily_brief" class="block w-full px-3 py-2 text-sm">
+        <label class="block text-xs font-semibold" for="brief-template-language">Template language</label>
+        <input id="brief-template-language" name="brief_template_language" value="{{ connection.brief_template_language|default:'en' }}" placeholder="en" class="block w-full px-3 py-2 text-sm">
+        <button class="workspace-action workspace-action-primary">Save business template</button>
+      </form>
+    </details>
+    {% endif %}
+    {% endif %}
+  </section>
+</div>
+<script>
+const briefDate = document.getElementById('brief-date');
+if (briefDate) briefDate.addEventListener('change', () => { if (briefDate.value) briefDate.form.requestSubmit(); });
+</script>
+{% endblock %}

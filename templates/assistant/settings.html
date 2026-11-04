@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .ast { max-width: 44rem; margin: 0 auto; }
+  .ast-group { margin-top: 1.1rem; }
+  .ast-group h3 { font-size: .6875rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; opacity: .6; }
+  .ast-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: .4rem .75rem; margin-top: .5rem; }
+  .ast-check { display: flex; align-items: flex-start; gap: .6rem; font-size: .875rem; line-height: 1.35; }
+  .ast-check > .cf-switch { margin-top: .1rem; }
+  .ast-check small { display: block; font-size: .7rem; opacity: .65; }
+  .ast-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; font-size: .75rem; }
+  .ast-actions button { text-decoration: underline; text-underline-offset: 2px; background: none; border: 0; color: inherit; cursor: pointer; }
+</style>
+<div class="ast">
+  <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">Assistant · settings</p>
+  <h1 class="mt-1 text-2xl font-semibold font-display text-stone-800">Assistant for {{ biz.name }}</h1>
+  <p class="mt-1 text-xs leading-5 text-stone-500">These choices apply to your business only. The platform can also switch features off for everyone; those show as unavailable below.</p>
+
+  <form method="post" class="workspace-card mt-4 p-4">{% csrf_token %}
+    <label class="ast-check"><span class="cf-switch shrink-0"><input type="checkbox" name="enabled" value="1" {% if tenant.enabled %}checked{% endif %}><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span>
+      <span><strong>Turn the assistant on for this business</strong><small>Off hides it from the menu and blocks it for every member until you turn it back on here.</small></span></label>
+
+    <label class="ast-check mt-3"><span class="cf-switch shrink-0"><input type="checkbox" name="free_text_enabled" value="1" {% if tenant.free_text_enabled %}checked{% endif %} {% if not platform.free_text_enabled %}disabled{% endif %}><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span>
+      <span><strong>Allow AI answers to typed questions</strong>
+        <small>{% if not platform.free_text_enabled %}Switched off by the platform.{% elif not model_configured %}The platform has not connected an AI provider yet, so typed questions are matched to quick facts instead.{% else %}Typed questions are answered by an AI model that reads only the records you can see. Customer names and amounts are sent to the provider. With this off, typed questions are matched to quick facts.{% endif %}</small></span></label>
+
+    <div class="ast-actions"><span class="text-stone-500">Quick facts:</span>
+      <button type="button" data-all="1">Select all</button><button type="button" data-all="0">Select none</button></div>
+    {% if not platform.quick_facts_enabled %}<p class="mt-2 text-xs text-amber-700">Quick facts are switched off by the platform right now.</p>{% endif %}
+    {% for group in groups %}
+    <div class="ast-group"><h3>{{ group.name }}</h3>
+      <div class="ast-grid">
+        {% for fact in group.facts %}
+        <label class="ast-check"><span class="cf-switch shrink-0"><input type="checkbox" name="quick_fact" value="{{ fact.key }}" {% if fact.checked and not fact.platform_off %}checked{% endif %} {% if fact.platform_off %}disabled{% endif %}><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span>
+          <span>{{ fact.label }}{% if fact.platform_off %}<small>Switched off by the platform</small>{% endif %}</span></label>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+    <section class="mt-4" aria-labelledby="custom-questions-heading">
+      <h2 id="custom-questions-heading" class="text-sm font-semibold">Your record-backed questions</h2>
+      <p class="mt-1 text-xs">Map each question to the report that answers it. These work without an AI provider. The report's permissions, date period, ledger scope and platform controls still apply. Type the configured question exactly or select it in the assistant.</p>
+      <div id="custom-question-rows">
+        {% for mapping in custom_questions %}{% include "assistant/_question_row.html" %}{% endfor %}
+      </div>
+      <template id="custom-question-template">{% include "assistant/_question_row.html" %}</template>
+      <button type="button" class="workspace-action mt-3" id="add-custom-question">Add question</button>
+    </section>
+    <p class="mt-4 text-[11px] leading-4 text-stone-500">A quick fact also needs the member to have access to the module behind it, for example Finance for profit and loss.</p>
+    <div class="mt-4 flex items-center justify-between gap-3">
+      <a class="text-xs underline underline-offset-2" href="{% url 'assistant' %}" data-open-assistant>Back to the assistant</a>
+      <button class="workspace-action workspace-action-primary">Save settings</button>
+    </div>
+  </form>
+</div>
+<script>
+document.getElementById('add-custom-question').addEventListener('click', () => {
+  const rows = document.getElementById('custom-question-rows');
+  if (rows.children.length >= 30) return;
+  rows.append(document.getElementById('custom-question-template').content.cloneNode(true));
+  rows.lastElementChild.querySelector('input').focus();
+});
+document.getElementById('custom-question-rows').addEventListener('click', event => {
+  if (event.target.closest('[data-remove-question]')) event.target.closest('[data-question-row]').remove();
+});
+document.querySelectorAll('[data-all]').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('input[name=quick_fact]:not(:disabled)').forEach(i => { i.checked = b.dataset.all === '1'; });
+}));
+</script>
+{% endblock %}

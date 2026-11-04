@@ -5,7 +5,7 @@ description: >
   models, query changes, admin/user management, reports, exports, finance,
   Shared Production Runs, or any feature that reads IDs from a request.
 version: "1.0"
-updated: 2026-09-04
+updated: 2026-10-28
 ---
 
 # Tenant Safety (StoreTrack)
@@ -14,7 +14,10 @@ updated: 2026-09-04
 
 - `request.business` is the request tenant.
 - Top-level tenant data normally inherits `BusinessOwnedModel`.
-- Request views use scoped `.objects`, never `.raw_objects`.
+- Request views prefer scoped `.objects`. Books, tax, cross-period settlement and
+  cut-over administration may deliberately bypass period filters with
+  `.raw_objects`; those queries must explicitly filter `business=request.business`
+  (or a verified tenant-owned parent). A period bypass never bypasses tenancy.
 - New BusinessOwnedModel rows are assigned `request.business` server-side.
 - A submitted object ID is not trusted until re-queried through a tenant-scoped
   queryset.

@@ -8,6 +8,9 @@
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
   <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}?v={{ static_asset_version }}">
   <link rel="stylesheet" href="{% static 'core/css/workspace.css' %}?v={{ static_asset_version }}">
+  <link rel="stylesheet" href="{% static 'core/css/button-surfaces.css' %}?v={{ static_asset_version }}">
+  <link rel="stylesheet" href="{% static 'core/css/interactions.css' %}?v={{ static_asset_version }}">
+  <script src="{% static 'core/js/interactions.js' %}?v={{ static_asset_version }}" data-inprofic-ui defer></script>
   <script src="{% static 'core/js/workspace.js' %}"></script>
   {% include "pwa/head.html" %}
   <style>
@@ -30,12 +33,12 @@
     }
   </style>
   <script src="{% static 'core/js/form-experience.js' %}?v={{ static_asset_version }}" defer></script>
+  <script src="{% static 'core/js/brand-assets.js' %}?v={{ static_asset_version }}" defer></script>
 </head>
 <body>
 <main class="min-h-screen flex items-center justify-center p-4">
   <div class="w-full max-w-sm bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-6" style="box-shadow:var(--ui-shadow-raised)">
-    <img src="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" alt="INPROFIC" class="auth-logo-light max-w-full" style="width:12rem;height:auto" width="1944" height="309">
-    <img src="{% static 'core/brand/inprofic-wordmark-on-dark.png' %}" alt="INPROFIC" class="auth-logo-dark max-w-full" style="width:12rem;height:auto" width="1827" height="290">
+    <img data-brand-logo-light="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" data-brand-logo-dark="{% static 'core/brand/inprofic-wordmark-on-dark.png' %}" src="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" alt="INPROFIC" class="brand-logo max-w-full" style="width:12rem;height:auto" width="1944" height="309">
     <div class="text-[10px] tracking-[0.2em] uppercase text-[#C69A3E] mb-1">Production to commerce</div>
     <h1 class="text-xl font-semibold font-display text-[#d14900] mb-4">Sign In</h1>
     {% if form.errors %}
@@ -52,7 +55,7 @@
         <span class="block text-xs font-medium text-stone-600 mb-1">Password</span>
         <input type="password" name="password" required autocomplete="current-password" class="w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#d14900]/30 focus:border-[#d14900]">
       </label>
-      <button type="submit" class="w-full bg-[#d14900] text-white rounded-md py-2 text-sm font-medium hover:bg-[#050733]">Sign In</button>
+      <button data-button-surface type="submit" class="w-full bg-[#d14900] text-white rounded-md py-2 text-sm font-medium hover:bg-[#050733]">Sign In</button>
     </form>
     <p class="text-xs text-center text-stone-500 mt-4">Starting a new Business Workspace? <a class="text-[#d14900] underline" href="{% url 'signup' %}">Sign Up</a></p>
     <p class="mt-2 text-center text-xs"><a class="text-stone-400 underline underline-offset-2 hover:text-[#d14900]" href="{% url 'marketing_home' %}">Back to the INPROFIC Overview</a><span class="text-stone-300" style="margin:0 .5rem">·</span><a class="text-stone-400 underline underline-offset-2 hover:text-[#d14900]" href="{% url 'privacy_policy' %}">Privacy Policy</a></p>

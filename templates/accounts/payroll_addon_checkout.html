@@ -34,7 +34,7 @@
         <label class="text-xs font-semibold text-stone-600">Payment provider<select name="provider" required class="mt-1.5 w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-2 text-sm">{% for code,label in providers %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
       </div>
       <p class="text-[11px] text-stone-500">Amounts shown are for one batch; the exact total is confirmed on the payment page.</p>
-      <button class="w-full rounded-xl bg-[#050733] px-4 py-3 text-sm font-semibold text-white">Add extra staff</button>
+      <button data-button-surface class="w-full rounded-xl bg-[#050733] px-4 py-3 text-sm font-semibold text-white">Add extra staff</button>
     </form>
   </section>
   {% elif addon and addon.tier.unlimited %}
@@ -55,7 +55,7 @@
       <label class="text-xs font-semibold text-stone-600">Payment provider<select name="provider" required class="mt-1.5 w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-2 text-sm">{% for code,label in providers %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
     </div>
     {% if payroll_state.batches %}<p class="text-[11px] text-stone-500">Your extra-staff batches renew automatically with the package at their current prices. Choosing an unlimited package removes them.</p>{% endif %}
-    <button {% if payroll_state.included %}type="button" disabled{% endif %} class="w-full rounded-xl bg-[#8f172d] px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">{% if payroll_state.included %}Included with your current access{% else %}Continue to secure payment{% endif %}</button>
+    <button data-button-surface {% if payroll_state.included %}type="button" disabled{% endif %} class="w-full rounded-xl bg-[#8f172d] px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">{% if payroll_state.included %}Included with your current access{% else %}Continue to secure payment{% endif %}</button>
   </form>
   {% else %}
   <div class="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">No payroll add-on tier available for {{ subscription.plan.name }} yet.</div>

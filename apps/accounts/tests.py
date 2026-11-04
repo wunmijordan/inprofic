@@ -11,6 +11,8 @@ from django.core.exceptions import ValidationError
 from django.template.loader import get_template
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+
+from accounts.models import Role
 from django.utils import timezone
 
 from core.models import Business, CashAccount, FinancialTransaction
@@ -355,7 +357,7 @@ class TenantSignupTests(TestCase):
         membership = UserBusiness.objects.get(user=user, business=business)
         self.assertEqual(business.vertical, Business.VERTICAL_RESTAURANT)
         self.assertEqual(membership.role.key, CustomUser.ROLE_BUSINESS_ADMIN)
-        self.assertEqual(business.module_access.filter(enabled=True).count(), 6)
+        self.assertEqual(business.module_access.filter(enabled=True).count(), 7)
         subscription = BusinessSubscription.objects.get(primary_business=business)
         self.assertEqual(subscription.plan.code, "starter")
         self.assertEqual(subscription.status, BusinessSubscription.STATUS_ACTIVE)
@@ -399,7 +401,7 @@ class TenantSignupTests(TestCase):
         self.assertEqual(event.metadata["business_name"], "Welcome Bakery")
 
     def test_signup_uses_a_unique_business_slug(self):
-        Business.objects.create(name="Plate and Pantry", slug="plate-and-pantry")
+        Business.objects.create(name="Existing Tenant", slug="plate-and-pantry")
         self.client.post(reverse("signup"), {
             "business_name": "Plate and Pantry",
             "vertical": Business.VERTICAL_GENERAL,
@@ -451,7 +453,7 @@ class TenantRoutingTests(TestCase):
         response = self.client.get(f'{reverse("marketing_home")}?view=marketing')
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Go to your workspace")
+        self.assertContains(response, "Go to your Workspace")
 
     @override_settings(AUTHENTICATED_IDLE_TIMEOUT_SECONDS=60)
     def test_idle_authenticated_root_requires_sign_in_instead_of_showing_marketing(self):
@@ -544,11 +546,11 @@ class TenantRoutingTests(TestCase):
         self.assertContains(response, 'id="ip-onboarding-tour"')
         self.assertContains(response, "Do not show again")
         self.assertContains(response, 'id="ip-tour-media"')
-        self.assertContains(response, "Try this next")
-        self.assertContains(response, "const tourMedia = {")
-        self.assertContains(response, "built-in animated art ALWAYS stays above")
-        self.assertContains(response, "const openingDelay = 2400")
-        self.assertContains(response, "if (forced) openTour()")
+        self.assertContains(response, 'id="ip-tour-cta-action"')
+        self.assertContains(response, "core/js/onboarding-tour.js")
+        self.assertContains(response, 'id="ip-tour-art"')
+        self.assertContains(response, 'id="ip-onboarding-tour"')
+        self.assertContains(response, 'data-force="0"')
 
         complete = self.client.post(reverse("onboarding_tour_complete"))
         self.assertEqual(complete.status_code, 200)
@@ -625,7 +627,7 @@ class BusinessSettingsAccessTests(TestCase):
             source=BusinessModuleAccess.SOURCE_PLAN,
         )
         self.client.force_login(self.admin)
-        self.assertEqual(self.client.get(reverse("dashboard")).status_code, 403)
+        self.assertRedirects(self.client.get(reverse("dashboard")), reverse("audit_workspace"), fetch_redirect_response=False)
         self.assertEqual(self.client.get(reverse("business_settings")).status_code, 200)
 
     def test_user_without_membership_cannot_reach_tenant_data(self):
@@ -635,7 +637,7 @@ class BusinessSettingsAccessTests(TestCase):
         self.client.force_login(user)
         response = self.client.get(reverse("dashboard"))
         self.assertEqual(response.status_code, 403)
-        self.assertContains(response, "No active business access", status_code=403)
+        self.assertContains(response, "No business access", status_code=403)
 
 
 class SubscriptionEntitlementTests(TestCase):
@@ -679,6 +681,11 @@ class SubscriptionEntitlementTests(TestCase):
         self.assertEqual(rows["Inventory"]["values"][0]["state"], "included")
         self.assertEqual(rows["Reports"]["values"][0]["state"], "partial")
         self.assertEqual(rows["Reports"]["values"][0]["text"], "Basic")
+        for label, module_label in [
+            ("Shareable purchase request snapshots", "Procurement"),
+            ("Shareable stock distribution & recorded returns", "Inventory"),
+        ]:
+            self.assertEqual(rows[label]["values"], rows[module_label]["values"])
 
     def test_bulk_entitlement_refresh_has_bounded_queries(self):
         second_business = Business.objects.create(name="Plan Retail", slug="plan-retail")
@@ -865,7 +872,7 @@ class LiveTesterRoleTests(TestCase):
 
         response = self.client.get(reverse("raw_material_add"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Demo · read only")
+        self.assertContains(response, "Demo · Read Only")
 
         response = self.client.post(reverse("raw_material_add"), {"name": "Must Not Persist"})
         self.assertEqual(response.status_code, 403)
@@ -889,7 +896,7 @@ class LiveTesterRoleTests(TestCase):
         self.client.force_login(admin)
         response = self.client.get(reverse("users_list"))
         self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, "Demo")
+        self.assertNotIn(self.user.pk, {membership.user_id for membership in response.context["memberships"]})
         response = self.client.get(reverse("user_edit", args=[self.user.pk]))
         self.assertEqual(response.status_code, 403)
 
@@ -967,8 +974,8 @@ class SeedQueryEfficiencyTests(TestCase):
 
         inventory = SubscriptionPlanModule.objects.get(plan=starter, module="inventory")
         sales = SubscriptionPlanModule.objects.get(plan=starter, module="sales")
-        self.assertTrue(inventory.enabled)
-        self.assertEqual(inventory.level, "full")
+        self.assertFalse(inventory.enabled)
+        self.assertEqual(inventory.level, "none")
         self.assertTrue(sales.enabled)
         self.assertEqual(sales.level, "full")
         self.assertLessEqual(len(repair_queries), 6)
@@ -999,8 +1006,8 @@ class FounderPaymentSettingsTests(TestCase):
 
         start_trial_for_business(self.business, self.plans["starter"])
         response = self.client.get(reverse("subscription_plans"))
-        self.assertContains(response, "Current · Free")
-        self.assertContains(response, "Your free plan")
+        self.assertContains(response, "Current")
+        self.assertContains(response, "Free Forever")
 
     def test_paid_trial_can_be_cancelled_but_not_reused(self):
         from django.core.exceptions import ValidationError
@@ -1040,7 +1047,10 @@ class FounderPaymentSettingsTests(TestCase):
         payment_settings.paystack_enabled = False
         payment_settings.monnify_enabled = True
         payment_settings.save()
-        url = reverse("subscription_payment_plan", args=[self.plans["starter"].code])
+        plan = self.plans["production"]
+        plan.monthly_price = Decimal("1000")
+        plan.save(update_fields=["monthly_price"])
+        url = reverse("subscription_payment_plan", args=[plan.code])
 
         response = self.client.get(url)
         self.assertEqual(response.context["available_payment_providers"], [("monnify", "Monnify")])
@@ -1570,7 +1580,7 @@ class BusinessRestoreTests(TestCase):
         report = analyze_backup_sqlite(upload, target)
         self.assertFalse(report["ready"])
         self.assertEqual(len(report["source_businesses"]), 2)
-        self.assertIn("multiple tenants", " ".join(report["blockers"]).lower())
+        self.assertIn("more than one business", " ".join(report["blockers"]).lower())
 
     def test_import_is_tenant_scoped_and_copies_business_profile_without_slug(self):
         from .backup_restore import restore_backup_sqlite
@@ -1619,7 +1629,7 @@ class JSONBusinessRestoreTests(TestCase):
         report = analyze_backup(self._json_backup(), target)
         self.assertFalse(report["ready"])
         self.assertEqual(len(report["source_businesses"]), 2)
-        self.assertIn("multiple tenants", " ".join(report["blockers"]).lower())
+        self.assertIn("more than one business", " ".join(report["blockers"]).lower())
 
     def test_json_import_filters_other_tenant_rows(self):
         from core.models import CashAccount

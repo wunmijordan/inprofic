@@ -10,8 +10,11 @@ from .forms import ExpenseForm, ExpenseFormSet
 from .models import Expense
 from .invoice import build_expense_invoice
 from core.services import record_cash, audit
+from core import ledger
 from core.models import FinancialTransaction
 from django.http import HttpResponse
+from django.core.exceptions import ValidationError
+from .services import save_correction, outstanding_amount
 
 
 def today():
@@ -20,14 +23,15 @@ def today():
 
 @login_required
 def expenses_list(request):
-    expenses = Expense.objects.select_related("created_by")
+    expenses = Expense.objects.select_related("created_by").prefetch_related("payments")
     total = sum((e.amount for e in expenses), Decimal("0"))
     return render(request, "expenses/expenses_list.html", {"expenses": expenses, "total_expenses": total})
 
 
 @login_required
+@transaction.atomic
 def expense_form(request, pk=None):
-    obj = get_object_or_404(Expense, pk=pk) if pk else None
+    obj = get_object_or_404(Expense.objects.select_for_update(), pk=pk) if pk else None
 
     if obj is not None:
         if request.method == "POST":
@@ -35,10 +39,14 @@ def expense_form(request, pk=None):
             if form.is_valid():
                 expense = form.save(commit=False)
                 expense.business = request.business
-                expense.save()
-                audit(expense.business, request.user, "update", expense, f"Expense {expense.pk} saved", {"payment_status": expense.payment_status})
-                messages.success(request, "Expense saved.")
-                return redirect("expenses_list")
+                try:
+                    save_correction(expense, request.user)
+                except ValidationError as exc:
+                    form.add_error(None, exc)
+                else:
+                    audit(expense.business, request.user, "update", expense, f"Expense {expense.pk} saved", {"payment_status": expense.payment_status})
+                    messages.success(request, "Expense saved.")
+                    return redirect("expenses_list")
         else:
             form = ExpenseForm(instance=obj, business=request.business)
         return render(request, "expenses/expense_form.html", {"form": form, "obj": obj})
@@ -87,11 +95,16 @@ def expense_form(request, pk=None):
 
 
 @login_required
+@transaction.atomic
 def expense_delete(request, pk):
-    obj = get_object_or_404(Expense, pk=pk)
+    obj = get_object_or_404(Expense.objects.select_for_update(), pk=pk)
     if request.method == "POST":
-        obj.delete()
-        messages.success(request, "Expense removed.")
+        if obj.payment_status == "paid" or obj.payments.exists() or FinancialTransaction.raw_objects.filter(business=request.business, reference=f"EXP-{obj.pk}").exists():
+            messages.error(request, "This expense has payment history and cannot be deleted. Correct the expense to preserve its cash and audit history.")
+        else:
+            audit(request.business, request.user, "delete", obj, f"Unpaid expense #{obj.pk} removed")
+            obj.delete()
+            messages.success(request, "Expense removed.")
     return redirect("expenses_list")
 
 
@@ -105,17 +118,22 @@ def expense_invoice(request, pk):
 
 
 @login_required
+@transaction.atomic
 def expense_payment_form(request):
     from .forms import ExpensePaymentForm
-    form = ExpensePaymentForm(request.POST or None, initial={"date": today()})
+    form = ExpensePaymentForm(request.POST or None, initial={"date": ledger.default_entry_date()})
     if request.method == "POST" and form.is_valid():
         from django.db import transaction
         with transaction.atomic():
             x = form.save(commit=False)
             x.business = request.business
             x.created_by = request.user
+            expense = Expense.objects.select_for_update().get(pk=x.expense_id, business=request.business)
+            if x.amount > outstanding_amount(expense):
+                form.add_error("amount", "Payment exceeds the remaining expense balance. Reload and try again.")
+                return render(request, "core/payment_form.html", {"form": form, "title": "Expense Payment"})
+            x.expense = expense
             x.save()
-            expense = x.expense
             paid_before = sum((p.amount for p in expense.payments.exclude(pk=x.pk)), Decimal("0"))
             new_paid = paid_before + x.amount
             expense.payment_status = "paid" if new_paid >= expense.amount else "unpaid"

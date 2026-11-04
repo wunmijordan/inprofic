@@ -82,3 +82,12 @@ def dict_get(mapping, key):
         return mapping.get(key, "")
     except AttributeError:
         return ""
+
+
+@register.filter
+def get_item(mapping, key):
+    """{{ mapping|get_item:key }} for dicts whose keys are not template-safe."""
+    try:
+        return mapping.get(key, [])
+    except AttributeError:
+        return []

@@ -16,7 +16,7 @@
     {% include "_field.html" with field=form.description %}
     <div class="grid sm:grid-cols-2 gap-3">{% include "_field.html" with field=form.amount %}{% include "_field.html" with field=form.vendor %}{% include "_field.html" with field=form.payment_status %}{% include "_field.html" with field=form.payment_method %}{% include "_field.html" with field=form.account %}</div>
     {% include "_field.html" with field=form.notes %}
-    <div class="flex justify-end gap-2 mt-3"><a href="{% url 'expenses_list' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a><button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save Expense</button></div>
+    <div class="flex justify-end gap-2 mt-3"><a href="{% url 'expenses_list' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a><button data-button-surface type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save Expense</button></div>
   </form>
 </div>
 {% else %}
@@ -95,8 +95,8 @@
   </div>
 
   <div class="max-w-full flex flex-wrap items-center justify-between gap-3">
-    <button type="button" id="add-expense-row" class="rounded-md border border-[#D9CFB4] bg-white px-3.5 py-2 text-sm font-medium text-[#8f172d] hover:bg-[#F0EAD9]">+ Add expense</button>
-    <div class="flex flex-wrap justify-end gap-2"><a href="{% url 'expenses_list' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a><button type="submit" name="save_add_new" value="1" class="px-3.5 py-2 text-sm rounded-md font-medium border border-[#8f172d] text-[#8f172d] bg-white hover:bg-[#FFF5F4]">Save &amp; add more</button><button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save expenses</button></div>
+    <button data-button-surface type="button" id="add-expense-row" class="rounded-md border border-[#D9CFB4] bg-white px-3.5 py-2 text-sm font-medium text-[#8f172d] hover:bg-[#F0EAD9]">+ Add expense</button>
+    <div class="flex flex-wrap justify-end gap-2"><a href="{% url 'expenses_list' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a><button data-button-surface type="submit" name="save_add_new" value="1" class="px-3.5 py-2 text-sm rounded-md font-medium border border-[#8f172d] text-[#8f172d] bg-white hover:bg-[#FFF5F4]">Save &amp; add more</button><button data-button-surface type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save expenses</button></div>
   </div>
 </form>
 <script>

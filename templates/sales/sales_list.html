@@ -7,9 +7,9 @@
     <p class="text-sm text-stone-500 mt-0.5">All-time Revenue: {{ total_revenue|default:0|money:biz.currency_symbol }} <span class="ml-2 text-amber-700">Unpaid product value: {{ unpaid_value|default:0|money:biz.currency_symbol }}</span></p>
   </div>
   <div class="flex gap-2">
-    <a href="{% url 'export_sales_xlsx' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export Excel</a>
-    <a href="{% url 'export_sales_csv' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export CSV</a>
-    {% if module_permissions.sales.edit %}<a href="{% url 'sale_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ New Sale</a>{% endif %}
+    <a data-button-surface href="{% url 'export_sales_xlsx' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export Excel</a>
+    <a data-button-surface href="{% url 'export_sales_csv' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export CSV</a>
+    {% if module_permissions.sales.edit %}<a data-button-surface href="{% url 'sale_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ New Sale</a>{% endif %}
   </div>
 </div>
 
@@ -48,7 +48,6 @@
         <td class="px-3 py-2 text-xs text-stone-500">{{ s.created_by.username|default:"—" }}</td>
         <td class="px-3 py-2 text-right">
           <a href="{% url 'sale_invoice' s.pk %}" class="text-stone-400 hover:text-[#8f172d] mr-2">Invoice PDF</a>
-          {% if module_permissions.sales.edit %}<form action="{% url 'sale_delete' s.pk %}" method="post" class="inline" onsubmit="return confirm('Delete this sale?');">{% csrf_token %}<button class="text-stone-400 hover:text-rose-600">Delete</button></form>{% endif %}
         </td>
       </tr>
       {% endfor %}

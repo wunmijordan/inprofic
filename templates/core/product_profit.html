@@ -7,8 +7,8 @@
     <p class="text-sm text-stone-500">What each product makes after its cost, which sell best, and which are not doing well.</p>
   </div>
   <div class="flex flex-wrap gap-2">
-    <a href="{% url 'finance_product_profit_csv' %}?kind={{ kind }}&start={{ period.start|date:'Y-m-d' }}&show={{ show }}&sort={{ sort }}" class="px-3 py-2 rounded-md text-sm bg-white text-[#8f172d] border border-[#D9CFB4] shadow-[0_2px_4px_#000000d2]">Export CSV</a>
-    <a href="{% url 'finance_profit_compare' %}" class="px-3 py-2 rounded-md text-sm bg-[#F0EAD9] text-[#8f172d] border border-[#D9CFB4] shadow-[0_2px_4px_#000000d2]">Compare periods</a>
+    <a data-button-surface href="{% url 'finance_product_profit_csv' %}?kind={{ kind }}&start={{ period.start|date:'Y-m-d' }}&show={{ show }}&sort={{ sort }}" class="px-3 py-2 rounded-md text-sm bg-white text-[#8f172d] border border-[#D9CFB4] shadow-[0_2px_4px_#000000d2]">Export CSV</a>
+    <a data-button-surface href="{% url 'finance_profit_compare' %}" class="px-3 py-2 rounded-md text-sm bg-[#F0EAD9] text-[#8f172d] border border-[#D9CFB4] shadow-[0_2px_4px_#000000d2]">Compare periods</a>
   </div>
 </div>
 
@@ -17,9 +17,9 @@
     {% for value, label in kinds %}<a href="?kind={{ value }}&show={{ show }}&sort={{ sort }}" class="px-3 py-1.5 text-xs rounded-md {% if kind == value %}bg-[#8f172d] text-white{% else %}text-stone-600 hover:bg-[#4D1C25] hover:text-white{% endif %}">{{ label }}</a>{% endfor %}
   </div>
   <div class="flex items-center gap-3">
-    <a href="?kind={{ kind }}&start={{ previous_period.start|date:'Y-m-d' }}&show={{ show }}&sort={{ sort }}" class="rounded-md border border-[#D9CFB4] px-3 py-1.5 text-sm text-[#8f172d]" aria-label="Previous period">←</a>
+    <a data-button-surface href="?kind={{ kind }}&start={{ previous_period.start|date:'Y-m-d' }}&show={{ show }}&sort={{ sort }}" class="rounded-md border border-[#D9CFB4] px-3 py-1.5 text-sm text-[#8f172d]" aria-label="Previous period">←</a>
     <div class="text-center text-sm font-semibold text-stone-800">{{ period.label }}</div>
-    {% if can_go_next %}<a href="?kind={{ kind }}&start={{ next_period.start|date:'Y-m-d' }}&show={{ show }}&sort={{ sort }}" class="rounded-md border border-[#D9CFB4] px-3 py-1.5 text-sm text-[#8f172d]" aria-label="Next period">→</a>{% else %}<span class="rounded-md border border-stone-200 px-3 py-1.5 text-sm text-stone-300">→</span>{% endif %}
+    {% if can_go_next %}<a data-button-surface href="?kind={{ kind }}&start={{ next_period.start|date:'Y-m-d' }}&show={{ show }}&sort={{ sort }}" class="rounded-md border border-[#D9CFB4] px-3 py-1.5 text-sm text-[#8f172d]" aria-label="Next period">→</a>{% else %}<span class="rounded-md border border-stone-200 px-3 py-1.5 text-sm text-stone-300">→</span>{% endif %}
   </div>
 </div>
 

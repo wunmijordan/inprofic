@@ -9,7 +9,7 @@
       <h1 class="mt-1 font-display text-2xl font-semibold text-[#8f172d]">{{ staff.full_name }}</h1>
       <p class="mt-1 text-sm text-stone-500">Previously issued payslips remain available to view, download, resend or correct with an audit reason.</p>
     </div>
-    {% if payroll_state.enabled and staff.active %}<a href="{% url 'payroll_payslip_create' staff.pk %}" class="rounded-md bg-[#8f172d] px-4 py-2.5 text-sm font-semibold text-white">Prepare new payslip</a>{% endif %}
+    {% if payroll_state.enabled and staff.active %}<a data-button-surface href="{% url 'payroll_payslip_create' staff.pk %}" class="rounded-md bg-[#8f172d] px-4 py-2.5 text-sm font-semibold text-white">Prepare new payslip</a>{% endif %}
   </div>
 
   <section class="mt-5 overflow-hidden rounded-xl border border-[#E7DFCC] bg-white">

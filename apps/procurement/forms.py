@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from django import forms
-from django.forms import inlineformset_factory
+from django.forms import BaseModelFormSet, inlineformset_factory, modelformset_factory
 from core.forms import ExistingAwareInlineFormSet
 from .models import PurchaseOrder, PurchaseOrderItem, Supplier
 from inventory.models import FinishedGood, RawMaterial
@@ -19,6 +19,9 @@ class StyledModelForm(forms.ModelForm):
 
 
 class PurchaseOrderForm(StyledModelForm):
+    payment_supplier = forms.CharField(required=False, max_length=120, label="Vendor paid now",
+                                      help_text="For a multi-vendor advance, name the vendor receiving this payment.")
+
     amount_paid = forms.DecimalField(
         max_digits=16,
         decimal_places=2,
@@ -37,7 +40,10 @@ class PurchaseOrderForm(StyledModelForm):
         super().__init__(*args, **kwargs)
         self.fields["account"].queryset = CashAccount.objects.filter(active=True).order_by("name")
         self.fields["account"].required = False
+        self.fields["supplier"].label = "Default vendor (optional)"
+        self.fields["supplier"].help_text = "Used for rows without a vendor of their own."
         self.fields["supplier"].widget.attrs["list"] = "supplier-name-options"
+        self.fields["payment_supplier"].widget.attrs["list"] = "supplier-name-options"
 
     def clean(self):
         cleaned = super().clean()
@@ -64,10 +70,12 @@ class SupplierForm(StyledModelForm):
 
 class PurchaseOrderItemForm(StyledModelForm):
     item = forms.ChoiceField(label="Inventory item")
+    supplier = forms.CharField(required=False, max_length=120, label="Vendor",
+                               widget=forms.TextInput(attrs={"list": "supplier-name-options", "placeholder": "Use default vendor"}))
 
     class Meta:
         model = PurchaseOrderItem
-        fields = ["item", "qty", "unit_cost"]
+        fields = ["item", "supplier", "qty", "unit_cost"]
 
     def __init__(self, *args, business=None, inventory_catalog=None, **kwargs):
         self.business = business
@@ -109,6 +117,7 @@ class PurchaseOrderItemForm(StyledModelForm):
             "Fractional quantities are supported; the cost for one whole purchase unit is calculated automatically."
         )
         if self.instance and self.instance.pk:
+            self.initial["supplier"] = self.instance.purchase_order.supplier
             kind, pk = self.instance.item_identity
             self.fields["item"].initial = f"{kind}:{pk}"
             # Show the original line amount when editing. The stored unit_cost
@@ -162,3 +171,52 @@ class PurchaseOrderItemForm(StyledModelForm):
 
 
 PurchaseOrderItemFormSet = inlineformset_factory(PurchaseOrder, PurchaseOrderItem, form=PurchaseOrderItemForm, formset=ExistingAwareInlineFormSet, extra=1, can_delete=True)
+
+
+class PurchaseApprovalLineForm(forms.Form):
+    qty = forms.DecimalField(label="Approved quantity", min_value=Decimal("0"), max_digits=12, decimal_places=2)
+    reason = forms.CharField(label="Reason for reduction or removal", required=False, max_length=2000, widget=forms.Textarea(attrs={"rows": 2}))
+
+    def __init__(self, *args, item, **kwargs):
+        self.item = item
+        self.requested = item.requested_qty if item.requested_qty is not None else item.qty
+        super().__init__(*args, **kwargs)
+        self.fields["qty"].widget.attrs.update({"max": str(self.requested), "step": "0.01", "class": "pa-input", "inputmode": "decimal"})
+        self.fields["reason"].widget.attrs.update({"class": "pa-reason-input", "placeholder": "Why is this reduced or removed?"})
+
+    def clean(self):
+        data = super().clean()
+        qty = data.get("qty")
+        if qty is not None:
+            if qty > self.requested:
+                self.add_error("qty", "Approval cannot increase the requested quantity. Edit the request first.")
+            if qty < self.requested and not data.get("reason", "").strip():
+                self.add_error("reason", "Give a reason for reducing or removing this item.")
+        return data
+
+
+class RequestItemFormSet(BaseModelFormSet):
+    """Edit a verified request's vendor orders as one set of lines."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.is_bound:
+            self.extra = 0 if self.get_queryset().exists() else 1
+        permitted = self.get_queryset()
+        for form in self.forms:
+            form.fields["id"].queryset = permitted
+
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        ids = [form.cleaned_data.get('id').pk for form in self.forms
+               if form.cleaned_data.get('id') is not None]
+        if len(ids) != len(set(ids)):
+            raise forms.ValidationError("An item was submitted more than once. Reload the request.")
+
+
+PurchaseRequestItemFormSet = modelformset_factory(
+    PurchaseOrderItem, form=PurchaseOrderItemForm, formset=RequestItemFormSet,
+    extra=1, can_delete=True, max_num=200, validate_max=True,
+)

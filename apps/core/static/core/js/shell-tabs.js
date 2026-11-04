@@ -28,7 +28,7 @@ function shellBizKey(){var c=window.INPROFIC_SHELL||{};return c.bizKey||'anonymo
           button.focus();
         }
       });
-      panel.querySelectorAll('a').forEach((link) => link.addEventListener('click', () => setOpen(false)));
+      panel.querySelectorAll('a, [data-open-assistant]').forEach((link) => link.addEventListener('click', () => setOpen(false)));
     });
 
     document.addEventListener("DOMContentLoaded", function () {

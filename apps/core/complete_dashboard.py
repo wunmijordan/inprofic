@@ -1,8 +1,10 @@
 """Permission-filtered registry for the lazy Complete dashboard."""
-from datetime import date
+from datetime import date, timedelta
 
 from django.apps import apps
 from django.core.cache import cache
+import logging
+
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count, F, Q
 from django.http import JsonResponse
@@ -10,9 +12,52 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
-from accounts.services import user_has_permission
+from accounts.services import is_business_admin, user_has_permission
+from . import complete_summaries as summaries
 from .accounting import daily_components, fiscal_period, period_buckets, profit_and_loss
 from .verticals import vertical_config
+
+logger = logging.getLogger(__name__)
+
+# Roles that may use the Complete dashboard besides business admins.
+COMPLETE_DASHBOARD_ROLES = {"manager", "md_director"}
+
+
+def can_use_complete_dashboard(user, business):
+    """Business admins, managers and MD/Directors (the executive audience)."""
+    if not business or not getattr(user, "is_authenticated", False):
+        return False
+    if is_business_admin(user, business):
+        return True
+    from accounts.models import UserBusiness
+    return UserBusiness.objects.filter(
+        user=user, business=business, active=True, role__key__in=COMPLETE_DASHBOARD_ROLES
+    ).exists()
+
+
+# Summary sections come first in each group: (key, label, module, builder).
+# Keys are unique across the whole dashboard and never collide with GROUPS keys.
+SUMMARIES = {
+    "pulse": [("indicators", "Key Indicators", "dashboard", summaries.pulse_indicators),
+              ("attention", "Needs Attention", "dashboard", summaries.pulse_attention)],
+    "sales": [("sales_summary", "Sales Summary", "sales", summaries.sales_summary)],
+    "production": [("production_summary", "Production Summary", "production", summaries.production_summary),
+                   ("recipe_variance", "Recipe vs Actual", "production", summaries.recipe_variance_section)],
+    "procurement": [("procurement_summary", "Procurement Summary", "procurement", summaries.procurement_summary)],
+    "inventory": [("inventory_summary", "Stock Summary", "inventory", summaries.inventory_summary),
+                  ("recipe_ratios", "Recipes & Ratios", "inventory", summaries.recipe_ratios_section)],
+    "market": [("market_summary", "Market Stock Summary", "inventory", summaries.market_summary)],
+    "finance": [("finance_position", "Financial Position", "finance", summaries.finance_position),
+                ("money_flow", "Cash Flow", "finance", summaries.money_flow)],
+    "expenses": [("expense_summary", "Expense Summary", "expenses", summaries.expense_summary)],
+    "customers": [("customer_summary", "Customer Summary", "sales", summaries.customer_summary)],
+    "commerce": [("commerce_summary", "Commerce Summary", "commerce", summaries.commerce_summary)],
+    "people": [("people_summary", "People & Payroll Summary", "users", summaries.people_summary)],
+    "controls": [("audit_summary", "Audit Summary", "audit", summaries.audit_summary)],
+    "ledger": [("ledger_status", "Ledger Status", "ledger", summaries.ledger_status)],
+}
+_SUMMARY_INDEX = {key: (group, label, module, builder)
+                  for group, entries in SUMMARIES.items() for key, label, module, builder in entries}
 
 
 GROUPS = [
@@ -38,6 +83,10 @@ def dashboard_manifest(user, business):
     result = []
     for group_key, group_label, raw_sections in GROUPS:
         sections = [
+            {"key": key, "label": label, "summary": True}
+            for key, label, module, _builder in SUMMARIES.get(group_key, [])
+            if user_has_permission(user, business, module, "view")
+        ] + [
             {"key": key, "label": _vertical_section_label(key, label, vertical_ui)}
             for key, label, module, _model, _fields in raw_sections
             if user_has_permission(user, business, module, "view")
@@ -57,13 +106,71 @@ def _section(section_key):
 @login_required
 @require_GET
 def complete_dashboard(request):
+    from django.shortcuts import redirect
+    if not can_use_complete_dashboard(request.user, request.business):
+        return redirect("dashboard")
     manifest = dashboard_manifest(request.user, request.business)
     return render(request, "core/complete_dashboard.html", {"dashboard_manifest": manifest})
+
+
+def _default_period(request, today):
+    """Month-to-date in Live; the last 30 days before the cut-over in Backlog mode."""
+    cutover = getattr(request, "ledger_cutover", None)
+    scope = getattr(request, "ledger_scope", "all")
+    if cutover and scope == "backlog":
+        end = cutover.cutover_date - timedelta(days=1)
+        return end - timedelta(days=29), end
+    start = today.replace(day=1)
+    if cutover and scope == "live" and start < cutover.cutover_date <= today:
+        start = cutover.cutover_date
+    return start, today
+
+
+def _summary_response(request, group, section, entry):
+    _group, label, module, builder = entry
+    today = timezone.localdate()
+    default_start, default_end = _default_period(request, today)
+    try:
+        start = _parse_date(request.GET.get("start")) or default_start
+        end = _parse_date(request.GET.get("end")) or default_end
+    except ValueError as error:
+        return JsonResponse({"error": str(error)}, status=400)
+    if start > end:
+        return JsonResponse({"error": "Start date must be on or before end date."}, status=400)
+    if (end - start).days > 366 * 5:
+        return JsonResponse({"error": "Choose a date range of five years or less."}, status=400)
+    cache_key = f"complete-dashboard:{request.business.pk}:{request.user.pk}:{request.ledger_scope}:{group}:{section}:{start}:{end}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return JsonResponse(cached)
+    ctx = summaries.Ctx(request=request, business=request.business, start=start, end=end, today=today)
+    try:
+        body = builder(ctx)
+    except Exception:  # one broken section must not take the whole dashboard down
+        logger.exception("Complete dashboard section %s failed", section)
+        return JsonResponse({"error": "This section could not be loaded right now. Please try again shortly."}, status=500)
+    payload = {
+        "group": group, "section": section, "title": label, "currency": ctx.cur,
+        "kpis": body.get("kpis", []), "tables": body.get("tables", []), "charts": body.get("charts", []),
+        "message": body.get("message", ""), "scope": getattr(request, "ledger_scope", "all"),
+        "date_range": {"start": start.isoformat(), "end": end.isoformat()},
+    }
+    cache.set(cache_key, payload, 30)
+    return JsonResponse(payload)
 
 
 @login_required
 @require_GET
 def complete_dashboard_section(request, group, section):
+    if not can_use_complete_dashboard(request.user, request.business):
+        return JsonResponse({"error": "The Executive dashboard is available to managers and business admins."}, status=403)
+    summary = _SUMMARY_INDEX.get(section)
+    if summary:
+        if summary[0] != group:
+            return JsonResponse({"error": "Section does not belong to this group."}, status=404)
+        if not user_has_permission(request.user, request.business, summary[2], "view"):
+            return JsonResponse({"error": "This section is not available to your role."}, status=403)
+        return _summary_response(request, group, section, summary)
     selected = _section(section)
     if not selected:
         return JsonResponse({"error": "Unknown section."}, status=404)

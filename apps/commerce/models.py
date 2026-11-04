@@ -929,7 +929,6 @@ class StorefrontAttributionVisit(BusinessOwnedModel):
 
 
 class CommerceIntake(BusinessOwnedModel):
-    ledger_date_field = "created_at"
     SOURCE_STOREFRONT = "storefront"
     SOURCE_API = "api"
     SOURCE_CONNECTOR = "connector"

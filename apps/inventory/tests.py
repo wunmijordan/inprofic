@@ -242,6 +242,8 @@ class DistributionMarketStockTests(TestCase):
             reorder_level=None,
             selling_price=Decimal("1000"),
         )
+        from .models import FinishedGoodChannelPrice
+        FinishedGoodChannelPrice.objects.create(finished_good=self.good, channel="distribution", price=Decimal("1000"))
         self.account = CashAccount.raw_objects.create(
             business=self.business, created_by=self.user, name="Bank", account_type="bank"
         )

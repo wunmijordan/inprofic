@@ -8,19 +8,19 @@
   --ui-surface: #eceff3ee;
   --ui-surface-muted: #dee3e9;
   --ui-text: #182433;
-  --ui-muted: #667382;
+  --ui-muted: #566473;
   --ui-surface-text: #182433;
-  --ui-surface-muted-text: #667382;
+  --ui-surface-muted-text: #566473;
   --ui-border: #cbd5e1;
   /* Fixed page colour used by the standalone default dark-canvas control. */
   --ui-default-dark-canvas: #111827;
   /* Global elevation: edit these two values to tune cards and raised panels. */
-  --ui-shadow: 0 4px 8px #000000d2;
-  --ui-shadow-raised: 0 6px 10px #000000d2;
+  --ui-shadow: 0 1px 3px rgb(15 23 42 / .10);
+  --ui-shadow-raised: 0 8px 24px rgb(15 23 42 / .14);
   /* Global corners: controls, ordinary cards, then large feature cards. */
-  --ui-radius: .85rem;
-  --ui-card-radius: 1.25rem;
-  --ui-card-radius-large: 1.65rem;
+  --ui-radius: .6rem;
+  --ui-card-radius: .9rem;
+  --ui-card-radius-large: 1.1rem;
   --ui-control-height: 2.25rem;
   --ui-accent: var(--tenant-button, #d14900);
   --ui-accent-contrast: var(--tenant-button-contrast, #fff);
@@ -35,13 +35,13 @@ html[data-theme="dark"] {
   --ui-bg: var(--ui-dark-bg, #111827);
   --ui-surface: var(--ui-dark-surface, #182230);
   --ui-surface-muted: var(--ui-dark-surface-muted, #202c3b);
-  --ui-text: #e8edf3;
-  --ui-muted: #9ba9b8;
+  --ui-text: var(--ui-dark-canvas-text, #e8edf3);
+  --ui-muted: var(--ui-dark-canvas-muted-text, #9ba9b8);
   --ui-surface-text: var(--ui-dark-surface-text, #e8edf3);
   --ui-surface-muted-text: var(--ui-dark-surface-muted-text, #9ba9b8);
   --ui-border: var(--ui-dark-border, #344154);
-  --ui-shadow: 0 4px 12px #000000d2;
-  --ui-shadow-raised: 0 8px 18px #000000d2;
+  --ui-shadow: 0 1px 4px rgb(0 0 0 / .24);
+  --ui-shadow-raised: 0 8px 28px rgb(0 0 0 / .32);
 }
 
 html,
@@ -81,58 +81,19 @@ textarea:focus-visible {
 }
 
 /* Shared toggle used by forms, settings and standalone workspaces such as POS. */
-.cf-switch {
-  position: relative;
-  display: inline-flex;
-  height: 1.65rem;
-  width: 3rem;
-  align-items: center;
-}
-
-.cf-switch>input[type="checkbox"] {
-  position: absolute !important;
-  inset: 0 !important;
-  z-index: 2;
-  width: 100% !important;
-  height: 100% !important;
-  margin: 0 !important;
-  cursor: pointer;
-  opacity: 0 !important;
-}
-
-.cf-switch-track {
-  position: absolute;
-  inset: 0;
-  border-radius: 999px;
-  background: #d6d3d1;
-  box-shadow: inset 0 0 0 1px rgba(87, 83, 78, .12);
-  transition: background .18s ease;
-}
-
-.cf-switch-thumb {
-  position: absolute;
-  left: .2rem;
-  top: .2rem;
-  width: 1.25rem;
-  height: 1.25rem;
-  border-radius: 999px;
-  background: white;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, .22);
-  transition: transform .18s ease;
-}
-
-.cf-switch>input[type="checkbox"]:checked+.cf-switch-track {
-  background: var(--tenant-button);
-}
-
-.cf-switch>input[type="checkbox"]:checked+.cf-switch-track .cf-switch-thumb {
-  transform: translateX(1.35rem);
-}
-
-.cf-switch>input[type="checkbox"]:focus-visible+.cf-switch-track {
-  outline: 3px solid color-mix(in srgb, var(--tenant-button) 20%, transparent);
-  outline-offset: 2px;
-}
+/* Shared switch: the neutral track stays fixed; only the active thumb uses accent. */
+.cf-switch { position:relative; display:inline-flex; height:1.65rem; width:3rem; align-items:center; vertical-align:middle; flex-shrink:0; }
+.cf-switch>input[type="checkbox"] { position:absolute!important; inset:0!important; z-index:2; width:100%!important; height:100%!important; margin:0!important; cursor:pointer; opacity:0!important; }
+.cf-switch-track { position:absolute; inset:0; border-radius:999px; background:#d6d3d1; box-shadow:inset 0 0 0 1px rgba(87,83,78,.12); }
+.cf-switch-thumb { position:absolute; left:.2rem; top:.2rem; width:1.25rem; height:1.25rem; border-radius:999px; background:#fff; color:#57534e; box-shadow:0 2px 6px rgba(0,0,0,.22); transition:transform .18s ease, background-color .18s ease; }
+.cf-switch-thumb::after { content:""; position:absolute; inset:.2rem; background:currentColor; mask:var(--cf-switch-icon) center/contain no-repeat; -webkit-mask:var(--cf-switch-icon) center/contain no-repeat; }
+.cf-switch-track { --cf-switch-icon:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m6%206%2012%2012M6%2018%2018%206%22%2F%3E%3C%2Fsvg%3E"); }
+.cf-switch>input[type="checkbox"]:checked+.cf-switch-track .cf-switch-thumb { transform:translateX(1.35rem); background:var(--ui-accent,var(--tenant-button,var(--brand,#D14900))); color:var(--ui-accent-contrast,var(--tenant-button-contrast,#fff)); --cf-switch-icon:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m7%2012%205%205L22%207M2%2012l5%205m5-5%205-5%22%2F%3E%3C%2Fsvg%3E"); }
+.cf-switch>input[type="checkbox"]:focus-visible+.cf-switch-track { outline:3px solid color-mix(in srgb,var(--ui-accent,var(--tenant-button,#D14900)) 45%,transparent); outline-offset:2px; }
+.cf-switch:has(>input:disabled) { opacity:.55; }
+.cf-switch>input:disabled { cursor:not-allowed; }
+@media(prefers-reduced-motion:reduce) { .cf-switch-thumb { transition:none; } }
+@media(forced-colors:active) { .cf-switch-track { background:Canvas; outline:1px solid ButtonText; } .cf-switch-thumb { background:ButtonFace; color:ButtonText; } .cf-switch>input:checked+.cf-switch-track .cf-switch-thumb { background:Highlight; color:HighlightText; } }
 
 .workspace-main {
   background: var(--ui-bg);
@@ -144,8 +105,137 @@ textarea:focus-visible {
   margin-inline: auto;
 }
 
+/* Shared surfaces and actions for workspace pages. Foregrounds stay neutral;
+   primary fills use the selected action color and its contrast token. */
+.workspace-card,
+.dashboard-surface {
+  --ui-local-text: var(--ui-surface-text);
+  --ui-local-muted: var(--ui-surface-muted-text);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-card-radius);
+  background: var(--ui-surface);
+  color: var(--ui-local-text);
+  box-shadow: var(--ui-shadow);
+}
+
+.workspace-tools-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+main .workspace-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
+  min-height: var(--ui-control-height);
+  padding: .5rem .8rem;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  background: color-mix(in srgb, var(--ui-accent) 5%, var(--ui-surface));
+  color: var(--ui-surface-text);
+  font-size: .75rem;
+  font-weight: 600;
+}
+
+main .workspace-action:hover,
+main .workspace-action[aria-current="page"] {
+  background: color-mix(in srgb, var(--ui-accent) 8%, var(--ui-surface));
+  color: var(--ui-surface-text);
+}
+
+main .workspace-action[aria-current="page"] {
+  --ui-button-state-shadow: inset 0 -2px var(--ui-accent);
+  box-shadow: inset 0 -2px var(--ui-accent);
+}
+
+main .workspace-action-primary {
+  background: var(--ui-accent) !important;
+  border-color: var(--ui-accent) !important;
+  color: var(--ui-accent-contrast) !important;
+}
+
+/* This shared notice sits outside <main>; keep its inline public-page defaults
+   from mixing a light card with dark-workspace text. */
+[data-inprofic-privacy-notice] {
+  background: var(--ui-surface) !important;
+  color: var(--ui-surface-text) !important;
+  border-color: var(--ui-border) !important;
+  box-shadow: var(--ui-shadow-raised) !important;
+}
+
+[data-inprofic-privacy-notice] p {
+  color: var(--ui-surface-muted-text) !important;
+}
+
+[data-inprofic-privacy-notice] :is(strong, a) {
+  color: var(--ui-surface-text) !important;
+}
+
+[data-inprofic-privacy-dismiss] {
+  background: var(--ui-accent) !important;
+  color: var(--ui-accent-contrast) !important;
+}
+
 .workspace-utility-bar {
   min-height: 2.25rem;
+}
+
+@media (max-width: 767px) {
+  .workspace-utility-bar.has-workspace-back {
+    align-items: flex-start;
+  }
+
+  .workspace-utility-bar.has-workspace-back > :first-child,
+  .workspace-utility-bar.has-workspace-back > :last-child {
+    width: 100%;
+  }
+
+  .workspace-utility-bar.has-workspace-back > :last-child {
+    justify-content: flex-end;
+  }
+}
+
+/* The action stays fixed while only the period text scrolls. */
+.ledger-status-card { gap: .5rem; min-width: 0; }
+.ledger-status-card form { flex: 0 0 auto; margin-inline-start: auto; }
+.ledger-status-card .workspace-icon-button { min-height: 2rem; white-space: nowrap; }
+
+.ledger-period-marquee {
+  display: block;
+  width: min(7.5rem, 28vw);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.ledger-period-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: ledger-period-scroll 16s linear infinite;
+}
+
+.ledger-period-marquee-item {
+  flex: 0 0 auto;
+  padding-inline: .5rem;
+}
+
+.ledger-status-card:focus-within .ledger-period-marquee-track,
+.ledger-period-marquee:hover .ledger-period-marquee-track,
+.ledger-period-marquee:focus-within .ledger-period-marquee-track {
+  animation-play-state: paused;
+}
+
+@keyframes ledger-period-scroll {
+  to { transform: translateX(-50%); }
+}
+
+@media (min-width: 768px) {
+  .ledger-period-marquee { width: min(13rem, 22vw); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ledger-period-marquee-track { animation: none; }
 }
 
 .workspace-back,
@@ -158,11 +248,15 @@ textarea:focus-visible {
   border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius);
   background: var(--ui-surface);
-  color: var(--ui-surface-muted-text);
+  color: var(--ui-surface-text);
   padding: .35rem .65rem;
   font-size: .75rem;
   font-weight: 600;
   box-shadow: var(--ui-shadow);
+}
+
+:is(button, a):is(.workspace-back, .workspace-icon-button) {
+  background: color-mix(in srgb, var(--ui-accent) 5%, var(--ui-surface));
 }
 
 .workspace-back:hover,
@@ -244,7 +338,8 @@ textarea:focus-visible {
   background: var(--tenant-nav-soft) !important;
 }
 
-main :is(h1, h2).font-display {
+main :is(h1, h2.font-display) {
+  font-family: 'Fraunces', Georgia, serif;
   letter-spacing: -.025em;
   color: var(--ui-local-text, var(--ui-text)) !important;
 }
@@ -282,7 +377,7 @@ main :where(.hover\:text-\[\#050733\]:hover, .hover\:text-\[\#4D1C25\]:hover, .h
   color: var(--ui-local-text, var(--ui-text)) !important;
 }
 
-main :where(.bg-white, .bg-white\/55, .bg-white\/60, .bg-white\/70, .bg-white\/80, .bg-white\/95, .bg-\[\#FFFDF8\]) {
+main :where(.bg-white, .bg-white\/55, .bg-white\/60, .bg-white\/70, .bg-white\/80, .bg-white\/95, .bg-\[\#FFFDF8\], .bg-\[\#FFFDF8\]\/95, .bg-\[\#fffdf9\]\/95) {
   --ui-local-text: var(--ui-surface-text);
   --ui-local-muted: var(--ui-surface-muted-text);
   background-color: var(--ui-surface) !important;
@@ -294,6 +389,17 @@ main :where(.bg-\[\#FAF8F1\], .bg-\[\#F5EFE0\], .bg-\[\#F0EAD9\], .bg-stone-50, 
   --ui-local-muted: var(--ui-surface-muted-text);
   background-color: var(--ui-surface-muted) !important;
   color: var(--ui-local-text) !important;
+}
+
+/* Neutral hover surfaces must change together with their foregrounds. Legacy
+   cream/pink/white hover utilities otherwise flash pale under dark text tokens. */
+main :where(.hover\:bg-white:hover, .hover\:bg-stone-50:hover, .hover\:bg-stone-100:hover,
+  .hover\:bg-\[\#FAF6EA\]:hover, .hover\:bg-\[\#F0EAD9\]:hover,
+  .hover\:bg-\[\#E7DFCC\]:hover, .hover\:bg-\[\#FFF5F4\]:hover,
+  .hover\:bg-\[\#FFF4F6\]:hover) {
+  --ui-local-text: var(--ui-surface-text);
+  --ui-local-muted: var(--ui-surface-muted-text);
+  background-color: var(--ui-surface-muted) !important;
 }
 
 main :where(.border-\[\#E7DFCC\], .border-\[\#D9CFB4\], .border-\[\#EEE7D7\], .border-stone-100, .border-stone-200, .border-stone-300) {
@@ -354,12 +460,26 @@ main td {
   color: var(--ui-local-text, var(--ui-surface-text));
 }
 
-main tbody tr {
+main :is(tbody, tfoot) tr {
+  --ui-table-row-bg: var(--ui-surface);
+  --ui-local-text: var(--ui-surface-text);
+  --ui-local-muted: var(--ui-surface-muted-text);
+  color: var(--ui-local-text);
   border-color: var(--ui-border) !important;
 }
 
+/* Outrank legacy dark-theme utility tints on ordinary rows. Inventory supplies
+   its own value for the same token below, including hover and pinned cells. */
+html[data-theme] main table :is(tbody, tfoot) > tr {
+  background: var(--ui-table-row-bg) !important;
+}
+
+main :is(tbody, tfoot) td {
+  background: transparent !important;
+}
+
 main tbody tr:hover {
-  background: color-mix(in srgb, var(--ui-accent) 4%, var(--ui-surface));
+  --ui-table-row-bg: var(--ui-surface-muted);
 }
 
 main input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]),
@@ -379,7 +499,8 @@ main textarea {
 
 main input::placeholder,
 main textarea::placeholder {
-  color: color-mix(in srgb, var(--ui-surface-muted-text) 72%, transparent);
+  color: var(--ui-surface-muted-text);
+  opacity: 1;
 }
 
 main input:focus,
@@ -459,7 +580,7 @@ main button:not([type]):not([class*="rose"]):not([class*="red"]) :where(*) {
 main :is(button, a)[class*="border-[#8f172d]"],
 main :is(button, a)[class*="border-[#8F172D]"] {
   border-color: var(--ui-accent) !important;
-  color: var(--ui-accent) !important;
+  color: var(--ui-local-text, var(--ui-text)) !important;
 }
 
 main button[type="submit"]:not([class*="rose"]):not([class*="red"]),
@@ -763,6 +884,12 @@ html[data-theme="dark"] main img {
    unreadable (dialog headers/footers, group rows, modals, badges, gradient cards). Mapped here,
    dark theme only, so the light theme keeps its warm palette. Lowercase hex variants are listed
    because CSS class selectors are case-sensitive. */
+html[data-theme="light"] main :where(.text-amber-500, .text-amber-600, .text-amber-700,
+  .text-orange-500, .text-orange-600, .text-orange-700,
+  .text-yellow-500, .text-yellow-600, .text-yellow-700) {
+  color: #92400e !important;
+}
+
 html[data-theme="dark"] main :where(.bg-\[\#fffdf8\], .bg-\[\#fffdf9\], .bg-\[\#FFFCF5\]) {
   --ui-local-text: var(--ui-surface-text);
   --ui-local-muted: var(--ui-surface-muted-text);
@@ -989,50 +1116,57 @@ html[data-theme="dark"] #commerce-notification-dock :where(.text-sky-800, .text-
   }
 }
 
-/* Light warning rows need dark text even while the rest of the workspace is dark. */
-html[data-theme="dark"] main tr.inventory-warning-row {
-  background: #fef3c7 !important;
-  color: #422006 !important;
+/* Inventory alone colors whole rows for stock states. Local foreground tokens
+   keep labels, links and controls readable; sticky cells inherit the same state.
+   Hover deepens each state rather than hiding the warning. */
+main tr.inventory-low-row {
+  --ui-table-row-bg: #ffe4e6;
+  --ui-local-text: #881337;
+  --ui-local-muted: #9f1239;
 }
 
-html[data-theme="dark"] main tr.inventory-warning-row :where(td, button, a, div, span) {
-  color: inherit !important;
+main tr.inventory-low-row:hover {
+  --ui-table-row-bg: #ffd3da;
+}
+
+main tr.inventory-warning-row {
+  --ui-table-row-bg: #fef3c7;
+  --ui-local-text: #422006;
+  --ui-local-muted: #78350f;
+}
+
+main tr.inventory-warning-row:hover {
+  --ui-table-row-bg: #fde68a;
+}
+
+html[data-theme="dark"] main tr.inventory-low-row {
+  --ui-table-row-bg: #4c1724;
+  --ui-local-text: #ffe4e6;
+  --ui-local-muted: #fda4af;
+}
+
+html[data-theme="dark"] main tr.inventory-low-row:hover {
+  --ui-table-row-bg: #602033;
+}
+
+html[data-theme="dark"] main tr.inventory-warning-row {
+  --ui-table-row-bg: #3b2a11;
+  --ui-local-text: #fef3c7;
+  --ui-local-muted: #fde68a;
 }
 
 html[data-theme="dark"] main tr.inventory-warning-row:hover {
-  background: var(--ui-surface-muted) !important;
-  color: var(--ui-surface-text) !important;
+  --ui-table-row-bg: #503716;
 }
 
-html[data-theme="dark"] main tr.inventory-warning-row:hover :where(td, button, a, div, span) {
-  color: var(--ui-surface-text) !important;
+main tr:is(.inventory-low-row, .inventory-warning-row) :where(td, button, a, div, span) {
+  color: var(--ui-local-text) !important;
 }
 
-html[data-theme="dark"] main tr.procurement-group-row,
-html[data-theme="dark"] main tr.procurement-row:hover {
-  background: var(--ui-surface-muted) !important;
-  color: var(--ui-surface-text) !important;
-}
-
-html[data-theme="dark"] main tr.procurement-group-row :where(td, button, a, div, span),
-html[data-theme="dark"] main tr.procurement-row:hover :where(td, button, a, div, span) {
-  color: var(--ui-surface-text) !important;
-}
-
-/* Stock-state chips keep their own contrast inside intentionally light warning
-   rows. The warning row itself remains light in dark mode; hovering returns the
-   row and chip to the normal dark workspace surface. */
-html[data-theme="dark"] main tr.inventory-warning-row .inventory-stock-chip--warning {
-  background: #fffbeb !important;
-  border-color: #f59e0b !important;
-  color: #78350f !important;
-  box-shadow: inset 0 0 0 1px rgba(217, 119, 6, .22) !important;
-}
-
-html[data-theme="dark"] main tr.inventory-warning-row:hover .inventory-stock-chip--warning {
-  background: color-mix(in srgb, var(--ui-surface) 78%, #f59e0b 22%) !important;
-  border-color: color-mix(in srgb, #f59e0b 65%, var(--ui-border)) !important;
-  color: var(--ui-surface-text) !important;
+/* Filled stock pills retain their own foreground instead of the row's text. */
+main tr:is(.inventory-low-row, .inventory-warning-row) .inventory-stock-chip,
+main .inventory-stock-chip {
+  color: #fff !important;
 }
 
 /* Founder marketing geography: dependency-free interactive world map. */
@@ -1248,7 +1382,7 @@ input.num-ghost:not(:focus) {
 
 input.num-ghost::placeholder {
   color: var(--ui-surface-muted-text, #9ca3af);
-  opacity: .8;
+  opacity: 1;
 }
 
 /* ---------- Tables: sticky header row and first column ----------
@@ -1274,8 +1408,8 @@ main .sticky-table tfoot tr> :first-child {
   position: sticky;
   left: 0;
   z-index: 3;
-  background-color: inherit;
-  background-image: none;
+  background-color: var(--ui-bg, #fff) !important;
+  background-image: linear-gradient(var(--ui-table-row-bg, var(--ui-surface)), var(--ui-table-row-bg, var(--ui-surface))) !important;
   box-shadow: inset -1px 0 0 var(--ui-border);
 }
 
@@ -1327,4 +1461,19 @@ main .sticky-table thead th:first-child {
   main .sticky-table tfoot tr> :first-child {
     position: static;
   }
+}
+
+.ui-skip-link{position:fixed;top:.5rem;left:.5rem;z-index:220;padding:.65rem 1rem;background:var(--ui-surface);color:var(--ui-surface-text);border:1px solid var(--ui-border);border-radius:var(--ui-radius);transform:translateY(-200%)}.ui-skip-link:focus{transform:none}
+:where(button,a,input,select,textarea){touch-action:manipulation}::selection{background:var(--ui-accent);color:var(--ui-accent-contrast)}:where(section[id],h1,h2,h3){scroll-margin-top:1.5rem}
+
+/* Change palette and foreground together; interpolating between opposite themes
+   briefly pairs the old label color with the new surface. Hover stays animated. */
+html[data-theme-changing] *,html[data-theme-changing] *::before,html[data-theme-changing] *::after{transition:none!important}
+
+/* Leave room to scroll final actions clear of the collapsed activity tray. */
+html:not([data-ui-embedded="true"]) body:has(#commerce-notification-dock) .workspace-content {
+  padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px));
+}
+html:has(#commerce-notification-dock):not([data-ui-embedded="true"]) {
+  scroll-padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px));
 }

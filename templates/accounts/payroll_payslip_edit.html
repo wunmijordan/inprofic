@@ -97,13 +97,13 @@
 
     <div class="flex flex-wrap gap-2">
       <button
-        class="rounded-md bg-[#8f172d] px-4 py-2.5 text-sm font-semibold text-white"
+ data-button-surface        class="rounded-md bg-[#8f172d] px-4 py-2.5 text-sm font-semibold text-white"
         onclick="return confirm('Save this correction to an already-issued payslip? The prior version and your reason will remain in its edit history.');"
       >
         Save corrected payslip
       </button>
       <a
-        href="{% url 'payroll_payslip_detail' payslip.pk %}"
+ data-button-surface        href="{% url 'payroll_payslip_detail' payslip.pk %}"
         class="rounded-md border border-[#D9CFB4] px-4 py-2.5 text-sm"
       >
         Cancel

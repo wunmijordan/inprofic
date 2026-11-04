@@ -1,5 +1,6 @@
 from decimal import Decimal
 from io import BytesIO
+from xml.sax.saxutils import escape
 
 from django.http import HttpResponse
 from reportlab.lib import colors
@@ -95,7 +96,7 @@ def _build(story, filename):
 def purchase_order_pdf(order):
     symbol = order.business.currency_symbol
     story = []
-    _header(story, order.business, "PURCHASE ORDER", f"PO #{order.pk}", order.date, "Supplier", order.supplier)
+    _header(story, order.business, "PURCHASE REQUEST" if order.status in {"draft", "ordered"} else "PURCHASE ORDER", f"PO #{order.pk}", order.date, "Supplier", order.supplier)
     rows = []
     for item in order.items.select_related("raw_material", "finished_good"):
         rows.append([
@@ -112,6 +113,14 @@ def purchase_order_pdf(order):
     story.append(Paragraph(f"Payment status: <b>{order.get_payment_status_display()}</b> · Method: {order.payment_method}", styles["body"]))
     if order.account:
         story.append(Paragraph(f"Payment account: {order.account.name}", styles["body"]))
+    if order.approved_at:
+        story.append(Paragraph(f"Approved: {escape(str(order.approved_by or 'Former user'))} · {_date(order.approved_at)}", styles["body"]))
+        for item in order.items.select_related("raw_material", "finished_good"):
+            if item.approval_reason:
+                story.append(Paragraph(
+                    f"{escape(item.item_name)}: requested {item.requested_qty}, approved {item.qty}. "
+                    f"Reason: {escape(item.approval_reason)}", styles["body"],
+                ))
     if order.received_date:
         story.append(Paragraph(f"Received: {_date(order.received_date)}", styles["body"]))
     return _build(story, f"purchase-order-{order.pk}.pdf")

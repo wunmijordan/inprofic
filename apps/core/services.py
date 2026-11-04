@@ -30,85 +30,34 @@ def record_cash(business, user, *, date, amount, transaction_type, category, des
     )
 
 def tenant_backup_querysets(business):
-    """Return explicitly tenant-scoped querysets for the operational backup.
+    """Version-two coverage: explicit business ownership for every operating table."""
+    from accounts.backup_restore import tenant_operational_models
+    from .models import Business
+    selected = tenant_operational_models()
 
-    Imports are intentionally local so the shared core services module does not
-    introduce cross-app model-import cycles during Django app loading. Every
-    child table without its own business foreign key is scoped through its
-    tenant-owned parent.
-    """
-    from inventory.models import (
-        RawMaterial, FinishedGood, FinishedGoodChannelPrice, RecipeItem,
-        ProductionMaterial, InventoryLocation, StockAdjustment,
-        OperationalSupplyDispense, MarketStockLot, MarketStockMovement,
-        DistributionReturn, StockMovement,
-    )
-    from procurement.models import (
-        Supplier, PurchaseOrder, PurchaseOrderItem, RawMaterialCostSnapshot, SupplierPayment,
-    )
-    from production.models import (
-        Order, OrderNumberSequence, OrderItem, OrderAllocation, OrderAllocationLine, OrderMaterialUsage,
-        OrderFlexibleMaterialReport, ProductionDaySetting, ProductionRun,
-        ProductionRunOrder, ProductionRunMaterial, ProductionBatch,
-        ProductionOffcutAllocation, ProductionBatchReconciliation,
-        ProductionQualityCheck, ProductionCostSnapshot, ProductionCostLine,
-    )
-    from sales.models import Customer, CustomerProductPrice, Sale, SaleItem, CustomerPayment
-    from expenses.models import Expense, ExpensePayment
+    def ownership_path(model, seen=frozenset()):
+        if model in seen:
+            return None
+        fields = model._meta.concrete_fields
+        for field in fields:
+            if field.is_relation and field.related_model is Business:
+                return field.name
+        # Required owning parents take precedence over optional traceability links.
+        relations = sorted((f for f in fields if f.is_relation and f.related_model in selected), key=lambda f: f.null)
+        for field in relations:
+            path = ownership_path(field.related_model, seen | {model})
+            if path:
+                return field.name + '__' + path
+        return None
 
-    return [
-        business.__class__.objects.filter(pk=business.pk),
-        CashAccount.raw_objects.filter(business=business),
-        FinancialTransaction.raw_objects.filter(business=business),
-        AuditLog.raw_objects.filter(business=business),
-
-        RawMaterial.raw_objects.filter(business=business),
-        FinishedGood.raw_objects.filter(business=business),
-        FinishedGoodChannelPrice.objects.filter(finished_good__business=business),
-        RecipeItem.objects.filter(finished_good__business=business),
-        ProductionMaterial.objects.filter(finished_good__business=business),
-        InventoryLocation.raw_objects.filter(business=business),
-        StockAdjustment.raw_objects.filter(business=business),
-        OperationalSupplyDispense.raw_objects.filter(business=business),
-        MarketStockLot.raw_objects.filter(business=business),
-        MarketStockMovement.raw_objects.filter(business=business),
-        DistributionReturn.raw_objects.filter(business=business),
-        StockMovement.raw_objects.filter(business=business),
-
-        Supplier.raw_objects.filter(business=business),
-        PurchaseOrder.raw_objects.filter(business=business),
-        PurchaseOrderItem.objects.filter(purchase_order__business=business),
-        RawMaterialCostSnapshot.raw_objects.filter(business=business),
-        SupplierPayment.raw_objects.filter(business=business),
-
-        Customer.raw_objects.filter(business=business),
-        CustomerProductPrice.raw_objects.filter(business=business),
-
-        Order.raw_objects.filter(business=business),
-        OrderNumberSequence.raw_objects.filter(business=business),
-        OrderItem.objects.filter(order__business=business),
-        OrderMaterialUsage.raw_objects.filter(business=business),
-        OrderFlexibleMaterialReport.raw_objects.filter(business=business),
-        ProductionDaySetting.raw_objects.filter(business=business),
-        ProductionRun.raw_objects.filter(business=business),
-        ProductionRunOrder.objects.filter(production_run__business=business),
-        ProductionRunMaterial.raw_objects.filter(business=business),
-        ProductionBatch.raw_objects.filter(business=business),
-        ProductionOffcutAllocation.raw_objects.filter(business=business),
-        ProductionBatchReconciliation.raw_objects.filter(business=business),
-        ProductionQualityCheck.raw_objects.filter(business=business),
-        ProductionCostSnapshot.raw_objects.filter(business=business),
-        ProductionCostLine.objects.filter(snapshot__business=business),
-
-        Sale.raw_objects.filter(business=business),
-        SaleItem.objects.filter(sale__business=business),
-        # After Sale: an allocation points at the customer sale it created.
-        OrderAllocation.objects.filter(order__business=business),
-        OrderAllocationLine.objects.filter(allocation__order__business=business),
-        CustomerPayment.raw_objects.filter(business=business),
-        Expense.raw_objects.filter(business=business),
-        ExpensePayment.raw_objects.filter(business=business),
-    ]
+    result = [Business.objects.filter(pk=business.pk), AuditLog.raw_objects.filter(business=business)]
+    for model in sorted(selected, key=lambda m: m._meta.label_lower):
+        path = ownership_path(model)
+        if not path:
+            raise ValueError(f'Backup model has no tenant ownership path: {model._meta.label_lower}')
+        manager = getattr(model, 'raw_objects', model._base_manager)
+        result.append(manager.filter(**{path: business}))
+    return result
 
 
 def tenant_backup_objects(business):

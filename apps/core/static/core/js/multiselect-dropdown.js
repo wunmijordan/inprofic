@@ -10,6 +10,7 @@
   function shortLabel(text) { return (text || '').split(' \u00b7 ')[0].trim(); }
 
   function build(select) {
+    if (document.querySelector('script[data-inprofic-ui]')) return;
     if (select.dataset.msBound) return;
     select.dataset.msBound = '1';
     var id = 'msdd' + (++uid);

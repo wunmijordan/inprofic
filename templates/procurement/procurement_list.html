@@ -4,13 +4,13 @@
 <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
   <div>
     <h2 class="text-xl font-semibold font-display text-[#8f172d]">Procurement</h2>
-    <p class="text-sm text-stone-500 mt-0.5">Purchase orders from suppliers</p>
+    <p class="text-sm text-stone-500 mt-0.5">Request supplies, approve quantities, then receive stock.</p>
   </div>
   <div class="flex gap-2">
-    <a href="{% url 'export_procurement_xlsx' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export Excel</a>
-    <a href="{% url 'export_procurement_csv' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export CSV</a>
-    {% if module_permissions.procurement.edit %}<a href="{% url 'supplier_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-white text-[#8f172d] hover:bg-[#FFFCF5] border border-[#D9CFB4]">+ Add supplier</a>{% endif %}
-    {% if module_permissions.procurement.edit %}<a href="{% url 'po_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ New Purchase Order</a>{% endif %}
+    <a data-button-surface href="{% url 'export_procurement_xlsx' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export Excel</a>
+    <a data-button-surface href="{% url 'export_procurement_csv' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export CSV</a>
+    {% if module_permissions.procurement.edit %}<a data-button-surface href="{% url 'supplier_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-white text-[#8f172d] hover:bg-[#FFFCF5] border border-[#D9CFB4]">+ Add supplier</a>{% endif %}
+    {% if module_permissions.procurement.edit %}<a data-button-surface href="{% url 'po_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ Purchase request</a>{% endif %}
   </div>
 </div>
 
@@ -56,20 +56,25 @@
       {% for p in group.list %}
       <tr class="procurement-row border-t border-[#EFE8D7] align-middle hover:bg-[#FFFCF5]">
         <td class="px-3 py-2">
-          <div class="font-medium text-stone-700">{{ p.supplier|default:"Unnamed supplier" }}</div>
-          <div class="text-[10px] font-mono text-stone-400">PO #{{ p.pk }}</div>
+          <div class="font-medium text-stone-700">{{ p.request_supplier|default:"Unnamed supplier" }}</div>
+          <div class="text-[10px] font-mono text-stone-400">Request #{{ p.pk }}</div>
+          {% if p.request_orders|length > 1 %}<details class="mt-1 text-xs"><summary>Vendor balances and receipts</summary>{% for vendor in p.request_orders %}<p class="mt-1">{{ vendor.supplier }} · PO #{{ vendor.pk }} · {{ vendor.total|money:biz.currency_symbol }} · {{ vendor.get_status_display }} · {{ vendor.get_payment_status_display }} · Balance {{ vendor.payment_balance|money:biz.currency_symbol }} <a href="{% url 'po_invoice' vendor.pk %}">Vendor PDF</a>{% if module_permissions.finance.edit and vendor.payment_balance > 0 %} · <a href="{% url 'supplier_payment_add' %}?purchase_order={{ vendor.pk }}">Record vendor payment</a>{% endif %}</p>{% endfor %}</details>{% endif %}
         </td>
-        <td class="px-3 py-2 text-xs" style="min-width:15rem;max-width:23rem">{% include "partials/_items_summary.html" with items=p.items.all purchase=True dialog_prefix="po-items-" row_pk=p.pk %}</td>
-        <td class="px-3 py-2 text-right font-mono font-medium">{{ p.total|money:biz.currency_symbol }}</td>
-        <td class="px-3 py-2 text-center"><span class="inline-block px-2 py-0.5 rounded-full text-[11px] font-medium border capitalize {% if p.status == 'received' %}bg-emerald-50 text-emerald-800 border-emerald-300{% else %}bg-amber-50 text-amber-800 border-amber-300{% endif %}">{{ p.get_status_display }}</span></td>
-        <td class="px-3 py-2 text-xs text-center">{% if p.payment_status == 'paid' %}<span class="text-emerald-700">Paid</span>{% elif p.payment_status == 'partial' %}<span class="text-amber-700">Partially Paid</span>{% else %}<span class="text-rose-700">Unpaid</span>{% endif %}</td>
+        <td class="px-3 py-2 text-xs" style="min-width:15rem;max-width:23rem">{% include "partials/_items_summary.html" with items=p.request_items purchase=True dialog_prefix="po-items-" row_pk=p.pk %}</td>
+        <td class="px-3 py-2 text-right font-mono font-medium">{{ p.request_total|money:biz.currency_symbol }}</td>
+        <td class="px-3 py-2 text-center"><span class="inline-block px-2 py-0.5 rounded-full text-[11px] font-medium border capitalize {% if p.request_status == 'received' %}bg-emerald-50 text-emerald-800 border-emerald-300{% else %}bg-amber-50 text-amber-800 border-amber-300{% endif %}">{{ p.request_status_label }}</span></td>
+        <td class="px-3 py-2 text-xs text-center">{% if p.request_payment == 'paid' %}<span class="text-emerald-700">Paid</span>{% elif p.request_payment == 'partial' %}<span class="text-amber-700">Partially Paid</span>{% else %}<span class="text-rose-700">Unpaid</span>{% endif %}</td>
         <td class="px-3 py-2 text-xs text-stone-500">{{ p.created_by.username|default:"—" }}</td>
         <td class="px-3 py-2 text-right whitespace-nowrap">
-          {% if p.status != 'received' %}
-          {% if module_permissions.procurement.edit %}<form action="{% url 'po_receive' p.pk %}" method="post" class="inline" onsubmit="return confirm('Mark received and add stock?');">{% csrf_token %}<button class="text-stone-400 hover:text-emerald-600 mr-2">Receive</button></form>{% endif %}
-          {% if module_permissions.procurement.edit %}<a href="{% url 'po_edit' p.pk %}" class="text-stone-400 hover:text-[#8f172d] mr-2">Edit</a>{% endif %}
-          <a href="{% url 'po_invoice' p.pk %}" class="text-stone-400 hover:text-[#8f172d] mr-2">PDF</a>{% endif %}
-          {% if module_permissions.procurement.edit %}<form action="{% url 'po_delete' p.pk %}" method="post" class="inline" onsubmit="return confirm('Delete this purchase order?');">{% csrf_token %}<button class="text-stone-400 hover:text-rose-600">Delete</button></form>{% endif %}
+          <a href="{% url 'po_edit' p.pk %}?share=1" class="mr-2">Share request</a>
+          <a href="{% url 'po_approve' p.pk %}" class="mr-2">{% if p.request_status == 'draft' or p.request_status == 'ordered' %}Review request{% else %}Approval details{% endif %}</a>
+          {% if module_permissions.procurement.edit %}
+            {% for vendor in p.request_orders %}{% if vendor.status == 'approved' and vendor.total > 0 %}<form action="{% url 'po_receive' vendor.pk %}" method="post" class="inline-block" onsubmit="return confirm('Receive this vendor’s approved items and add stock?');">{% csrf_token %}{% include "partials/_event_date.html" with label="On" min=vendor.date|date:"Y-m-d" %}<button class="mr-2">Receive{% if p.request_orders|length > 1 %} {{ vendor.supplier }}{% endif %}</button></form>{% endif %}{% endfor %}
+            {% if p.request_status == 'draft' or p.request_status == 'ordered' %}
+              {% if p.request_editable %}<a href="{% url 'po_edit' p.pk %}" class="mr-2">Edit request</a><form action="{% url 'po_delete' p.pk %}" method="post" class="inline" onsubmit="return confirm('Delete this unpaid request?');">{% csrf_token %}<button class="mr-2">Delete</button></form>{% endif %}
+            {% endif %}
+          {% endif %}
+          {% if p.request_orders|length == 1 %}<a href="{% url 'po_invoice' p.pk %}">PDF</a>{% endif %}
         </td>
       </tr>
       {% endfor %}
@@ -78,7 +83,7 @@
   </table>
 </div>
 
-{% for p in orders %}{% if p.items.all|length > 1 %}{% include "partials/_items_dialog.html" with items=p.items.all purchase=True currency=biz.currency_symbol width="44rem" dialog_prefix="po-items-" row_pk=p.pk title_prefix="Purchase order #" title_ref=p.pk subtitle=p.supplier|default:"Unnamed supplier" total_label="Order total" total_value=p.total|money:biz.currency_symbol %}{% endif %}{% endfor %}
+{% for p in orders %}{% if p.request_items|length > 1 %}{% include "partials/_items_dialog.html" with items=p.request_items purchase=True currency=biz.currency_symbol width="44rem" dialog_prefix="po-items-" row_pk=p.pk title_prefix="Purchase order #" title_ref=p.pk subtitle=p.request_supplier|default:"Unnamed supplier" total_label="Order total" total_value=p.request_total|money:biz.currency_symbol %}{% endif %}{% endfor %}
 {% include "partials/_items_dialog_assets.html" %}
 {% endif %}
 {% endblock %}

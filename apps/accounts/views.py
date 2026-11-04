@@ -1129,6 +1129,11 @@ def founder_push_unsubscribe(request):
     return JsonResponse({"subscribed": False, "updated": updated})
 
 
+def _assistant_platform_context():
+    from assistant import founder as assistant_founder
+    return assistant_founder.context()
+
+
 @login_required
 def founder_subscriptions(request):
     from .forms import (
@@ -1601,6 +1606,10 @@ def founder_subscriptions(request):
             whatsapp_state = "available" if integration_settings.whatsapp_storefront_enabled else "hidden and unavailable"
             messages.success(request, f"Platform availability updated. Shipbubble is {shipbubble_state}; WhatsApp Storefront is {whatsapp_state} outside the Founder Console.")
             return redirect(f"{reverse('founder_subscriptions')}?workspace=management#platform-integrations")
+        if action == "save_platform_assistant":
+            from assistant import founder as assistant_founder
+            messages.success(request, assistant_founder.save(request.user, request.POST))
+            return redirect(f"{reverse('founder_subscriptions')}?workspace=management#platform-assistant")
         if action == "revoke_founder":
             from .subscription_services import revoke_founder_lifetime
             subscription = get_object_or_404(BusinessSubscription, pk=request.POST.get("subscription_id"))
@@ -1676,6 +1685,7 @@ def founder_subscriptions(request):
         "plans": plans_for_page,
         "payment_settings": payment_settings,
         "integration_settings": integration_settings,
+        "assistant_platform": _assistant_platform_context(),
         "privacy_policy": privacy_policy,
         "privacy_policy_form": privacy_policy_form,
         "trial_policy_settings": trial_policy_settings,

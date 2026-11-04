@@ -31,6 +31,12 @@ class WhatsAppConnection(BusinessOwnedModel):
     connected_at = models.DateTimeField(default=timezone.now)
     last_error = models.CharField(max_length=500, blank=True, default="")
 
+    brief_template_name = models.CharField(
+        max_length=100, blank=True, default="",
+        help_text="Name of the Meta-approved utility template used for the daily brief.",
+    )
+    brief_template_language = models.CharField(max_length=12, blank=True, default="en")
+
     class Meta:
         constraints = [models.UniqueConstraint(fields=["business"], name="wa_connection_business_uniq")]
         indexes = [models.Index(fields=["business", "status"], name="wa_conn_biz_status_idx")]

@@ -1,0 +1,417 @@
+@font-face {
+  font-family: Sora;
+  src: url('../fonts/Sora-Variable.woff2') format('woff2');
+  font-weight: 100 800;
+  font-display: swap
+}
+.marketing-page {
+  font-family: Sora,system-ui,sans-serif;
+  font-size: 15px;
+  line-height: 1.65
+}
+.marketing-wrap {
+  width: min(1180px,calc(100% - 3rem));
+  margin-inline: auto
+}
+.marketing-header {
+  border-bottom: 1px solid var(--ui-border)
+}
+.marketing-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  min-height: 5.5rem
+}
+.marketing-logo {
+  display: block;
+  width: 10rem;
+  height: auto
+}
+.marketing-nav-links,.marketing-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem
+}
+.marketing-nav a {
+  color: var(--ui-text)
+}
+.marketing-page .ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .7rem;
+  padding: .7rem 1.05rem;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  background: var(--ui-surface);
+  color: var(--ui-surface-text);
+  font-size: .85rem;
+  font-weight: 600;
+  line-height: 1.4;
+  text-decoration: none
+}
+.marketing-nav-actions {
+  gap: .85rem
+}
+.marketing-hero {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 5rem;
+  padding-block: 6rem
+}
+.marketing-page h1 {
+  font-family: Sora,sans-serif;
+  text-wrap: balance;
+  font-size: clamp(2.7rem,4.7vw,4.6rem);
+  line-height: 1.06;
+  letter-spacing: -.035em;
+  font-weight: 600;
+  margin: 1.4rem 0 1.5rem
+}
+.marketing-intro {
+  max-width: 31rem;
+  font-size: 1.08rem;
+  line-height: 1.8;
+  color: var(--ui-muted)
+}
+.marketing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem;
+  margin: 1.75rem 0 1rem
+}
+.marketing-small {
+  font-size: .78rem;
+  color: var(--ui-muted)
+}
+.order-ledger {
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-card-radius);
+  background: var(--ui-surface);
+  color: var(--ui-surface-text);
+  padding: 1.5rem;
+  box-shadow: var(--ui-shadow)
+}
+.order-ledger-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: .68rem;
+  color: var(--ui-surface-muted-text)
+}
+.example-label {
+  font-weight: 600
+}
+.order-ledger h2 {
+  font-size: 1.25rem;
+  letter-spacing: -.025em;
+  font-weight: 600;
+  margin: 1.3rem 0
+}
+.order-ledger table {
+  width: 100%;
+  font-size: .75rem;
+  border-collapse: collapse
+}
+.order-ledger th,.order-ledger td {
+  text-align: left;
+  padding: .8rem .25rem;
+  border-bottom: 1px solid var(--ui-border)
+}
+.order-ledger th {
+  font-weight: 600
+}
+.recipe-note {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: .7rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--ui-border);
+  font-size: .75rem
+}
+.recipe-note>span {
+  color: var(--ui-surface-muted-text)
+}
+.recipe-note strong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums
+}
+.order-ledger>p {
+  font-size: .78rem;
+  color: var(--ui-surface-muted-text);
+  margin: 1rem 0
+}
+.trust-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  border-block: 1px solid var(--ui-border);
+  padding-block: 1.5rem;
+  font-size: .85rem
+}
+.trust-line>div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2rem
+}
+.trust-line img {
+  max-width: 6rem;
+  height: 2.5rem;
+  object-fit: contain
+}
+.marketing-campaign {
+  margin-block: 2rem;
+  padding: 1.5rem;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-card-radius);
+  display: flex;
+  gap: 2rem;
+  align-items: center;
+  flex-wrap: wrap
+}
+.marketing-campaign img,.marketing-campaign video {
+  max-width: 12rem;
+  max-height: 8rem;
+  object-fit: contain
+}
+.marketing-workflows {
+  padding-block: 5rem
+}
+.marketing-section-head {
+  max-width: 42rem;
+  margin-bottom: 2.5rem
+}
+.marketing-section-head h2,.marketing-faq h2,.marketing-last h2 {
+  font-family: Sora,sans-serif;
+  text-wrap: balance;
+  font-size: clamp(2rem,3vw,3rem);
+  line-height: 1.15;
+  letter-spacing: -.04em;
+  font-weight: 600;
+  margin: 1rem 0
+}
+.marketing-section-head>p:last-child {
+  color: var(--ui-muted);
+  font-size: .95rem
+}
+.workflow-rows {
+  border-top: 1px solid var(--ui-border)
+}
+.workflow-rows article {
+  display: grid;
+  grid-template-columns: 3rem minmax(0,1fr) 13rem;
+  gap: 1.5rem;
+  border-bottom: 1px solid var(--ui-border);
+  padding: 2rem 0
+}
+.workflow-number {
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-muted);
+  font-size: .8rem
+}
+.workflow-rows h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -.02em
+}
+.workflow-rows p {
+  max-width: 39rem;
+  margin-top: .6rem;
+  color: var(--ui-muted);
+  font-size: .9rem
+}
+.workflow-area {
+  font-size: .75rem;
+  text-align: right;
+  color: var(--ui-muted)
+}
+.marketing-plans {
+  padding-block: 5rem;
+  border-block: 1px solid var(--ui-border)
+}
+.marketing-plan-list {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  margin: 2rem 0;
+  gap: 1rem
+}
+.marketing-plan {
+  padding: 1.5rem;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-card-radius);
+  background: var(--ui-surface);
+  color: var(--ui-surface-text);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start
+}
+.marketing-plan h3 {
+  font-size: 1.2rem;
+  font-weight: 600
+}
+.marketing-plan>p {
+  font-size: .8rem;
+  margin: .4rem 0;
+  color: var(--ui-surface-muted-text)
+}
+.marketing-plan>.ui-button {
+  margin-top: auto;
+  width: 100%
+}
+.marketing-plan>details {
+  margin-bottom: 1.25rem;
+  align-self: stretch
+}
+.payroll-offer-sticker {
+  margin-top: .75rem;
+  font-size: .8rem;
+  color: var(--ui-muted)
+}
+.marketing-plan [class*=text-] {
+  color: inherit
+}
+.marketing-plan [class*=line-through] {
+  color: var(--ui-surface-muted-text)
+}
+.marketing-faq {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 5rem;
+  padding-block: 5rem
+}
+.marketing-faq details {
+  padding: 1.25rem 0;
+  border-bottom: 1px solid var(--ui-border)
+}
+.marketing-faq summary {
+  font-weight: 600;
+  cursor: pointer
+}
+.marketing-faq details p {
+  margin-top: 1rem;
+  color: var(--ui-muted);
+  font-size: .9rem
+}
+.marketing-last {
+  display: flex;
+  justify-content: space-between;
+  gap: 2rem;
+  align-items: center;
+  padding-block: 3rem 5rem
+}
+.marketing-footer {
+  border-top: 1px solid var(--ui-border);
+  padding-block: 2rem
+}
+.marketing-footer>div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  font-size: .75rem;
+  color: var(--ui-muted)
+}
+.marketing-example {
+  padding: 1.5rem;
+  background: var(--ui-surface);
+  color: var(--ui-surface-text);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-card-radius);
+  max-width: 42rem
+}
+.marketing-example h2 {
+  font-size: 1.5rem;
+  line-height: 1.3;
+  font-weight: 600;
+  margin: .75rem 0
+}
+.marketing-example ol {
+  list-style: decimal;
+  padding-left: 1.25rem;
+  margin: 1.5rem 0
+}
+.marketing-example li {
+  padding: .6rem 0;
+  font-size: .9rem
+}
+@media(max-width:900px) {
+  .marketing-nav-links {
+    display: none
+  }
+  .marketing-hero {
+    gap: 2rem;
+    padding-block: 3rem
+  }
+  .workflow-rows article {
+    grid-template-columns: 2rem minmax(0,1fr)
+  }
+  .workflow-area {
+    grid-column: 2;
+    text-align: left
+  }
+  .marketing-faq {
+    gap: 2rem
+  }
+  .marketing-nav {
+    gap: 1rem
+  }
+  .marketing-nav-actions {
+    gap: .65rem
+  }
+}
+@media(max-width:640px) {
+  .marketing-wrap {
+    width: calc(100% - 2rem)
+  }
+  .marketing-nav {
+    min-height: 4.5rem;
+    flex-wrap: wrap;
+    padding-block: 1rem
+  }
+  .marketing-logo {
+    width: 8rem
+  }
+  .marketing-signin {
+    font-size: .8rem
+  }
+  .marketing-nav-actions {
+    gap: .55rem;
+    flex-wrap: wrap
+  }
+  .marketing-nav-actions .ui-button {
+    padding: .5rem .7rem
+  }
+  .marketing-hero {
+    grid-template-columns: 1fr;
+    gap: 2.5rem
+  }
+  .order-ledger {
+    padding: 1rem
+  }
+  .recipe-note {
+    grid-template-columns: 1fr
+  }
+  .marketing-workflows,.marketing-plans {
+    padding-block: 3rem
+  }
+  .marketing-plan-list {
+    grid-template-columns: 1fr
+  }
+  .marketing-faq {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    padding-block: 3rem
+  }
+  .marketing-last,.marketing-footer>div {
+    align-items: flex-start;
+    flex-direction: column
+  }
+  .trust-line {
+    align-items: flex-start;
+    flex-direction: column
+  }
+}

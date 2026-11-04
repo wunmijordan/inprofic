@@ -5,7 +5,7 @@ description: >
   FinancialTransaction integrity. Use when changes touch payments, sales,
   procurement, expenses, order completion, reversal, exports, or analytics.
 version: "1.0"
-updated: 2026-09-04
+updated: 2026-10-28
 ---
 
 # Finance Integrity (StoreTrack)
@@ -29,6 +29,23 @@ updated: 2026-09-04
 Exports should use the same business-scoped query definition as the screen they
 represent. Reversed/voided activity must be treated consistently between live
 Finance tables and analytics.
+
+## Books, tax and period scope
+
+- Double-entry Books are derived from operational records by an explicit build /
+  rebuild. Keep manual journals across rebuilds and reverse them with compensating
+  journals. Do not describe the derived books as automatically current.
+- Books and tax deliberately span Live and Backlog. Explicitly business-filtered
+  `raw_objects` reads are appropriate for this cross-period scope; never drop the
+  business filter when bypassing the ordinary period manager.
+- Prices are VAT-inclusive. Product treatment and business registration/date/rate
+  determine the extraction; input VAT is separately recorded. Settings are not
+  automatically updated legal rules, and the VAT screen does not file a return.
+- E-invoices are prepared per Sale, including Commerce-generated Sales once they
+  exist. Keep checkout/pre-order state distinct from an issued invoice. Provider
+  payload mapping and authority clearance must not be implied by a local invoice.
+- Finance navigation and write controls follow Finance permissions/entitlements;
+  chart edits and manual journals also retain their business-admin checks.
 
 ## Review questions
 

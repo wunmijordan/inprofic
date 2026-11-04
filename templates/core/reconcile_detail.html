@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% load core_extras %}
+{% block content %}
+{% include "core/_finance_tools_nav.html" %}
+<div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+  <div>
+    <a href="{% url 'reconcile_home' %}" class="text-xs font-semibold text-stone-800">&larr; All statements</a>
+    <h1 class="mt-1 text-2xl font-semibold font-display text-stone-800">{{ statement.account.name }}{% if statement.label %} · {{ statement.label }}{% endif %}</h1>
+    <p class="text-xs text-stone-500">{{ statement.period_start|date:"j M Y" }} – {{ statement.period_end|date:"j M Y" }} · closing balance {{ biz.currency_symbol }}{{ statement.closing_balance|floatformat:2 }}</p>
+  </div>
+  {% if statement.status != 'reconciled' %}
+  <div class="flex gap-2">
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="auto"><button data-button-surface class="rounded-xl border border-[#D9CFB4] bg-white px-3 py-2 text-xs font-semibold text-stone-700">Auto-match</button></form>
+    <form method="post" onsubmit="return confirm('Remove this statement? Your cash records are not changed.');">{% csrf_token %}<input type="hidden" name="action" value="delete"><button data-button-surface class="rounded-xl border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700">Remove</button></form>
+  </div>{% endif %}
+</div>
+
+<section class="mb-4 rounded-2xl border {% if r.balanced %}border-emerald-200 bg-emerald-50{% else %}border-amber-200 bg-amber-50{% endif %} p-4 text-xs">
+  <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div><p class="text-[10px] font-bold uppercase tracking-wider text-stone-500">Statement closing</p><p class="font-mono text-sm">{{ r.adjusted_bank|floatformat:2 }}<span class="text-stone-400"> adjusted</span></p><p class="text-[11px] text-stone-500">{{ statement.closing_balance|floatformat:2 }} + {{ r.book_only_total|floatformat:2 }} in books not on statement</p></div>
+    <div><p class="text-[10px] font-bold uppercase tracking-wider text-stone-500">Book balance</p><p class="font-mono text-sm">{{ r.adjusted_book|floatformat:2 }}<span class="text-stone-400"> adjusted</span></p><p class="text-[11px] text-stone-500">{{ r.book_balance|floatformat:2 }} + {{ r.bank_only_total|floatformat:2 }} on statement not in books</p></div>
+    <div><p class="text-[10px] font-bold uppercase tracking-wider text-stone-500">Difference</p><p class="font-mono text-sm {% if r.balanced %}text-emerald-700{% else %}text-rose-700{% endif %}">{{ r.difference|floatformat:2 }}</p></div>
+    <div><p class="text-[10px] font-bold uppercase tracking-wider text-stone-500">Matched</p><p class="font-mono text-sm">{{ r.matched_count }} of {{ r.lines|length }}</p></div>
+  </div>
+  {% if statement.status == 'reconciled' %}<p class="mt-3 font-semibold text-emerald-800">Reconciled {{ statement.reconciled_at|date:"j M Y, P" }}. This statement is locked.</p>
+  {% elif r.balanced %}<form method="post" class="mt-3">{% csrf_token %}<input type="hidden" name="action" value="finish"><button data-button-surface class="rounded-xl bg-emerald-700 px-4 py-2 text-xs font-semibold text-white">Mark as reconciled</button></form>
+  {% else %}<p class="mt-3 text-amber-900">Match or explain the lines below until the difference is zero.</p>{% endif %}
+</section>
+
+<section class="mb-5 overflow-hidden rounded-2xl border border-[#E7DFCC] bg-white">
+  <div class="border-b border-[#E7DFCC] px-4 py-3"><h2 class="text-sm font-semibold text-stone-800">Statement lines</h2></div>
+  <div class="overflow-x-auto"><table class="min-w-[640px] w-full text-xs">
+    <thead class="bg-[#FAF6EA] text-left text-[10px] uppercase tracking-wider text-stone-500"><tr><th class="px-4 py-2">Date</th><th class="px-2 py-2">Description</th><th class="px-2 py-2 text-right">Amount</th><th class="px-4 py-2">Matched to</th></tr></thead>
+    <tbody class="divide-y divide-[#E7DFCC]">
+    {% for l in r.lines %}<tr class="{% if not l.matched_transaction %}bg-amber-50{% endif %}">
+      <td class="px-4 py-2 whitespace-nowrap">{{ l.date|date:"j M Y" }}</td><td class="px-2 py-2">{{ l.description }}</td>
+      <td class="px-2 py-2 text-right font-mono {% if l.amount < 0 %}text-rose-700{% endif %}">{{ l.amount|floatformat:2 }}</td>
+      <td class="px-4 py-2">{% if l.matched_transaction %}{{ l.matched_transaction.date|date:"j M" }} · {{ l.matched_transaction.description }}{% if l.matched_automatically %} <span class="text-stone-400">(auto)</span>{% endif %}
+        {% if statement.status != 'reconciled' %}<form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="unmatch"><input type="hidden" name="line" value="{{ l.pk }}"><button class="ml-1 text-[10px] font-semibold text-rose-700 underline">undo</button></form>{% endif %}
+        {% elif statement.status != 'reconciled' %}
+          <form method="post" class="flex flex-wrap items-center gap-1">{% csrf_token %}<input type="hidden" name="action" value="match"><input type="hidden" name="line" value="{{ l.pk }}">
+          {% for c in r.suggestions|get_item:l.pk %}{% if forloop.first %}<select name="transaction" class="rounded-lg border border-[#D9CFB4] px-1.5 py-1 text-[11px]">{% endif %}<option value="{{ c.tx.pk }}">{{ c.tx.date|date:"j M" }} · {{ c.tx.description|truncatechars:34 }}</option>{% if forloop.last %}</select><button data-button-surface class="rounded-lg border border-[#D9CFB4] px-2 py-1 text-[11px] font-semibold">Match</button>{% endif %}{% empty %}<span class="text-stone-400">No matching entry in your books</span>{% endfor %}
+          </form>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody></table></div>
+</section>
+
+<section class="mb-8 overflow-hidden rounded-2xl border border-[#E7DFCC] bg-white">
+  <div class="border-b border-[#E7DFCC] px-4 py-3"><h2 class="text-sm font-semibold text-stone-800">In your books, not on this statement</h2><p class="mt-0.5 text-[11px] text-stone-500">Usually deposits or payments still in transit. Anything else is worth checking.</p></div>
+  <table class="w-full text-xs"><tbody class="divide-y divide-[#E7DFCC]">
+  {% for c in r.book_only %}<tr><td class="px-4 py-2 whitespace-nowrap">{{ c.tx.date|date:"j M Y" }}</td><td class="px-2 py-2">{{ c.tx.description }}</td><td class="px-4 py-2 text-right font-mono {% if c.amount < 0 %}text-rose-700{% endif %}">{{ c.amount|floatformat:2 }}</td></tr>
+  {% empty %}<tr><td class="px-4 py-6 text-center text-stone-400">Everything in your books appears on the statement.</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+{% endblock %}

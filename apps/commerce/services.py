@@ -15,7 +15,7 @@ from sales.models import Sale, SaleItem
 from core.services import audit
 from core.verticals import vertical_config
 from inventory.portioning import active_bulk_packs
-from .models import CommerceIntake, CommerceNotification, CommerceSettings
+from .models import CommerceIntake, CommerceIntakeItem, CommerceNotification, CommerceSettings
 from .notification_services import queue_commerce_notification
 
 logger = logging.getLogger(__name__)
@@ -173,9 +173,12 @@ def create_intake(*, business, source, ordering_mode=None, sales_channel=None, c
                 raise ValidationError(
                     f"{product.display_name} needs a Distribution channel price or an active bulk option."
                 )
+        stock_backed = ordering_mode == CommerceIntake.MODE_STOCK or not business.uses_production or product.finished_good.is_purchased_for_resale
         intake.items.create(
             storefront_product=product, finished_good=product.finished_good,
             requested_quantity=qty, unit_price=unit_price,
+            fulfilment_source=CommerceIntakeItem.FULFILMENT_STOCK if stock_backed else CommerceIntakeItem.FULFILMENT_MADE_TO_ORDER,
+            production_quantity=Decimal("0") if stock_backed else qty,
         )
     audit(
         business,

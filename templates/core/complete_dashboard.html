@@ -1,39 +1,40 @@
 {% extends "base.html" %}
+{% load static %}
 {% block head_scripts %}
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.17.1/dist/cdn.min.js"></script>
+<script defer src="{% static 'core/js/alpine.min.js' %}?v={{ static_asset_version }}"></script>
 {% endblock %}
 {% block content %}
+<style>
+.executive-layout { display:grid; gap:1rem; align-items:start; }
+.executive-nav { padding:1rem; background:var(--ui-surface); border:1px solid var(--ui-border); border-radius:var(--ui-card-radius, .9rem); }
+.executive-content { min-width:0; padding:1.25rem; background:var(--ui-surface); border:1px solid var(--ui-border); border-radius:var(--ui-card-radius, .9rem); }
+#complete-dashboard-sections button[aria-current="page"] { background:var(--ui-surface-muted); color:var(--ui-surface-muted-text); box-shadow:inset 3px 0 var(--ui-accent); }
+.executive-guide { margin:1rem 0; padding:1rem; background:var(--ui-surface-muted); border-radius:.75rem; color:var(--ui-surface-muted-text); }
+.executive-section-tools { display:flex; gap:.5rem; flex-wrap:wrap; justify-content:space-between; margin-bottom:1rem; }
+@media(min-width:1024px) { .executive-layout { grid-template-columns:15rem minmax(0,1fr); } .executive-nav { position:sticky; top:1rem; } }
+@media(max-width:1023px) { #complete-dashboard-sections { display:flex; overflow-x:auto; } #complete-dashboard-sections button { flex:0 0 auto; width:auto; max-width:14rem; } .executive-content { padding:1rem; } }
+</style>
 <div class="mx-auto min-w-0 max-w-full overflow-x-clip px-2 py-1 sm:px-3 lg:px-4">
 <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
   <div>
-    <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">Executive Workspace</p>
-    <h1 class="text-2xl md:text-3xl font-semibold font-display text-[#8f172d]">{{ biz.name }}</h1>
-    <p class="text-xs text-stone-500 mt-1">{% now "l, j F Y" %}</p>
+    <h1 class="text-2xl md:text-3xl font-semibold font-display text-[#8f172d]">Executive dashboard</h1>
+    <p class="text-xs text-stone-500 mt-1">{{ biz.name }} · {% now "l, j F Y" %}</p>
   </div>
   <div class="flex flex-wrap items-center gap-2">
-    <form method="post" action="{% url 'ledger_mode' %}" class="flex items-center gap-2 rounded-xl border border-[#E7DFCC] bg-white px-3 py-2 text-xs">
-      {% csrf_token %}<input type="hidden" name="next" value="{% url 'complete_dashboard' %}">
-      <label for="ledger-scope" class="font-semibold text-stone-600">Scope</label>
-      <select id="ledger-scope" name="mode" onchange="this.form.submit()" class="rounded-lg border border-[#D9CFB4] bg-white px-2 py-1 text-xs">
-        <option value="live" {% if request.ledger_scope == 'live' %}selected{% endif %}>Live</option>
-        {% if backlog_entry_allowed %}<option value="backlog" {% if request.ledger_scope == 'backlog' %}selected{% endif %}>Backlog</option>{% endif %}
-        <option value="all" {% if request.ledger_scope == 'all' %}selected{% endif %}>Combined</option>
-      </select>
-    </form>
-    {% if can_manage_business %}<a href="{% url 'ledger_workspace' %}" class="rounded-xl border border-[#D9CFB4] bg-white px-3 py-2 text-xs font-semibold text-stone-700">Ledger setup</a>{% endif %}
-    <a href="{% url 'dashboard' %}?view=simple" data-dashboard-simple class="rounded-xl bg-[#8f172d] px-3 py-2 text-xs font-semibold text-white">Main Dashboard</a>
+    {% include "core/_dashboard_switch.html" with dashboard_mode="complete" %}
   </div>
 </div>
 {% include "core/_dashboard_search.html" %}
-<div class="grid min-w-0 gap-4 lg:grid-cols-[14rem_minmax(0,1fr)]">
-  <aside class="min-w-0 h-[50vh] max-h-[38rem] overflow-y-auto overscroll-contain rounded-2xl border border-[#E7DFCC] bg-white p-3">
+<details class="executive-guide"><summary class="cursor-pointer text-sm font-semibold">Walk through your dashboard</summary><p class="mt-2 text-sm leading-6">Start with Business Pulse for key indicators and items needing attention. Choose a group to review its summary, then open its underlying records. Date filters apply to the current section; stock positions show their stated as-of context. Every section follows your permissions and selected ledger scope.</p><button type="button" id="executive-walkthrough" class="workspace-action mt-3">Start with Business Pulse</button></details>
+<div class="executive-layout">
+  <aside class="executive-nav min-w-0">
     <label for="complete-dashboard-group" class="mb-2 block text-[10px] font-bold uppercase tracking-wider text-stone-400">Group</label>
     <select id="complete-dashboard-group" class="w-full min-w-0 max-w-full rounded-xl border border-[#D9CFB4] bg-white px-3 py-2 text-sm"></select>
     <nav id="complete-dashboard-sections" class="mt-3 grid gap-1" aria-label="Dashboard sections"></nav>
   </aside>
-  <section id="complete-dashboard-content" class="min-w-0 h-[82vh] max-h-[54rem] overflow-x-hidden overflow-y-auto overscroll-contain rounded-2xl border border-[#E7DFCC] bg-white p-4 md:p-5" aria-live="polite">
+  <section id="complete-dashboard-content" class="executive-content" aria-live="polite">
     <p class="text-sm text-stone-500">Choose a dashboard section.</p>
   </section>
 </div>
@@ -46,10 +47,12 @@
   const content = document.getElementById('complete-dashboard-content');
   const storageKey = `inprofic-complete-dashboard:${document.documentElement.dataset.tenant}`;
   let saved = {};
-  let requestedRange = null;
+  const params = new URLSearchParams(location.search);
+  let requestedRange = params.has('start') ? {start:params.get('start'), end:params.get('end')} : null;
   let activeChart = null;
   let activeSectionRequest = 0;
-  try { saved = JSON.parse(localStorage.getItem(storageKey) || '{}'); } catch (_) {}
+  try { const value = JSON.parse(localStorage.getItem(storageKey) || '{}'); if (value && typeof value === 'object') saved = value; } catch (_) {}
+  if (params.has('group')) saved = {group:params.get('group'), section:params.get('section')};
   const groups = manifest;
   const current = () => groups.find(group => group.key === groupSelect.value);
   const addText = (parent, tag, value, classes) => { const node = document.createElement(tag); node.textContent = value ?? ''; if (classes) node.className = classes; parent.appendChild(node); return node; };
@@ -60,27 +63,39 @@
   const renderSection = async section => {
     const requestId = ++activeSectionRequest;
     if (activeChart) { activeChart.destroy(); activeChart = null; }
-    content.scrollTop = 0;
+    tabs.querySelectorAll('button').forEach(button => {
+      if (button.dataset.section === section.key) button.setAttribute('aria-current', 'page');
+      else button.removeAttribute('aria-current');
+    });
     content.replaceChildren();
     addText(content, 'p', 'Loading section…', 'text-sm text-stone-500');
     const group = current();
     try {
       const url = new URL(`/dashboard/complete/${group.key}/${section.key}/`, window.location.origin);
-      if (section.key === 'profit_loss') {
-        const from = requestedRange?.start;
-        const to = requestedRange?.end;
-        if (from) url.searchParams.set('start', from);
-        if (to) url.searchParams.set('end', to);
-      }
+      if (requestedRange?.start) url.searchParams.set('start', requestedRange.start);
+      if (requestedRange?.end) url.searchParams.set('end', requestedRange.end);
       const response = await fetch(url, {headers: {'Accept': 'application/json'}});
       const data = await response.json();
       if (requestId !== activeSectionRequest) return;
       if (!response.ok) throw new Error(data.error || 'Unable to load this section.');
       content.replaceChildren();
-      addText(content, 'h2', data.title, 'text-lg font-semibold font-display text-stone-800');
+      const tools = document.createElement('div'); tools.className = 'executive-section-tools';
+      addText(tools, 'span', `${group.label} / ${section.label}`, 'text-xs');
+      const sequence = groups.flatMap(g => g.sections.map(s => ({group:g, section:s})));
+      const index = sequence.findIndex(item => item.group.key === group.key && item.section.key === section.key);
+      const move = offset => {
+        const target = sequence[(index + offset + sequence.length) % sequence.length];
+        groupSelect.value = target.group.key; saved.section = target.section.key; renderTabs();
+        content.scrollIntoView({block:'start'});
+      };
+      const previous = document.createElement('button'); previous.type = 'button'; previous.className = 'workspace-action'; previous.textContent = 'Previous section'; previous.addEventListener('click', () => move(-1)); tools.append(previous);
+      const next = document.createElement('button'); next.type = 'button'; next.className = 'workspace-action';
+      next.textContent = index < sequence.length - 1 ? 'Next section' : 'Start again';
+      next.addEventListener('click', () => move(1)); tools.append(next); content.append(tools);
+      addText(content, 'h2' , data.title, 'text-lg font-semibold font-display text-stone-800');
       addText(content, 'p', `Ledger scope: ${data.scope}`, 'mt-1 text-[11px] text-stone-500');
-      if (section.key === 'profit_loss') {
-        addText(content, 'p', `${data.currency || ''} · Paid sales count as revenue; expenses count when incurred. Unpaid sales and expenses appear as memo items.`, 'mt-2 text-xs leading-5 text-stone-500');
+      if (section.key === 'profit_loss') addText(content, 'p', `${data.currency || ''} · Paid sales count as revenue; expenses count when incurred. Unpaid sales and expenses appear as memo items.`, 'mt-2 text-xs leading-5 text-stone-500');
+      if (data.date_range) {
         const filters = document.createElement('form'); filters.className = 'mt-4 flex flex-wrap items-end gap-3 rounded-xl border border-stone-200 p-3';
         const dateRange = data.date_range || {};
         [['From', 'start', dateRange.start], ['To', 'end', dateRange.end]].forEach(([label, key, value]) => {
@@ -92,7 +107,7 @@
         content.appendChild(filters);
       }
       const kpis = document.createElement('div'); kpis.className = 'mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4';
-      data.kpis.forEach(kpi => { const card = document.createElement('article'); card.className = 'rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-3'; addText(card, 'p', kpi.label, 'text-[10px] font-bold uppercase tracking-wider text-stone-400'); addText(card, 'p', kpi.value, 'mt-1 text-xl font-semibold text-stone-800'); kpis.appendChild(card); });
+      data.kpis.forEach(kpi => { const card = document.createElement('article'); card.className = 'rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-3'; addText(card, 'p', kpi.label, 'text-[10px] font-bold uppercase tracking-wider text-stone-400'); addText(card, 'p', kpi.value, 'mt-1 text-xl font-mono font-semibold text-stone-800'); if (kpi.hint) addText(card, 'p', kpi.hint, 'mt-0.5 text-[10px] leading-4 text-stone-400'); kpis.appendChild(card); });
       content.appendChild(kpis);
       for (const chart of (data.charts || [])) {
         if (chart.type !== 'columns') continue;
@@ -114,10 +129,10 @@
             type: 'bar',
             data: {labels: chart.labels, datasets: chart.series.map((series, index) => ({label: series.label, data: series.values, backgroundColor: `color-mix(in srgb, ${chartText} ${92 - index * 24}%, transparent)`, borderColor: chartText, borderWidth: 1, borderRadius: 3, maxBarThickness: 24}))},
             options: {
-              responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false},
+              font: {family: 'Sora, sans-serif'}, responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false},
               scales: {
                 x: {ticks: {color: chartMuted, maxRotation: 0, autoSkip: chart.labels.length > 18}, grid: {color: chartBorder}},
-                y: {beginAtZero: true, ticks: {color: chartMuted}, grid: {color: chartBorder}},
+                y: {beginAtZero: true, ticks: {color: chartMuted, font: {family: 'IBM Plex Mono, monospace'}}, grid: {color: chartBorder}},
               },
               plugins: {
                 legend: {position: 'bottom', labels: {color: chartText, boxWidth: 10, font: {size: 10}}},
@@ -136,22 +151,32 @@
         table.columns.forEach(column => addText(headRow, 'th', column, 'px-3 py-2 font-semibold')); thead.appendChild(headRow); tableEl.appendChild(thead);
         const tbody = document.createElement('tbody');
         if (!table.rows.length) { const tr = document.createElement('tr'); const td = addText(tr, 'td', 'No records in this scope.', 'px-3 py-4 text-center text-stone-400'); td.colSpan = table.columns.length || 1; tbody.appendChild(tr); }
-        table.rows.forEach(row => { const tr = document.createElement('tr'); tr.className = 'border-t border-stone-100'; row.forEach(value => addText(tr, 'td', value, 'px-3 py-2 text-stone-700')); tbody.appendChild(tr); });
+        table.rows.forEach(row => { const tr = document.createElement('tr'); tr.className = 'border-t border-stone-100'; row.forEach(value => addText(tr, 'td', value, 'px-3 py-2 text-stone-700' + (/^[₦$€£+−–\-\s]*\d[\d,.\s]*%?$/.test(String(value)) ? ' font-mono tabular-nums' : ''))); tbody.appendChild(tr); });
         tableEl.appendChild(tbody); wrap.appendChild(tableEl); content.appendChild(wrap);
       });
-    } catch (error) { content.replaceChildren(); addText(content, 'p', error.message, 'rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700'); }
-    localStorage.setItem(storageKey, JSON.stringify({group: group.key, section: section.key}));
+    } catch (error) { if (requestId !== activeSectionRequest) return; content.replaceChildren(); addText(content, 'p', error.message, 'rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700'); }
+    const stateUrl = new URL(location.href);
+    stateUrl.searchParams.set('group', group.key); stateUrl.searchParams.set('section', section.key);
+    for (const key of ['start', 'end']) {
+      if (requestedRange?.[key]) stateUrl.searchParams.set(key, requestedRange[key]); else stateUrl.searchParams.delete(key);
+    }
+    history.replaceState(null, '', stateUrl);
+    saved = {group: group.key, section: section.key};
+    localStorage.setItem(storageKey, JSON.stringify(saved));
   };
   const renderTabs = () => {
+    // Programmatic group changes must also refresh the visible select control.
+    groupSelect.dispatchEvent(new Event('ms-refresh'));
     const group = current(); tabs.replaceChildren();
     if (!group) { content.replaceChildren(); addText(content, 'p', 'No dashboard sections are available for your current permissions.', 'text-sm text-stone-500'); return; }
-    group.sections.forEach(section => { const button = document.createElement('button'); button.type = 'button'; button.className = 'w-full min-w-0 break-words rounded-lg px-3 py-2 text-left text-xs font-semibold text-stone-600'; button.textContent = section.label; button.addEventListener('click', () => renderSection(section)); tabs.appendChild(button); });
+    group.sections.forEach(section => { const button = document.createElement('button'); button.type = 'button'; button.className = 'w-full min-w-0 break-words rounded-lg px-3 py-2 text-left text-xs font-semibold text-stone-600'; button.textContent = section.label; button.dataset.section = section.key; button.addEventListener('click', () => renderSection(section)); tabs.appendChild(button); });
     const section = group.sections.find(item => item.key === saved.section) || group.sections[0];
     if (section) renderSection(section);
   };
   groups.forEach(group => { const option = document.createElement('option'); option.value = group.key; option.textContent = group.label; groupSelect.appendChild(option); });
   groupSelect.value = groups.some(group => group.key === saved.group) ? saved.group : (groups[0]?.key || '');
-  groupSelect.addEventListener('change', () => { saved.section = null; renderTabs(); });
+  groupSelect.addEventListener('change', () => { saved.section = null; requestedRange = null; renderTabs(); });
+  document.getElementById('executive-walkthrough').addEventListener('click', () => { groupSelect.value = groups.some(g => g.key === 'pulse') ? 'pulse' : groups[0]?.key || ''; saved.section = null; requestedRange = null; renderTabs(); content.scrollIntoView({block:'start'}); });
   document.querySelector('[data-dashboard-simple]')?.addEventListener('click', () => { localStorage.setItem(storageKey, JSON.stringify({view: 'simple'})); document.cookie = `dashboard_view_${document.documentElement.dataset.tenant}=simple; Max-Age=31536000; Path=/; SameSite=Lax`; });
   document.cookie = `dashboard_view_${document.documentElement.dataset.tenant}=complete; Max-Age=31536000; Path=/; SameSite=Lax`;
   renderTabs();

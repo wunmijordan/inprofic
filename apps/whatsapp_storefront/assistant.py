@@ -52,15 +52,13 @@ def _catalogue(connection):
 
 
 def _order_link(connection):
-    from django.contrib.sites.models import Site
     from django.conf import settings as django_settings
     try:
         origin = django_settings.SITE_URL.rstrip("/")
     except AttributeError:
         origin = ""
     if not origin:
-        domain = Site.objects.get_current().domain
-        origin = f"https://{domain}"
+        raise ValidationError("The storefront link is not configured yet. Please ask the business to set its public SITE_URL or reply HUMAN for help.")
     return f"{origin}{reverse('storefront', kwargs={'business_slug': connection.business.slug})}"
 
 
@@ -386,7 +384,10 @@ def _ai_reply(conversation, text):
 
 def build_reply(conversation, text):
     catalogue = _catalogue(conversation.connection)
-    deterministic = _deterministic_reply(conversation, text, catalogue)
+    try:
+        deterministic = _deterministic_reply(conversation, text, catalogue)
+    except ValidationError as error:
+        return ' '.join(error.messages)
     if conversation.status == conversation.STATUS_HANDOFF:
         return deterministic
     # Keep catalog, price, stock, order-status and checkout answers anchored to
@@ -471,10 +472,9 @@ def _create_whatsapp_checkout(conversation, catalogue):
 
 def _checkout_link(conversation, checkout):
     from django.conf import settings as django_settings
-    from django.contrib.sites.models import Site
     origin = (getattr(django_settings, "SITE_URL", "") or "").rstrip("/")
     if not origin:
-        origin = f"https://{Site.objects.get_current().domain}"
+        raise ValidationError("Configure the public SITE_URL before sending WhatsApp checkout links.")
     return f"{origin}{reverse('storefront_checkout', kwargs={'business_slug': conversation.business.slug, 'checkout_id': checkout.public_id})}"
 
 

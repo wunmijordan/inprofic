@@ -4,7 +4,7 @@
 <div class="max-w-6xl">
   <div class="flex flex-wrap items-end justify-between gap-3 mb-5">
     <div><h1 class="text-2xl font-semibold font-display text-[#8f172d]">Plans & services</h1></div>
-    {% if subscription %}<a href="{% url 'subscription_payment' %}" class="px-4 py-2 rounded-md bg-[#8f172d] text-white text-sm font-medium">Pay / change plan</a>{% endif %}
+    {% if subscription %}<a data-button-surface href="{% url 'subscription_payment' %}" class="px-4 py-2 rounded-md bg-[#8f172d] text-white text-sm font-medium">Pay / change plan</a>{% endif %}
   </div>
   {% if subscription %}
   <div class="mb-5 rounded-lg border {% if subscription.is_expiring_soon %}border-rose-300 bg-rose-50{% else %}border-[#E7DFCC] bg-[#FFFDF8]{% endif %} p-4">
@@ -27,7 +27,7 @@
       </div>
       <div class="mt-auto pt-5 w-full">
         {% if card.payment_locked %}
-        <button type="button" disabled class="block w-full text-center px-4 py-2 rounded-md bg-stone-100 text-stone-400 border border-stone-200 text-sm font-medium cursor-not-allowed">{% if subscription.founder_lifetime %}Lifetime access{% elif plan.is_free_forever %}Free Forever{% else %}Renewal opens in final 7 days{% endif %}</button>
+        <button data-button-surface type="button" disabled class="block w-full text-center px-4 py-2 rounded-md bg-stone-100 text-stone-400 border border-stone-200 text-sm font-medium cursor-not-allowed">{% if subscription.founder_lifetime %}Lifetime access{% elif plan.is_free_forever %}Free Forever{% else %}Renewal opens in final 7 days{% endif %}</button>
         {% else %}
         {% if plan.is_free_forever and card.is_current %}<span class="block text-center px-4 py-2 rounded-md bg-[#F5EFE0] text-[#8f172d] border border-[#D9CFB4] text-sm font-medium">Your free plan</span>{% else %}<a href="{% url 'subscription_payment_plan' plan.code %}" class="block text-center px-4 py-2 rounded-md {% if card.is_current %}bg-[#F5EFE0] text-[#8f172d] border border-[#D9CFB4]{% else %}bg-[#8f172d] text-white{% endif %} text-sm font-medium">{% if card.is_current %}Pay / renew{% elif plan.code != 'starter' and paid_trial_available %}Try free / choose{% else %}Choose / change{% endif %}</a>{% endif %}
         {% endif %}

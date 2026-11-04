@@ -26,7 +26,19 @@
       </div>
     {% endfor %}
 
-    <button class="rounded-md bg-[#8f172d] px-4 py-2 text-white">
+    {% if payment_parts %}
+    <fieldset class="mt-4"><legend class="font-semibold text-sm">Amounts received by payment method</legend>
+      <p class="mt-1 text-xs">Leave unused methods at zero. The combined amount must not exceed the invoice balance.</p>
+      {{ payment_parts.management_form }}
+      {% if payment_parts.non_form_errors %}<div class="errorlist" role="alert">{{ payment_parts.non_form_errors }}</div>{% endif %}
+      <div class="mt-3 space-y-3">{% for part in payment_parts %}<div class="workspace-card p-3 grid grid-cols-1 sm:grid-cols-2 gap-3" data-payment-part>
+        {% for field in part %}{% include "_field.html" with field=field %}{% endfor %}
+        {{ part.non_field_errors }}
+      </div>{% endfor %}</div>
+      <p class="mt-3 text-sm font-semibold" aria-live="polite">Total received: <span data-payment-total>0.00</span></p>
+    </fieldset>
+    {% endif %}
+    <button data-button-surface class="rounded-md bg-[#8f172d] px-4 py-2 text-white">
       Record payment
     </button>
   </form>
@@ -46,17 +58,28 @@
       const rows = SALES_BY_CUSTOMER[customerSelect?.value] || [];
       if (!saleSelect) return;
 
+      const previous = saleSelect.value;
       saleSelect.innerHTML = '<option value="">Select sale…</option>'
         + rows.map((row) => `<option value="${row.id}">${row.label}</option>`).join('');
 
       if (rows.length) {
-        saleSelect.value = rows[0].id;
-        if (amountInput) amountInput.value = rows[0].outstanding;
+        saleSelect.value = rows.some(row => String(row.id) === previous) ? previous : rows[0].id;
+        if (amountInput && !amountInput.value) amountInput.value = rows.find(row => String(row.id) === saleSelect.value)?.outstanding || '';
       }
     }
 
     customerSelect?.addEventListener('change', refreshSales);
     refreshSales();
+    function updatePaymentTotal() {
+      let cents = 0;
+      document.querySelectorAll('[data-payment-part] input[name$="-amount"]').forEach(input => {
+        cents += Math.round(Number(input.value || 0) * 100);
+      });
+      const total = document.querySelector('[data-payment-total]');
+      if (total) total.textContent = (cents / 100).toLocaleString(undefined, {minimumFractionDigits:2,maximumFractionDigits:2});
+    }
+    document.querySelectorAll('[data-payment-part] input[name$="-amount"]').forEach(input => input.addEventListener('input', updatePaymentTotal));
+    updatePaymentTotal();
   </script>
 {% endif %}
 

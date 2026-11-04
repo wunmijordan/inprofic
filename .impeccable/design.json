@@ -1,0 +1,546 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-28T21:00:20.005473+00:00",
+  "title": "Design System: INPROFIC",
+  "extensions": {
+    "colorMeta": {
+      "action-default": {
+        "role": "primary",
+        "displayName": "Action default",
+        "tonalRamp": [
+          "oklch(15% 0.0425 45)",
+          "oklch(26% 0.1020 45)",
+          "oklch(38% 0.1445 45)",
+          "oklch(50% 0.1700 45)",
+          "oklch(62% 0.1700 45)",
+          "oklch(74% 0.1360 45)",
+          "oklch(86% 0.0850 45)",
+          "oklch(95% 0.0306 45)"
+        ]
+      },
+      "action-contrast-default": {
+        "role": "neutral",
+        "displayName": "Action contrast default",
+        "tonalRamp": [
+          "oklch(15% 0.0000 250)",
+          "oklch(26% 0.0000 250)",
+          "oklch(38% 0.0000 250)",
+          "oklch(50% 0.0000 250)",
+          "oklch(62% 0.0000 250)",
+          "oklch(74% 0.0000 250)",
+          "oklch(86% 0.0000 250)",
+          "oklch(95% 0.0000 250)"
+        ]
+      },
+      "canvas-light": {
+        "role": "neutral",
+        "displayName": "Light canvas",
+        "tonalRamp": [
+          "oklch(15% 0.0000 250)",
+          "oklch(26% 0.0000 250)",
+          "oklch(38% 0.0000 250)",
+          "oklch(50% 0.0000 250)",
+          "oklch(62% 0.0000 250)",
+          "oklch(74% 0.0000 250)",
+          "oklch(86% 0.0000 250)",
+          "oklch(95% 0.0000 250)"
+        ]
+      },
+      "surface-light": {
+        "role": "neutral",
+        "displayName": "Light surface",
+        "tonalRamp": [
+          "oklch(15% 0.0030 255)",
+          "oklch(26% 0.0072 255)",
+          "oklch(38% 0.0102 255)",
+          "oklch(50% 0.0120 255)",
+          "oklch(62% 0.0120 255)",
+          "oklch(74% 0.0096 255)",
+          "oklch(86% 0.0060 255)",
+          "oklch(95% 0.0022 255)"
+        ]
+      },
+      "surface-muted-light": {
+        "role": "neutral",
+        "displayName": "Light muted surface",
+        "tonalRamp": [
+          "oklch(15% 0.0037 255)",
+          "oklch(26% 0.0090 255)",
+          "oklch(38% 0.0127 255)",
+          "oklch(50% 0.0150 255)",
+          "oklch(62% 0.0150 255)",
+          "oklch(74% 0.0120 255)",
+          "oklch(86% 0.0075 255)",
+          "oklch(95% 0.0027 255)"
+        ]
+      },
+      "text-light": {
+        "role": "neutral",
+        "displayName": "Light foreground",
+        "tonalRamp": [
+          "oklch(15% 0.0075 255)",
+          "oklch(26% 0.0180 255)",
+          "oklch(38% 0.0255 255)",
+          "oklch(50% 0.0300 255)",
+          "oklch(62% 0.0300 255)",
+          "oklch(74% 0.0240 255)",
+          "oklch(86% 0.0150 255)",
+          "oklch(95% 0.0054 255)"
+        ]
+      },
+      "muted-light": {
+        "role": "neutral",
+        "displayName": "Light muted foreground",
+        "tonalRamp": [
+          "oklch(15% 0.0063 250)",
+          "oklch(26% 0.0150 250)",
+          "oklch(38% 0.0213 250)",
+          "oklch(50% 0.0250 250)",
+          "oklch(62% 0.0250 250)",
+          "oklch(74% 0.0200 250)",
+          "oklch(86% 0.0125 250)",
+          "oklch(95% 0.0045 250)"
+        ]
+      },
+      "border-light": {
+        "role": "neutral",
+        "displayName": "Light border",
+        "tonalRamp": [
+          "oklch(15% 0.0063 255)",
+          "oklch(26% 0.0150 255)",
+          "oklch(38% 0.0213 255)",
+          "oklch(50% 0.0250 255)",
+          "oklch(62% 0.0250 255)",
+          "oklch(74% 0.0200 255)",
+          "oklch(86% 0.0125 255)",
+          "oklch(95% 0.0045 255)"
+        ]
+      },
+      "canvas-dark-fallback": {
+        "role": "neutral",
+        "displayName": "Dark canvas fallback",
+        "tonalRamp": [
+          "oklch(15% 0.0075 260)",
+          "oklch(26% 0.0180 260)",
+          "oklch(38% 0.0255 260)",
+          "oklch(50% 0.0300 260)",
+          "oklch(62% 0.0300 260)",
+          "oklch(74% 0.0240 260)",
+          "oklch(86% 0.0150 260)",
+          "oklch(95% 0.0054 260)"
+        ]
+      },
+      "surface-dark-fallback": {
+        "role": "neutral",
+        "displayName": "Dark surface fallback",
+        "tonalRamp": [
+          "oklch(15% 0.0063 250)",
+          "oklch(26% 0.0150 250)",
+          "oklch(38% 0.0213 250)",
+          "oklch(50% 0.0250 250)",
+          "oklch(62% 0.0250 250)",
+          "oklch(74% 0.0200 250)",
+          "oklch(86% 0.0125 250)",
+          "oklch(95% 0.0045 250)"
+        ]
+      },
+      "surface-muted-dark-fallback": {
+        "role": "neutral",
+        "displayName": "Dark muted surface fallback",
+        "tonalRamp": [
+          "oklch(15% 0.0075 250)",
+          "oklch(26% 0.0180 250)",
+          "oklch(38% 0.0255 250)",
+          "oklch(50% 0.0300 250)",
+          "oklch(62% 0.0300 250)",
+          "oklch(74% 0.0240 250)",
+          "oklch(86% 0.0150 250)",
+          "oklch(95% 0.0054 250)"
+        ]
+      },
+      "text-dark-fallback": {
+        "role": "neutral",
+        "displayName": "Dark foreground fallback",
+        "tonalRamp": [
+          "oklch(15% 0.0037 255)",
+          "oklch(26% 0.0090 255)",
+          "oklch(38% 0.0127 255)",
+          "oklch(50% 0.0150 255)",
+          "oklch(62% 0.0150 255)",
+          "oklch(74% 0.0120 255)",
+          "oklch(86% 0.0075 255)",
+          "oklch(95% 0.0027 255)"
+        ]
+      },
+      "muted-dark-fallback": {
+        "role": "neutral",
+        "displayName": "Dark muted foreground fallback",
+        "tonalRamp": [
+          "oklch(15% 0.0063 250)",
+          "oklch(26% 0.0150 250)",
+          "oklch(38% 0.0213 250)",
+          "oklch(50% 0.0250 250)",
+          "oklch(62% 0.0250 250)",
+          "oklch(74% 0.0200 250)",
+          "oklch(86% 0.0125 250)",
+          "oklch(95% 0.0045 250)"
+        ]
+      },
+      "border-dark-fallback": {
+        "role": "neutral",
+        "displayName": "Dark border fallback",
+        "tonalRamp": [
+          "oklch(15% 0.0100 260)",
+          "oklch(26% 0.0240 260)",
+          "oklch(38% 0.0340 260)",
+          "oklch(50% 0.0400 260)",
+          "oklch(62% 0.0400 260)",
+          "oklch(74% 0.0320 260)",
+          "oklch(86% 0.0200 260)",
+          "oklch(95% 0.0072 260)"
+        ]
+      },
+      "danger": {
+        "role": "semantic",
+        "displayName": "Danger",
+        "tonalRamp": [
+          "oklch(15% 0.0450 10)",
+          "oklch(26% 0.1080 10)",
+          "oklch(38% 0.1530 10)",
+          "oklch(50% 0.1800 10)",
+          "oklch(62% 0.1800 10)",
+          "oklch(74% 0.1440 10)",
+          "oklch(86% 0.0900 10)",
+          "oklch(95% 0.0324 10)"
+        ]
+      },
+      "public-dark-canvas": {
+        "role": "primary",
+        "displayName": "Public brand navy",
+        "tonalRamp": [
+          "oklch(15% 0.0225 275)",
+          "oklch(26% 0.0540 275)",
+          "oklch(38% 0.0765 275)",
+          "oklch(50% 0.0900 275)",
+          "oklch(62% 0.0900 275)",
+          "oklch(74% 0.0720 275)",
+          "oklch(86% 0.0450 275)",
+          "oklch(95% 0.0162 275)"
+        ]
+      },
+      "public-dark-surface": {
+        "role": "neutral",
+        "displayName": "Public navy surface",
+        "tonalRamp": [
+          "oklch(15% 0.0200 275)",
+          "oklch(26% 0.0480 275)",
+          "oklch(38% 0.0680 275)",
+          "oklch(50% 0.0800 275)",
+          "oklch(62% 0.0800 275)",
+          "oklch(74% 0.0640 275)",
+          "oklch(86% 0.0400 275)",
+          "oklch(95% 0.0144 275)"
+        ]
+      },
+      "public-dark-surface-muted": {
+        "role": "neutral",
+        "displayName": "Public inset navy",
+        "tonalRamp": [
+          "oklch(15% 0.0187 275)",
+          "oklch(26% 0.0450 275)",
+          "oklch(38% 0.0638 275)",
+          "oklch(50% 0.0750 275)",
+          "oklch(62% 0.0750 275)",
+          "oklch(74% 0.0600 275)",
+          "oklch(86% 0.0375 275)",
+          "oklch(95% 0.0135 275)"
+        ]
+      },
+      "public-dark-text": {
+        "role": "neutral",
+        "displayName": "Public pale foreground",
+        "tonalRamp": [
+          "oklch(15% 0.0050 275)",
+          "oklch(26% 0.0120 275)",
+          "oklch(38% 0.0170 275)",
+          "oklch(50% 0.0200 275)",
+          "oklch(62% 0.0200 275)",
+          "oklch(74% 0.0160 275)",
+          "oklch(86% 0.0100 275)",
+          "oklch(95% 0.0036 275)"
+        ]
+      },
+      "public-dark-muted": {
+        "role": "neutral",
+        "displayName": "Public muted foreground",
+        "tonalRamp": [
+          "oklch(15% 0.0088 275)",
+          "oklch(26% 0.0210 275)",
+          "oklch(38% 0.0298 275)",
+          "oklch(50% 0.0350 275)",
+          "oklch(62% 0.0350 275)",
+          "oklch(74% 0.0280 275)",
+          "oklch(86% 0.0175 275)",
+          "oklch(95% 0.0063 275)"
+        ]
+      },
+      "public-dark-border": {
+        "role": "neutral",
+        "displayName": "Public navy border",
+        "tonalRamp": [
+          "oklch(15% 0.0150 275)",
+          "oklch(26% 0.0360 275)",
+          "oklch(38% 0.0510 275)",
+          "oklch(50% 0.0600 275)",
+          "oklch(62% 0.0600 275)",
+          "oklch(74% 0.0480 275)",
+          "oklch(86% 0.0300 275)",
+          "oklch(95% 0.0108 275)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "public-display": {
+        "displayName": "Public display",
+        "purpose": "Restored typing hero heading; marketing-restored.css: clamp(2.35rem,4vw,4rem), line-height 1.13.",
+        "fontFamily": "Fraunces, Georgia, serif"
+      },
+      "public-headline": {
+        "displayName": "Public headline",
+        "purpose": "Workflow section headline from marketing.css, with restored heading tracking from marketing-restored.css; other sections retain template size utilities.",
+        "fontFamily": "Fraunces, Georgia, serif"
+      },
+      "public-title": {
+        "displayName": "Public title",
+        "purpose": "Workflow row titles; marketing.css."
+      },
+      "public-body": {
+        "displayName": "Public body",
+        "purpose": "All public supporting text uses Sora; marketing.css."
+      },
+      "workspace-body": {
+        "displayName": "Workspace body",
+        "purpose": "Inter operational body; templates/base.html and workspace.css."
+      },
+      "workspace-action": {
+        "displayName": "Workspace action",
+        "purpose": "Compact operational actions; workspace.css."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "Explicit monospace numeric/data use; templates/base.html."
+      },
+      "public-action": {
+        "displayName": "Public action",
+        "purpose": "Public ui-button label role from marketing.css; restored hero action utilities remain scoped."
+      }
+    },
+    "shadows": [
+      {
+        "name": "ui-shadow",
+        "value": "0 1px 3px rgb(15 23 42 / .10)",
+        "purpose": "Light default resting cards; workspace.css."
+      },
+      {
+        "name": "ui-shadow-raised",
+        "value": "0 8px 24px rgb(15 23 42 / .14)",
+        "purpose": "Light default panels and dialogs; workspace.css."
+      },
+      {
+        "name": "ui-shadow-dark",
+        "value": "0 1px 4px rgb(0 0 0 / .24)",
+        "purpose": "Dark theme resting cards; workspace.css."
+      },
+      {
+        "name": "ui-shadow-raised-dark",
+        "value": "0 8px 28px rgb(0 0 0 / .32)",
+        "purpose": "Dark theme raised panels; workspace.css."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-duration",
+        "value": "140ms",
+        "purpose": "Shared controls in workspace.css; reduced motion overrides remain authoritative."
+      },
+      {
+        "name": "mobile-navigation-transform",
+        "value": "transform 180ms ease-out, opacity 120ms ease-out",
+        "purpose": "Existing mobile navigation in templates/base.html."
+      },
+      {
+        "name": "public-module-hover",
+        "value": "transform 160ms ease, border-color 160ms ease",
+        "purpose": "Restored module cards lift 2px; reduced-motion removes transition."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "dialog-and-public-mobile",
+        "value": "640px"
+      },
+      {
+        "name": "workspace-desktop",
+        "value": "768px"
+      },
+      {
+        "name": "public-compact",
+        "value": "900px"
+      },
+      {
+        "name": "restored-public-columns",
+        "value": "1024px"
+      }
+    ],
+    "backgrounds": [
+      {
+        "name": "public-dark-header",
+        "value": "linear-gradient(125deg,#050733 12%,#10164c 63%,#291326 100%)",
+        "purpose": "User-requested public dark sectional background in marketing-restored.css; scoped to restored marketing."
+      },
+      {
+        "name": "public-dark-section",
+        "value": "linear-gradient(145deg,#0a0e3c,#111746 70%,#1d153b)",
+        "purpose": "User-requested public dark sectional background in marketing-restored.css; scoped to restored marketing."
+      },
+      {
+        "name": "public-dark-alternating-section",
+        "value": "linear-gradient(125deg,#101441,#191639 65%,#2a172d)",
+        "purpose": "User-requested public dark sectional background in marketing-restored.css; scoped to restored marketing."
+      },
+      {
+        "name": "public-dark-plans",
+        "value": "linear-gradient(125deg,#101441,#191639 65%,#2a172d)",
+        "purpose": "User-requested public dark sectional background in marketing-restored.css; scoped to restored marketing."
+      },
+      {
+        "name": "public-dark-footer",
+        "value": "linear-gradient(105deg,#050733,#0d123f)",
+        "purpose": "User-requested public dark sectional background in marketing-restored.css; scoped to restored marketing."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Workspace primary action",
+      "kind": "button",
+      "refersTo": "workspace-button-primary",
+      "description": "Existing compact action; workspace.css and button-surfaces.css. Runtime accent and contrast remain live.",
+      "html": "<button type=\"button\" class=\"ds-primary\">Save changes</button>",
+      "css": ".ds-primary{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;min-height:var(--ui-control-height,2.25rem);padding:.5rem .8rem;border:1px solid var(--ui-border,#cbd5e1);border-radius:var(--ui-radius,.6rem);font-size:.75rem;font-weight:600;font-family:Inter,sans-serif;transition-duration:140ms;background-image:var(--ui-button-sheen,linear-gradient(180deg,rgb(255 255 255 / .12),transparent 25%,transparent 75%,rgb(0 0 0 / .045)));box-shadow:inset 0 1px 0 var(--ui-button-edge,rgb(255 255 255 / .22)),inset 0 -1px 0 rgb(0 0 0 / .06),0 1px 2px var(--ui-button-shadow,rgb(0 0 0 / .10));background-color:var(--ui-accent,var(--tenant-button,#d14900));border-color:var(--ui-accent,var(--tenant-button,#d14900));color:var(--ui-accent-contrast,var(--tenant-button-contrast,#fff));}.ds-primary:hover:not(:disabled){--ui-button-edge:rgb(255 255 255 / .34);}.ds-primary:focus-visible{outline:2px solid color-mix(in srgb,var(--ui-accent,#d14900) 48%,transparent);outline-offset:2px;}@media(prefers-reduced-motion:reduce){.ds-primary{transition:none}}@media(forced-colors:active),print{.ds-primary{background-image:none;box-shadow:none}}"
+    },
+    {
+      "name": "Workspace neutral action",
+      "kind": "button",
+      "refersTo": "",
+      "description": "Existing compact action; workspace.css and button-surfaces.css. Runtime accent and contrast remain live.",
+      "html": "<button type=\"button\" class=\"ds-secondary\">View records</button>",
+      "css": ".ds-secondary{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;min-height:var(--ui-control-height,2.25rem);padding:.5rem .8rem;border:1px solid var(--ui-border,#cbd5e1);border-radius:var(--ui-radius,.6rem);font-size:.75rem;font-weight:600;font-family:Inter,sans-serif;transition-duration:140ms;background-image:var(--ui-button-sheen,linear-gradient(180deg,rgb(255 255 255 / .12),transparent 25%,transparent 75%,rgb(0 0 0 / .045)));box-shadow:inset 0 1px 0 var(--ui-button-edge,rgb(255 255 255 / .22)),inset 0 -1px 0 rgb(0 0 0 / .06),0 1px 2px var(--ui-button-shadow,rgb(0 0 0 / .10));background-color:color-mix(in srgb,var(--ui-accent,#d14900) 5%,var(--ui-surface,#eceff3ee));color:var(--ui-surface-text,#182433);}.ds-secondary:hover:not(:disabled){--ui-button-edge:rgb(255 255 255 / .34);background-color:color-mix(in srgb,var(--ui-accent,#d14900) 8%,var(--ui-surface,#eceff3ee));}.ds-secondary:focus-visible{outline:2px solid color-mix(in srgb,var(--ui-accent,#d14900) 48%,transparent);outline-offset:2px;}@media(prefers-reduced-motion:reduce){.ds-secondary{transition:none}}@media(forced-colors:active),print{.ds-secondary{background-image:none;box-shadow:none}}"
+    },
+    {
+      "name": "Public primary action",
+      "kind": "button",
+      "refersTo": "public-button",
+      "description": "Public ui-button pattern in marketing.css with shared button finish; restored hero actions retain their own template utilities. Runtime accent and contrast stay live.",
+      "html": "<a class=\"ds-public-button\" href=\"#plans\">View plans</a>",
+      "css": ".ds-public-button{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;min-height:var(--ui-control-height,2.25rem);padding:.5rem .8rem;border:1px solid var(--ui-border,#cbd5e1);border-radius:var(--ui-radius,.6rem);font-size:.75rem;font-weight:600;font-family:Inter,sans-serif;transition-duration:140ms;background-image:var(--ui-button-sheen,linear-gradient(180deg,rgb(255 255 255 / .12),transparent 25%,transparent 75%,rgb(0 0 0 / .045)));box-shadow:inset 0 1px 0 var(--ui-button-edge,rgb(255 255 255 / .22)),inset 0 -1px 0 rgb(0 0 0 / .06),0 1px 2px var(--ui-button-shadow,rgb(0 0 0 / .10));font-family:Sora,system-ui,sans-serif;font-size:.85rem;line-height:1.4;gap:.7rem;padding:.7rem 1.05rem;text-decoration:none;background-color:var(--ui-accent,var(--tenant-button,#d14900));border-color:var(--ui-accent,#d14900);color:var(--ui-accent-contrast,var(--tenant-button-contrast,#fff));}.ds-public-button:hover{--ui-button-edge:rgb(255 255 255 / .34)}.ds-public-button:focus-visible{outline:2px solid color-mix(in srgb,var(--ui-accent,#d14900) 48%,transparent);outline-offset:2px;}@media(max-width:640px){.ds-public-button{padding:.5rem .7rem}}@media(prefers-reduced-motion:reduce){.ds-public-button{transition:none}}@media(forced-colors:active),print{.ds-public-button{background-image:none;box-shadow:none}}"
+    },
+    {
+      "name": "Form field",
+      "kind": "input",
+      "refersTo": "form-field",
+      "description": "Existing cf-field presentation from templates/base.html and workspace.css; native validation remains intact.",
+      "html": "<label class=\"ds-field\">Name<input class=\"ds-text-input\" name=\"name\" autocomplete=\"name\" placeholder=\"Enter a name\"></label>",
+      "css": ".ds-field{display:block;font-family:Inter,sans-serif;font-size:.875rem;color:var(--ui-surface-text,#182433)}.ds-text-input{display:block;min-height:2.6rem;border:1px solid var(--ui-border,#cbd5e1);border-radius:var(--ui-radius,.6rem);padding:.55rem .75rem;background:var(--ui-surface,#eceff3ee);color:var(--ui-surface-text,#182433);font:inherit;transition:border-color .15s ease,box-shadow .15s ease,background .15s ease}.ds-text-input::placeholder{color:var(--ui-surface-muted-text,#566473)}.ds-text-input:focus{border-color:var(--ui-accent,#d14900);box-shadow:0 0 0 3px color-mix(in srgb,var(--ui-accent,#d14900) 14%,transparent)}.ds-text-input:focus-visible{outline:2px solid color-mix(in srgb,var(--ui-accent,#d14900) 48%,transparent);outline-offset:2px;}.ds-text-input[aria-invalid=true]{border-color:#e11d48}.ds-text-input:disabled{cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-text-input{transition:none}}"
+    },
+    {
+      "name": "Tenant navigation",
+      "kind": "nav",
+      "refersTo": "",
+      "description": "Existing sidebar active-row treatment; templates/base.html and workspace.css. Links are not glass buttons.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Workspace\"><a class=\"ds-nav-link\" aria-current=\"page\" href=\"#inventory\">Inventory</a><a class=\"ds-nav-link\" href=\"#sales\">Sales</a></nav>",
+      "css": ".ds-nav{padding:.75rem 0;background:var(--tenant-background,#050733);font-family:Inter,sans-serif;font-size:.875rem;--ds-nav-soft:color-mix(in srgb,var(--tenant-background-contrast,#fff) 11%,transparent)}.ds-nav-link{display:block;border-radius:1rem;margin:.12rem .65rem;padding:.625rem .75rem;text-decoration:none;color:color-mix(in srgb,var(--tenant-background-contrast,#fff) 76%,transparent);transition-duration:140ms}.ds-nav-link:hover{background:var(--ds-nav-soft)}.ds-nav-link[aria-current=page]{color:var(--tenant-background-contrast,#fff);background:var(--ds-nav-soft);box-shadow:inset 3px 0 0 var(--ui-accent,#d14900)}.ds-nav-link:focus-visible{outline:2px solid color-mix(in srgb,var(--ui-accent,#d14900) 48%,transparent);outline-offset:2px;}@media(prefers-reduced-motion:reduce){.ds-nav-link{transition:none}}"
+    },
+    {
+      "name": "Tenant subscription chip",
+      "kind": "chip",
+      "refersTo": "tenant-chip",
+      "description": "Existing subscription state styling; templates/base.html and workspace.css. Sample label carries no plan promise.",
+      "html": "<div class=\"ds-chip-surface\"><span class=\"ds-chip\">Subscription status</span></div>",
+      "css": ".ds-chip-surface{background:var(--tenant-background,#050733);padding:1rem}.ds-chip{display:inline-flex;align-items:center;gap:.25rem;border-radius:999px;padding:.25rem .5rem;font-family:Inter,sans-serif;font-size:.625rem;font-weight:600;color:var(--tenant-background-contrast,#fff);background:color-mix(in srgb,var(--tenant-background-contrast,#fff) 11%,transparent)}"
+    },
+    {
+      "name": "Illustrative ledger card",
+      "kind": "card",
+      "refersTo": "workspace-card",
+      "description": "Existing order-ledger container from marketing.css; generic sample content remains explicitly illustrative.",
+      "html": "<section class=\"ds-ledger\" aria-labelledby=\"ds-ledger-title\"><div class=\"ds-ledger-head\"><span>Illustrative example</span><span>Shared Run</span></div><h2 id=\"ds-ledger-title\">Production calculation</h2><p class=\"ds-ledger-note\">Customer orders and balances remain separate.</p></section>",
+      "css": ".ds-ledger{border:1px solid var(--ui-border,#cbd5e1);border-radius:var(--ui-card-radius,.9rem);padding:1.5rem;background:var(--ui-surface,#eceff3ee);color:var(--ui-surface-text,#182433);box-shadow:var(--ui-shadow,0 1px 3px rgb(15 23 42 / .10));font-family:Sora,system-ui,sans-serif}.ds-ledger-head{display:flex;justify-content:space-between;gap:1rem;font-size:.68rem;color:var(--ui-surface-muted-text,#566473)}.ds-ledger h2{font-size:1.25rem;letter-spacing:-.025em;font-weight:600;margin:1.3rem 0}.ds-ledger-note{font-size:.78rem;color:var(--ui-surface-muted-text,#566473);margin:1rem 0}@media(max-width:640px){.ds-ledger{padding:1rem}}"
+    },
+    {
+      "name": "Searchable select trigger",
+      "kind": "input",
+      "refersTo": "form-field",
+      "description": "Existing trigger appearance from interactions.css and workspace.tsx; preview shows the trigger, not a working Radix popup.",
+      "html": "<button class=\"ds-combo\" type=\"button\" role=\"combobox\" aria-label=\"Choose an option\" aria-expanded=\"false\"><span>Choose an option</span><svg aria-hidden=\"true\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m7 15 5 5 5-5M7 9l5-5 5 5\"/></svg></button>",
+      "css": ".ds-combo{display:flex;width:100%;min-height:2.6rem;align-items:center;justify-content:space-between;gap:.6rem;border:1px solid var(--ui-border,#cbd5e1);border-radius:var(--ui-radius,.6rem);padding:.55rem .75rem;background:var(--ui-surface,#fff);color:var(--ui-surface-text,#182433);font-family:Inter,sans-serif;font-size:.875rem;font-weight:400;text-align:left;box-shadow:none;transition-duration:140ms}.ds-combo>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-combo>svg{flex-shrink:0}.ds-combo:focus-visible{outline:2px solid color-mix(in srgb,var(--ui-accent,#d14900) 48%,transparent);outline-offset:2px;}.ds-combo:disabled{opacity:.6;cursor:not-allowed}.ds-combo[aria-invalid=true]{border-color:#e11d48}@media(prefers-reduced-motion:reduce){.ds-combo{transition:none}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The existing INPROFIC operational workspace",
+    "overview": "Continue the incumbent identity: compact Tabler-style operational hierarchy,\nTailwind layouts, the established wordmark and tenant palette. Repeated daily\nwork needs readable records, aligned quantities, explicit states and clear actions.\nThe public site uses Sora and more space around explanatory copy and illustrative\noperations. Light mode uses the shared neutral surfaces. Its explicitly requested\nsite uses the authored live navy/cream palette and white cards, with original backgrounds and shadows.\n\nThis is a record of shipped code, not a new identity. Shared CSS under\n`apps/core/static/core/css/` is the implementation authority. The frontmatter\nextracts actual defaults and role values; it does not replace runtime CSS tokens.\n`PRODUCT.md` supplies durable product context and the review brief records the\nconfirmed extension contract. Page-specific composition remains in the templates.",
+    "keyCharacteristics": [
+      "Neutral, theme-aware text and surfaces with tenant accent action fills.",
+      "Compact workspace hierarchy and consistent operational tables.",
+      "Public Sora typography; workspace Inter with documented existing exceptions.",
+      "Public brand navy sectional gradients in dark mode; neutral light mode.",
+      "Connected module graph and autoplaying, service-aware illustrative walkthroughs.",
+      "Restrained shared elevation and shallow highlights confined to visual buttons.",
+      "Focus-managed contained edits that preserve Django forms and validation."
+    ],
+    "rules": [
+      {
+        "name": "The Public Navy Rule",
+        "body": "Restore the live public navy/cream palette, white cards, shadows and background elements; preserve workspace theme choices.",
+        "section": "colors"
+      },
+      {
+        "name": "The Neutral Text Rule",
+        "body": "General text and links use the local surface or canvas foreground; tenant accents belong to fills, focus and selection.",
+        "section": "colors"
+      },
+      {
+        "name": "The Inventory Row Rule",
+        "body": "Ordinary table rows remain neutral. Inventory low and warning rows keep their semantic background and matching text through hover and sticky cells.",
+        "section": "colors"
+      },
+      {
+        "name": "The Surface Type Rule",
+        "body": "Use Sora for the public site and Inter for workspace body/control text; preserve the existing scoped subsection and matrix exceptions.",
+        "section": "typography"
+      },
+      {
+        "name": "The Button Finish Rule",
+        "body": "Apply shallow glass only through the existing visual button contract; links, clickable cards, status panels, tabs, switches and input widgets do not gain it merely because they can be clicked.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use live shared CSS tokens for tenant/theme surfaces, local foregrounds and action contrast.",
+      "Do preserve Inventory semantic rows, including hover and opaque sticky-cell compositing.",
+      "Do keep workspace records compact, quantities aligned and validation errors visible.",
+      "Do preserve Fraunces public display headings and Sora public body copy, with Inter in the workspace.",
+      "Do preserve keyboard focus, Escape, focus return and reduced-motion behavior.",
+      "Do retain public navy sectional gradients in dark mode and shared neutral surfaces in light mode.",
+      "Do label simulated records as illustrative; autoplay visible walkthroughs without playback controls, respecting interaction and reduced motion.",
+      "Do adapt marked brand artwork to its actual composited background; leave uploaded customer logos untouched."
+    ],
+    "donts": [
+      "Don't hardcode the documented fallback palette over runtime tenant or theme choices.",
+      "Don't apply the shallow button finish to ordinary links, cards, tabs, badges or input widgets.",
+      "Don't introduce eyebrow labels, artificial metrics or floating orbs. The public typing headline gradient and navy sections are explicit brand treatments.",
+      "Don't turn registered but unused fonts or legacy inline styling into new system roles.",
+      "Don't replace deliberate approval, release, completion, reversal or cut-over review screens with routine edit dialogs."
+    ]
+  }
+}

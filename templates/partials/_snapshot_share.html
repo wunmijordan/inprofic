@@ -1,0 +1,15 @@
+<div class="snapshot-share" data-snapshot-share data-image-url="{{ snapshot_image_url }}" data-text-id="{{ snapshot_id }}" data-filename="{{ snapshot_filename|default:'summary' }}" data-share-label="{{ snapshot_label|default:'Share' }}">
+  {% if snapshot_text %}{{ snapshot_text|json_script:snapshot_id }}{% endif %}
+  {% if snapshot_dropdown %}<div data-ui-snapshot-menu></div>{% endif %}
+  <div {% if snapshot_dropdown %}hidden data-snapshot-commands{% else %}class="mt-3 flex flex-wrap gap-2" role="group" aria-label="Share summary"{% endif %}>
+    {% if snapshot_save_form %}<button type="submit" form="{{ snapshot_save_form }}" name="after_save" value="share" data-stay-open>Save and share</button>{% endif %}
+    {% if snapshot_text %}
+    <button type="button" class="workspace-action workspace-action-primary" data-snapshot-action="share">Share snapshot</button>
+    <button type="button" class="workspace-action" data-snapshot-action="view">View snapshot</button>
+    <button type="button" class="workspace-action" data-snapshot-action="download">Save image</button>
+    {% if snapshot_whatsapp_url %}<a href="{{ snapshot_whatsapp_url }}" target="_blank" rel="noopener" class="workspace-action">WhatsApp text</a>{% else %}<button type="button" class="workspace-action" data-snapshot-action="text">WhatsApp text</button>{% endif %}
+    <button type="button" class="workspace-action" data-snapshot-action="copy">Copy text</button>
+    {% endif %}
+  </div>
+  <p class="mt-2 text-xs" {% if snapshot_dropdown %}hidden{% else %}role="status"{% endif %} data-snapshot-status></p>
+</div>

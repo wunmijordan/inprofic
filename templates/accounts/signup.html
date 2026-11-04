@@ -8,6 +8,9 @@
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
   <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}?v={{ static_asset_version }}">
   <link rel="stylesheet" href="{% static 'core/css/workspace.css' %}?v={{ static_asset_version }}">
+  <link rel="stylesheet" href="{% static 'core/css/button-surfaces.css' %}?v={{ static_asset_version }}">
+  <link rel="stylesheet" href="{% static 'core/css/interactions.css' %}?v={{ static_asset_version }}">
+  <script src="{% static 'core/js/interactions.js' %}?v={{ static_asset_version }}" data-inprofic-ui defer></script>
   <script src="{% static 'core/js/workspace.js' %}"></script>
   {% include "pwa/head.html" %}
   <style>
@@ -16,12 +19,12 @@
     body{font-family:Sora,sans-serif;background:#FAF6EF;color:#211D1A}.font-display{font-family:Fraunces,serif}input:focus,select:focus,textarea:focus{border-color:#d14900!important;box-shadow:0 0 0 2px rgba(209,73,0,.3)!important}.auth-logo-dark{display:none}html[data-theme="dark"] .auth-logo-light{display:none}html[data-theme="dark"] .auth-logo-dark{display:block}
   </style>
   <script src="{% static 'core/js/form-experience.js' %}?v={{ static_asset_version }}" defer></script>
+  <script src="{% static 'core/js/brand-assets.js' %}?v={{ static_asset_version }}" defer></script>
 </head>
 <body>
   <main class="min-h-screen flex items-center justify-center p-4">
     <div class="w-full max-w-2xl bg-[#FFFDF8] border border-[#E7DFCC] rounded-xl p-6" style="box-shadow:var(--ui-shadow-raised)">
-      <img src="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" alt="INPROFIC" class="auth-logo-light max-w-full" style="width:12rem;height:auto" width="1944" height="309">
-      <img src="{% static 'core/brand/inprofic-wordmark-on-dark.png' %}" alt="INPROFIC" class="auth-logo-dark max-w-full" style="width:12rem;height:auto" width="1827" height="290">
+      <img data-brand-logo-light="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" data-brand-logo-dark="{% static 'core/brand/inprofic-wordmark-on-dark.png' %}" src="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" alt="INPROFIC" class="brand-logo max-w-full" style="width:12rem;height:auto" width="1944" height="309">
       <div class="text-[10px] tracking-[0.2em] uppercase text-[#C69A3E]">Create a Business Workspace</div>
       <h1 class="text-2xl font-semibold font-display text-[#d14900] mt-4">Set up your Business</h1>
       <p class="text-sm text-stone-500 mb-5">Choose the operating style that fits you. Your first account becomes the Business Admin.</p>
@@ -38,7 +41,7 @@
           {% include "_field.html" with field=form.password1 %}
           {% include "_field.html" with field=form.password2 %}
         </div>
-        <button class="w-full mt-2 bg-[#d14900] text-white rounded-md py-2.5 text-sm font-medium hover:bg-[#050733]">Create Workspace</button>
+        <button data-button-surface class="w-full mt-2 bg-[#d14900] text-white rounded-md py-2.5 text-sm font-medium hover:bg-[#050733]">Create Workspace</button>
       </form>
       <p class="text-xs text-center text-stone-500 mt-4">Already have an Account? <a class="text-[#d14900] underline" href="{% url 'login' %}">Sign In</a></p>
       <p class="mt-2 text-center text-[11px] text-stone-400">By using INPROFIC, information is handled as described in our <a class="underline underline-offset-2 hover:text-[#d14900]" href="{% url 'privacy_policy' %}">Privacy Policy</a>.</p>

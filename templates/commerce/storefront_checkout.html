@@ -72,7 +72,7 @@
     </section>
 
     <section class="checkout-print-card rounded-3xl border border-stone-200/80 bg-[#fffdf9] p-5 shadow-[0_20px_60px_rgba(43,36,31,.11)] sm:p-7">
-      <button type="button" onclick="window.print()" class="print-hidden mb-4 w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-800">Download / print checkout</button>
+      <button data-button-surface type="button" onclick="window.print()" class="print-hidden mb-4 w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-800">Download / print checkout</button>
       {% if payment_error %}<div class="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">{{ payment_error }}</div>{% endif %}
 
       {% if checkout.status == 'materialized' and checkout.materialized_intake %}
@@ -81,12 +81,12 @@
         <h2 class="mt-1 font-display text-3xl font-semibold text-stone-900">Your order is in.</h2>
         <p class="mt-3 text-sm leading-6 text-stone-600">Full payment was verified before {{ store_business.name }} received the order. Keep <strong>{{ checkout.materialized_intake.public_number }}</strong> for tracking.</p>
         <a href="{% url 'storefront_order_status' store_business.slug checkout.materialized_intake.public_id %}" class="mt-6 flex w-full items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-lg transition hover:brightness-95" style="background:var(--brand)">Track order {{ checkout.materialized_intake.public_number }}</a>
-        {% if payment_data.receipt_path %}<a href="{{ payment_data.receipt_path }}" class="mt-3 flex w-full items-center justify-center rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold text-stone-800">View payment receipt</a>{% endif %}
+        {% if payment_data.receipt_path %}<a data-button-surface href="{{ payment_data.receipt_path }}" class="mt-3 flex w-full items-center justify-center rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold text-stone-800">View payment receipt</a>{% endif %}
       {% elif checkout.status == 'paid_review' %}
         <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-xl text-amber-800">!</div>
         <h2 class="mt-5 font-display text-2xl font-semibold text-stone-900">Payment received—review in progress</h2>
         <p class="mt-3 text-sm leading-6 text-stone-600">Your payment is safe. Availability changed before the order could be created, so {{ store_business.name }} has been alerted to resolve it. Please do not pay again.</p>
-        {% if payment_data.receipt_path %}<a href="{{ payment_data.receipt_path }}" class="mt-5 flex w-full items-center justify-center rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold text-stone-800">View payment receipt</a>{% endif %}
+        {% if payment_data.receipt_path %}<a data-button-surface href="{{ payment_data.receipt_path }}" class="mt-5 flex w-full items-center justify-center rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold text-stone-800">View payment receipt</a>{% endif %}
       {% elif checkout.status == 'expired' %}
         <h2 class="font-display text-2xl font-semibold text-stone-900">This checkout has expired</h2>
         <p class="mt-3 text-sm leading-6 text-stone-600">The temporary reservation ended before payment was confirmed. Return to the catalogue to create a fresh checkout.</p>
@@ -94,7 +94,7 @@
       {% elif checkout.status == 'paid' %}
         <h2 class="font-display text-2xl font-semibold text-stone-900">Payment confirmed</h2>
         <p class="mt-3 text-sm leading-6 text-stone-600">Your order record is being prepared. This page will update automatically.</p>
-        {% if payment_data.receipt_path %}<a href="{{ payment_data.receipt_path }}" class="mt-5 flex w-full items-center justify-center rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold text-stone-800">View payment receipt</a>{% endif %}
+        {% if payment_data.receipt_path %}<a data-button-surface href="{{ payment_data.receipt_path }}" class="mt-5 flex w-full items-center justify-center rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold text-stone-800">View payment receipt</a>{% endif %}
       {% elif payment and payment.status != 'failed' and payment.status != 'cancelled' %}
         <p class="text-[10px] font-bold uppercase tracking-[.2em] text-stone-400">{{ payment.get_method_display }}</p>
         <h2 class="mt-1 font-display text-2xl font-semibold text-stone-900">Complete payment</h2>

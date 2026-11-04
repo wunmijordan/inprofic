@@ -1,0 +1,66 @@
+{% load core_extras static %}<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+{% if shared %}<meta name="robots" content="noindex, nofollow">{% endif %}
+<title>Financial pack · {{ p.business.name }}</title>
+<link rel="stylesheet" href="{% static 'core/css/button-surfaces.css' %}?v={{ static_asset_version }}">
+<style>
+:root{--ink:#292524;--mute:#78716c;--line:#e7dfcc;--accent:#8f172d;--bg:#fff;--soft:#faf6ea}
+@media (prefers-color-scheme:dark){:root{--ink:#f5f5f4;--mute:#a8a29e;--line:#44403c;--bg:#1c1917;--soft:#292524}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:max(16px,env(safe-area-inset-top)) 16px 40px}
+main{max-width:860px;margin:0 auto}h1{font-size:24px;margin:.2em 0}h2{font-size:15px;margin:28px 0 8px;color:var(--accent);text-transform:uppercase;letter-spacing:.08em}
+.mute{color:var(--mute);font-size:12px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left}
+th{background:var(--soft);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute)}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+tr.total td{font-weight:700;border-top:2px solid var(--ink)}.box{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--soft);font-size:12px;margin:14px 0}
+.bar{display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap}.btn{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:10px;padding:7px 12px;font-size:12px;font-weight:600;text-decoration:none;cursor:pointer}
+.wrap{overflow-x:auto}.pos{color:#15803d}.neg{color:#b91c1c}
+@media print{.noprint{display:none!important}body{padding:0;font-size:12px}h2{break-after:avoid}table{break-inside:avoid}}
+</style></head><body><main>
+<div class="bar noprint">
+  {% if shared %}<span class="mute">Read-only view · link expires {{ share.expires_at|date:"j M Y" }}</span>{% else %}<a class="btn" href="{% url 'finance_dashboard' %}">&larr; Finance</a>{% endif %}
+  <span><button class="btn" onclick="window.print()">Print / Save as PDF</button>{% if can_share %} <a class="btn" href="{% url 'finance_pack_shares' %}">Share securely</a>{% endif %}</span>
+</div>
+
+<p class="mute" style="margin-top:20px">Financial pack</p>
+<h1>{{ p.business.name }}</h1>
+<p class="mute">Period {{ p.start|date:"j M Y" }} – {{ p.end|date:"j M Y" }} · position as at {{ p.generated_on|date:"j M Y" }}{% if p.ledger.split %} · {% if p.ledger.scope == 'live' %}Live ledger from {{ p.ledger.cutover_date|date:"j M Y" }}{% elif p.ledger.scope == 'backlog' %}Backlog before {{ p.ledger.cutover_date|date:"j M Y" }}{% else %}Combined ledger{% endif %}{% endif %}</p>
+
+{% if p.ledger.split and p.ledger.status != 'Merged into Live' and p.ledger.scope == 'live' %}<div class="box"><strong>Basis of preparation.</strong> Records before {{ p.ledger.cutover_date|date:"j M Y" }} are held in a separate backlog ({{ p.ledger.status|lower }}). Receivables and payables include every unpaid invoice regardless of date.</div>{% endif %}
+
+<h2>Profit and loss</h2>
+<div class="wrap"><table><tbody>
+<tr><td>Revenue (paid sales)</td><td class="n">{{ p.pnl.revenue|floatformat:2 }}</td></tr>
+<tr><td>Gross profit</td><td class="n">{{ p.pnl.gross_profit|floatformat:2 }}</td></tr>
+<tr class="total"><td>Net profit</td><td class="n {% if p.pnl.net_profit < 0 %}neg{% endif %}">{{ p.pnl.net_profit|floatformat:2 }}</td></tr>
+</tbody></table></div>
+<p class="mute">Amounts in {{ p.business.currency_symbol }}. Revenue counts paid sales; expenses count when incurred.</p>
+
+<h2>Statement of financial position</h2>
+<div class="wrap"><table>
+<thead><tr><th>Assets</th><th class="n">{{ p.business.currency_symbol }}</th></tr></thead><tbody>
+<tr><td>Cash and bank</td><td class="n">{{ p.cash_total|floatformat:2 }}</td></tr>
+<tr><td>Amounts owed by customers</td><td class="n">{{ p.receivables|floatformat:2 }}</td></tr>
+<tr><td>Raw materials at cost</td><td class="n">{{ p.inventory.raw|floatformat:2 }}</td></tr>
+<tr><td>Finished goods at cost{% if p.inventory.finished_truncated %} <span class="mute">(incomplete: correct invalid product costs)</span>{% endif %}</td><td class="n">{{ p.inventory.finished|floatformat:2 }}</td></tr>
+<tr class="total"><td>Total assets</td><td class="n">{{ p.position.assets|floatformat:2 }}</td></tr></tbody>
+<thead><tr><th>Liabilities</th><th class="n"></th></tr></thead><tbody>
+<tr><td>Owed to suppliers</td><td class="n">{{ p.payable_breakdown.suppliers|floatformat:2 }}</td></tr>
+<tr><td>Unpaid expenses</td><td class="n">{{ p.payable_breakdown.expenses|floatformat:2 }}</td></tr>
+<tr class="total"><td>Total liabilities</td><td class="n">{{ p.position.liabilities|floatformat:2 }}</td></tr>
+<tr class="total"><td>Net assets (assets − liabilities)</td><td class="n {% if p.position.net < 0 %}neg{% else %}pos{% endif %}">{{ p.position.net|floatformat:2 }}</td></tr></tbody></table></div>
+<p class="mute">Derived from the business's operational records. It is not a double-entry general ledger and carries no tax computation.</p>
+
+<h2>Cash and bank accounts</h2>
+<div class="wrap"><table><thead><tr><th>Account</th><th>Type</th><th class="n">Balance</th></tr></thead><tbody>
+{% for a in p.accounts %}<tr><td>{{ a.name }}</td><td>{{ a.get_account_type_display }}</td><td class="n">{{ a.balance|floatformat:2 }}</td></tr>{% empty %}<tr><td colspan="3" class="mute">No active accounts.</td></tr>{% endfor %}
+<tr class="total"><td colspan="2">Total</td><td class="n">{{ p.cash_total|floatformat:2 }}</td></tr></tbody></table></div>
+
+<h2>Receivables ageing</h2>
+<div class="wrap"><table><thead><tr><th>Age of invoice</th><th class="n">Invoices</th><th class="n">Amount</th></tr></thead><tbody>
+{% for b in p.receivable_aging %}<tr><td>{{ b.label }}</td><td class="n">{{ b.count }}</td><td class="n">{{ b.total|floatformat:2 }}</td></tr>{% endfor %}</tbody></table></div>
+
+<h2>Payables ageing (suppliers)</h2>
+<div class="wrap"><table><thead><tr><th>Age of invoice</th><th class="n">Invoices</th><th class="n">Amount</th></tr></thead><tbody>
+{% for b in p.payable_aging %}<tr><td>{{ b.label }}</td><td class="n">{{ b.count }}</td><td class="n">{{ b.total|floatformat:2 }}</td></tr>{% endfor %}</tbody></table></div>
+
+<p class="mute" style="margin-top:28px">Generated {{ p.generated_on|date:"j M Y" }} from {{ p.business.name }}'s Inprofic records.</p>
+</main></body></html>

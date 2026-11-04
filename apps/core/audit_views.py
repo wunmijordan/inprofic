@@ -5,8 +5,8 @@ import re
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import (
-    Case, Count, DecimalField, ExpressionWrapper, F, OuterRef, Prefetch, Q,
-    Subquery, Sum, Value, When, Window,
+    Count, DecimalField, ExpressionWrapper, F, OuterRef, Prefetch, Q,
+    Subquery, Sum, Value, Window,
 )
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse
@@ -25,8 +25,10 @@ from sales.models import CustomerPayment, Sale, SaleItem
 from accounts.services import is_business_admin, user_has_permission
 from accounts.platform_integrations import shipbubble_platform_enabled, redact_disabled_integrations
 from .performance import performance_section
+from .accounting import _sale_expressions
 
 from .models import AuditLog, AuditQuery, CashAccount, FinancialTransaction
+from . import ledger
 from .services import audit
 
 
@@ -228,30 +230,7 @@ def _audit_dataset(request, *, for_export=False):
             Prefetch("payments", queryset=CustomerPayment.objects.select_related("account")),
         )
     else:
-        sale_line_value = Case(
-            When(
-                commercial_quantity__isnull=False,
-                commercial_unit_price__isnull=False,
-                then=ExpressionWrapper(
-                    F("commercial_quantity") * F("commercial_unit_price"),
-                    output_field=money_field,
-                ),
-            ),
-            default=ExpressionWrapper(
-                (
-                    F("batch_qty")
-                    * Case(
-                        When(finished_good__units_per_batch__gt=0, then=F("finished_good__units_per_batch")),
-                        default=Value(Decimal("1")),
-                        output_field=DecimalField(max_digits=20, decimal_places=4),
-                    )
-                    + F("piece_qty")
-                )
-                * (F("price") - F("discount")),
-                output_field=money_field,
-            ),
-            output_field=money_field,
-        )
+        _money, sale_line_value, _cogs, _units = _sale_expressions(prefix="")
         sale_total_sq = (
             SaleItem.objects.filter(sale_id=OuterRef("pk"))
             .values("sale_id")
@@ -294,24 +273,7 @@ def _audit_dataset(request, *, for_export=False):
     money_in = sum((t.amount for t in transactions if t.transaction_type == FinancialTransaction.INCOME and not t.reversed), Decimal("0"))
     money_out = sum((t.amount for t in transactions if t.transaction_type == FinancialTransaction.OUTFLOW and not t.reversed), Decimal("0"))
 
-    accounts = list(
-        CashAccount.objects.filter(business=business, active=True).annotate(
-            _money_in=Sum(
-                "transactions__amount",
-                filter=Q(transactions__transaction_type=FinancialTransaction.INCOME),
-            ),
-            _money_out=Sum(
-                "transactions__amount",
-                filter=Q(transactions__transaction_type=FinancialTransaction.OUTFLOW),
-            ),
-        )
-    )
-    for account in accounts:
-        account._calculated_balance = (
-            account.opening_balance
-            + (account._money_in or Decimal("0"))
-            - (account._money_out or Decimal("0"))
-        )
+    accounts = ledger.apply_cash_totals(CashAccount.objects.filter(business=business, active=True))
     cash_balance = sum((account.balance for account in accounts), Decimal("0"))
 
     production_costs = list(

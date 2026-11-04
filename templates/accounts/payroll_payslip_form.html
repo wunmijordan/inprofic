@@ -21,7 +21,7 @@
       {% csrf_token %}
       {% for error in form.non_field_errors %}<div class="rounded-lg bg-rose-50 p-2 text-xs text-rose-700">{{ error }}</div>{% endfor %}
       {% for field in form %}{% include '_field.html' with field=field %}{% endfor %}
-      <button class="w-full rounded-md bg-[#8f172d] px-4 py-2.5 text-sm font-semibold text-white">Create payslip &amp; record wage spend</button>
+      <button data-button-surface class="w-full rounded-md bg-[#8f172d] px-4 py-2.5 text-sm font-semibold text-white">Create payslip &amp; record wage spend</button>
     </form>
   </div>
 </div>

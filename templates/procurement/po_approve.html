@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% load core_extras %}
+{% block content %}
+<style>
+  .pa { max-width: 46rem; margin: 0 auto; }
+  .pa-head { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; }
+  .pa-eyebrow { font-size: .75rem; font-weight: 700; opacity: .7; }
+  .pa-title { margin-top: .15rem; font-size: 1.35rem; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+  .pa-sub { margin-top: .2rem; font-size: .8125rem; opacity: .7; }
+  .pa-chip { flex: none; padding: .25rem .7rem; border-radius: 999px; font-size: .75rem; font-weight: 600; background: #fef3c7; color: #92400e; }
+  .pa-chip.is-approved { background: #dcfce7; color: #166534; }
+  .pa-chip.is-received { background: #e0e7ff; color: #3730a3; }
+  .pa-card { margin-top: 1rem; border: 1px solid rgba(120,113,108,.3); border-radius: 1rem; overflow: hidden; }
+  .pa-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: .35rem .75rem; padding: .7rem .9rem; align-items: center; }
+  .pa-row + .pa-row { border-top: 1px solid rgba(120,113,108,.22); }
+  .pa-name { font-weight: 600; font-size: .9rem; overflow-wrap: anywhere; }
+  .pa-meta { display: block; margin-top: .1rem; font-size: .75rem; font-weight: 400; opacity: .65; }
+  .pa-amt { text-align: right; font-weight: 600; font-size: .9rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pa-amt.is-removed { opacity: .5; text-decoration: line-through; }
+  .pa-controls { display: flex; align-items: center; gap: .5rem; grid-column: 1 / -1; }
+  .pa-input { width: 6.5rem; min-height: 2.25rem; padding: .3rem .55rem; text-align: right; font-variant-numeric: tabular-nums; }
+  .pa-unit { font-size: .8125rem; opacity: .7; }
+  .pa-remove { margin-left: auto; font-size: .75rem; text-decoration: underline; text-underline-offset: 2px; background: none; border: 0; color: inherit; cursor: pointer; opacity: .75; }
+  .pa-stock { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: .15rem .5rem; font-size: .75rem; line-height: 1.4; }
+  .pa-stock::before { content: ""; width: .55rem; height: .55rem; border-radius: 999px; background: currentColor; align-self: center; flex: none; }
+  .pa-stock.is-out, .pa-stock.is-low { color: #b91c1c; }
+  .pa-stock.is-warning { color: #b45309; }
+  .pa-stock.is-ok { color: #166534; }
+  .pa-stock.is-untracked { opacity: .65; }
+  .pa-after { opacity: .85; font-weight: 600; }
+  .pa-reason { grid-column: 1 / -1; }
+  .pa-js .pa-reason[data-collapsed] { display: none; }
+  .pa-reason-input { width: 100%; min-height: 2.5rem; padding: .4rem .6rem; font-size: .8125rem; }
+  .pa-error { margin-top: .25rem; font-size: .75rem; color: #b91c1c; }
+  .pa-bar .workspace-action { white-space: nowrap !important; }
+  .pa-bar-actions { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; flex: 1 1 18rem; }
+  .pa-bar { position: sticky; bottom: 0; z-index: 4; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem .75rem; margin-top: 1rem; padding: .75rem .9rem; border: 1px solid rgba(120,113,108,.35); border-radius: 1rem; background: var(--ui-surface); box-shadow: 0 -6px 20px rgba(0,0,0,.08); }
+  .pa-total-label { font-size: .6875rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; opacity: .6; }
+  .pa-total { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ui-surface-text); }
+  .pa-was { font-size: .75rem; opacity: .65; }
+  .pa-note { margin-top: .75rem; font-size: .8125rem; line-height: 1.5; opacity: .8; }
+  .pa-alert { margin-top: .75rem; padding: .6rem .8rem; border-radius: .75rem; background: #fef2f2; color: #991b1b; font-size: .8125rem; }
+</style>
+<div class="pa" id="pa" data-symbol="{{ biz.currency_symbol }}">
+  <header class="pa-head">
+    <div>
+      <p class="pa-eyebrow">Purchase request #{{ po.pk }}</p>
+      <h1 class="pa-title">{{ summary.supplier }}</h1>
+      <p class="pa-sub">{{ po.date|date:"j M Y" }}{% if summary.payment %} · Payment: {{ summary.payment }}{% endif %}{% if po.approved_at %} · Approved by {{ po.approved_by|default:"a former user" }}, {{ po.approved_at|date:"j M Y" }}{% endif %}</p>
+    </div>
+    <span class="pa-chip is-{{ summary.status }}">{{ summary.status_label }}</span>
+  </header>
+
+  <form method="post" id="pa-form">
+    {% csrf_token %}
+    {% if approval_error %}<div role="alert" class="pa-alert">{{ approval_error }}</div>{% endif %}
+    {% if can_approve %}<p class="pa-note">Check the quantities, then approve. Lower a quantity or tap Remove to cut an item; a reason is needed for every change. Approval does not move stock or money.</p>
+    {% else %}<p class="pa-note">{% if po.approved_at %}Approved quantities are final. Removed items stay listed for the audit trail.{% elif po.status == 'received' %}This request has already been received.{% else %}A business administrator must approve this request before it can be received.{% endif %}</p>{% endif %}
+
+    <div class="pa-card">
+      {% for line in line_forms %}
+      {% with item=line.item %}
+      <div class="pa-row" data-row data-cost="{{ item.unit_cost }}" data-requested="{{ line.requested }}" data-stock="{{ line.stock.stock|default_if_none:'' }}" data-factor="{{ line.stock.factor }}" data-unit="{{ line.stock.unit }}">
+        <div class="pa-name">{{ item.item_name }}
+          <span class="pa-meta">{{ item.purchase_order.supplier|default:"Supplier not named" }} · {% if can_approve %}{{ line.requested|floatformat:"-2" }} {{ item.stock_unit }} requested · {{ item.unit_cost|money:biz.currency_symbol }} each{% else %}{{ item.qty|floatformat:"-2" }} {{ item.stock_unit }} × {{ item.unit_cost|money:biz.currency_symbol }}{% if line.requested != item.qty %} · requested {{ line.requested|floatformat:"-2" }}{% endif %}{% endif %}</span>
+        </div>
+        <div class="pa-amt{% if not can_approve and item.qty == 0 %} is-removed{% endif %}" data-line-total>{{ item.line_total|money:biz.currency_symbol }}</div>
+        <div class="pa-stock is-{{ line.stock.status }}">
+          <span>Stock now: <strong>{{ line.stock.text }}</strong>{% if line.stock.packs %} (= {{ line.stock.packs }}){% endif %}</span>
+          <span>{{ line.stock.label }}{% if line.stock.tracked %} · {{ line.stock.reorder_text }}{% endif %}</span>
+          {% if can_approve and line.stock.tracked %}<span class="pa-after" data-after></span>{% endif %}
+        </div>
+        {% if can_approve %}
+        <div class="pa-controls">
+          <label class="sr-only" for="{{ line.qty.id_for_label }}">Approved quantity of {{ item.item_name }}</label>
+          {{ line.qty }}<span class="pa-unit">{{ item.stock_unit }}</span>
+          <button type="button" class="pa-remove" data-remove aria-label="Remove {{ item.item_name }}">Remove</button>
+        </div>
+        <div class="pa-reason" data-reason{% if not line.reason.value and not line.reason.errors and not line.qty.errors %} data-collapsed{% endif %}>
+          <label class="sr-only" for="{{ line.reason.id_for_label }}">Reason for changing {{ item.item_name }}</label>
+          {{ line.reason }}
+          {% for error in line.qty.errors %}<p class="pa-error">{{ error }}</p>{% endfor %}
+          {% for error in line.reason.errors %}<p class="pa-error">{{ error }}</p>{% endfor %}
+          {% for error in line.non_field_errors %}<p class="pa-error">{{ error }}</p>{% endfor %}
+        </div>
+        {% elif item.approval_reason %}
+        <div class="pa-reason"><span class="pa-meta">Reason: {{ item.approval_reason }}</span></div>
+        {% endif %}
+      </div>
+      {% endwith %}
+      {% endfor %}
+    </div>
+
+    <div class="pa-bar">
+      <div>
+        <div class="pa-total-label">Approved total</div>
+        <div class="pa-total" id="pa-total">{{ summary.total|money:biz.currency_symbol }}</div>
+        <div class="pa-was" id="pa-was"{% if not summary.changed %} hidden{% endif %}>Requested {{ summary.requested_total|money:biz.currency_symbol }}</div>
+      </div>
+      <div class="pa-bar-actions">
+        <a href="{% url 'procurement_list' %}" class="workspace-action">Back</a>
+        {% if can_approve %}<button type="submit" class="workspace-action workspace-action-primary">Approve request</button>{% endif %}
+      </div>
+    </div>
+  </form>
+</div>
+<script>
+(() => {
+  const root = document.getElementById('pa');
+  root.classList.add('pa-js');
+  const fmt = new Intl.NumberFormat(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const money = v => root.dataset.symbol + fmt.format(v);
+  const qtyFmt = new Intl.NumberFormat(undefined, {maximumFractionDigits: 2});
+  const rows = [...root.querySelectorAll('[data-row]')];
+  function recalc() {
+    let total = 0, requested = 0;
+    rows.forEach(row => {
+      const input = row.querySelector('.pa-input'); if (!input) return;
+      const cost = parseFloat(row.dataset.cost) || 0, asked = parseFloat(row.dataset.requested) || 0;
+      const qty = Math.max(0, Math.min(parseFloat(input.value) || 0, asked));
+      total += qty * cost; requested += asked * cost;
+      const amount = row.querySelector('[data-line-total]');
+      amount.textContent = money(qty * cost); amount.classList.toggle('is-removed', qty === 0);
+      const after = row.querySelector('[data-after]');
+      if (after && row.dataset.stock !== '') {
+        const projected = parseFloat(row.dataset.stock) + qty * (parseFloat(row.dataset.factor) || 1);
+        after.textContent = qty > 0 ? '→ ' + qtyFmt.format(projected) + ' ' + row.dataset.unit + ' once received' : '→ unchanged (nothing approved)';
+      }
+      const reason = row.querySelector('[data-reason]');
+      const changed = (parseFloat(input.value) || 0) < asked;
+      if (changed) reason.removeAttribute('data-collapsed');
+      else if (!reason.querySelector('textarea').value && !reason.querySelector('.pa-error')) reason.setAttribute('data-collapsed', '');
+    });
+    document.getElementById('pa-total').textContent = money(total);
+    const was = document.getElementById('pa-was');
+    was.textContent = 'Requested ' + money(requested); was.hidden = Math.abs(total - requested) < 0.005;
+  }
+  rows.forEach(row => {
+    const input = row.querySelector('.pa-input'); if (!input) return;
+    input.addEventListener('input', recalc);
+    row.querySelector('[data-remove]').addEventListener('click', () => {
+      input.value = '0'; recalc();
+      const reason = row.querySelector('textarea'); if (reason) reason.focus();
+    });
+  });
+  recalc();
+})();
+</script>
+{% endblock %}

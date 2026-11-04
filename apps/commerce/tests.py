@@ -754,7 +754,7 @@ class CommerceQrCodeTests(TestCase):
         self.assertEqual(response["Content-Type"], "image/png")
         self.assertTrue(response.content.startswith(b"\x89PNG\r\n\x1a\n"))
         self.assertIn("inprofic-qr-tenant-order_now-qr.png", response["Content-Disposition"])
-        self.assertEqual(response["Cache-Control"], "private, no-store, max-age=0")
+        self.assertEqual(response["Cache-Control"], "private, max-age=3600")
 
     def test_qr_rejects_unknown_destinations(self):
         response = self.client.get(reverse("commerce_qr_code"), {"target": "outside"})

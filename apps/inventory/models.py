@@ -9,35 +9,44 @@ from core.models import BusinessOwnedModel, TimestampedModel
 
 
 class LedgerStockMixin:
-    """Present the active segment's derived stock balance in request context."""
+    """Present the active ledger segment's derived stock balance in a request.
+
+    With a cut-over, ``stock`` reads return the segment balance (live opening +
+    live movements, or backlog opening + backlog movements in Backlog mode) for
+    items that have an opening position; other items keep their stored stock.
+    Balances come from a per-request cached map, so reading ``stock`` in a loop
+    costs no extra queries. ``save()`` always sees the stored value so a derived
+    figure can never be written back to the database column.
+    """
+
     def __getattribute__(self, name):
         value = super().__getattribute__(name)
-        if name != "stock":
+        if name != "stock" or value is None:
             return value
         try:
-            if super().__getattribute__("_meta").model_name == "finishedgood" and value is None:
-                return None
-        except AttributeError:
-            return value
-        try:
-            from core.context import get_ledger_cutover_date, get_ledger_scope
+            from core.context import get_ledger_cutover_date, get_ledger_scope, raw_stock_reads_active
             scope = get_ledger_scope()
-            cutover_date = get_ledger_cutover_date()
-            if scope not in {"live", "backlog"} or not cutover_date:
+            if scope not in {"live", "backlog"} or not get_ledger_cutover_date() or raw_stock_reads_active():
                 return value
-            business_id = super().__getattribute__("business_id")
-            pk = super().__getattribute__("pk")
+            state = object.__getattribute__(self, "__dict__")
+            business_id, pk = state.get("business_id"), state.get("id")
             if not business_id or not pk:
                 return value
-            from core.ledger import active_cutover, movement_balance
-            business = super().__getattribute__("business")
-            cutover = active_cutover(business)
-            if cutover:
-                kind = "raw" if super().__getattribute__("_meta").model_name == "rawmaterial" else "fg"
-                return movement_balance(business, self, kind, scope)
-        except (AttributeError, TypeError):
+            from core.ledger import item_balance
+            kind = "raw" if type(self)._meta.model_name == "rawmaterial" else "fg"
+            derived = item_balance(business_id, kind, pk, scope)
+            return value if derived is None else derived
+        except (AttributeError, TypeError, KeyError):
             return value
-        return value
+
+    def save(self, *args, **kwargs):
+        from core.context import raw_stock_reads_active, set_raw_stock_reads
+        previous = raw_stock_reads_active()
+        set_raw_stock_reads(True)
+        try:
+            return super().save(*args, **kwargs)
+        finally:
+            set_raw_stock_reads(previous)
 
 
 class RawMaterial(LedgerStockMixin, BusinessOwnedModel):
@@ -228,6 +237,14 @@ class FinishedGood(LedgerStockMixin, BusinessOwnedModel):
     output_weight_grams = models.DecimalField(
         max_digits=12, decimal_places=3, default=0,
         help_text="Finished weight of one base production unit in grams. Used to split shared base-material production across products.",
+    )
+    VAT_STANDARD = "standard"
+    VAT_ZERO = "zero"
+    VAT_EXEMPT = "exempt"
+    VAT_CHOICES = [(VAT_STANDARD, "Standard rate"), (VAT_ZERO, "Zero-rated"), (VAT_EXEMPT, "VAT-exempt")]
+    vat_treatment = models.CharField(
+        max_length=10, choices=VAT_CHOICES, default=VAT_STANDARD,
+        help_text="How VAT applies when this product is sold. Zero-rated sales let you recover input VAT; exempt sales do not.",
     )
     base_material = models.ForeignKey(
         "RawMaterial", null=True, blank=True, on_delete=models.PROTECT, related_name="base_for_products",
@@ -853,13 +870,13 @@ class StockAdjustment(BusinessOwnedModel):
 
 
 class OperationalSupplyDispense(BusinessOwnedModel):
-    ledger_date_field = "date"
     """Records operational supplies consumed outside production recipes.
 
     Quantities are entered in the material's usage unit and create a stock
     movement, so operational supplies participate in the same inventory
     ledger and reorder monitoring as production materials.
     """
+    ledger_date_field = "date"
     REASON_CHOICES = [
         ("cleaning", "Cleaning / sanitation"),
         ("staff", "Staff use"),
@@ -890,8 +907,19 @@ class OperationalSupplyDispense(BusinessOwnedModel):
 
 
 class MarketStockLot(BusinessOwnedModel):
-    ledger_date_field = "received_date"
-    """A batch-aware pool reserved exclusively for future Distribution sales."""
+    """A batch-aware pool reserved exclusively for future Distribution sales.
+
+    Lots are a stock pool, not dated history: a lot received before the ledger
+    cut-over that still holds sellable stock belongs in Live. Only lots created
+    *while entering the Backlog* (``is_backlog_entry``) are kept out of Live until
+    the backlog is merged, so backlog entries never add sellable Live stock.
+    """
+
+    @classmethod
+    def ledger_scope_q(cls, scope, cutover_date):
+        if scope == "backlog":
+            return models.Q(received_date__lt=cutover_date)
+        return models.Q(is_backlog_entry=False)
 
     SOURCE_PRODUCTION = "production"
     SOURCE_RETURN = "return"
@@ -919,6 +947,10 @@ class MarketStockLot(BusinessOwnedModel):
     unit_cost = models.DecimalField(max_digits=16, decimal_places=6, default=0)
     active = models.BooleanField(default=True)
     closed_reason = models.CharField(max_length=40, blank=True, default="")
+    is_backlog_entry = models.BooleanField(
+        default=False,
+        help_text="Created while entering the Backlog; hidden from Live until the backlog is merged.",
+    )
 
     class Meta:
         ordering = ["expiry_date", "received_date", "id"]

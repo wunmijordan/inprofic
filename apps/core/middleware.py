@@ -1,8 +1,10 @@
 import re
 import time
+from uuid import uuid4
 from urllib.parse import urlencode
 
 from django.conf import settings
+from django.core.cache import cache
 from django.contrib.auth import logout as auth_logout
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
@@ -23,10 +25,11 @@ class BusinessMiddleware:
         from .ledger import LedgerDateError
         if not isinstance(exception, LedgerDateError):
             return None
+        from . import ledger
         return render(request, "core/ledger_date_error.html", {
-            "error": exception, "backlog_entry_allowed": bool(
-                getattr(request, "business", None)
-                and user_has_permission(request.user, request.business, "ledger", "edit")
+            "error": exception,
+            "backlog_entry_allowed": bool(
+                getattr(request, "business", None) and ledger.can_enter_backlog(request.user, request.business)
             ),
         }, status=400)
 
@@ -49,7 +52,7 @@ class BusinessMiddleware:
         # lookups before resolving this request's membership.
         cache_token = begin_request_cache()
         set_current_business(None)
-        set_ledger_context(None, None)
+        set_ledger_context(None, None, None)
         try:
             business = self._resolve_business(request)
             request.business = business
@@ -57,36 +60,43 @@ class BusinessMiddleware:
             request.ledger_scope = "all"
             request.ledger_cutover = None
             if business:
-                from .models import LedgerCutover
-                cutover = LedgerCutover.raw_objects.filter(business=business).order_by("-id").first()
-                request.ledger_cutover = cutover
-                mode = request.session.get("ledger_mode", "live")
-                if cutover and cutover.status == LedgerCutover.STATUS_ARCHIVED:
-                    request.ledger_scope = "live"
-                    set_ledger_context("live", cutover.cutover_date)
-                elif cutover and cutover.status != LedgerCutover.STATUS_MERGED:
-                    if mode == "all":
-                        request.ledger_scope = "all"
-                    elif mode == "backlog" and cutover.status in {LedgerCutover.STATUS_OPEN, LedgerCutover.STATUS_COMPLETE}:
-                        if not user_has_permission(request.user, business, "ledger", "edit"):
-                            mode = "live"
-                            request.session["ledger_mode"] = mode
-                        else:
-                            request.ledger_scope = "backlog"
-                    else:
-                        mode = "live"
-                        request.session["ledger_mode"] = mode
-                    if request.ledger_scope not in {"backlog", "all"}:
-                        request.ledger_scope = "live"
-                    set_ledger_context(request.ledger_scope, cutover.cutover_date)
-                else:
-                    request.ledger_scope = "all"
-                    request.session["ledger_mode"] = "live"
+                self._apply_ledger_scope(request, business)
             return self.get_response(request)
         finally:
             set_current_business(None)
-            set_ledger_context(None, None)
+            set_ledger_context(None, None, None)
             end_request_cache(cache_token)
+
+    @staticmethod
+    def _apply_ledger_scope(request, business):
+        """Live / Backlog / Combined scope for this request (see core.ledger)."""
+        from . import ledger
+        from .models import LedgerCutover
+        cutover = ledger.latest_cutover(business)
+        request.ledger_cutover = cutover
+        if not cutover or cutover.status == LedgerCutover.STATUS_REVERTED:
+            return
+        status = cutover.status
+        wanted = request.session.get("ledger_mode", "live")
+        scope = "live"
+        if status == LedgerCutover.STATUS_MERGED:
+            scope = "all"
+        elif wanted == "all" and ledger.can_view_backlog(request.user, business):
+            scope = "all"
+        elif wanted == "backlog":
+            if status == LedgerCutover.STATUS_ARCHIVED:
+                # An archived backlog is sealed: viewing only (writes are guarded).
+                allowed = ledger.can_view_backlog(request.user, business)
+            else:
+                allowed = ledger.can_enter_backlog(request.user, business)
+            if allowed:
+                scope = "backlog"
+        # Only touch the session when the stored mode is no longer valid so
+        # ordinary requests never trigger a session write.
+        if status != LedgerCutover.STATUS_MERGED and wanted != scope and wanted in {"all", "backlog"}:
+            request.session["ledger_mode"] = scope
+        request.ledger_scope = scope
+        set_ledger_context(scope, cutover.cutover_date, status)
 
     @staticmethod
     def _resolve_business(request):
@@ -184,10 +194,11 @@ def _live_tester_mutation_blocked(request):
 
 
 EXEMPT_PREFIXES = (
+    "/marketing/location-enrich/",
     "/accounts/login", "/accounts/logout", "/accounts/signup", "/privacy-policy", "/robots.txt", "/sitemap.xml", "/favicon.ico", "/llms.txt",
-    "/business/settings", "/business/switch", "/admin", "/static", "/media/", "/shop/",
+    "/business/settings", "/business/switch", "/admin", "/static", "/media/", "/shop/", "/shared/pack/",
     "/health/", "/ops/", "/manifest.webmanifest", "/service-worker.js", "/pwa/",
-    "/api/v1/storefronts/", "/api/v1/connectors/", "/api/v1/delivery/providers/",
+    "/api/v1/whatsapp/webhook/", "/api/v1/storefronts/", "/api/v1/connectors/", "/api/v1/delivery/providers/",
     "/users/plans/payment/callback/", "/users/plans/payment/webhook/",
 )
 
@@ -260,7 +271,6 @@ class LoginRequiredMiddleware:
             if not getattr(request, "business", None):
                 if getattr(request.user, "platform_mail_access", False):
                     return redirect("platform_mailing_workspace")
-                from django.shortcuts import render
                 return render(request, "accounts/no_business_access.html", status=403)
             # Purpose-specific users land directly in their isolated workspace
             # rather than receiving broad Dashboard access just to have a home.
@@ -277,6 +287,12 @@ class LoginRequiredMiddleware:
                         return redirect("delivery_rider_dashboard")
                     if user_has_permission(request.user, business, "delivery", "view"):
                         return redirect("delivery_dashboard")
+            if request.path.startswith('/commerce/notifications/'):
+                candidates = ('commerce', 'delivery', 'delivery_rider', 'inventory')
+                if any(user_has_permission(request.user, request.business, candidate, 'view') for candidate in candidates):
+                    # The notification view narrows event visibility and push
+                    # permissions; access to this shared endpoint is not Commerce-only.
+                    return self.get_response(request)
             module = _module_for_path(request.path)
             action = _action_for_request(request)
             if module == "production" and _KITCHEN_FLOOR_PATH.match(request.path):
@@ -287,7 +303,6 @@ class LoginRequiredMiddleware:
                 if not user_has_permission(request.user, business_, "production", "view") and user_has_permission(request.user, business_, "kitchen", action):
                     module = "kitchen"
             if not user_has_permission(request.user, getattr(request, "business", None), module, action):
-                from django.shortcuts import render
                 return render(request, "403.html", status=403)
         return self.get_response(request)
 
@@ -319,6 +334,23 @@ def _module_for_path(path):
     return "dashboard"
 
 def _action_for_request(request):
+    # A contained purchase preview/approval review is read-only on GET.
+    # The views retain their own edit/admin checks for submissions.
+    if request.method in {'GET', 'HEAD'} and (
+        re.fullmatch(r'/procurement/\d+/approve/', request.path)
+        or (re.fullmatch(r'/procurement/\d+/edit/', request.path) and request.GET.get('share') == '1')
+    ):
+        return 'view'
+    # The assistant is read-only; asking is a POST only so the question travels in the body.
+    # Each tool re-checks the member's own module permission.
+    if request.path.startswith("/assistant/") and request.method == "POST":
+        return "view"
+    # Brief delivery choices belong to the signed-in member. Dashboard viewers
+    # can save their own preferences without permission to edit business data.
+    # Template configuration still needs edit access and the view's admin check.
+    if request.path.rstrip("/") == "/brief" and request.method == "POST":
+        if request.POST.get("action", "email") in {"email", "whatsapp", "test", "weekly", "email_now", "report_sections"}:
+            return "view"
     # A read receipt only changes the current user's alert acknowledgement;
     # commerce viewers do not need broad commerce-edit permission for it.
     if request.path.startswith("/audit/query/") and request.path.rstrip("/") == "/audit/query":
@@ -326,6 +358,10 @@ def _action_for_request(request):
     if request.path.startswith("/commerce/notifications/"):
         return "view"
     if request.path.startswith("/inventory/alerts/"):
+        return "view"
+    # "complete" in the Complete dashboard URL is a name, not the production
+    # "complete order" action, so reading it needs only view access.
+    if request.method != "POST" and (request.path == "/dashboard/complete" or request.path.startswith("/dashboard/complete/")):
         return "view"
     if request.method != "POST":
         path = request.path.rstrip("/")
@@ -364,9 +400,8 @@ class PlatformAnalyticsMiddleware:
             now = int(time.time())
             route = request.resolver_match.url_name if request.resolver_match else path
             throttle_key = f"analytics:{event_type}:{getattr(getattr(request, 'business', None), 'pk', 'global')}:{route}"
-            last = int(request.session.get(throttle_key, 0) or 0)
-            if now - last >= self.THROTTLE_SECONDS:
-                request.session[throttle_key] = now
+            identity = request.session.session_key or (f"user-{request.user.pk}" if request.user.is_authenticated else uuid4().hex)
+            if cache.add(f"{throttle_key}:{identity}", now, timeout=self.THROTTLE_SECONDS):
                 record_platform_event(event_type, request=request, module=module, route_name=route)
         except Exception:
             pass

@@ -1,9 +1,10 @@
 {% extends "base.html" %}
+{% load core_extras %}
 {% block content %}
 <div class="mx-auto max-w-2xl">
   <div class="flex flex-wrap items-center justify-between gap-2">
     <a href="{% url 'payroll_staff_payslips' payslip.staff.pk %}" class="text-sm text-[#8f172d] underline">← {{ payslip.staff.full_name }} payslips</a>
-    <div class="flex flex-wrap gap-2"><a href="{{ pdf_url }}" class="rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-xs font-semibold">Download PDF</a><a href="{% url 'payroll_payslip_edit' payslip.pk %}" class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">Edit issued payslip</a></div>
+    <div class="flex flex-wrap gap-2"><a data-button-surface href="{{ pdf_url }}" class="rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-xs font-semibold">Download PDF</a><a data-button-surface href="{% url 'payroll_payslip_edit' payslip.pk %}" class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">Edit issued payslip</a></div>
   </div>
 
   {% if payslip.payroll_run_id %}
@@ -47,9 +48,9 @@
     <p class="mt-1 text-[11px] leading-5 text-stone-500">Email sends the PDF as an attachment. On browsers that support file sharing, the WhatsApp action shares the same PDF file through the device share sheet; otherwise it opens the staff member's captured WhatsApp number with a secure PDF link.</p>
     <div class="mt-2 break-all text-xs text-stone-500">{{ share_url }}</div>
     <div class="mt-3 flex flex-wrap gap-2">
-      <form method="post" action="{% url 'payroll_payslip_share' payslip.pk %}">{% csrf_token %}<button name="channel" value="email" {% if not payslip.staff.email %}disabled{% endif %} class="rounded-md bg-[#8f172d] px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">Email PDF attachment</button></form>
-      <button type="button" id="payroll-whatsapp-share" data-pdf-url="{{ pdf_url }}" data-filename="{{ pdf_filename }}" data-fallback-url="{{ whatsapp_url }}" {% if not whatsapp_url %}disabled{% endif %} class="rounded-md bg-[#0b7d54] px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">Share PDF to WhatsApp</button>
-      <a href="{{ share_url }}" target="_blank" rel="noopener" class="rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-xs font-semibold">Open shared view</a>
+      <form method="post" action="{% url 'payroll_payslip_share' payslip.pk %}">{% csrf_token %}<button data-button-surface name="channel" value="email" {% if not payslip.staff.email %}disabled{% endif %} class="rounded-md bg-[#8f172d] px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">Email PDF attachment</button></form>
+      <button data-button-surface type="button" id="payroll-whatsapp-share" data-pdf-url="{{ pdf_url }}" data-filename="{{ pdf_filename }}" data-fallback-url="{{ whatsapp_url }}" {% if not whatsapp_url %}disabled{% endif %} class="rounded-md bg-[#0b7d54] px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">Share PDF to WhatsApp</button>
+      <a data-button-surface href="{{ share_url }}" target="_blank" rel="noopener" class="rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-xs font-semibold">Open shared view</a>
     </div>
     {% if not payslip.staff.email or not whatsapp_url %}<p class="mt-2 text-[11px] text-amber-700">{% if not payslip.staff.email %}Add an email address to enable email delivery.{% endif %}{% if not payslip.staff.email and not whatsapp_url %} {% endif %}{% if not whatsapp_url %}Add a WhatsApp number to enable the WhatsApp action.{% endif %}</p>{% endif %}
     <div id="payroll-whatsapp-status" class="mt-2 hidden text-[11px] text-stone-500"></div>

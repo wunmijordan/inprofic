@@ -52,7 +52,7 @@ that mutate the live database implicitly.
 
 ## Runtime AI is separate
 
-This repository-level skill library does **not** mean INPROFIC has a runtime
-AI assistant. A future runtime prompt/AI feature should be implemented
-separately, with explicit provider configuration, tenant-safe prompt context,
-permissions, logging, failure handling and cost controls.
+This repository-level skill library is for engineering agents and is not a runtime
+AI feature. INPROFIC's runtime staff assistant is a separate, read-only pilot with its
+own provider configuration, tenant-safe tools, permissions, logging, failure handling
+and cost controls; see `docs/STAFF_ASSISTANT.md`.

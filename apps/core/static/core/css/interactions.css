@@ -1,0 +1,272 @@
+/* Shared shadcn/Radix surfaces. Use the workspace palette, including portals. */
+:root {
+  --radius: var(--ui-radius,.6rem)
+}
+.ui-native-select {
+  position: absolute!important;
+  width: 1px!important;
+  height: 1px!important;
+  opacity: 0!important;
+  pointer-events: none!important;
+  padding: 0!important;
+  border: 0!important;
+  clip-path: inset(50%)
+}
+[data-ui-combo-root] {
+  display: block;
+  width: 100%;
+  min-width: 0
+}
+html body .ui-combo-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 2.6rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  border: 1px solid var(--ui-border,#cbd5e1)!important;
+  border-radius: var(--ui-radius,.6rem);
+  padding: .55rem .75rem;
+  background: var(--ui-surface,#fff)!important;
+  color: var(--ui-surface-text,#182433)!important;
+  text-align: left;
+  font-size: inherit;
+  font-weight: 400;
+  box-shadow: none!important
+}
+.ui-combo-trigger>span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap
+}
+.ui-combo-trigger>svg {
+  flex-shrink: 0
+}
+.inprofic-control-wrap[data-icon] .ui-combo-trigger {
+  padding-left: 2.35rem
+}
+.ui-combo-trigger:disabled {
+  opacity: .6;
+  cursor: not-allowed
+}
+.ui-combo-trigger[aria-invalid=true],.is-invalid .ui-combo-trigger {
+  border-color: #e11d48!important
+}
+html body :is(.ui-combo-popover,.ui-menu,.ui-confirm,.ui-form-dialog,.ui-legacy-dialog,.ui-appearance-content) {
+  --ui-local-text: var(--ui-surface-text,#182433);
+  --ui-local-muted: var(--ui-surface-muted-text,#566473);
+  background: var(--ui-surface,#fff)!important;
+  color: var(--ui-surface-text,#182433)!important;
+  border: 1px solid var(--ui-border,#cbd5e1)!important;
+  border-radius: var(--ui-card-radius,.9rem)!important;
+  box-shadow: var(--ui-shadow-raised,0 8px 24px #0003)!important;
+  z-index: 150
+}
+.ui-combo-popover {
+  padding: 0!important;
+  width: var(--radix-popover-trigger-width);
+  max-width: calc(100vw - 1.5rem);
+  max-height: var(--radix-popover-content-available-height);
+  overflow: hidden
+}
+.ui-combo-popover [cmdk-list] {
+  max-height: min(18rem,50dvh)
+}
+.ui-combo-popover [cmdk-item] {
+  gap: .55rem;
+  font-size: .85rem;
+  color: var(--ui-surface-text,#182433)
+}
+.ui-combo-popover [cmdk-input] {
+  border: 0!important;
+  box-shadow: none!important;
+  outline: none!important;
+  background: transparent!important;
+  color: var(--ui-surface-text,#182433)!important;
+  padding: .65rem 0!important;
+  min-height: 2.6rem
+}
+.ui-combo-popover [cmdk-item][data-selected=true],.ui-menu [data-highlighted] {
+  background: var(--ui-surface-muted,#e5e7eb)!important;
+  color: var(--ui-surface-text,#182433)!important
+}
+.ui-menu {
+  min-width: 11rem
+}
+.ui-menu [role=menuitem] {
+  gap: .6rem;
+  cursor: pointer
+}
+html body .ui-confirm {
+  z-index: 180;
+  max-width: min(28rem,calc(100vw - 2rem));
+  padding: 1.4rem!important
+}
+.ui-dialog-description {
+  white-space: pre-line;
+  color: var(--ui-surface-muted-text,#566473)!important;
+  line-height: 1.6
+}
+html body .ui-danger {
+  background: #be123c!important;
+  color: #fff!important;
+  border-color: #be123c!important
+}
+html body .ui-form-dialog {
+  display: flex!important;
+  flex-direction: column;
+  gap: 0!important;
+  padding: 0!important;
+  width: calc(100vw - 3rem)!important;
+  max-width: 76rem!important;
+  height: calc(100dvh - 3rem);
+  max-height: 58rem;
+  overflow: hidden
+}
+.ui-dialog-heading {
+  padding: 1rem 3rem 1rem 1.25rem;
+  border-bottom: 1px solid var(--ui-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem
+}
+html body .ui-form-dialog-compact {
+  max-width: 42rem!important;
+  max-height: 48rem
+}
+.ui-dialog-heading h2 {
+  font-size: 1rem!important;
+  color: var(--ui-surface-text)!important
+}
+
+.ui-form-frame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  background: var(--ui-bg,#fff)
+}
+.ui-form-loading {
+  position: absolute;
+  top: 5rem;
+  left: 1.25rem;
+  color: var(--ui-surface-muted-text)
+}
+html[data-ui-embedded=true] :is(.desktop-sidebar,#mobile-nav-shell,.workspace-utility-bar,#commerce-notification-dock,[data-inprofic-privacy-notice],.pwa-modal,.page-progress) {
+  display: none!important
+}
+html[data-ui-embedded=true] .desktop-main {
+  margin: 0!important;
+  padding: 1rem!important;
+  width: 100%;
+  min-height: 0!important
+}
+html[data-ui-embedded=true] :is(.workspace-content,.cf-form-shell) {
+  max-width: none!important
+}
+html[data-ui-embedded=true] body {
+  display: block!important;
+  min-height: 0!important
+}
+html body .ui-legacy-dialog {
+  padding: 0!important;
+  max-width: min(var(--ui-legacy-width,68rem),calc(100vw - 2rem))!important;
+  max-height: calc(100dvh - 2rem);
+  overflow: auto
+}
+[data-ui-legacy]>dialog {
+  display: block!important;
+  position: static!important;
+  width: 100%!important;
+  max-width: 100%!important;
+  max-height: none!important;
+  margin: 0!important;
+  transform: none!important;
+  box-shadow: none!important;
+  border: 0!important;
+  border-radius: 0!important;
+  background: transparent!important
+}
+/* The modal owns the surface. Only flatten the page's outer form panel;
+   nested field groups, tables and semantic notices retain their boundaries. */
+html[data-ui-embedded=true] body main [data-ui-form-panel] {
+  border: 0!important;
+  border-radius: 0!important;
+  box-shadow: none!important;
+  background: transparent!important;
+  max-width: none!important
+}
+.ui-appearance-content {
+  width: min(22rem,calc(100vw - 2rem));
+  padding: 0!important
+}
+.ui-appearance-content[data-state=closed] {
+  display: none!important
+}
+.ui-appearance-content [data-ui-appearance-body] {
+  position: static!important;
+  display: block!important;
+  margin: 0!important;
+  width: 100%!important;
+  border: 0!important;
+  box-shadow: none!important
+}
+@media(max-width:640px) {
+  html body .ui-form-dialog {
+    inset: 0!important;
+    width: 100vw!important;
+    min-width: 0!important;
+    max-width: 100vw!important;
+    margin: 0!important;
+    transform: none!important;
+    height: 100dvh;
+    max-height: none!important;
+    border-radius: 0!important
+  }
+  .ui-dialog-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: .5rem;
+    padding: .9rem 3rem .9rem 1rem
+  }
+}
+@media(prefers-reduced-motion:reduce) {
+  [data-state] {
+    animation: none!important;
+    transition: none!important
+  }
+}
+.ui-form-frame,.ui-legacy-dialog,.ui-combo-popover {
+  overscroll-behavior: contain
+}
+html[data-ui-embedded=true] [data-ui-message][data-message-level~=error] {
+  scroll-margin-top: 1rem
+}
+
+/* A single surface, restrained motion, and a lightly softened workspace. */
+html body .ui-modal-overlay {
+  background: rgb(0 0 0 / .28);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+.ui-modal-overlay[data-state="open"] { animation: ui-modal-fade-in 180ms ease-out; }
+.ui-modal-overlay[data-state="closed"] { animation: ui-modal-fade-out 140ms ease-in; }
+.ui-modal-content[data-state="open"] { animation: ui-modal-enter 180ms cubic-bezier(.2,.8,.2,1); }
+.ui-modal-content[data-state="closed"] { animation: ui-modal-exit 140ms ease-in; }
+@keyframes ui-modal-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ui-modal-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes ui-modal-enter { from { opacity: 0; transform: translate(-50%,calc(-50% + 8px)) scale(.99); } to { opacity: 1; transform: translate(-50%,-50%) scale(1); } }
+@keyframes ui-modal-exit { from { opacity: 1; transform: translate(-50%,-50%) scale(1); } to { opacity: 0; transform: translate(-50%,calc(-50% + 4px)) scale(.995); } }
+@media (prefers-reduced-motion: reduce) {
+  .ui-modal-overlay[data-state], .ui-modal-content[data-state] { animation: none!important; }
+}
+
+/* Snapshot commands sit beside their heading; Radix portals keep menus unclipped. */
+.ui-snapshot-tools { display:flex; flex-direction:column; align-items:flex-end; flex-shrink:0; gap:.35rem; }
+.ui-snapshot-tools > button { display:inline-flex; align-items:center; gap:.4rem; }
+.ui-snapshot-feedback { max-width:min(24rem,44vw); font-size:.75rem; line-height:1.4; color:var(--ui-surface-muted-text); overflow-wrap:anywhere; }
+.ui-dialog-heading > h2 { min-width:0; overflow-wrap:anywhere; }
+html[data-ui-embedded=true] [data-snapshot-heading] [data-snapshot-share] { display:none; }
+.ui-form-dialog > button:last-child { color:var(--ui-surface-text)!important; }

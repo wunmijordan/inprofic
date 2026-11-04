@@ -12,7 +12,7 @@ Usage: {% include "accounts/_billing_switch.html" with plans=plans theme="dark" 
 <style>
   .billing-switch{display:inline-flex;gap:.25rem;padding:.25rem;border-radius:9999px;border:1px solid var(--bs-border);background:var(--bs-bg);flex-wrap:wrap;justify-content:center}
   .billing-switch--dark{--bs-border:rgba(255,255,255,.18);--bs-bg:rgba(255,255,255,.07);--bs-text:rgba(255,255,255,.72);--bs-active-bg:#e7bd65;--bs-active-text:#050733}
-  .billing-switch--light{--bs-border:var(--ui-border,#E7DFCC);--bs-bg:var(--ui-surface-muted, #F0EAD9);--bs-text:var(--ui-surface-text,#57534e);--bs-active-bg:var(--ui-accent,#d14900);--bs-active-text:#fff}
+  .billing-switch--light{--bs-border:var(--ui-border,#E7DFCC);--bs-bg:var(--ui-surface-muted, #F0EAD9);--bs-text:var(--ui-surface-text,#57534e);--bs-active-bg:var(--ui-accent,#d14900);--bs-active-text:var(--ui-accent-contrast,#fff)}
   .billing-switch button{display:inline-flex;align-items:center;gap:.4rem;border-radius:9999px;padding:.45rem .95rem;font-size:.8rem;font-weight:600;color:var(--bs-text);transition:background .15s,color .15s}
   .billing-switch button[aria-pressed="true"]{background:var(--bs-active-bg);color:var(--bs-active-text)}
   .billing-switch small{font-size:.65rem;font-weight:700;opacity:.9}

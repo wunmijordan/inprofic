@@ -184,7 +184,7 @@ class KitchenOrderFormTests(KitchenBase):
         UserModulePermission.objects.create(membership=membership, module="production", can_view=True, can_edit=True)
         self.client.force_login(self.cook)
         page = self.client.get(reverse("order_add"))
-        self.assertNotContains(page, "kitchen-mode")
+        self.assertNotContains(page, 'class="kitchen-mode"')
 
 
 class KitchenFlexibleAndAssignmentTests(KitchenBase):

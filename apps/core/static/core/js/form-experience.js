@@ -448,26 +448,37 @@
      header row and first column stay in view while you scroll either way. */
   const SKIP_STICKY = '[data-no-sticky],[data-plan-feature-matrix],.pfm';
   function stickyTable(table) {
-    if (table.dataset.stickyReady || table.closest(SKIP_STICKY)) return;
+    if (table.closest(SKIP_STICKY)) return;
     if (!table.tHead || !table.tBodies.length || !table.closest('main')) return;
-    table.dataset.stickyReady = '1';
-    table.classList.add('sticky-table');
-    let frame = table.parentElement;
-    const scrolls = frame && /(auto|scroll)/.test(getComputedStyle(frame).overflowX);
-    if (!scrolls || frame.tagName === 'MAIN' || frame.tagName === 'FORM') {
-      frame = document.createElement('div');
-      table.parentNode.insertBefore(frame, table);
-      frame.appendChild(table);
+    if (!table.dataset.stickyReady) {
+      table.dataset.stickyReady = '1';
+      table.classList.add('sticky-table');
+      let frame = table.parentElement;
+      const scrolls = frame && /(auto|scroll)/.test(getComputedStyle(frame).overflowX);
+      if (!scrolls || frame.tagName === 'MAIN' || frame.tagName === 'FORM') {
+        frame = document.createElement('div');
+        table.parentNode.insertBefore(frame, table);
+        frame.appendChild(table);
+      }
+      frame.classList.add('sticky-table-frame');
     }
-    frame.classList.add('sticky-table-frame');
   }
   function stickyTables(root) {
     if (root.nodeType !== 1 && root !== document) return;
-    if (root.nodeType === 1 && root.tagName === 'TABLE') stickyTable(root);
+    if (root.nodeType === 1) {
+      const containingTable = root.matches('table') ? root : root.closest('main table');
+      if (containingTable) stickyTable(containingTable);
+    }
     root.querySelectorAll('main table').forEach(stickyTable);
   }
   document.addEventListener('DOMContentLoaded', () => stickyTables(document));
-  new MutationObserver(entries => entries.forEach(entry => entry.addedNodes.forEach(node => {
-    if (node.nodeType === 1) { paintGhosts(node); stickyTables(node); }
-  }))).observe(document.documentElement, { subtree: true, childList: true });
+  new MutationObserver(entries => entries.forEach(entry => {
+    if (entry.type === 'childList') {
+      entry.addedNodes.forEach(node => {
+        if (node.nodeType === 1) { paintGhosts(node); stickyTables(node); }
+      });
+      return;
+    }
+    if (entry.type === 'attributes') stickyTables(entry.target);
+  })).observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
 })();

@@ -4,8 +4,10 @@ from accounts.models import RoleModulePermission, UserBusiness
 from accounts.services import business_subscription_for, can_use_commerce_storefront, is_business_admin, is_live_tester, user_has_permission
 from accounts.subscription_services import business_has_feature
 from accounts.platform_integrations import shipbubble_platform_enabled, whatsapp_storefront_platform_enabled
+from assistant import config as assistant_config
 from django.conf import settings
 from django.utils.functional import SimpleLazyObject
+from . import ledger
 from .context import get_request_cache
 from .models import Business
 from .onboarding import CURRENT_TOUR_VERSION
@@ -18,9 +20,19 @@ def _static_asset_version():
         return configured[:20]
 
     asset_paths = [
+        Path(settings.BASE_DIR) / "apps/core/static/core/css/inprofic.css",
         Path(settings.BASE_DIR) / "apps/core/static/core/css/form-experience.css",
         Path(settings.BASE_DIR) / "apps/core/static/core/js/form-experience.js",
         Path(settings.BASE_DIR) / "apps/core/static/core/css/workspace.css",
+        Path(settings.BASE_DIR) / "apps/core/static/core/css/button-surfaces.css",
+        Path(settings.BASE_DIR) / "apps/core/static/core/css/interactions.css",
+        Path(settings.BASE_DIR) / "apps/core/static/core/css/marketing.css",
+        Path(settings.BASE_DIR) / "apps/core/static/core/css/marketing-demos.css",
+        Path(settings.BASE_DIR) / "apps/core/static/core/css/marketing-restored.css",
+        Path(settings.BASE_DIR) / "apps/core/static/core/js/interactions.js",
+        Path(settings.BASE_DIR) / "apps/core/static/core/js/workspace.js",
+        Path(settings.BASE_DIR) / "apps/core/static/core/js/brand-assets.js",
+        Path(settings.BASE_DIR) / "apps/core/static/core/js/marketing-demos.js",
     ]
     mtimes = []
     for path in asset_paths:
@@ -83,7 +95,11 @@ def business(request):
         "module_permissions": permissions,
         "available_businesses": available_businesses,
         "can_manage_business": can_manage_business,
-        "backlog_entry_allowed": bool(biz and getattr(request.user, "is_authenticated", False) and user_has_permission(request.user, biz, "ledger", "edit")),
+        # Mirrors assistant.engine.assistant_available / can_configure without another permission lookup.
+        "assistant_available": bool(biz and can_manage_business and assistant_config.tenant_allows(biz)),
+        "assistant_can_configure": bool(biz and can_manage_business and assistant_config.platform_allows(biz)),
+        "backlog_entry_allowed": bool(biz and getattr(request.user, "is_authenticated", False) and ledger.can_enter_backlog(request.user, biz)),
+        "backlog_view_allowed": bool(biz and getattr(request.user, "is_authenticated", False) and ledger.can_view_backlog(request.user, biz)),
         "can_use_storefront_pos": bool(biz and getattr(request.user, "is_authenticated", False) and can_use_commerce_storefront(request.user, biz)),
         "is_live_tester": bool(biz and getattr(request.user, "is_authenticated", False) and is_live_tester(request.user, biz)),
         "vertical_ui": vertical_config(biz),

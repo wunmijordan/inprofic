@@ -6,7 +6,7 @@
   <form method="post" class="cf-form-body">{% csrf_token %}
     {% if form.non_field_errors %}<div class="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{{ form.non_field_errors|striptags }}</div>{% endif %}
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2">{% for field in form %}{% include "_field.html" with field=field %}{% endfor %}</div>
-    <div class="mt-6 flex justify-end gap-2"><a href="{% url 'users_list' %}" class="rounded-xl px-4 py-2.5 text-sm text-stone-500 hover:bg-stone-100">Cancel</a><button class="rounded-xl bg-[#8f172d] px-5 py-2.5 text-sm font-semibold text-white">Save user</button></div>
+    <div class="mt-6 flex justify-end gap-2"><a href="{% url 'users_list' %}" class="rounded-xl px-4 py-2.5 text-sm text-stone-500 hover:bg-stone-100">Cancel</a><button data-button-surface class="rounded-xl bg-[#8f172d] px-5 py-2.5 text-sm font-semibold text-white">Save user</button></div>
   </form>
 </div>
 {% endblock %}

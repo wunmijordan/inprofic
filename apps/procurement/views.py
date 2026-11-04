@@ -3,19 +3,24 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import IntegrityError, transaction
 from django.db.models import OuterRef, Prefetch, Subquery
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 
-from .forms import PurchaseOrderForm, PurchaseOrderItemFormSet, SupplierForm
-from .models import PurchaseOrder, PurchaseOrderItem, RawMaterialCostSnapshot, Supplier, SupplierPayment
+from .forms import PurchaseOrderForm, PurchaseRequestItemFormSet, SupplierForm, PurchaseApprovalLineForm
+from .models import PurchaseRequest, PurchaseOrder, PurchaseOrderItem, RawMaterialCostSnapshot, Supplier, SupplierPayment
 from inventory.models import ProductionMaterial, RawMaterial, RecipeItem
 from inventory.services import record_finished_good_movement, record_raw_material_movement
 from inventory.models import FinishedGood, StockMovement
 from core.invoice import purchase_order_pdf
 from core.services import record_cash, audit
+from core import ledger
 from core.models import FinancialTransaction
-from accounts.services import user_has_permission
-from .services import resolve_supplier
+from accounts.services import user_has_permission, is_business_admin
+from .services import describe_request, request_editable, request_orders, resolve_supplier
+from .share import render_snapshot, share_text, summarize
+from .stockview import stock_payload, stock_status
 
 
 def today():
@@ -65,12 +70,18 @@ def procurement_list(request):
     # The list renders creator plus each PO line's material/product repeatedly.
     # Join the creator and fold line-item foreign keys into the item prefetch so
     # query count stays constant as the number of purchase orders grows.
-    orders = PurchaseOrder.objects.select_related("created_by").prefetch_related(
+    orders = PurchaseOrder.objects.filter(business=request.business).select_related("created_by").prefetch_related(
+        Prefetch("payments", queryset=SupplierPayment.raw_objects.filter(business=request.business)),
         Prefetch(
             "items",
             queryset=PurchaseOrderItem.objects.select_related("raw_material", "finished_good"),
         )
     )
+    grouped = {}
+    for po in orders:
+        grouped.setdefault(('request', po.request_id) if po.request_id else ('po', po.pk), []).append(po)
+    posted = set(FinancialTransaction.raw_objects.filter(business=request.business, reference__startswith='PO-').values_list('reference', flat=True))
+    orders = [describe_request(sorted(v, key=lambda po: po.pk), posted_references=posted) for v in grouped.values()]
     return render(request, "procurement/procurement_list.html", {
         "orders": orders,
         "raw_material_categories": raw_material_categories,
@@ -115,10 +126,27 @@ def supplier_edit(request, pk):
 
 
 @login_required
+@transaction.atomic
 def po_form(request, pk=None):
-    obj = get_object_or_404(PurchaseOrder, pk=pk) if pk else None
+    obj = get_object_or_404(PurchaseOrder.objects.select_for_update(), pk=pk, business=request.business) if pk else None
+    share_only = bool(obj and request.method == "GET" and request.GET.get("share") == "1")
+    if not user_has_permission(request.user, request.business, "procurement", "view" if share_only else "edit"):
+        return render(request, "403.html", status=403)
+    if obj and obj.request_id:
+        obj = request_orders(obj, lock=True).first()
+    if share_only:
+        summary = summarize(_shareable_order(request, obj.pk), request.business,
+                            request.build_absolute_uri(reverse("po_approve", args=[obj.pk])))
+        return render(request, "procurement/po_preview.html", {
+            "obj": obj, "summary": summary, "share_text": share_text(summary),
+            "share_image_url": reverse("po_share_image", args=[obj.pk]),
+        })
+    vendor_orders = list(request_orders(obj, lock=True).prefetch_related('payments')) if obj else []
+    if obj and not request_editable(vendor_orders):
+        messages.error(request, "Requests with payment history cannot be edited. Review the approval or settle the supplier balance in Finance.")
+        return redirect("procurement_list")
 
-    # The inline formset constructs both visible forms and an empty template form.
+    # Build inventory choices once for the request-wide model formset.
     # Build tenant-scoped inventory choices once per request so each form does not
     # repeat the same category/product queries while rendering or validating.
     raw_materials = list(RawMaterial.objects.filter(business=request.business).order_by("name"))
@@ -148,14 +176,15 @@ def po_form(request, pk=None):
         "raw": {item.pk: item for item in raw_materials},
         "finished": {item.pk: item for item in products},
     }
-    if obj and obj.status == "received":
-        messages.error(request, "This purchase order has already been received and can't be edited.")
+    if obj and obj.status in {"approved", "received"}:
+        messages.error(request, "Approved or received requests cannot be edited.")
         return redirect("procurement_list")
+    item_queryset = PurchaseOrderItem.objects.filter(purchase_order__in=vendor_orders).select_related(
+        'purchase_order', 'raw_material', 'finished_good')
     if request.method == "POST":
         form = PurchaseOrderForm(request.POST, instance=obj)
-        formset = PurchaseOrderItemFormSet(
-            request.POST,
-            instance=obj if obj else PurchaseOrder(),
+        formset = PurchaseRequestItemFormSet(
+            request.POST, prefix='items', queryset=item_queryset,
             form_kwargs={"business": request.business, "inventory_catalog": inventory_catalog},
         )
         if form.is_valid() and formset.is_valid():
@@ -166,96 +195,134 @@ def po_form(request, pk=None):
             if not active_items:
                 form.add_error(None, "Add at least one item.")
             else:
-                po_total = sum(
-                    (data["qty"] * data["unit_cost"] for data in active_items),
-                    Decimal("0"),
-                )
-                amount_paid = form.cleaned_data.get("amount_paid") or Decimal("0")
-                payment_status = form.cleaned_data.get("payment_status")
-
-                if payment_status == "partial" and amount_paid >= po_total:
-                    # A payment covering the whole PO is no longer partial.
-                    form.cleaned_data["payment_status"] = "paid"
-                    payment_status = "paid"
-                if amount_paid > po_total:
-                    form.add_error("amount_paid", "The amount paid cannot exceed the purchase order total.")
-                elif payment_status == "paid" and amount_paid and amount_paid != po_total:
-                    form.add_error("amount_paid", "For a Paid order, the amount paid must equal the full purchase order total.")
-                else:
-                    with transaction.atomic():
-                        po = form.save(commit=False)
-                        po.business = request.business
-                        supplier_name = (po.supplier or "").strip()
-                        po.supplier = supplier_name
-                        po.supplier_master = resolve_supplier(
-                            request.business, supplier_name, created_by=request.user
-                        )
-                        if obj is None:
-                            po.created_by = request.user
+                groups = {}
+                default = (form.cleaned_data.get('supplier') or '').strip()
+                for item_form in formset.forms:
+                    data = item_form.cleaned_data
+                    if not data or data.get('DELETE'):
+                        continue
+                    name = (data.get('supplier') or default).strip()
+                    group = groups.setdefault(name.casefold(), {'name': name, 'forms': [], 'total': Decimal('0')})
+                    group['forms'].append(item_form)
+                    group['total'] += data['qty'] * data['unit_cost']
+                po_total = sum((g['total'] for g in groups.values()), Decimal('0'))
+                amount_paid = form.cleaned_data.get('amount_paid') or Decimal('0')
+                payment_status = form.cleaned_data['payment_status']
+                paid_vendor = (form.cleaned_data.get('payment_supplier') or default).strip().casefold()
+                if len(groups) == 1:
+                    paid_vendor = next(iter(groups))
+                if len(groups) > 1 and '' in groups:
+                    form.add_error('supplier', 'Name a vendor for every item, or supply a default vendor.')
+                if payment_status == 'partial':
+                    if paid_vendor not in groups:
+                        form.add_error('payment_supplier', 'Select a vendor on this request for the advance.')
+                    elif amount_paid > groups[paid_vendor]['total']:
+                        form.add_error('amount_paid', 'The advance cannot exceed this vendor’s total. Record each vendor payment separately.')
+                elif payment_status == 'paid' and amount_paid and amount_paid != po_total:
+                    form.add_error('amount_paid', 'For a Paid request, the amount must equal the entire request total.')
+                if not form.errors:
+                    envelope = obj.request if obj and obj.request_id else None
+                    if len(groups) > 1 and envelope is None:
+                        envelope = PurchaseRequest.objects.create(business=request.business, created_by=request.user)
+                    existing = {po.supplier.strip().casefold(): po for po in vendor_orders}
+                    saved, used = [], set()
+                    for index, (key, group) in enumerate(groups.items()):
+                        # The first vendor order anchors existing shared request URLs.
+                        # Keep it even when its original vendor is removed from a draft.
+                        po = obj if index == 0 and obj is not None else existing.get(key)
+                        if po is None or po.pk in used:
+                            po = PurchaseOrder(business=request.business, created_by=request.user)
+                        po.request = envelope
+                        po.date = form.cleaned_data['date']
+                        po.supplier = group['name']
+                        po.supplier_master = resolve_supplier(request.business, po.supplier, created_by=request.user)
+                        po.account = form.cleaned_data.get('account')
+                        po.payment_method = form.cleaned_data['payment_method']
+                        advance = amount_paid if payment_status == 'partial' and key == paid_vendor else Decimal('0')
+                        po.payment_status = ('paid' if payment_status == 'paid' or (advance and advance >= group['total'])
+                                             else 'partial' if advance else 'unpaid')
                         po.save()
-                        formset.instance = po
-                        formset.save()
-
-                        # Paid orders keep the existing immediate-payment behavior.
-                        # Partially paid orders create the initial SupplierPayment here,
-                        # so Finance can show only the remaining payable balance and
-                        # later payments can settle it normally.
-                        if payment_status == "paid":
+                        saved.append(po)
+                        used.add(po.pk)
+                        for item_form in group['forms']:
+                            item = item_form.save(commit=False)
+                            item.purchase_order = po
+                            item.requested_qty = item.qty
+                            item.save()
+                    for item_form in formset.forms:
+                        if item_form.cleaned_data.get('DELETE') and item_form.instance.pk:
+                            item_form.instance.delete()
+                    for previous in vendor_orders:
+                        if previous.pk not in used:
+                            previous.delete()  # Unposted draft vendors only; checked above.
+                    for po in saved:
+                        advance = amount_paid if payment_status == 'partial' and po.supplier.casefold() == paid_vendor else Decimal('0')
+                        if po.payment_status == 'paid':
                             _ensure_po_payment_recorded(po, request.user)
-                        elif payment_status == "partial" and obj is None:
+                        elif advance:
                             payment = SupplierPayment.objects.create(
-                                business=po.business,
-                                created_by=request.user,
-                                date=po.date,
-                                supplier=po.supplier or "Unnamed supplier",
-                                supplier_master=po.supplier_master,
-                                amount=amount_paid,
-                                payment_method=po.payment_method,
-                                reference=f"PO-{po.pk}-INITIAL",
-                                notes=f"Initial payment for purchase order #{po.pk}",
-                                purchase_order=po,
-                                account=po.account,
-                            )
-                            record_cash(
-                                po.business,
-                                request.user,
-                                date=payment.date,
-                                amount=payment.amount,
-                                transaction_type=FinancialTransaction.OUTFLOW,
-                                category="Supplier payment",
-                                description=f"Initial payment for purchase order #{po.pk}",
-                                payment_method=payment.payment_method,
-                                reference=payment.reference,
-                                account=payment.account,
-                            )
-
-                        messages.success(request, "Purchase order saved.")
-                        return redirect("procurement_list")
+                                business=po.business, created_by=request.user, date=po.date,
+                                supplier=po.supplier or 'Unnamed supplier', supplier_master=po.supplier_master,
+                                amount=advance, payment_method=po.payment_method, reference=f'PO-{po.pk}-INITIAL',
+                                notes=f'Initial payment for purchase order #{po.pk}', purchase_order=po, account=po.account)
+                            record_cash(po.business, request.user, date=payment.date, amount=advance,
+                                        transaction_type=FinancialTransaction.OUTFLOW, category='Supplier payment',
+                                        description=f'Advance to {po.supplier} — purchase order #{po.pk}',
+                                        payment_method=payment.payment_method, reference=payment.reference, account=payment.account)
+                    for po in saved:
+                        audit(request.business, request.user, 'update' if obj else 'create', po,
+                              'Purchase request saved', {'request_id': envelope.pk if envelope else None})
+                    anchor = min(saved, key=lambda po: po.pk)
+                    messages.success(request, 'Purchase request submitted for approval.')
+                    if request.POST.get('after_save') == 'share':
+                        return redirect(reverse('po_edit', args=[anchor.pk]) + '?share=1')
+                    return redirect('procurement_list')
     else:
-        form = PurchaseOrderForm(instance=obj, initial=None if obj else {"date": today()})
-        formset = PurchaseOrderItemFormSet(instance=obj, form_kwargs={"business": request.business, "inventory_catalog": inventory_catalog})
+        initial = None if obj else {'date': ledger.default_entry_date(), 'payment_status': 'unpaid'}
+        if obj and len(vendor_orders) > 1:
+            initial = {'supplier': ''}
+        form = PurchaseOrderForm(instance=obj, initial=initial)
+        formset = PurchaseRequestItemFormSet(prefix='items', queryset=item_queryset,
+            form_kwargs={'business': request.business, 'inventory_catalog': inventory_catalog})
     current_costs = {
         **{f"raw:{m.pk}": f"{m.cost_per_purchase_unit:.2f}" for m in raw_materials},
         **{f"finished:{g.pk}": f"{g.est_cost:.2f}" for g in products},
     }
+    stock_levels = {
+        **{f"raw:{m.pk}": stock_payload(stock_status(m)) for m in raw_materials},
+        **{f"finished:{g.pk}": stock_payload(stock_status(g)) for g in products},
+    }
     return render(request, "procurement/po_form.html", {
-        "form": form, "formset": formset, "obj": obj, "current_costs": current_costs,
+        "form": form, "formset": formset, "obj": obj, "current_costs": current_costs, "stock_levels": stock_levels,
+        "share_text": share_text(summarize(_shareable_order(request, obj.pk), request.business, request.build_absolute_uri(reverse("po_approve", args=[obj.pk])))) if obj else "",
+        "share_image_url": reverse("po_share_image", args=[obj.pk]) if obj else "",
+        "stock_time": timezone.localtime().strftime("%d %b %H:%M"),
         "suppliers": Supplier.objects.filter(business=request.business, active=True).order_by("name"),
     })
 
 
 @login_required
 def po_receive(request, pk):
-    po = get_object_or_404(PurchaseOrder, pk=pk)
+    if not user_has_permission(request.user, request.business, "procurement", "edit"):
+        return render(request, "403.html", status=403)
+    po = get_object_or_404(PurchaseOrder, pk=pk, business=request.business)
     if request.method == "POST":
+        # Stock arrives on the day it really arrives: today by default, or an
+        # explicit "event_date" so a late-entered receipt keeps its true date.
+        receipt_date = ledger.resolve_event_date(request, po.date)
         with transaction.atomic():
             # Prevent two workers from receiving the same PO and duplicating
             # its stock/finance effects.
             po = PurchaseOrder.objects.select_for_update().get(pk=po.pk)
             if po.status == "received":
                 return redirect("procurement_list")
-            receipt_date = po.received_date or po.date
-            items = list(po.items.select_related("raw_material", "finished_good"))
+            if po.status != "approved":
+                messages.error(request, "Approve this purchase request before receiving stock.")
+                return redirect("procurement_list")
+            items = list(po.items.filter(qty__gt=0).select_related("raw_material", "finished_good"))
+            if not items:
+                messages.error(request, "There are no approved items to receive.")
+                return redirect("procurement_list")
             invalid_item = next((
                 item for item in items
                 if (
@@ -299,8 +366,12 @@ def po_receive(request, pk):
                         supplier_master=po.supplier_master,
                     )
                     # This remains the material's current/latest procurement cost.
-                    from core.ledger import segment_for
-                    if segment_for(po.business, receipt_date) == "live":
+                    # A Backlog receipt is history, and a late-entered older receipt
+                    # must not replace a newer dated cost, so backdating stays safe.
+                    newer_cost = RawMaterialCostSnapshot.raw_objects.filter(
+                        raw_material=mat, effective_date__gt=receipt_date
+                    ).exists()
+                    if ledger.segment_for(po.business_id, receipt_date) == ledger.SEGMENT_LIVE and not newer_cost:
                         mat.cost_per_unit = usage_cost
                         mat.save(update_fields=["cost_per_unit"])
                 else:
@@ -327,11 +398,21 @@ def po_receive(request, pk):
 
 
 @login_required
+@transaction.atomic
 def po_delete(request, pk):
-    obj = get_object_or_404(PurchaseOrder, pk=pk)
+    obj = get_object_or_404(PurchaseOrder.objects.select_for_update(), pk=pk)
     if request.method == "POST":
-        obj.delete()
-        messages.success(request, "Removed.")
+        vendors = list(request_orders(obj, lock=True).prefetch_related('payments'))
+        if not request_editable(vendors):
+            messages.error(request, 'Only an unpaid, unposted draft request can be deleted. Vendor receipt and payment history must be preserved.')
+        else:
+            envelope = obj.request if obj.request_id else None
+            for vendor in vendors:
+                audit(request.business, request.user, 'delete', vendor, f'Draft purchase order #{vendor.pk} removed')
+                vendor.delete()
+            if envelope:
+                envelope.delete()
+            messages.success(request, 'Removed.')
     return redirect("procurement_list")
 
 @login_required
@@ -341,3 +422,91 @@ def po_invoice(request, pk):
         pk=pk,
     )
     return purchase_order_pdf(po)
+
+
+
+def _shareable_order(request, pk):
+    return get_object_or_404(
+        PurchaseOrder.objects.select_related("approved_by").prefetch_related("items__raw_material", "items__finished_good"),
+        pk=pk, business=request.business)
+
+
+@login_required
+def po_share_image(request, pk):
+    """PNG snapshot of the request for forwarding on WhatsApp. Members with Procurement access only."""
+    if not user_has_permission(request.user, request.business, "procurement", "view"):
+        return render(request, "403.html", status=403)
+    po = _shareable_order(request, pk)
+    url = request.build_absolute_uri(reverse("po_approve", args=[po.pk]))
+    response = HttpResponse(render_snapshot(summarize(po, request.business, url)), content_type="image/png")
+    response["Cache-Control"] = "private, no-store"
+    # Inline opens the full-size image in the browser's viewer; ?download=1 saves it to the device.
+    disposition = "attachment" if request.GET.get("download") == "1" else "inline"
+    response["Content-Disposition"] = f'{disposition}; filename="purchase-request-{po.pk}.png"'
+    return response
+
+
+@login_required
+@transaction.atomic
+def po_approve(request, pk):
+    if not user_has_permission(request.user, request.business, "procurement", "view"):
+        return render(request, "403.html", status=403)
+    po = get_object_or_404(PurchaseOrder.objects.select_for_update(), pk=pk, business=request.business)
+    vendors = list(request_orders(po, lock=True).prefetch_related('payments'))
+    items = list(PurchaseOrderItem.objects.filter(purchase_order__in=vendors).select_for_update()
+                 .select_related('raw_material', 'finished_good', 'purchase_order').order_by('purchase_order_id', 'pk'))
+    can_approve = is_business_admin(request.user, request.business)
+    pending = all(v.status in {"draft", "ordered"} for v in vendors)
+    if request.method == "POST" and not can_approve:
+        return render(request, "403.html", status=403)
+    if request.method == "POST" and not pending:
+        messages.info(request, "This purchase request has already been approved or received.")
+        return redirect("procurement_list")
+    line_forms = [PurchaseApprovalLineForm(
+        request.POST if request.method == "POST" else None,
+        item=item, prefix=f"item-{item.pk}",
+        initial={"qty": item.qty, "reason": item.approval_reason},
+    ) for item in items]
+    error = ""
+    if request.method == "POST":
+        valid = all([form.is_valid() for form in line_forms])
+        if valid:
+            unsafe_payment = False
+            for vendor in vendors:
+                vendor_total = sum((f.cleaned_data['qty'] * f.item.unit_cost for f in line_forms
+                                    if f.item.purchase_order_id == vendor.pk), Decimal('0'))
+                paid = sum((p.amount for p in vendor.payments.all()), Decimal('0'))
+                direct_paid = sum(FinancialTransaction.raw_objects.filter(
+                    business=request.business, reference=f'PO-{vendor.pk}', category='Procurement',
+                    transaction_type=FinancialTransaction.OUTFLOW, reversed=False).values_list('amount', flat=True), Decimal('0'))
+                unsafe_payment = unsafe_payment or vendor_total < paid + direct_paid
+            if not any(form.cleaned_data["qty"] > 0 for form in line_forms):
+                error = "Keep at least one approved item. Leave an entirely declined request unapproved."
+            elif unsafe_payment:
+                error = "The approved total cannot be lower than payments already recorded. Resolve the supplier advance before reducing this request."
+            else:
+                changes = []
+                for form in line_forms:
+                    item = form.item
+                    item.requested_qty = form.requested
+                    item.qty = form.cleaned_data["qty"]
+                    item.approval_reason = form.cleaned_data["reason"].strip()
+                    item.save(update_fields=["requested_qty", "qty", "approval_reason"])
+                    changes.append({"item_id": item.pk, "requested": str(item.requested_qty), "approved": str(item.qty), "reason": item.approval_reason})
+                for vendor in vendors:
+                    vendor.status = 'approved'
+                    vendor.approved_by = request.user
+                    vendor.approved_at = timezone.now()
+                    vendor.save(update_fields=['status', 'approved_by', 'approved_at'])
+                    audit(request.business, request.user, 'approve', vendor,
+                          f'Purchase request #{po.pk} approved', {'items': [c for c in changes if any(i.pk == c['item_id'] and i.purchase_order_id == vendor.pk for i in items)]})
+                messages.success(request, "Request approved. Receive the approved items when they arrive.")
+                return redirect("procurement_list")
+    approval_url = request.build_absolute_uri(reverse("po_approve", args=[po.pk]))
+    summary = summarize(_shareable_order(request, pk), request.business, approval_url)
+    for line in line_forms:
+        line.stock = stock_status(line.item.stock_item)
+    return render(request, "procurement/po_approve.html", {
+        "po": po, "line_forms": line_forms, "can_approve": can_approve and pending, "approval_error": error,
+        "summary": summary,
+    })

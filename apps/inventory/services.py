@@ -171,28 +171,34 @@ def default_location(business):
 
 @transaction.atomic
 def record_raw_material_movement(material, quantity, movement_type, *, note="", reference="", unit_value=None, location=None, on_date=None):
+    from core import ledger
     quantity = Decimal(quantity)
     on_date = on_date or timezone.localdate()
-    from core.ledger import segment_for
-    backlog = segment_for(material.business, on_date) == "backlog"
+    backlog = ledger.segment_for(material.business_id, on_date) == ledger.SEGMENT_BACKLOG
+    new_stock = material.stock
     if not backlog:
-        material.stock = (material.stock + quantity).quantize(Decimal("0.001"))
-        material.save(update_fields=["stock"])
+        locked = RawMaterial.raw_objects.select_for_update().get(pk=material.pk, business_id=material.business_id)
+        new_stock = (locked.stock + quantity).quantize(Decimal("0.001"))
+        locked.stock = new_stock
+        locked.save(update_fields=["stock"])
+        material.stock = new_stock
     StockMovement.objects.create(
         business=material.business, raw_material=material, movement_type=movement_type,
-        quantity=quantity, affects_stock=True, balance_after=None if backlog else material.stock, note=note,
+        quantity=quantity, affects_stock=True, balance_after=None if backlog else new_stock, note=note,
         reference=reference, unit_value=Decimal(unit_value if unit_value is not None else material.cost_per_unit),
         location=location or default_location(material.business), business_date=on_date,
     )
-    return material.stock
+    ledger.invalidate_balances(material.business_id)
+    return new_stock
 
 
 @transaction.atomic
 def record_finished_good_movement(good, quantity, movement_type, *, note="", affects_stock=True, reference="", unit_value=None, location=None, on_date=None):
+    from core import ledger
     quantity = Decimal(quantity)
     on_date = on_date or timezone.localdate()
-    from core.ledger import segment_for
-    backlog = segment_for(good.business, on_date) == "backlog"
+    backlog = ledger.segment_for(good.business_id, on_date) == ledger.SEGMENT_BACKLOG
+    new_stock = good.stock
     if affects_stock and not backlog:
         # Serialise concurrent receipts, sales, and production movements for
         # this product so a stale in-memory balance cannot overwrite another
@@ -203,16 +209,18 @@ def record_finished_good_movement(good, quantity, movement_type, *, note="", aff
         )
         if locked_good.stock is None:
             raise ValueError(f"{locked_good.name} is not in physical-store stock.")
-        locked_good.stock = (locked_good.stock + quantity).quantize(Decimal("0.01"))
+        new_stock = (locked_good.stock + quantity).quantize(Decimal("0.01"))
+        locked_good.stock = new_stock
         locked_good.save(update_fields=["stock"])
-        good.stock = locked_good.stock
+        good.stock = new_stock
     StockMovement.objects.create(
         business=good.business, finished_good=good, movement_type=movement_type,
-        quantity=quantity, affects_stock=affects_stock, balance_after=good.stock if affects_stock and not backlog else None,
+        quantity=quantity, affects_stock=affects_stock, balance_after=new_stock if affects_stock and not backlog else None,
         note=note, reference=reference, unit_value=Decimal(unit_value if unit_value is not None else good.est_cost),
         location=location or default_location(good.business), business_date=on_date,
     )
-    return good.stock
+    ledger.invalidate_balances(good.business_id)
+    return new_stock
 
 
 def _sellable_market_lots(good, on_date, *, lock=False):
@@ -278,6 +286,7 @@ def _record_market_movement(lot, *, date, movement_type, quantity, user, custome
 @transaction.atomic
 def receive_market_production(batch, quantity, *, user):
     """Receive new unassigned Distribution output without touching shelf stock."""
+    from core import ledger
     quantity = Decimal(quantity).quantize(Decimal("0.01"))
     if quantity <= 0:
         return None
@@ -293,6 +302,9 @@ def receive_market_production(batch, quantity, *, user):
             "quantity_received": quantity,
             "quantity_available": quantity,
             "unit_cost": batch.unit_cost,
+            # A lot produced on a Backlog date is history: it must not add
+            # sellable Live stock until the backlog is merged.
+            "is_backlog_entry": ledger.segment_for(batch.business_id, batch.production_date) == ledger.SEGMENT_BACKLOG,
         },
     )
     if not created:

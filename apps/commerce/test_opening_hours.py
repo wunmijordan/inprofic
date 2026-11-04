@@ -28,7 +28,7 @@ class OpeningHoursTests(SimpleTestCase):
         self.assertTrue(opening_status(_settings(), _at(2026, 10, 10, 12))["is_open"])
         closed = opening_status(_settings(), _at(2026, 10, 10, 22))
         self.assertFalse(closed["is_open"])
-        self.assertIn("opens Monday 9:00 AM", closed["headline"])
+        self.assertIn("9:00 AM Monday", closed["headline"])
 
     def test_overnight_hours_stay_open_after_midnight(self):
         hours = {"4": {"open": "18:00", "close": "02:00"}}  # Friday

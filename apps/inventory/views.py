@@ -12,7 +12,7 @@ from django.http import JsonResponse
 from django.db.models import OuterRef, Prefetch, Q, Subquery, Sum
 from django.db.models.functions import TruncDate
 
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_http_methods, require_POST
 
 from .forms import (
     DistributionReturnForm,
@@ -46,7 +46,9 @@ from .models import (
     RecipeItem,
     StockMovement,
 )
+from accounts.services import user_has_permission
 from core.services import audit
+from core import ledger
 from core.verticals import vertical_config
 from core.pdf_fonts import (
     PDF_BODY_BOLD_FONT,
@@ -115,7 +117,7 @@ def operational_supply_dispense(request):
                 raise forms.ValidationError("Only operational supplies can be dispensed here.")
             return m
 
-    form = DispenseForm(request.POST or None, initial={"date": timezone.localdate()})
+    form = DispenseForm(request.POST or None, initial={"date": ledger.default_entry_date()})
     if request.method == "POST" and form.is_valid():
         with transaction.atomic():
             obj = form.save(commit=False)
@@ -123,7 +125,8 @@ def operational_supply_dispense(request):
             obj.created_by = request.user
             if obj.location_id is None:
                 obj.location = default_location(request.business)
-            if obj.quantity > obj.raw_material.stock:
+            obj.raw_material = RawMaterial.objects.select_for_update().get(pk=obj.raw_material_id, business=request.business)
+            if obj.quantity > obj.raw_material.stock and not ledger.is_backlog_scope():
                 form.add_error("quantity", f"Only {obj.raw_material.stock} {obj.raw_material.usage_unit} is available.")
             else:
                 obj.save()
@@ -168,14 +171,36 @@ def inventory(request):
             Prefetch("production_materials", queryset=ProductionMaterial.objects.select_related("raw_material")),
         )
 
+    from .sample_setup import available_for
     return render(request, "inventory/inventory.html", {
         "raw_materials": RawMaterial.objects.all(),
         "finished_goods": finished_goods,
+        "sample_available": available_for(request.business) is not None,
     })
 
 
 @login_required
+@require_http_methods(["GET", "POST"])
+def sample_setup(request):
+    """Offer a zero-stock sample recipe to production businesses with no recipes yet."""
+    from .sample_setup import SAMPLES, available_for, load_sample
+    sample = available_for(request.business)
+    if request.method == "POST":
+        product = load_sample(request.business, request.user)
+        if product is None:
+            messages.info(request, "A sample recipe is not available for this business right now.")
+        else:
+            audit(request.business, request.user, "sample_recipe", product, f"Sample recipe loaded: {product.name}")
+            messages.success(request, f"{product.name} added with its ingredients. Open it to see each ingredient's ratio to the base material.")
+        return redirect("inventory")
+    return render(request, "inventory/sample_setup.html", {"sample": sample, "samples": SAMPLES})
+
+
+@login_required
 def market_stock(request):
+    from .distribution_summary import distribution_summaries
+    if not user_has_permission(request.user, request.business, "inventory", "view"):
+        return render(request, "403.html", status=403)
     today = timezone.localdate()
     lots = list(
         MarketStockLot.objects.select_related(
@@ -201,13 +226,11 @@ def market_stock(request):
         Decimal("0"),
     )
     return render(request, "inventory/market_stock.html", {
+        **distribution_summaries(request, lots=lots),
         "lots": lots,
         "movements": MarketStockMovement.objects.select_related(
             "lot__finished_good", "customer", "sale"
         )[:50],
-        "returns": DistributionReturn.objects.select_related(
-            "sale_item__sale", "sale_item__finished_good", "market_lot"
-        )[:30],
         "sellable_units": sellable_units,
         "expired_units": expired_units,
         "expiring_units": expiring_units,
@@ -248,7 +271,7 @@ def market_stock_release(request):
     form = MarketStockReleaseForm(
         request.POST or None,
         business=request.business,
-        initial={"date": timezone.localdate()},
+        initial={"date": ledger.default_entry_date()},
     )
     if request.method == "POST" and form.is_valid():
         try:
@@ -283,7 +306,7 @@ def market_stock_transfer(request):
     form = MarketStockTransferForm(
         request.POST or None,
         business=request.business,
-        initial={"date": timezone.localdate()},
+        initial={"date": ledger.default_entry_date()},
     )
     if request.method == "POST" and form.is_valid():
         try:
@@ -314,7 +337,7 @@ def distribution_return(request):
     form = DistributionReturnForm(
         request.POST or None,
         business=request.business,
-        initial={"date": timezone.localdate()},
+        initial={"date": ledger.default_entry_date()},
     )
     if request.method == "POST" and form.is_valid():
         try:
@@ -1097,14 +1120,27 @@ def stock_history(request, kind, pk):
 
     materials = []
     labels = vertical_config(request.business)
+    base_material_info, recipe_warnings, material_links = None, [], {"used_in": [], "base_for": []}
     if is_finished_good:
-        for recipe in item.recipe_items.select_related("raw_material").order_by("raw_material__name"):
+        from .recipe_ratios import product_relations
+        recipe_lines = list(item.recipe_items.select_related("raw_material").order_by("raw_material__name"))
+        relations = product_relations(item, recipe_lines)
+        relation_by_material = {row["material_id"]: row for row in relations["rows"]}
+        if relations["base"]:
+            base_material_info = {"name": relations["base"]["name"], "text": relations["base"]["text"]}
+        recipe_warnings = relations["warnings"]
+        for recipe in recipe_lines:
+            relation = relation_by_material.get(recipe.raw_material_id, {})
             materials.append({
                 "name": recipe.raw_material.name,
                 "category": f"{labels['recipe_label']} {labels['recipe_item_label'].lower()}",
                 "qty_per_batch": str(recipe.qty_per_batch),
                 "usage_unit": recipe.raw_material.usage_unit,
                 "flexible": recipe.flexible_usage,
+                "is_base": relation.get("is_base", False),
+                "relation": relation.get("relation", ""),
+                "per_unit_text": relation.get("per_unit_text", ""),
+                "percent_text": relation.get("percent_text", ""),
             })
         for production_input in item.production_materials.select_related("raw_material").order_by("raw_material__name"):
             materials.append({
@@ -1114,6 +1150,18 @@ def stock_history(request, kind, pk):
                 "usage_unit": production_input.raw_material.usage_unit,
                 "flexible": False,
             })
+
+    if not is_finished_good:
+        from .recipe_ratios import material_relations
+        links = material_relations(item)
+        material_links = {
+            "base_for": links["base_for"],
+            "used_in": [
+                {"product": e["product"], "qty_text": e["qty_text"], "is_base": e["is_base"],
+                 "relation": e["relation"], "percent_text": e["percent_text"]}
+                for e in links["used_in"]
+            ],
+        }
 
     purchase_filter = {"raw_material": item} if kind == "raw" else {"finished_good": item}
     arrivals = [
@@ -1152,6 +1200,10 @@ def stock_history(request, kind, pk):
             else None
         ),
         "materials": materials,
+        "base_material": base_material_info,
+        "recipe_warnings": recipe_warnings,
+        "used_in": material_links["used_in"],
+        "base_for": material_links["base_for"],
         "arrivals": arrivals,
         "data": data,
     }

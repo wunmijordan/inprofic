@@ -4,5 +4,5 @@
   <h1 class="text-xl font-semibold {% if success %}text-emerald-700{% else %}text-rose-700{% endif %}">{% if success %}Payment confirmed{% else %}Payment not confirmed{% endif %}</h1>
   <p class="text-sm text-stone-600 mt-2">{{ message }}</p>
   {% if payment %}<div class="mt-4 text-xs text-stone-500">{{ payment.reference }} · {{ payment.plan.name }} · {{ payment.get_provider_display }}</div>{% endif %}
-  <a href="{% url 'subscription_payment' %}" class="inline-block mt-5 px-4 py-2 bg-[#8f172d] text-white rounded-md text-sm">Back to Plan & Billing</a>
+  <a data-button-surface href="{% url 'subscription_payment' %}" class="inline-block mt-5 px-4 py-2 bg-[#8f172d] text-white rounded-md text-sm">Back to Plan & Billing</a>
 </div>{% endblock %}

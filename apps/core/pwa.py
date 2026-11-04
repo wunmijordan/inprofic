@@ -161,6 +161,7 @@ def favicon(request):
 @require_GET
 def service_worker(request):
     static_assets = [
+        static("core/css/button-surfaces.css"),
         static("core/pwa/icon-mark-180.png"),
         static("core/pwa/icon-mark-on-dark-180.png"),
         static("core/pwa/icon-mark-192.png"),

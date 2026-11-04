@@ -9,6 +9,9 @@
   <title>{{ store_business.name }} · {% if order_now_mode %}Order Now{% else %}Catalogue{% endif %}</title>
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
   <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}?v={{ static_asset_version }}">
+  <link rel="stylesheet" href="{% static 'core/css/button-surfaces.css' %}?v={{ static_asset_version }}">
+  <link rel="stylesheet" href="{% static 'core/css/interactions.css' %}?v={{ static_asset_version }}">
+  <script src="{% static 'core/js/interactions.js' %}?v={{ static_asset_version }}" data-inprofic-ui defer></script>
   <style>
     @font-face { font-family:'Sora'; src:url('{% static "core/fonts/Sora-Variable.woff2" %}') format('woff2'), url('{% static "core/fonts/Sora-Variable.ttf" %}') format('truetype'); font-weight:100 800; font-style:normal; font-display:swap; }
     @font-face { font-family:'Fraunces'; src:url('{% static "core/fonts/Fraunces-SemiBold.woff2" %}') format('woff2'), url('{% static "core/fonts/Fraunces-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
@@ -40,6 +43,7 @@
     @media (max-width: 640px) { dialog[open] { margin: auto 0 0; width: 100%; max-width: none; border-radius: 1.5rem 1.5rem 0 0; } }
   </style>
   <script src="{% static 'core/js/form-experience.js' %}?v={{ static_asset_version }}" defer></script>
+  <script src="{% static 'core/js/brand-assets.js' %}?v={{ static_asset_version }}" defer></script>
 </head>
 <body class="min-h-screen">
   <header class="storefront-brand-surface relative isolate overflow-hidden">
@@ -160,7 +164,7 @@
     </section>
   </main>
 
-  <footer class="border-t border-stone-200 bg-white px-5 py-8 text-center"><p class="flex flex-col items-center gap-1.5 text-xs text-stone-400"><img src="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" alt="INPROFIC" class="max-w-full" style="width:8.5rem;height:auto" width="1944" height="309"><span>Ordering made simple · <a class="underline" href="{% url 'privacy_policy' %}" data-privacy-modal-open>Privacy</a></span></p></footer>
+  <footer class="border-t border-stone-200 bg-white px-5 py-8 text-center"><p class="flex flex-col items-center gap-1.5 text-xs text-stone-400"><img data-brand-logo-light="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" data-brand-logo-dark="{% static 'core/brand/inprofic-wordmark-on-dark.png' %}" src="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" alt="INPROFIC" class="max-w-full" style="width:8.5rem;height:auto" width="1944" height="309"><span>Ordering made simple · <a class="underline" href="{% url 'privacy_policy' %}" data-privacy-modal-open>Privacy</a></span></p></footer>
 
   <div id="basket-dock" class="pointer-events-none fixed inset-x-0 bottom-4 z-30 hidden px-4">
     <button type="button" id="open-basket" class="storefront-brand-surface pointer-events-auto mx-auto flex w-full max-w-xl items-center justify-between rounded-2xl border px-4 py-3 text-left shadow-[0_18px_55px_rgba(25,20,17,.32)] backdrop-blur" style="border-color:color-mix(in srgb,var(--brand-dark-contrast) 18%,transparent);background:color-mix(in srgb,var(--brand-dark) 94%,transparent)!important">
@@ -268,7 +272,7 @@
       </section>
       {% endif %}
       <div class="mt-6"><p class="text-xs font-semibold text-stone-600">Choose one ordering option for this basket</p><div class="mt-2 grid gap-2">
-        <button type="submit" name="order_mode" value="online" data-checkout-mode="online" class="channel-submit flex items-center justify-between rounded-xl border px-3.5 py-3 text-left text-sm shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-45" style="background:var(--tenant-button);color:var(--tenant-button-contrast);border-color:var(--tenant-button)"><span><strong class="block" data-order-label>Place order</strong><small class="mode-note opacity-90">{% if store_business.uses_production and not p.finished_good.is_purchased_for_resale %}{{ storefront_copy.prepared_order }}{% else %}{{ storefront_copy.immediate_order }}{% endif %}</small></span><strong class="mode-total shrink-0"></strong></button>
+        <button data-button-surface type="submit" name="order_mode" value="online" data-checkout-mode="online" class="channel-submit flex items-center justify-between rounded-xl border px-3.5 py-3 text-left text-sm shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-45" style="background:var(--tenant-button);color:var(--tenant-button-contrast);border-color:var(--tenant-button)"><span><strong class="block" data-order-label>Place order</strong><small class="mode-note opacity-90">{% if store_business.uses_production and not p.finished_good.is_purchased_for_resale %}{{ storefront_copy.prepared_order }}{% else %}{{ storefront_copy.immediate_order }}{% endif %}</small></span><strong class="mode-total shrink-0"></strong></button>
       </div></div>
       <p class="mt-4 text-xs leading-5 text-stone-400">Prices and availability are checked again by {{ store_business.name }} before payment. An order is created only after full payment is verified.</p>
     </form>

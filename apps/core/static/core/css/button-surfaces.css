@@ -1,0 +1,60 @@
+/* Shared button finish for the workspace, auth, marketing and storefronts.
+   A shallow highlight and inset edge add glass without blurring the label.
+   Keep the centre clear: foreground contrast is calculated against the fill. */
+:root {
+  --ui-button-sheen: linear-gradient(180deg,
+    rgb(255 255 255 / .12), transparent 25%, transparent 75%, rgb(0 0 0 / .045));
+  --ui-button-edge: rgb(255 255 255 / .22);
+  --ui-button-shadow: rgb(0 0 0 / .10);
+}
+
+/* Only explicitly marked visual buttons receive this finish. Clickability,
+   element type, rounded corners and a background are not a button contract.
+   Tabs, palette samples, switches and full-screen backdrops keep their own
+   state presentation. Use data-no-glass for another intentionally bare control. */
+html body :is([data-button-surface], button.ui-button, a.ui-button, input.ui-button,
+  button.workspace-action, a.workspace-action, button.workspace-back, a.workspace-back,
+  button.workspace-icon-button, a.workspace-icon-button, a.btn, a.button, button.btn):where(:not(
+    [data-no-glass], [role="tab"], [role="switch"], [role="checkbox"],
+    .appearance-swatch, .background-swatch, [class*="backdrop"],
+    .desktop-sidebar-nav a, .mobile-sidebar-nav a)) {
+  background-image: var(--ui-button-sheen) !important;
+  /* Legacy hover brightness filters also wash out the label/fill contrast. */
+  filter: none !important;
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000),
+    var(--tw-ring-shadow, 0 0 #0000),
+    inset 0 1px 0 var(--ui-button-edge), inset 0 -1px 0 rgb(0 0 0 / .06),
+    0 1px 2px var(--ui-button-shadow),
+    var(--ui-button-state-shadow, 0 0 #0000) !important;
+}
+
+/* Primary actions inherit the chosen brand/tenant accent. Legacy templates
+   still carry the two historic brand fill utilities; resolve those here too. */
+html body :is([data-button-surface], button.ui-button, a.ui-button, input.ui-button,
+  button.workspace-action, a.workspace-action, button.workspace-back, a.workspace-back,
+  button.workspace-icon-button, a.workspace-icon-button, a.btn, a.button, button.btn):is(.ui-button-primary, .workspace-action-primary,
+  [class~="bg-[#D14900]"], [class~="bg-[#d14900]"],
+  [class~="bg-[#8F172D]"], [class~="bg-[#8f172d]"]) {
+  background-color: var(--ui-accent, var(--tenant-button, #d14900)) !important;
+  border-color: var(--ui-accent, var(--tenant-button, #d14900)) !important;
+  color: var(--ui-accent-contrast, var(--tenant-button-contrast, #fff)) !important;
+}
+
+/* Hover changes the edge, rather than washing out the fill or its label. */
+html body :is([data-button-surface], button.ui-button, a.ui-button, input.ui-button,
+  button.workspace-action, a.workspace-action, button.workspace-back, a.workspace-back,
+  button.workspace-icon-button, a.workspace-icon-button, a.btn, a.button, button.btn):where(:hover:not(
+    :disabled, [aria-disabled="true"], [data-no-glass], [role="tab"],
+    [role="switch"], [role="checkbox"], .appearance-swatch, .background-swatch,
+    [class*="backdrop"], .desktop-sidebar-nav a, .mobile-sidebar-nav a)) {
+  --ui-button-edge: rgb(255 255 255 / .34);
+}
+
+@media (forced-colors: active), print {
+  html body :is([data-button-surface], button.ui-button, a.ui-button, input.ui-button,
+  button.workspace-action, a.workspace-action, button.workspace-back, a.workspace-back,
+  button.workspace-icon-button, a.workspace-icon-button, a.btn, a.button, button.btn) {
+    background-image: none !important;
+    box-shadow: none !important;
+  }
+}

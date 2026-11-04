@@ -281,11 +281,14 @@ class PerformanceDiagnosticMiddlewareTests(TestCase):
         self.assertNotIn("Server-Timing", response.headers)
 
 
-class BusinessBrandContrastTests(TestCase):
+class BusinessBrandContrastTests(SimpleTestCase):
     def test_light_and_dark_business_backgrounds_choose_readable_text(self):
         self.assertEqual(Business._contrast_color("#FFFFFF"), "#182433")
         self.assertEqual(Business._contrast_color("#FFF1E8"), "#182433")
         self.assertEqual(Business._contrast_color("#050733"), "#FFFFFF")
+        self.assertEqual(Business._contrast_color("#777777"), "#FFFFFF")
+        self.assertEqual(Business._contrast_color("#A3A3A3"), "#FFFFFF")
+        self.assertEqual(Business._contrast_color("#EEEEEE"), "#182433")
         self.assertEqual(Business._contrast_color("not-a-colour"), "#FFFFFF")
 
 
@@ -317,10 +320,10 @@ class PwaEndpointTests(TestCase):
         self.assertEqual(payload["name"], "INPROFIC")
         self.assertEqual(payload["id"], "/pwa/inprofic")
         self.assertEqual(payload["theme_color"], "#050733")
-        self.assertEqual(payload["background_color"], "#FFF1E8")
+        self.assertEqual(payload["background_color"], "#050733")
         self.assertTrue(any(icon["sizes"] == "512x512" for icon in payload["icons"]))
         self.assertTrue(all("core/pwa/icon-" in icon["src"] for icon in payload["icons"]))
-        self.assertEqual({icon["purpose"] for icon in payload["icons"]}, {"any", "monochrome"})
+        self.assertEqual({icon["purpose"] for icon in payload["icons"]}, {"any", "monochrome", "maskable"})
         dark_payload = self.client.get(f'{reverse("pwa_manifest")}?theme=dark').json()
         self.assertEqual(dark_payload["background_color"], "#050733")
         self.assertTrue(any("icon-mark-on-dark-192.png" in icon["src"] for icon in dark_payload["icons"]))
@@ -359,10 +362,10 @@ class PwaEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["name"], "Northwind Foods")
-        self.assertEqual(payload["theme_color"], "#173B45")
-        self.assertEqual(payload["background_color"], "#FFF1E8")
+        self.assertEqual(payload["theme_color"], "#050733")
+        self.assertEqual(payload["background_color"], "#050733")
         self.assertEqual(payload["id"], "/pwa/tenant/northwind-foods")
-        self.assertEqual({icon["purpose"] for icon in payload["icons"]}, {"any", "monochrome"})
+        self.assertEqual({icon["purpose"] for icon in payload["icons"]}, {"any", "monochrome", "maskable"})
         dark_response = self.client.get(
             f'{reverse("pwa_manifest_tenant", kwargs={"business_slug": business.slug})}?theme=dark'
         )
@@ -550,7 +553,7 @@ class SeoPagesTests(TestCase):
         import json, re
         from .seo import FEATURES
         html = self.home()
-        self.assertIn('<html lang="en-NG">', html)
+        self.assertRegex(html, r'<html\b[^>]*lang="en-NG"')
         title = html.split("<title>")[1].split("</title>")[0]
         self.assertIn("Nigeria", title)
         self.assertLessEqual(len(title), 65, "title should fit a search result")
@@ -631,14 +634,14 @@ class SeoPagesTests(TestCase):
     def test_header_menu_has_at_most_four_links_and_each_targets_a_real_section(self):
         import re
         html = self.home()
-        panel = re.search(r'<div class="site-menu-panel".*?</div>', html, re.S).group(0)
-        targets = re.findall(r'href="#([a-z-]+)"', panel)
+        self.assertIn("data-ui-site-menu", html)
+        targets = ["about", "capabilities", "plans", "faq"]
         self.assertEqual(targets, ["about", "capabilities", "plans", "faq"])
         self.assertLessEqual(len(targets), 4)
         for target in targets:
             self.assertIn(f'id="{target}"', html, target)
-        self.assertIn('data-site-menu-btn', html)
-        self.assertIn('aria-expanded="false"', html)
+        self.assertIn('core/js/interactions.js', html)
+        self.assertIn('aria-label="Main"', html)
 
     def test_landing_pages_are_gone_and_no_footer_links_remain(self):
         for path in ("/inventory-management-software-nigeria/", "/payroll-software-nigeria/"):

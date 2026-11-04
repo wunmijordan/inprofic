@@ -106,7 +106,7 @@
 
     <div class="flex justify-end gap-2 mt-4">
       <a href="{% url 'sales_list' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a>
-      <button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">{% if force_allowed %}Save Anyway{% elif shortages %}Correct Quantity{% else %}Save Sale{% endif %}</button>
+      <button data-button-surface type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">{% if force_allowed %}Save Anyway{% elif shortages %}Correct Quantity{% else %}Save Sale{% endif %}</button>
     </div>
   </form>
 </div>

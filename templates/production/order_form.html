@@ -89,7 +89,7 @@
     </div>{# /kitchen-hide #}
     <div class="grid grid-cols-1 {% if production_enabled %}sm:grid-cols-2{% endif %} gap-3">
       {% include "_field.html" with field=form.date %}
-      {% if production_enabled %}<input type="hidden" id="id_color_tag" name="color_tag" value="{{ form.color_tag.value|default:'' }}">{% for error in form.color_tag.errors %}<span class="mb-1 block text-[11px] text-rose-600">{{ error }}</span>{% endfor %}<div class="cf-field mb-3 block"><div class="mb-1.5 flex items-center gap-1.5"><span class="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500">Production color</span></div><div id="daily-production-color-hint" class="flex min-h-[2.6rem] flex-wrap items-center justify-between gap-2 rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm" aria-live="polite"><span id="daily-production-color-copy" class="text-stone-500">Choose a date to check its scheduled color.</span><button id="apply-daily-production-color" type="button" class="hidden shrink-0 rounded-md border border-black/10 px-3 py-1.5 font-semibold shadow-sm transition hover:brightness-95">Apply to this order</button></div><p class="mt-1 text-[11px] text-stone-400">Colors are selected in Production Settings and applied here for the chosen date.</p></div>{% endif %}
+      {% if production_enabled %}<input type="hidden" id="id_color_tag" name="color_tag" value="{{ form.color_tag.value|default:'' }}">{% for error in form.color_tag.errors %}<span class="mb-1 block text-[11px] text-rose-600">{{ error }}</span>{% endfor %}<div class="cf-field mb-3 block"><div class="mb-1.5 flex items-center gap-1.5"><span class="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500">Production color</span></div><div id="daily-production-color-hint" class="flex min-h-[2.6rem] flex-wrap items-center justify-between gap-2 rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm" aria-live="polite"><span id="daily-production-color-copy" class="text-stone-500">Choose a date to check its scheduled color.</span><button data-button-surface id="apply-daily-production-color" type="button" class="hidden shrink-0 rounded-md border border-black/10 px-3 py-1.5 font-semibold shadow-sm transition hover:brightness-95">Apply to this order</button></div><p class="mt-1 text-[11px] text-stone-400">Colors are selected in Production Settings and applied here for the chosen date.</p></div>{% endif %}
     </div>
     <div {% if kitchen_mode %}hidden{% endif %}>{# kitchen-hide: market stock, customer, payment #}
     <div id="distribution-market-wrap" class="hidden mb-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
@@ -175,7 +175,7 @@
 
     <div class="flex justify-end gap-2 mt-4">
       <a href="{% if kitchen_mode %}{% url 'orders_list' %}{% else %}{% url 'orders_list' %}{% endif %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a>
-      <button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">{% if kitchen_mode %}{% if obj %}Save changes{% else %}Save order{% endif %}{% elif obj %}Save changes{% else %}Create order{% endif %}</button>
+      <button data-button-surface type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">{% if kitchen_mode %}{% if obj %}Save changes{% else %}Save order{% endif %}{% elif obj %}Save changes{% else %}Create order{% endif %}</button>
     </div>
   </form>
 </div>

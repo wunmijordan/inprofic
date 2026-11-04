@@ -6,7 +6,7 @@ description: >
   failures, dynamic-row JavaScript problems, migration mismatches, or bugs
   spanning several apps.
 version: "1.0"
-updated: 2026-09-04
+updated: 2026-10-28
 ---
 
 # Systematic Debugging (StoreTrack)
@@ -29,6 +29,13 @@ updated: 2026-09-04
    `.objects` under the expected `request.business`.
 7. **For reversal bugs**, trace downstream sales/payments/reconciliations before
    changing the reversal guard.
+8. **For missing pages**, trace route -> permission middleware -> subscription
+   ceiling -> shared desktop/mobile navigation -> parent-workspace action. Verify
+   active states and that view-only users are not shown unavailable write actions.
+9. **For theme bugs**, inspect the shared workspace/form-experience assets and
+   computed foreground/background at the actual surface. Check ordinary and
+   Inventory stock-state tables separately, including hover and sticky cells after
+   changing theme/palette without a reload. Apply `frontend-design/SKILL.md`.
 
 ## Silent-form checklist
 

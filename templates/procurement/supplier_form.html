@@ -6,7 +6,7 @@
     {% csrf_token %}
     {% if form.non_field_errors %}<div class="mb-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{{ form.non_field_errors }}</div>{% endif %}
     <div class="grid gap-3 sm:grid-cols-2">{% for field in form %}<div>{% include "_field.html" with field=field %}</div>{% endfor %}</div>
-    <div class="mt-5 flex justify-end gap-2"><a href="{% url 'procurement_list' %}" class="rounded-md border border-stone-300 px-4 py-2 text-sm font-medium">Cancel</a><button class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">{% if supplier %}Save changes{% else %}Create supplier{% endif %}</button></div>
+    <div class="mt-5 flex justify-end gap-2"><a data-button-surface href="{% url 'procurement_list' %}" class="rounded-md border border-stone-300 px-4 py-2 text-sm font-medium">Cancel</a><button data-button-surface class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">{% if supplier %}Save changes{% else %}Create supplier{% endif %}</button></div>
   </div></form>
 </div>
 {% endblock %}

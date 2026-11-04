@@ -226,7 +226,8 @@ class CheckoutBoundaryTests(TestCase):
 
     def test_payment_discovery_filters_enabled_but_incomplete_methods(self):
         methods = {row["code"] for row in eligible_payment_methods(self.business)}
-        self.assertIn("cash", methods)
+        self.assertNotIn("cash", methods)
+        self.assertIn("cash", {row["code"] for row in eligible_payment_methods(self.business, surface="pos")})
         self.assertIn("bank_transfer", methods)
         self.assertNotIn("paystack", methods)
         self.payment_config.paystack_account = self.bank_account
@@ -262,18 +263,19 @@ class CheckoutBoundaryTests(TestCase):
         self.assertEqual(audit_row.metadata["source"], CommerceIntake.SOURCE_API)
 
     def test_minimum_error_returns_alternative_order_modes(self):
+        FinishedGoodChannelPrice.objects.create(finished_good=self.good, channel="distribution", price=Decimal("900"))
         with self.assertRaises(ChannelMinimumError) as raised:
-            self.make_checkout(key="distribution-min", qty="5", order_mode="distribution")
+            create_checkout(business=self.business, source=CommerceIntake.SOURCE_STAFF_POS, order_mode="distribution", customer={"name": "Counter buyer"}, items=[{"storefront_product": self.product, "quantity": "5"}], idempotency_key="distribution-min")
         codes = {row["code"] for row in raised.exception.alternatives}
         self.assertIn("online", codes)
-        self.assertNotIn("physical_store", codes)
+        self.assertIn("physical_store", codes)
 
     def test_full_verified_payment_materializes_exactly_one_intake(self):
         checkout = self.make_checkout(key="paid-checkout")
         payment = initiate_payment(
             checkout=checkout,
             method=CommercePayment.METHOD_CASH,
-            idempotency_key="cash-init",
+            idempotency_key="cash-init", surface="pos",
         )
         receipt, created = record_verified_payment(
             payment=payment,
@@ -350,13 +352,13 @@ class CheckoutBoundaryTests(TestCase):
         self.assertEqual(CommerceIntake.raw_objects.count(), 1)
 
     def test_expired_unpaid_reservation_releases_stock(self):
-        checkout = self.make_checkout(key="reserve-most", qty="8")
+        checkout = create_checkout(business=self.business, source=CommerceIntake.SOURCE_STAFF_POS, order_mode="physical_store", customer={"name": "Buyer"}, items=[{"storefront_product": self.product, "quantity": "8"}], idempotency_key="reserve-most")[0]
         CommerceCheckoutSession.raw_objects.filter(pk=checkout.pk).update(
             reservation_expires_at=timezone.now() - timedelta(seconds=1)
         )
         checkout.refresh_from_db()
         expire_checkout_if_needed(checkout)
-        second = self.make_checkout(key="after-expiry", qty="5")
+        second = create_checkout(business=self.business, source=CommerceIntake.SOURCE_STAFF_POS, order_mode="physical_store", customer={"name": "Buyer"}, items=[{"storefront_product": self.product, "quantity": "5"}], idempotency_key="after-expiry")[0]
         self.assertEqual(second.items.get().reserved_stock_quantity, Decimal("5.00"))
 
     def test_checkout_status_is_tenant_isolated(self):

@@ -3,7 +3,7 @@
 {% block content %}
 <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
   <div><h2 class="text-xl font-semibold font-display text-[#8f172d]">Customers</h2><p class="text-sm text-stone-500 mt-0.5">Customer master records used by Distribution and Online orders.</p></div>
-  {% if module_permissions.sales.edit %}<a href="{% url 'customer_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ New Customer</a>{% endif %}
+  {% if module_permissions.sales.edit %}<a data-button-surface href="{% url 'customer_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ New Customer</a>{% endif %}
 </div>
 <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg shadow-[0_2px_8px_#000000d2] overflow-x-auto">
 <table class="min-w-max w-full text-sm"><thead class="bg-[#F0EAD9] text-stone-600 text-xs"><tr>

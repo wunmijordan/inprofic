@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mx-auto max-w-xl">
+  <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">Inventory</p>
+  <h1 class="mt-1 text-2xl font-semibold font-display text-stone-800">Try a sample recipe</h1>
+  {% if sample %}
+  <p class="mt-2 text-sm leading-6 text-stone-600">Add a ready-made example so you can see how a recipe, its base ingredient and the ratios between ingredients work, before you enter your own.</p>
+  <div class="mt-4 rounded-2xl border border-[#E7DFCC] bg-white p-4 text-sm">
+    <p class="font-semibold text-stone-800">{{ sample.product.0 }} (Sample)</p>
+    <p class="text-xs text-stone-500">One batch makes {{ sample.product.2 }} {{ sample.product.1 }}s. Base ingredient: {{ sample.product.4 }}.</p>
+    <ul class="mt-2 space-y-0.5 text-xs text-stone-600">{% for key, qty in sample.recipe.items %}<li>{{ qty }} of {{ key }}</li>{% endfor %}</ul>
+  </div>
+  <ul class="mt-3 list-disc pl-5 text-xs leading-5 text-stone-500"><li>Everything starts with zero stock, so no figure in your books changes.</li><li>Each item is marked "(Sample)" and can be deleted any time.</li></ul>
+  <form method="post" class="mt-5 flex gap-2">{% csrf_token %}<button data-button-surface class="rounded-xl bg-[#8f172d] px-4 py-2.5 text-sm font-semibold text-white">Add the sample</button><a data-button-surface href="{% url 'inventory' %}" class="rounded-xl border border-[#D9CFB4] px-4 py-2.5 text-sm font-semibold text-stone-700">Not now</a></form>
+  {% else %}
+  <p class="mt-2 text-sm text-stone-600">A sample recipe is not available for this business: it may already have recipes, or it does not make products.</p>
+  <a data-button-surface href="{% url 'inventory' %}" class="mt-4 inline-block rounded-xl border border-[#D9CFB4] px-4 py-2.5 text-sm font-semibold text-stone-700">Back to inventory</a>
+  {% endif %}
+</div>
+{% endblock %}

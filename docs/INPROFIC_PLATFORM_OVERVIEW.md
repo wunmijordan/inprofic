@@ -187,6 +187,14 @@ Sales revenue, production cost, receivables, payables and cash transactions are 
 
 This provides the foundation for revenue, cost of goods sold, gross profit, outstanding customer balances, supplier balances and cash-flow reporting.
 
+The Finance tools bar links Books, Tax & VAT, E-invoices, Bank reconciliation and
+Financial pack. Books build a balanced journal and statements from operational
+records on demand, keeping manual journals across rebuilds. Tax settings drive
+VAT-inclusive reporting; structured invoices can be prepared from recorded Sales,
+including storefront-generated Sales, for provider submission or manual clearance
+tracking. The Daily brief link below Dashboard provides yesterday's summary,
+manual WhatsApp text sharing and optional scheduled email/template delivery.
+
 ## Audit Workspace
 
 Audit Workspace is a separate plan-gated surface designed for external or internal audit review.
@@ -285,3 +293,26 @@ INPROFIC separates the operational production unit from the customer selling uni
 Founder Console records first-party operational milestones such as signup visits, completed registrations, logins/logouts, subscription lifecycle events and throttled module usage. The analytics stream deliberately avoids request bodies, passwords and payment secrets, and failures never block an operational workflow. Founder Console summarizes recent leads/conversion, registrations, active businesses, subscription events, module usage and recent platform activity.
 
 INPROFIC's shared form layer uses HTML5 constraints plus authoritative Django validation. Internal forms and hosted storefront forms receive consistent animated valid/invalid states, contextual SVG input icons, accessible inline messages and the existing INPROFIC toggle-switch treatment for Boolean controls. Dynamic formset rows receive the same enhancement automatically. Existing-record edit forms no longer inject a fresh blank inline row when saved rows already exist; a truly empty section keeps one starter row and users can explicitly add more rows.
+
+### Unified workspace interactions and product evaluation
+
+Routine create/edit records can open in shadcn/Radix dialogs while retaining the
+existing Django form, validation, permissions and formset logic. Searchable
+selections retain the native POST field; destructive confirmations, appearance
+popovers and theme menus share the workspace palette. Dirty forms ask before
+closing, and full-page form URLs remain available. Approval, release, completion,
+reversal and ledger cut-over review retain their dedicated review screens.
+
+Glass styling is explicitly limited to visual buttons. Brand wordmarks respond
+to their actual background after live theme/palette changes. Automated Chromium
+checks use an isolated fixture database; the project includes the official
+Playwright skill, Impeccable and Vercel Web Design Guidelines.
+
+The public product page uses a labeled Shared Run example and the same current
+feature matrix as in-app plans. Added rows cover proportional recipes, variance,
+offcuts, reversal, checkout verification, Books, VAT, provider-ready e-invoices,
+Daily brief, cut-over and the shared interaction experience. A shared comparison
+explains practical evaluation paths alongside sourced ERPNext, Sage X3 and Bumpa
+product descriptions without inventing competitor limitations.
+
+Dashboard choices are Basic and Executive. Executive keeps existing lazy datasets, adds section deep links and a guided section sequence, and uses normal page scrolling. Manual sharing of procurement, briefs and distribution summaries uses the shared paper-style layout and QR footer without publicising authenticated records.

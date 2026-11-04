@@ -15,7 +15,7 @@ import threading
 from datetime import timedelta
 
 from django.conf import settings
-from django.db import close_old_connections, transaction
+from django.db import close_old_connections, connection, transaction
 from django.utils import timezone
 
 from accounts.models import RoleModulePermission, UserBusiness, UserModulePermission
@@ -514,7 +514,9 @@ def kick_push_dispatcher():
     The outbox is durable; if Render restarts before this thread runs, the
     scheduled maintenance command will retry later.
     """
-    if not configured() or not _dispatch_lock.acquire(blocking=False):
+    # A worker must only see committed outbox rows. The durable maintenance
+    # dispatcher handles work if this best-effort kick occurs inside a transaction.
+    if connection.in_atomic_block or not configured() or not _dispatch_lock.acquire(blocking=False):
         return
 
     def runner():

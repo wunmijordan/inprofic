@@ -77,7 +77,7 @@ class DeliverySetupUiTests(TestCase):
     def test_delivery_forms_and_dashboard_explain_the_setup_flow(self):
         rate_form = DeliveryRateBandForm()
         self.assertIn("customer-facing", rate_form.fields["eta_min_minutes"].help_text)
-        self.assertIn("named destination area", rate_form.fields["max_distance_km"].help_text)
+        self.assertIn("map-only/direct-coordinate quotes", rate_form.fields["max_distance_km"].help_text)
 
         response = self.client.get(reverse("delivery_origin_add"))
         self.assertContains(response, "Distance and delivery fees are calculated")

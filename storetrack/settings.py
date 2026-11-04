@@ -92,6 +92,7 @@ INSTALLED_APPS = [
     'expenses',
     'commerce',
     'whatsapp_storefront',
+    'assistant',
 ]
 
 META_WHATSAPP_APP_ID = os.environ.get('META_WHATSAPP_APP_ID', '').strip()
@@ -103,6 +104,18 @@ WHATSAPP_TOKEN_ENCRYPTION_KEY = os.environ.get('WHATSAPP_TOKEN_ENCRYPTION_KEY', 
 WHATSAPP_AI_API_KEY = os.environ.get('WHATSAPP_AI_API_KEY', '').strip()
 WHATSAPP_AI_MODEL = os.environ.get('WHATSAPP_AI_MODEL', 'gpt-4.1-mini').strip()
 WHATSAPP_AI_BASE_URL = os.environ.get('WHATSAPP_AI_BASE_URL', 'https://api.openai.com/v1').strip().rstrip('/')
+
+# Staff assistant (read-only pilot). Separate from the customer-facing WhatsApp AI above:
+# its own key, model, quotas and kill switch. Without a key the page still offers the
+# deterministic quick facts and says plainly that free-text questions are unavailable.
+ASSISTANT_ENABLED = os.environ.get('ASSISTANT_ENABLED', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
+ASSISTANT_AI_API_KEY = os.environ.get('ASSISTANT_AI_API_KEY', '').strip()
+ASSISTANT_AI_MODEL = os.environ.get('ASSISTANT_AI_MODEL', 'gpt-4.1-mini').strip()
+ASSISTANT_AI_BASE_URL = os.environ.get('ASSISTANT_AI_BASE_URL', 'https://api.openai.com/v1').strip().rstrip('/')
+ASSISTANT_AI_TIMEOUT = int(os.environ.get('ASSISTANT_AI_TIMEOUT', '25'))
+ASSISTANT_DAILY_MODEL_CALLS_PER_BUSINESS = int(os.environ.get('ASSISTANT_DAILY_MODEL_CALLS_PER_BUSINESS', '300'))
+ASSISTANT_REQUESTS_PER_MINUTE_PER_USER = int(os.environ.get('ASSISTANT_REQUESTS_PER_MINUTE_PER_USER', '10'))
+ASSISTANT_RETENTION_DAYS = int(os.environ.get('ASSISTANT_RETENTION_DAYS', '90'))
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -505,3 +518,6 @@ MONNIFY_BASE_URL = os.environ.get("MONNIFY_BASE_URL", "https://api.monnify.com")
 
 # PWA service-worker build identity. Render exposes the deployed git commit; a manual override is also supported.
 PWA_BUILD_VERSION = os.getenv("PWA_BUILD_VERSION") or os.getenv("RENDER_GIT_COMMIT") or "dev"
+
+# Contained workspace edits use same-origin form dialogs; external framing stays blocked.
+X_FRAME_OPTIONS = "SAMEORIGIN"

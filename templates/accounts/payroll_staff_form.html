@@ -8,7 +8,7 @@
         <div class="text-[10px] font-bold uppercase tracking-[.18em] text-stone-400">Payroll profile</div>
         <h1 class="mt-1 font-display text-xl font-semibold text-[#8f172d]">Edit {{ profile.full_name }}</h1>
       </div>
-      {% if profile.payslips.exists %}<a href="{% url 'payroll_staff_payslips' profile.pk %}" class="rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-xs font-semibold">View issued payslips</a>{% endif %}
+      {% if profile.payslips.exists %}<a data-button-surface href="{% url 'payroll_staff_payslips' profile.pk %}" class="rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-xs font-semibold">View issued payslips</a>{% endif %}
     </div>
     <form method="post" class="mt-5 space-y-4">
       {% csrf_token %}
@@ -17,7 +17,7 @@
         {% for field in form %}<div {% if field.name == 'user' %}class="md:col-span-2"{% endif %}>{% include '_field.html' with field=field %}</div>{% endfor %}
       </div>
       {% include 'accounts/_payroll_adjustment_formset.html' with adjustment_formset=adjustment_formset %}
-      <div class="flex flex-wrap gap-2"><button class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Save payroll profile</button><a href="{% url 'payroll_workspace' %}" class="rounded-md border border-[#D9CFB4] px-4 py-2 text-sm">Cancel</a></div>
+      <div class="flex flex-wrap gap-2"><button data-button-surface class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Save payroll profile</button><a data-button-surface href="{% url 'payroll_workspace' %}" class="rounded-md border border-[#D9CFB4] px-4 py-2 text-sm">Cancel</a></div>
     </form>
   </div>
 </div>

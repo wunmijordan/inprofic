@@ -5,7 +5,7 @@ description: >
   safety, and consistency with existing domain flows; fix issues before
   presenting the implementation.
 version: "1.0"
-updated: 2026-09-04
+updated: 2026-10-28
 ---
 
 # Simplify (StoreTrack)
@@ -26,13 +26,18 @@ Run after every implementation.
    yield or cost.
 6. **Atomic mutations** — procurement receipt, production release/completion,
    sales, payments and reversals remain transactional.
-7. **Tenant isolation** — no `raw_objects` in request views; creates set
-   `business`; posted IDs are re-queried through scoped managers.
+7. **Tenant isolation** — prefer scoped managers; any intentional period bypass
+   with `raw_objects` must explicitly filter the request business. Creates set
+   `business`; posted IDs are re-queried within that tenant scope.
 8. **Historical integrity** — do not overwrite snapshots that should remain
    frozen; use compensating records for reversals.
 9. **Formset cloning** — dynamic rows need correct management-form counts,
    prefixes, event binding, defaults and validation rendering.
 10. **Backward compatibility** — legacy fields/models retained for migrated
     data must still render safely even if new flows use a newer structure.
+11. **Shared presentation** — reuse workspace/form-experience tokens and behavior;
+    neutral theme-aware text, cards and ordinary tables; preserve contrast on
+    Inventory stock-state rows, hover and sticky cells. Verify permission-aware
+    navigation and parent-page entry points, not just direct URLs.
 
 Fix problems found; do not merely list them.

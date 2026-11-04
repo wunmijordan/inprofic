@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+{% include "core/_finance_tools_nav.html" %}
+<div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+  <div><a href="{% url 'tax_home' %}" class="text-xs font-semibold text-stone-800">&larr; Tax</a><h1 class="mt-1 text-2xl font-semibold font-display text-stone-800">VAT return</h1><p class="text-xs text-stone-500">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }} · due {{ r.due_date|date:"j M Y" }}</p></div>
+  <a data-button-surface href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&format=csv" class="rounded-xl border border-[#D9CFB4] bg-white px-3 py-2 text-xs font-semibold text-stone-700">Download VAT register (CSV)</a>
+</div>
+<form method="get" class="mb-4 flex flex-wrap items-end gap-2 rounded-2xl border border-[#E7DFCC] bg-white p-3 text-xs">
+  <label class="font-semibold text-stone-600">From <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="ml-1 rounded-lg border border-[#D9CFB4] px-2 py-1"></label>
+  <label class="font-semibold text-stone-600">To <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="ml-1 rounded-lg border border-[#D9CFB4] px-2 py-1"></label>
+  <button class="rounded-lg workspace-action-primary px-3 py-1.5 font-semibold text-white">Apply</button></form>
+{% if not r.registered %}<div class="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">VAT is switched off because the business is not set up as registered, so output VAT is zero. Change this in <a class="underline" href="{% url 'tax_home' %}">Tax settings</a>.</div>{% endif %}
+<section class="mb-6 overflow-hidden rounded-2xl border border-[#E7DFCC] bg-white"><table class="w-full text-sm"><tbody class="divide-y divide-[#E7DFCC]">
+<tr class="bg-stone-50 text-xs font-semibold"><td class="px-4 py-2" colspan="2">Sales (VAT-inclusive)</td></tr>
+<tr><td class="px-4 py-2">Standard-rated sales ({{ r.rate }}%)</td><td class="px-4 py-2 text-right font-mono">{{ r.standard_gross|floatformat:"2g" }}</td></tr>
+<tr><td class="px-4 py-2 text-stone-500">of which net of VAT</td><td class="px-4 py-2 text-right font-mono text-stone-500">{{ r.standard_net|floatformat:"2g" }}</td></tr>
+<tr><td class="px-4 py-2">Zero-rated sales</td><td class="px-4 py-2 text-right font-mono">{{ r.zero_rated|floatformat:"2g" }}</td></tr>
+<tr><td class="px-4 py-2">VAT-exempt sales</td><td class="px-4 py-2 text-right font-mono">{{ r.exempt|floatformat:"2g" }}</td></tr>
+<tr class="bg-stone-50 text-xs font-semibold"><td class="px-4 py-2" colspan="2">VAT</td></tr>
+<tr><td class="px-4 py-2">Output VAT (on standard-rated sales)</td><td class="px-4 py-2 text-right font-mono">{{ r.output_vat|floatformat:"2g" }}</td></tr>
+<tr><td class="px-4 py-2">Input VAT you can recover</td><td class="px-4 py-2 text-right font-mono">{{ r.input_vat|floatformat:"2g" }}</td></tr>
+<tr class="bg-[#FAF6EA] text-base font-bold"><td class="px-4 py-3">{% if r.refundable %}VAT to carry forward or reclaim{% else %}VAT payable{% endif %}</td><td class="px-4 py-3 text-right font-mono">{{ r.net_vat|floatformat:"2g" }}</td></tr>
+</tbody></table></section>
+{% if r.input_vat_blocked %}<p class="mb-8 text-[11px] text-stone-500">Input VAT you marked as not recoverable ({{ r.input_vat_blocked|floatformat:"2g" }}) is excluded.</p>{% endif %}
+<p class="mb-8 text-[11px] leading-4 text-stone-400">Prepared from your sales and input VAT register. Check the figures with your adviser before filing.</p>
+{% endblock %}

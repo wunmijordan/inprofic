@@ -1,6 +1,12 @@
 from django.urls import path
 from . import views
 from . import finance_views as finance
+from . import reconciliation_views as reconcile
+from . import pack_views
+from . import brief_views
+from . import snapshot_views
+from . import books_views
+from . import tax_views
 from . import operations
 from . import pwa
 from . import audit_views
@@ -29,6 +35,9 @@ urlpatterns = [
     path("ledger/", ledger_views.ledger_workspace, name="ledger_workspace"),
     path("ledger/action/", ledger_views.ledger_action, name="ledger_action"),
     path("ledger/mode/", ledger_views.ledger_mode, name="ledger_mode"),
+    path("ledger/count/", ledger_views.ledger_count, name="ledger_count"),
+    path("ledger/count/sheet.csv", ledger_views.ledger_count_sheet, name="ledger_count_sheet"),
+    path("ledger/count/import/", ledger_views.ledger_count_import, name="ledger_count_import"),
     path("dashboard/tour/complete/", views.onboarding_tour_complete, name="onboarding_tour_complete"),
     path("audit/", audit_views.audit_workspace, name="audit_workspace"),
     path("audit/query/", audit_views.audit_query_create, name="audit_query_create"),
@@ -62,6 +71,27 @@ urlpatterns = [
     path("reports/export/financial.csv", views.export_financial_csv, name="export_financial_csv"),
     path("reports/export/financial.xlsx", views.export_financial_xlsx, name="export_financial_xlsx"),
     path("finance/", finance.finance_dashboard, name="finance_dashboard"),
+    path("finance/reconcile/", reconcile.reconcile_home, name="reconcile_home"),
+    path("brief/snapshot.png", snapshot_views.brief_snapshot, name="daily_brief_snapshot"),
+    path("brief/", brief_views.daily_brief_page, name="daily_brief"),
+    path("finance/books/", books_views.books_home, name="books_home"),
+    path("finance/books/accounts/", books_views.books_accounts, name="books_accounts"),
+    path("finance/books/journal/", books_views.books_journal, name="books_journal"),
+    path("finance/books/journal/new/", books_views.books_journal_new, name="books_journal_new"),
+    path("finance/books/journal/<int:pk>/reverse/", books_views.books_journal_reverse, name="books_journal_reverse"),
+    path("finance/books/ledger/<int:pk>/", books_views.books_ledger, name="books_ledger"),
+    path("finance/books/statements/", books_views.books_statements, name="books_statements"),
+    path("finance/tax/", tax_views.tax_home, name="tax_home"),
+    path("finance/tax/vat/", tax_views.vat_return_page, name="vat_return"),
+    path("finance/tax/input-vat/", tax_views.input_vat, name="input_vat"),
+    path("finance/tax/products/", tax_views.product_vat, name="product_vat"),
+    path("finance/tax/einvoices/", tax_views.einvoices, name="einvoices"),
+    path("finance/tax/einvoices/<int:pk>/", tax_views.einvoice_detail, name="einvoice_detail"),
+    path("finance/pack/", pack_views.finance_pack, name="finance_pack"),
+    path("finance/pack/shares/", pack_views.finance_pack_shares, name="finance_pack_shares"),
+    path("finance/pack/shares/<int:pk>/revoke/", pack_views.finance_pack_revoke, name="finance_pack_revoke"),
+    path("shared/pack/<str:token>/", pack_views.shared_pack, name="shared_pack"),
+    path("finance/reconcile/<int:pk>/", reconcile.reconcile_detail, name="reconcile_detail"),
     path("finance/alerts/feed/", finance.finance_alert_feed, name="finance_alert_feed"),
     path("finance/profit-loss/", finance.finance_profit_loss, name="finance_profit_loss"),
     path("finance/profit-loss/export.csv", finance.export_profit_loss_csv, name="finance_profit_loss_csv"),

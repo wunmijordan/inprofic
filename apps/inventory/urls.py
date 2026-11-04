@@ -1,11 +1,13 @@
 from django.urls import path
 from . import alert_views, views
+from .distribution_summary import distribution_snapshot
 
 urlpatterns = [
     path("alerts/feed/", alert_views.alert_feed, name="inventory_alert_feed"),
     path("alerts/acknowledge/", alert_views.alert_acknowledge, name="inventory_alert_acknowledge"),
     path("alert-settings/", alert_views.alert_settings_view, name="inventory_alert_settings"),
     path("", views.inventory, name="inventory"),
+    path("sample-setup/", views.sample_setup, name="inventory_sample_setup"),
     path("raw-material/add/", views.raw_material_form, name="raw_material_add"),
     path("raw-material/export/pdf/", views.raw_material_inventory_pdf, name="raw_material_inventory_pdf"),
     path("raw-material/<int:pk>/edit/", views.raw_material_form, name="raw_material_edit"),
@@ -16,6 +18,7 @@ urlpatterns = [
     path("product/add/", views.finished_good_form, name="finished_good_add"),
     path("product/<int:pk>/edit/", views.finished_good_form, name="finished_good_edit"),
     path("product/<int:pk>/delete/", views.finished_good_delete, name="finished_good_delete"),
+    path("market-stock/snapshot/<slug:kind>.png", distribution_snapshot, name="market_stock_snapshot"),
     path("market-stock/", views.market_stock, name="market_stock"),
     path("market-stock/release/", views.market_stock_release, name="market_stock_release"),
     path("market-stock/transfer/", views.market_stock_transfer, name="market_stock_transfer"),

@@ -452,7 +452,10 @@ class CommerceNotificationTests(TestCase):
         self.assertContains(response, "localStorage.setItem")
         self.assertContains(response, "Find your next favourite.")
         self.assertNotContains(response, "Available now")
-        self.assertNotContains(response, "9876")
+        import re
+        visible = re.sub(r"<(script|style)\b.*?</\1>", "", response.content.decode(), flags=re.S)
+        visible = re.sub(r"<[^>]+>", " ", visible)
+        self.assertNotIn("9876", visible)
         self.assertNotContains(response, "available-stock route")
 
         self.product.image = "commerce/products/business-test/catalogue-image.jpg"
@@ -495,8 +498,11 @@ class CommerceNotificationTests(TestCase):
             business=self.business, name="Store till", account_type="cash", active=True
         )
         CommercePaymentConfiguration.raw_objects.create(
-            business=self.business, cash_enabled=True, cash_account=account
+            business=self.business, cash_enabled=True, cash_account=account, transfer_enabled=True, transfer_account=account
         )
+        from .models import CommerceDirectTransferRoute
+        CommerceDirectTransferRoute.raw_objects.create(business=self.business, name='Bank transfer', bank_name='Test Bank',
+            account_name='Store', account_number='0123456789', transfer_account=account)
         response = self.client.post(reverse("storefront_order", args=[self.business.slug]), {
             "checkout_key": "hosted-basket-one",
             "order_mode": "online",
@@ -518,7 +524,7 @@ class CommerceNotificationTests(TestCase):
         self.assertIn("Amina Shopper", audit_row.description)
 
         checkout_page = self.client.get(response.url)
-        self.assertContains(checkout_page, "Cash")
+        self.assertNotContains(checkout_page, 'value="cash"')
         self.assertContains(checkout_page, "Amina Shopper")
         self.assertContains(checkout_page, "storetrack:storefront-order-history:")
         checkout_status = self.client.get(reverse(
@@ -542,24 +548,30 @@ class CommerceNotificationTests(TestCase):
         self.assertEqual(cross_tenant_status.status_code, 404)
         payment_response = self.client.post(
             reverse("storefront_checkout_payment", args=[self.business.slug, checkout.public_id]),
-            {"method": "cash"},
+            {"method": "transfer"},
         )
         self.assertEqual(payment_response.status_code, 302)
         payment = CommercePayment.raw_objects.get(checkout=checkout)
         self.assertEqual(CommerceIntake.raw_objects.filter(business=self.business).count(), 0)
         pending_page = self.client.get(payment_response.url)
-        self.assertContains(pending_page, "Pay an authorized staff member")
+        self.assertContains(pending_page, "Transfer")
         self.assertContains(pending_page, 'fetch(')
         self.assertNotContains(pending_page, "window.setTimeout(function(){ window.location.reload(); }, 7000)")
         review_page = self.client.get(reverse("commerce_payment_queue"))
         self.assertContains(review_page, "Amina Shopper")
         self.assertContains(review_page, str(checkout.public_id))
 
+        from .models import CommercePaymentClaim
+        claim = CommercePaymentClaim.raw_objects.create(
+            business=self.business, payment=payment, payer_name="Amina Shopper",
+            transfer_reference="hosted-transfer-confirmation",
+        )
         record_verified_payment(
             payment=payment,
             amount=payment.amount,
             actor=self.user,
-            idempotency_key="hosted-cash-confirmation",
+            claim=claim,
+            idempotency_key="hosted-transfer-confirmation",
         )
         checkout.refresh_from_db()
         self.assertEqual(checkout.status, CommerceCheckoutSession.STATUS_MATERIALIZED)
@@ -637,7 +649,7 @@ class CommerceNotificationSocketTests(TransactionTestCase):
     def test_access_resolver_enforces_active_membership_and_permission(self):
         self.assertEqual(
             CommerceNotificationConsumer._resolve_access(self.user, self.business.pk),
-            (self.business.pk, self.user.pk),
+            (self.business.pk, self.user.pk, True),
         )
         self.assertIsNone(
             CommerceNotificationConsumer._resolve_access(self.outsider, self.business.pk)

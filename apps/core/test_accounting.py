@@ -325,6 +325,12 @@ class SearchDetailPurchaseItemsTests(TestCase):
         user = CustomUser.objects.create_superuser(username="items-admin", password="safe-password-123", fullname="Admin")
         self.client.force_login(user)
         page = self.client.get(reverse("dashboard")).content.decode()
-        self.assertIn("i.name + ' × '", page)           # items are objects: name × qty
-        self.assertNotIn("' · ' + r.items :", page)      # the raw-object concatenation is gone
-        self.assertIn("excessLines(row)", page)          # activity-tab surplus uses the help tip
+        # The search script is a cached static asset (not inlined), so assert against its source.
+        from django.contrib.staticfiles import finders
+        with open(finders.find("core/js/dashboard-search.js"), encoding="utf-8") as handle:
+            script = handle.read()
+        self.assertIn("i.name + ' × '", script)          # items are objects: name × qty
+        self.assertNotIn("' · ' + r.items :", script)    # the raw-object concatenation is gone
+        self.assertNotIn("' · ' + r.items :", page)
+        self.assertIn("/static/core/js/dashboard-search.js", page)
+        self.assertIn("excessLines(row)", page)          # activity-tab surplus uses the help tip (template markup)

@@ -46,12 +46,12 @@
   },
   {
     "id": "procurement",
-    "name": "Procurement and receiving",
+    "name": "Multi-vendor purchase requests, approval and sharing",
     "group": "operations",
     "audience": "procurement and store teams",
-    "proof": "Receive purchase orders into stock with unit conversion and cost updates handled together.",
-    "highlight": "",
-    "added_on": ""
+    "proof": "Enter vendor-specific items in one request, approve the full request once, then receive and settle each vendor independently. Share the combined preview and paper snapshot while preserving separate supplier invoices, advances and cost history.",
+    "highlight": "NEW",
+    "added_on": "2026-11-04"
   },
   {
     "id": "wholesale-retail",
@@ -139,9 +139,9 @@
     "name": "Receivables, payables and partial settlement",
     "group": "finance",
     "audience": "owners and finance teams",
-    "proof": "Track what is owed separately from real cash movement and support partial settlement without false paid states.",
-    "highlight": "",
-    "added_on": ""
+    "proof": "Record partial customer collections across Cash, Card and Transfer with a receiving account and reference per part. Finance retains the outstanding invoice balance until later receipts settle it; vendor purchase orders keep independent advances and balances.",
+    "highlight": "NEW",
+    "added_on": "2026-11-04"
   },
   {
     "id": "finance-ledger",
@@ -157,7 +157,7 @@
     "name": "Expenses and expense settlement",
     "group": "finance",
     "audience": "owners and finance teams",
-    "proof": "Record business expenses, distinguish unpaid obligations from actual settlement, and feed paid amounts into the cash ledger.",
+    "proof": "Track remaining obligations, prevent overpayment, and correct paid expenses through linked compensating cash entries.",
     "highlight": "",
     "added_on": ""
   },
@@ -343,10 +343,10 @@
   },
   {
     "id": "reports-backup",
-    "name": "Reports, exports and business backup",
+    "name": "Reports, exports and tenant backup",
     "group": "governance",
     "audience": "owners, managers and auditors",
-    "proof": "Generate a date-range monthly PDF with revenue, sales-origin, procurement, production and inventory charts and tables, alongside exports and a tenant backup.",
+    "proof": "Export operational history across tax, Books, payroll, Commerce, WhatsApp and stock; tenant backup v2 remaps restored references and disables outbound automation and plaintext credentials.",
     "highlight": "NEW",
     "added_on": "2026-09-25"
   },
@@ -409,7 +409,7 @@
     "name": "Interactive product demos",
     "group": "experience",
     "audience": "prospective businesses exploring INPROFIC",
-    "proof": "The marketing site provides a vertical-aware workflow, a floating module constellation with flowing brand connectors and viewport-centred previews, plus a detailed storefront-to-fulfilment flow.",
+    "proof": "Explore five service profiles, nine logo-connected modules with keyboard-accessible previews, and autoplaying general/storefront walkthroughs. The stock-to-sale example follows the selected service. Illustrative data, reduced-motion support and shared light/dark themes keep the demonstrations clear.",
     "highlight": "NEW",
     "added_on": "2026-09-21"
   },
@@ -478,11 +478,65 @@
   },
   {
     "id": "ledger-cutover-complete-dashboard",
-    "name": "Ledger cut-over and Complete Dashboard",
+    "name": "Ledger cut-over and Executive Dashboard",
     "group": "finance",
     "audience": "business admins, owners and operating managers",
-    "proof": "Set a live ledger start date, review opening stock and cash, work older dated records in a permission-controlled backlog, and review a lazy, permission-filtered Complete Dashboard alongside the existing Simple view.",
+    "proof": "Set a live ledger start date, preserve permission-controlled backlog records, and explore existing datasets in the Executive dashboard with section navigation and normal page scrolling alongside the Basic view.",
     "highlight": "NEW",
-    "added_on": "2026-10-21"
+    "added_on": "2026-11-04"
+  },
+  {
+    "id": "daily-brief",
+    "name": "Holistic Daily Brief and Weekly Summary with executive snapshots",
+    "group": "insights",
+    "audience": "business owners and dashboard users",
+    "proof": "Choose daily and weekly report sections independently. Review stock risks, sales, canonical P&L, cash and named supplier/vendor balances plus vertical-aware operations. Share selected text with a bounded paper-style executive image and authenticated dashboard link, respecting sender permissions.",
+    "highlight": "NEW",
+    "added_on": "2026-11-04"
+  },
+  {
+    "id": "double-entry-books",
+    "name": "Double-entry books from operational records",
+    "group": "finance",
+    "audience": "business owners, finance teams and accountants",
+    "proof": "Open Books from Finance to build a balanced journal, trial balance and statements on demand; keep manual journals across rebuilds and compare book balances with operational records.",
+    "highlight": "NEW",
+    "added_on": "2026-10-28"
+  },
+  {
+    "id": "vat-einvoicing",
+    "name": "VAT reporting and structured e-invoices",
+    "group": "finance",
+    "audience": "business admins, finance teams and accountants",
+    "proof": "Open Tax & VAT and E-invoices from Finance, configure VAT-inclusive reporting and product treatments, record input VAT, and prepare invoices from recorded Sales for provider submission or manual clearance tracking.",
+    "highlight": "NEW",
+    "added_on": "2026-10-28"
+  },
+  {
+    "id": "workspace-dialog-experience",
+    "name": "Theme-aware workspace dialogs and searchable selections",
+    "group": "experience",
+    "audience": "owners, managers and operational staff",
+    "proof": "Edit routine records in contained dialogs, keep Django validation and formset behavior, search selection options, confirm destructive actions, and keep logos and visual buttons readable across themes and tenant palettes.",
+    "highlight": "NEW",
+    "added_on": "2026-10-28"
+  },
+  {
+    "id": "staff-assistant-custom-questions",
+    "name": "Activity-tray assistant with record-backed custom questions",
+    "group": "insights",
+    "audience": "business admins",
+    "proof": "Ask in the responsive activity tray; map business-specific questions to existing permission-checked reports and answer them without an AI provider.",
+    "highlight": "NEW",
+    "added_on": "2026-11-04"
+  },
+  {
+    "id": "distribution-summary-sharing",
+    "name": "Concise daily distribution snapshots with financial cards",
+    "group": "operations",
+    "audience": "owners and store teams",
+    "proof": "Choose a distribution date and share a compact product/customer table of made or received quantities, customer allocations and stock remaining now. Financial cards show original value, returns, net value, collections and balances when Finance access permits. Full accompanying text carries every detail, including payment methods; recorded returns remain separate.",
+    "highlight": "NEW",
+    "added_on": "2026-11-04"
   }
 ]

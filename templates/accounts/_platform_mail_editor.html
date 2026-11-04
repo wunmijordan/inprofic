@@ -24,13 +24,13 @@
   shell.className = 'overflow-hidden rounded-lg border border-[#D9CFB4] bg-white';
   shell.innerHTML = `
     <div class="flex flex-wrap items-center gap-1 border-b border-[#E7DFCC] bg-[#FFFDF8] p-2" role="toolbar" aria-label="Message formatting">
-      <button type="button" data-command="bold" class="rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs font-bold" aria-label="Bold">Bold</button>
-      <button type="button" data-command="italic" class="rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs italic" aria-label="Italic">Italic</button>
-      <button type="button" data-command="insertUnorderedList" class="rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs" aria-label="Bulleted list">Bullets</button>
-      <button type="button" data-command="insertOrderedList" class="rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs" aria-label="Numbered list">Numbers</button>
-      <button type="button" data-link class="rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs" aria-label="Add link">Link</button>
-      <button type="button" data-command="removeFormat" class="rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs" aria-label="Clear formatting">Clear</button>
-      <button type="button" data-source-toggle class="ml-auto rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs" aria-expanded="false">HTML source</button>
+      <button data-button-surface type="button" data-command="bold" class="rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs font-bold" aria-label="Bold">Bold</button>
+      <button data-button-surface type="button" data-command="italic" class="rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs italic" aria-label="Italic">Italic</button>
+      <button data-button-surface type="button" data-command="insertUnorderedList" class="rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs" aria-label="Bulleted list">Bullets</button>
+      <button data-button-surface type="button" data-command="insertOrderedList" class="rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs" aria-label="Numbered list">Numbers</button>
+      <button data-button-surface type="button" data-link class="rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs" aria-label="Add link">Link</button>
+      <button data-button-surface type="button" data-command="removeFormat" class="rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs" aria-label="Clear formatting">Clear</button>
+      <button data-button-surface type="button" data-source-toggle class="ml-auto rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs" aria-expanded="false">HTML source</button>
     </div>
     <div data-editor contenteditable="true" role="textbox" aria-multiline="true" class="min-h-64 p-3 text-sm leading-7 text-stone-700 outline-none"></div>
   `;

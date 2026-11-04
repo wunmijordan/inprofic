@@ -51,20 +51,6 @@ class Customer(BusinessOwnedModel):
                 Decimal("0"),
                 sale.total - sum((payment.amount for payment in sale.payments.all()), Decimal("0")),
             )
-        from core.context import get_ledger_cutover_date, get_ledger_scope
-        cutover_date = get_ledger_cutover_date()
-        if get_ledger_scope() == "live" and cutover_date:
-            from core.models import LedgerCutover, OpeningPosition
-            cutover = LedgerCutover.raw_objects.filter(business_id=self.business_id).order_by("-id").first()
-            if cutover and cutover.status in {
-                LedgerCutover.STATUS_OPEN, LedgerCutover.STATUS_COMPLETE, LedgerCutover.STATUS_ARCHIVED,
-            }:
-                position = OpeningPosition.raw_objects.filter(
-                    business_id=self.business_id, cutover=cutover, segment="live",
-                    kind="receivable", object_id=self.pk,
-                ).first()
-                if position and position.amount:
-                    total += position.amount
         return total
 
 
@@ -108,10 +94,10 @@ class CustomerProductPrice(BusinessOwnedModel):
 
 
 class Sale(BusinessOwnedModel):
-    ledger_date_field = "date"
     """A completed stock/sales event. Physical-store rows may be paid or
     unpaid product issues; Distribution/Online rows may remain receivables
     until Finance records one or more CustomerPayment entries."""
+    ledger_date_field = "date"
 
     PAYMENT_CHOICES = [("Cash", "Cash"), ("Card", "Card"), ("Transfer", "Transfer")]
     TRANSACTION_CHOICES = [("paid", "Paid"), ("partial", "Partially Paid"), ("unpaid", "Unpaid")]
@@ -185,6 +171,8 @@ class SaleItem(TimestampedModel):
     finished_good = models.ForeignKey("inventory.FinishedGood", on_delete=models.PROTECT)
     batch_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     piece_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    units_per_batch_snapshot = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True, editable=False)
+    quantity_snapshot_source = models.CharField(max_length=30, default="sale", editable=False)
     discount = models.DecimalField(max_digits=12, decimal_places=2, default=0, blank=True)
     price = models.DecimalField(max_digits=12, decimal_places=2, default=0,
         help_text="Snapshot of the product's selling price at sale time — set automatically.")
@@ -210,9 +198,16 @@ class SaleItem(TimestampedModel):
     def __str__(self):
         return f"{self.sale.customer} — {self.finished_good.name} x{self.total_units}"
 
+    def save(self, *args, **kwargs):
+        if self.units_per_batch_snapshot is None:
+            self.units_per_batch_snapshot = self.finished_good.units_per_batch or Decimal("1")
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {"units_per_batch_snapshot", "quantity_snapshot_source"}
+        return super().save(*args, **kwargs)
+
     @property
     def total_units(self):
-        upb = self.finished_good.units_per_batch or Decimal("1")
+        upb = self.units_per_batch_snapshot or self.finished_good.units_per_batch or Decimal("1")
         return self.batch_qty * upb + self.piece_qty
 
     @property

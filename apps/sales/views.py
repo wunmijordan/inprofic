@@ -15,6 +15,7 @@ from inventory.services import consume_transferred_physical_stock, record_finish
 from inventory.models import StockMovement
 from core.invoice import sale_invoice_pdf
 from core.services import record_cash, audit
+from core import ledger
 from core.models import FinancialTransaction
 from core.verticals import vertical_config
 
@@ -114,6 +115,7 @@ def sales_list(request):
 
 
 @login_required
+@transaction.atomic
 def sale_form(request):
     """Physical store stock only — immediate, deducts from existing shelf
     stock right away. For a customer order or a physical store restock
@@ -128,6 +130,18 @@ def sale_form(request):
         form = SaleForm(request.POST, business=request.business)
         formset = SaleItemFormSet(request.POST, instance=Sale())
         if form.is_valid() and formset.is_valid():
+            product_ids = sorted({f.cleaned_data['finished_good'].pk for f in formset.forms
+                                  if f.cleaned_data and not f.cleaned_data.get('DELETE')})
+            locked = {g.pk: g for g in FinishedGood.objects.select_for_update().filter(pk__in=product_ids).order_by('pk')}
+            required = {}
+            for row in formset.forms:
+                if not row.cleaned_data or row.cleaned_data.get('DELETE'):
+                    continue
+                good = locked[row.cleaned_data['finished_good'].pk]
+                row.cleaned_data['finished_good'] = good
+                row.instance.finished_good = good
+                qty = (row.cleaned_data.get('batch_qty') or Decimal('0')) * (good.units_per_batch or Decimal('1')) + (row.cleaned_data.get('piece_qty') or Decimal('0'))
+                required[good.pk] = required.get(good.pk, Decimal('0')) + qty
             # Defence in depth: the form queryset already restricts choices,
             # but never rely on browser-side/form rendering restrictions alone.
             invalid_products = [
@@ -142,17 +156,22 @@ def sale_form(request):
                     "finished_good",
                     "Only products in physical-store shelf stock can be sold here.",
                 )
-            force = request.POST.get("force") == "1"
+            # Backlog entry records history, so live shortage checks do not apply.
+            force = request.POST.get("force") == "1" or ledger.is_backlog_scope()
             shortages = []
+            checked = set()
             for f in formset.forms:
                 if not f.cleaned_data or f.cleaned_data.get("DELETE"):
                     continue
                 good = f.cleaned_data["finished_good"]
+                if good.pk in checked:
+                    continue
+                checked.add(good.pk)
                 if not good.can_sell_from_physical_store:
                     shortages.append({"name": good.name, "unit": good.unit, "needed": Decimal("0"), "have": Decimal("0"), "short": Decimal("0"), "message": "Not available for physical-store sales."})
                     continue
                 upb = good.units_per_batch or Decimal("1")
-                total_units = (f.cleaned_data.get("batch_qty") or Decimal("0")) * upb + (f.cleaned_data.get("piece_qty") or Decimal("0"))
+                total_units = required[good.pk]
                 # Customer checkout reservations are a temporary hard hold.
                 # Direct/POS sales must not consume those units while a website
                 # customer is paying, otherwise a fully paid checkout could
@@ -237,7 +256,7 @@ def sale_form(request):
             messages.success(request, "Sale recorded.")
             return redirect("sales_list")
     else:
-        form = SaleForm(initial={"date": today(), "customer": "Walk-in"}, business=request.business)
+        form = SaleForm(initial={"date": ledger.default_entry_date(), "customer": "Walk-in"}, business=request.business)
         formset = SaleItemFormSet(instance=Sale())
     prices, customer_prices = _direct_sale_prices(sale_channel, saleable_products)
     return render(request, "sales/sale_form.html", {
@@ -249,16 +268,16 @@ def sale_form(request):
 
 
 @login_required
+@transaction.atomic
 def sale_delete(request, pk):
-    obj = get_object_or_404(Sale, pk=pk)
+    obj = get_object_or_404(Sale.objects.select_for_update(), pk=pk)
     if request.method == "POST":
         if obj.market_stock_movements.exists():
             messages.error(request, "A Market Stock release sale cannot be deleted because it has inventory allocation history. Record a Distribution return instead.")
         elif obj.items.filter(distribution_returns__isnull=False).exists():
             messages.error(request, "This Distribution sale has recorded returns and cannot be deleted.")
         else:
-            obj.delete()
-            messages.success(request, "Removed.")
+            messages.error(request, "Recorded sales cannot be deleted because stock, payments and invoices depend on them. Use the originating order reversal or a stock return to correct posted activity.")
     return redirect("sales_list")
 
 @login_required

@@ -14,7 +14,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django.core import serializers
 from django.core.cache import cache
-from django.db.models import Case, DecimalField, ExpressionWrapper, F, Prefetch, Q, Sum, Value, When
+from django.db.models import ExpressionWrapper, F, Prefetch, Q, Sum
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
@@ -140,7 +140,7 @@ def marketing_home(request):
         # already cached marketing pages.
         from accounts.platform_integrations import shipbubble_platform_enabled, whatsapp_storefront_platform_enabled
         marketing_cache_key = (
-            f"marketing:home:v5:{request.get_host().lower()}:"
+            f"marketing:home:v12:{cache.get('marketing:revision', 'initial')}:{request.get_host().lower()}:"
             f"shipbubble-{int(shipbubble_platform_enabled())}-"
             f"whatsapp-{int(whatsapp_storefront_platform_enabled())}"
         )
@@ -534,38 +534,8 @@ def _financial_daily_ledgers(start, end):
     # Aggregate paid-sale revenue and COGS in one tenant-scoped query instead
     # of loading Sale rows and their item relation in two sequential round trips.
     # These expressions mirror SaleItem.line_total and SaleItem.total_units.
-    money_field = DecimalField(max_digits=24, decimal_places=6)
-    units_field = DecimalField(max_digits=20, decimal_places=4)
-    units_per_batch = Case(
-        When(items__finished_good__units_per_batch__gt=0, then=F("items__finished_good__units_per_batch")),
-        default=Value(Decimal("1")),
-        output_field=units_field,
-    )
-    total_units = ExpressionWrapper(
-        F("items__batch_qty") * units_per_batch + F("items__piece_qty"),
-        output_field=units_field,
-    )
-    standard_line_total = ExpressionWrapper(
-        total_units * (F("items__price") - F("items__discount")),
-        output_field=money_field,
-    )
-    commercial_line_total = ExpressionWrapper(
-        F("items__commercial_quantity") * F("items__commercial_unit_price"),
-        output_field=money_field,
-    )
-    line_total = Case(
-        When(
-            items__commercial_quantity__isnull=False,
-            items__commercial_unit_price__isnull=False,
-            then=commercial_line_total,
-        ),
-        default=standard_line_total,
-        output_field=money_field,
-    )
-    cogs_total = ExpressionWrapper(
-        Coalesce(F("items__unit_cost"), Value(Decimal("0")), output_field=money_field) * total_units,
-        output_field=money_field,
-    )
+    from .accounting import _sale_expressions
+    money_field, line_total, cogs_total, _units = _sale_expressions()
     sales_rows = Sale.objects.filter(
         date__range=(start, end), transaction_type="paid"
     ).values("date").annotate(
@@ -1358,6 +1328,9 @@ def _raw_search_detail(material):
         for line in purchase_lines
     ]
 
+    from inventory.recipe_ratios import material_relations
+    material_links = material_relations(material)
+    relations_by_product = {entry["product_id"]: entry for entry in material_links["used_in"]}
     linked_goods = []
     goods = FinishedGood.objects.filter(
         Q(recipe_items__raw_material=material) |
@@ -1372,10 +1345,14 @@ def _raw_search_detail(material):
             (x.qty_per_batch for x in good.production_materials.filter(raw_material=material)),
             Decimal("0"),
         )
+        relation = relations_by_product.get(good.pk, {})
         linked_goods.append({
             "name": good.name,
             "qty_per_batch": _decimal(recipe_qty + production_qty),
             "usage_unit": material.usage_unit,
+            "relation": relation.get("relation", ""),
+            "percent_text": relation.get("percent_text", ""),
+            "is_base": relation.get("is_base", False),
         })
 
     return {
@@ -1402,6 +1379,7 @@ def _raw_search_detail(material):
         "price_history": price_history,
         "purchases": purchases[-50:][::-1],
         "linked_goods": linked_goods,
+        "base_for": material_links["base_for"],
     }
 
 
@@ -1416,6 +1394,9 @@ def _finished_good_search_detail(good):
     periods = _search_periods()
     recipe_lines = list(good.recipe_items.select_related("raw_material"))
     production_lines = list(good.production_materials.select_related("raw_material"))
+    from inventory.recipe_ratios import product_relations
+    recipe_relations = product_relations(good, recipe_lines)
+    relation_by_material = {row["material_id"]: row for row in recipe_relations["rows"]}
     # Current recipe cost is retained for the summary card only. Historical
     # production/sale calculations must use frozen production-cost snapshots,
     # whose material lines were priced from the latest received procurement
@@ -1596,8 +1577,19 @@ def _finished_good_search_detail(good):
         "profitability": _product_profitability_payload(good),
         "production_channels": channel_rows,
         "sales_channels": sales_by_channel,
+        "base_material": (
+            {"name": recipe_relations["base"]["name"], "text": recipe_relations["base"]["text"]}
+            if recipe_relations["base"] else None
+        ),
+        "recipe_warnings": recipe_relations["warnings"],
         "recipe": [
-            {"name": line.raw_material.name, "qty_per_batch": _decimal(line.qty_per_batch), "unit": line.raw_material.usage_unit, "current_cost": _money(line.raw_material.cost_per_unit)}
+            {
+                "name": line.raw_material.name, "qty_per_batch": _decimal(line.qty_per_batch),
+                "unit": line.raw_material.usage_unit, "current_cost": _money(line.raw_material.cost_per_unit),
+                "relation": relation_by_material.get(line.raw_material_id, {}).get("relation", ""),
+                "percent_text": relation_by_material.get(line.raw_material_id, {}).get("percent_text", ""),
+                "is_base": relation_by_material.get(line.raw_material_id, {}).get("is_base", False),
+            }
             for line in recipe_lines + production_lines
         ],
         "note": (
@@ -1934,7 +1926,7 @@ def dashboard(request):
     requested_complete = request.GET.get("view") == "complete"
     preferred_complete = request.GET.get("view") != "simple" and preferred_view == "complete"
     if can_access_complete_dashboard and (requested_complete or preferred_complete):
-        return redirect("complete_dashboard")
+        return redirect(reverse("complete_dashboard") + ("?assistant=1" if request.GET.get("assistant") == "1" else ""))
     if (
         can_access_complete_dashboard
         and request.GET.get("view") != "simple"
@@ -1942,7 +1934,7 @@ def dashboard(request):
         and membership
         and membership.role.key in {"manager", "md_director"}
     ):
-        return redirect("complete_dashboard")
+        return redirect(reverse("complete_dashboard") + ("?assistant=1" if request.GET.get("assistant") == "1" else ""))
     dashboard_date = today()
     month_start = dashboard_date.replace(day=1)
     year_start = dashboard_date.replace(month=1, day=1)
@@ -2121,6 +2113,7 @@ def dashboard(request):
         "stock_unit": stock_unit,
     }
     with performance_section(request, "dashboard.render"):
+        context["can_use_complete_dashboard"] = can_access_complete_dashboard
         return render(request, "core/dashboard.html", context)
 
 
@@ -2539,7 +2532,15 @@ def backup_json(request):
     business = getattr(request, "business", None)
     if business is None:
         return JsonResponse({"error": "No active business is selected."}, status=400)
-    data = serializers.serialize("json", tenant_backup_objects(business), indent=2)
+    from django.apps import apps
+    records = json.loads(serializers.serialize("json", tenant_backup_objects(business)))
+    from accounts.backup_restore import _restore_safety
+    for record in records:
+        model = apps.get_model(record['model'])
+        record['fields'] = _restore_safety(model, record['fields'])
+    data = json.dumps({'format': 'inprofic-tenant-backup', 'version': 2, 'business': business.pk,
+                       'credential_policy': 'Plaintext credentials excluded; reconnect providers after restore. Encrypted credentials require the original encryption key.',
+                       'records': records}, indent=2)
     response = HttpResponse(data, content_type="application/json")
     response["Content-Disposition"] = f'attachment; filename="inprofic-{business.slug}-backup-{today()}.json"'
     response["X-Content-Type-Options"] = "nosniff"

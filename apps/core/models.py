@@ -83,6 +83,10 @@ class Business(models.Model):
         max_length=10, choices=PROFIT_PERIOD_CHOICES, default=PROFIT_PERIOD_YEAR,
         help_text="How long each profit and loss reporting period runs.",
     )
+    assistant_enabled = models.BooleanField(
+        default=False,
+        help_text="Pilot switch (set by platform staff): lets this business's admins use the read-only staff assistant.",
+    )
 
     class Meta:
         verbose_name_plural = "businesses"
@@ -108,7 +112,7 @@ class Business(models.Model):
 
     @staticmethod
     def _contrast_color(value):
-        """Return whichever brand foreground has the stronger WCAG contrast."""
+        """Return a readable neutral foreground for the configured fill."""
         try:
             channels = [int(value[index:index + 2], 16) / 255 for index in (1, 3, 5)]
         except (TypeError, ValueError):
@@ -124,10 +128,8 @@ class Business(models.Model):
             return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
 
         background = luminance(channels)
-        dark = luminance([0x18 / 255, 0x24 / 255, 0x33 / 255])
-        dark_ratio = (max(background, dark) + 0.05) / (min(background, dark) + 0.05)
-        white_ratio = 1.05 / (background + 0.05)
-        return "#182433" if dark_ratio >= white_ratio else "#FFFFFF"
+        # Keep medium and deep brand fills on the light-label treatment.
+        return "#182433" if background >= 0.6 else "#FFFFFF"
 
     @property
     def button_text_color(self):
@@ -214,9 +216,18 @@ class BusinessManager(models.Manager):
         date_field = getattr(self.model, "ledger_date_field", None)
         scope = get_ledger_scope()
         cutover_date = get_ledger_cutover_date()
-        if date_field and scope and cutover_date and scope != "all":
-            lookup = f"{date_field}__{'lt' if scope == 'backlog' else 'gte'}"
-            qs = qs.filter(**{lookup: cutover_date})
+        if not (scope in {"live", "backlog"} and cutover_date):
+            return qs
+        if date_field:
+            if scope == "backlog":
+                return qs.filter(**{f"{date_field}__lt": cutover_date})
+            live = models.Q(**{f"{date_field}__gte": cutover_date})
+            if self.model._meta.get_field(date_field).null:
+                live |= models.Q(**{f"{date_field}__isnull": True})
+            return qs.filter(live)
+        if hasattr(self.model, "ledger_scope_q"):
+            # Models whose segment is not a plain date (e.g. market stock lots).
+            return qs.filter(self.model.ledger_scope_q(scope, cutover_date))
         return qs
 
 
@@ -243,9 +254,11 @@ class LedgerCutover(BusinessOwnedModel):
     STATUS_COMPLETE = "complete"
     STATUS_MERGED = "merged"
     STATUS_ARCHIVED = "archived"
+    STATUS_REVERTED = "reverted"
     STATUS_CHOICES = [
         (STATUS_OPEN, "Open"), (STATUS_COMPLETE, "Complete"),
         (STATUS_MERGED, "Merged"), (STATUS_ARCHIVED, "Archived"),
+        (STATUS_REVERTED, "Reverted to combined mode"),
     ]
     cutover_date = models.DateField()
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=STATUS_OPEN)
@@ -256,7 +269,7 @@ class LedgerCutover(BusinessOwnedModel):
 
     class Meta:
         constraints = [models.UniqueConstraint(
-            fields=["business"], condition=~models.Q(status="archived"),
+            fields=["business"], condition=~models.Q(status__in=["archived", "reverted"]),
             name="one_active_ledger_cutover_per_business",
         )]
 
@@ -304,36 +317,15 @@ class CashAccount(BusinessOwnedModel):
         calculated = getattr(self, "_calculated_balance", None)
         if calculated is not None:
             return calculated
-        from .context import get_ledger_cutover_date, get_ledger_scope
-        scope = get_ledger_scope()
-        cutover_date = get_ledger_cutover_date()
-        from .ledger import active_cutover
-        cutover = active_cutover(self.business)
-        if not cutover and scope == "live" and cutover_date:
-            cutover = LedgerCutover.raw_objects.filter(
-                business_id=self.business_id, status=LedgerCutover.STATUS_ARCHIVED,
-            ).order_by("-id").first()
-        if cutover and cutover.status == LedgerCutover.STATUS_MERGED:
-            position = OpeningPosition.raw_objects.filter(
-                business_id=self.business_id, cutover=cutover,
-                segment="live", kind="cash", object_id=self.pk,
-            ).first()
-            opening = position.amount if position and position.amount is not None else self.opening_balance
-            live_transactions = self.transactions.filter(date__gte=cutover.cutover_date)
-            return opening + sum((t.signed_amount for t in live_transactions), Decimal("0"))
-        if scope in {"live", "backlog"} and cutover_date:
-            position = OpeningPosition.raw_objects.filter(
-                business_id=self.business_id, cutover=cutover,
-                segment=scope, kind="cash", object_id=self.pk,
-            ).first()
-            opening = (position.amount if position and position.amount is not None else self.opening_balance)
-            return opening + sum((t.signed_amount for t in self.transactions.all()), Decimal("0"))
-        return self.opening_balance + sum((t.signed_amount for t in self.transactions.all()), Decimal("0"))
+        from . import ledger
+        _segment, floor = ledger.cash_scope(self.business_id)
+        transactions = self.transactions.filter(date__gte=floor) if floor else self.transactions.all()
+        return ledger.cash_opening(self) + sum((t.signed_amount for t in transactions), Decimal("0"))
 
 
 class FinancialTransaction(BusinessOwnedModel):
-    ledger_date_field = "date"
     """Immutable-style cash ledger entry. Positive income, negative outflow."""
+    ledger_date_field = "date"
     INCOME = "income"
     OUTFLOW = "outflow"
     TYPE_CHOICES = [(INCOME, "Money In"), (OUTFLOW, "Money Out")]
@@ -407,3 +399,220 @@ class AuditQuery(BusinessOwnedModel):
 
     def __str__(self):
         return f"{self.subject} — {self.get_status_display()}"
+
+
+class BankStatement(BusinessOwnedModel):
+    """A bank/card/transfer statement loaded to reconcile one CashAccount."""
+    STATUS_OPEN = "open"
+    STATUS_RECONCILED = "reconciled"
+    STATUS_CHOICES = [(STATUS_OPEN, "In progress"), (STATUS_RECONCILED, "Reconciled")]
+
+    account = models.ForeignKey(CashAccount, on_delete=models.PROTECT, related_name="statements")
+    label = models.CharField(max_length=120, blank=True, default="")
+    period_start = models.DateField()
+    period_end = models.DateField()
+    closing_balance = models.DecimalField(max_digits=16, decimal_places=2)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=STATUS_OPEN)
+    reconciled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-period_end", "-id"]
+        indexes = [models.Index(fields=["business", "account", "period_end"], name="bankstmt_biz_acct_end_idx")]
+
+    def __str__(self):
+        return f"{self.account.name} statement to {self.period_end}"
+
+
+class BankStatementLine(TimestampedModel):
+    """One line of a statement; signed amount (+ money in, - money out)."""
+    statement = models.ForeignKey(BankStatement, on_delete=models.CASCADE, related_name="lines")
+    date = models.DateField()
+    description = models.CharField(max_length=255, blank=True, default="")
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
+    matched_transaction = models.ForeignKey(
+        FinancialTransaction, null=True, blank=True, on_delete=models.SET_NULL, related_name="statement_lines"
+    )
+    matched_at = models.DateTimeField(null=True, blank=True)
+    matched_automatically = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["date", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["matched_transaction"], condition=models.Q(matched_transaction__isnull=False),
+                name="unique_statement_line_per_transaction",
+            ),
+        ]
+
+
+class FinancialPackShare(BusinessOwnedModel):
+    """A revocable, expiring, read-only link to the business's financial pack."""
+    token_hash = models.CharField(max_length=64, unique=True)
+    label = models.CharField(max_length=120, blank=True, default="")
+    period_start = models.DateField()
+    period_end = models.DateField()
+    include_backlog = models.BooleanField(default=False)
+    expires_at = models.DateTimeField()
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    last_viewed_at = models.DateTimeField(null=True, blank=True)
+    view_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    @property
+    def is_active(self):
+        from django.utils import timezone
+        return self.revoked_at is None and self.expires_at > timezone.now()
+
+
+class DailyBriefPreference(BusinessOwnedModel):
+    """A member's opt-in to the morning business brief by email."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="daily_brief_preferences")
+    report_sections = models.JSONField(default=dict, blank=True, help_text="Selected report sections per daily/weekly mode; absent modes include all permitted sections.")
+    send_email = models.BooleanField(default=False)
+    last_sent_on = models.DateField(null=True, blank=True)
+    whatsapp_enabled = models.BooleanField(default=False)
+    whatsapp_number = models.CharField(max_length=20, blank=True, default="", help_text="Digits only, with country code.")
+    whatsapp_consent_at = models.DateTimeField(null=True, blank=True)
+    last_whatsapp_on = models.DateField(null=True, blank=True)
+    last_whatsapp_status = models.CharField(max_length=20, blank=True, default="")
+    last_whatsapp_error = models.CharField(max_length=255, blank=True, default="")
+    send_weekly_email = models.BooleanField(default=False)
+    last_weekly_for = models.DateField(null=True, blank=True, help_text="Monday of the last week already emailed.")
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["business", "user"], name="unique_daily_brief_pref")]
+
+
+# ---------------------------------------------------------------------------
+# Books (double-entry), VAT and e-invoicing
+# ---------------------------------------------------------------------------
+
+class LedgerAccount(BusinessOwnedModel):
+    """A line in the chart of accounts."""
+    ASSET, LIABILITY, EQUITY, INCOME, EXPENSE = "asset", "liability", "equity", "income", "expense"
+    TYPE_CHOICES = [(ASSET, "Asset"), (LIABILITY, "Liability"), (EQUITY, "Equity"), (INCOME, "Income"), (EXPENSE, "Expense")]
+    code = models.CharField(max_length=10)
+    name = models.CharField(max_length=120)
+    account_type = models.CharField(max_length=10, choices=TYPE_CHOICES)
+    system_key = models.CharField(max_length=40, blank=True, default="", help_text="Set on accounts the posting rules rely on.")
+    cash_account = models.OneToOneField(CashAccount, null=True, blank=True, on_delete=models.SET_NULL, related_name="books_account")
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["code"]
+        constraints = [models.UniqueConstraint(fields=["business", "code"], name="unique_ledger_account_code")]
+
+    @property
+    def normal_side(self):
+        return "debit" if self.account_type in (self.ASSET, self.EXPENSE) else "credit"
+
+    def __str__(self):
+        return f"{self.code} {self.name}"
+
+
+class JournalEntry(BusinessOwnedModel):
+    """One balanced posting. System entries are rebuilt from records; manual ones are kept."""
+    date = models.DateField()
+    memo = models.CharField(max_length=255, blank=True, default="")
+    source_type = models.CharField(max_length=30)
+    source_id = models.CharField(max_length=40, blank=True, default="")
+    is_system = models.BooleanField(default=True)
+    reverses = models.OneToOneField("self", null=True, blank=True, on_delete=models.PROTECT, related_name="reversed_by")
+
+    class Meta:
+        ordering = ["date", "id"]
+        verbose_name_plural = "journal entries"
+        indexes = [
+            models.Index(fields=["business", "date"], name="journal_biz_date_idx"),
+            models.Index(fields=["business", "source_type", "source_id"], name="journal_biz_source_idx"),
+        ]
+
+
+class JournalLine(TimestampedModel):
+    entry = models.ForeignKey(JournalEntry, on_delete=models.CASCADE, related_name="lines")
+    account = models.ForeignKey(LedgerAccount, on_delete=models.PROTECT, related_name="lines")
+    debit = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    credit = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    memo = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        indexes = [models.Index(fields=["account", "entry"], name="journalline_acct_entry_idx")]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(debit__gte=0, credit__gte=0) & ~models.Q(debit=0, credit=0) & (models.Q(debit=0) | models.Q(credit=0)),
+                name="journal_line_one_side_positive",
+            ),
+        ]
+
+
+class BooksState(BusinessOwnedModel):
+    rebuilt_at = models.DateTimeField(null=True, blank=True)
+    entry_count = models.PositiveIntegerField(default=0)
+    suspense_total = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["business"], name="unique_books_state_per_business")]
+
+
+class TaxSettings(BusinessOwnedModel):
+    """VAT and e-invoicing configuration. Rates and thresholds are settings, not law."""
+    PROVIDER_NONE, PROVIDER_WEBHOOK = "none", "webhook"
+    vat_registered = models.BooleanField(default=False)
+    vat_registration_date = models.DateField(null=True, blank=True)
+    tin = models.CharField("Tax identification number (TIN)", max_length=30, blank=True, default="")
+    vat_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("7.50"))
+    registration_threshold = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal("25000000"),
+        help_text="Annual turnover above which you may need to register. Confirm the current figure with the tax authority.",
+    )
+    filing_due_day = models.PositiveSmallIntegerField(default=21, help_text="Day of the following month the VAT return is due.")
+    einvoice_enabled = models.BooleanField(default=False)
+    einvoice_provider = models.CharField(max_length=10, choices=[(PROVIDER_NONE, "None (manual)"), (PROVIDER_WEBHOOK, "HTTPS provider")], default=PROVIDER_NONE)
+    einvoice_endpoint = models.URLField(blank=True, default="")
+    einvoice_api_key_encrypted = models.TextField(blank=True, default="")
+    invoice_prefix = models.CharField(max_length=12, default="INV")
+    next_invoice_number = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["business"], name="unique_tax_settings_per_business")]
+
+
+class InputVatEntry(BusinessOwnedModel):
+    """VAT you paid on purchases or expenses, taken from supplier invoices."""
+    KIND_PURCHASE, KIND_EXPENSE = "purchase", "expense"
+    date = models.DateField()
+    supplier = models.CharField(max_length=160, blank=True, default="")
+    reference = models.CharField("Supplier invoice no.", max_length=80, blank=True, default="")
+    kind = models.CharField(max_length=10, choices=[(KIND_PURCHASE, "Stock purchase"), (KIND_EXPENSE, "Expense")], default=KIND_PURCHASE)
+    net_amount = models.DecimalField(max_digits=16, decimal_places=2)
+    vat_amount = models.DecimalField(max_digits=16, decimal_places=2)
+    claimable = models.BooleanField(default=True, help_text="Untick for VAT you cannot recover, such as on VAT-exempt supplies.")
+    note = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        ordering = ["-date", "-id"]
+
+
+class EInvoice(BusinessOwnedModel):
+    """Structured invoice data and its clearance status for one sale."""
+    DRAFT, READY, SUBMITTED, CLEARED, REJECTED, FAILED = "draft", "ready", "submitted", "cleared", "rejected", "failed"
+    STATUS_CHOICES = [(DRAFT, "Draft"), (READY, "Ready to submit"), (SUBMITTED, "Submitted"), (CLEARED, "Cleared"),
+                      (REJECTED, "Rejected"), (FAILED, "Failed, retry")]
+    sale = models.OneToOneField("sales.Sale", on_delete=models.PROTECT, related_name="einvoice")
+    invoice_number = models.CharField(max_length=40)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=READY)
+    buyer_tin = models.CharField(max_length=30, blank=True, default="")
+    irn = models.CharField("Invoice reference number (IRN)", max_length=120, blank=True, default="")
+    csid = models.CharField(max_length=255, blank=True, default="")
+    qr_text = models.TextField(blank=True, default="")
+    payload = models.JSONField(default=dict, blank=True)
+    response = models.JSONField(default=dict, blank=True)
+    error = models.CharField(max_length=255, blank=True, default="")
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    cleared_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-id"]
+        constraints = [models.UniqueConstraint(fields=["business", "invoice_number"], name="unique_einvoice_number_per_business")]

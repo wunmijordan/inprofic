@@ -3,6 +3,7 @@ from . import kitchen_views, views
 
 urlpatterns = [
     path("settings/", views.production_settings, name="production_settings"),
+    path("orders/variance/", views.production_variance, name="production_variance"),
     path("runs/", views.production_runs, name="production_runs"),
     path("runs/add/", views.production_run_form, name="production_run_add"),
     path("runs/<int:pk>/", views.production_run_detail, name="production_run_detail"),

@@ -26,12 +26,9 @@
     const linear = channels.map(value => value <= .04045 ? value / 12.92 : Math.pow((value + .055) / 1.055, 2.4));
     return .2126 * linear[0] + .7152 * linear[1] + .0722 * linear[2];
   };
-  const contrastRatio = (first, second) => (Math.max(first, second) + .05) / (Math.min(first, second) + .05);
-  const contrast = hex => {
-    const background = relativeLuminance(hex);
-    const dark = relativeLuminance('#182433');
-    return contrastRatio(background, dark) >= contrastRatio(background, 1) ? '#182433' : '#ffffff';
-  };
+  // Light labels are the default on coloured fills; reserve dark ink for
+  // genuinely pale backgrounds, consistently with server-rendered branding.
+  const contrast = hex => relativeLuminance(hex) >= .6 ? '#182433' : '#ffffff';
   const accentOptions = () => ({
     tenant: configuredAccent,
     tenantSoft: mix(configuredAccent,'white',.18),
@@ -53,12 +50,23 @@
   const resolvedTheme = preference => preference === 'system'
     ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
     : preference;
+  let paletteChange = 0;
+  const atomicPaletteChange = () => {
+    root.dataset.themeChanging = 'true';
+    const change = ++paletteChange;
+    // Keep transition suppression through one paint of the new palette.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (change === paletteChange) root.removeAttribute('data-theme-changing');
+    }));
+  };
   const applyTheme = preference => {
+    atomicPaletteChange();
     const chosen = ['light','dark','system'].includes(preference) ? preference : 'system';
     root.dataset.themePreference = chosen;
     root.dataset.theme = resolvedTheme(chosen);
     document.querySelectorAll('[data-theme-choice]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.themeChoice === chosen)));
   };
+  document.addEventListener('inprofic:theme', event => { remember(themeKey, event.detail); applyTheme(event.detail); });
   const applyAccent = preference => {
     const options = accentOptions();
     const chosen = options[preference] ? preference : 'tenant';
@@ -70,11 +78,15 @@
     document.querySelectorAll('[data-accent-choice]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.accentChoice === chosen)));
   };
   const applyBackground = (preference, useDefaultDarkCanvas = false) => {
+    atomicPaletteChange();
     const options = backgroundOptions();
     const chosen = options[preference] ? preference : 'tenant';
     const color = options[chosen];
     const surfaceText = contrast(color);
-    const darkBase = mix(color, 'black', surfaceText === '#182433' ? .72 : .28);
+    const darkBase = mix(color, 'black', surfaceText !== '#ffffff' ? .72 : .28);
+    const defaultCanvas = getComputedStyle(root).getPropertyValue('--ui-default-dark-canvas').trim() || '#111827';
+    const canvas = useDefaultDarkCanvas ? defaultCanvas : mix(darkBase,'white',.18);
+    const canvasText = contrast(canvas);
     root.dataset.backgroundPreference = chosen;
     root.style.setProperty('--tenant-background', color);
     root.style.setProperty('--tenant-background-contrast', contrast(color));
@@ -83,11 +95,13 @@
     const mutedSurface = mix(color,'black',.08);
     const mutedSurfaceText = contrast(mutedSurface);
     root.style.setProperty('--ui-dark-bg', useDefaultDarkCanvas ? 'var(--ui-default-dark-canvas, #111827)' : mix(darkBase,'white',.18));
+    root.style.setProperty('--ui-dark-canvas-text', canvasText);
+    root.style.setProperty('--ui-dark-canvas-muted-text', blend(canvasText, canvas, .9));
     root.style.setProperty('--ui-dark-surface', color);
     root.style.setProperty('--ui-dark-surface-muted', mutedSurface);
     root.style.setProperty('--ui-dark-surface-text', surfaceText);
     root.style.setProperty('--ui-dark-surface-muted-text', blend(mutedSurfaceText, mutedSurface, .76));
-    root.style.setProperty('--ui-dark-border', mix(color,'white',.25));
+    root.style.setProperty('--ui-dark-border', mix(color, surfaceText !== '#ffffff' ? 'black' : 'white', .35));
     document.querySelectorAll('[data-background-choice]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.backgroundChoice === chosen)));
     document.querySelectorAll('[data-dark-canvas-toggle]').forEach(toggle => { toggle.checked = useDefaultDarkCanvas; });
   };

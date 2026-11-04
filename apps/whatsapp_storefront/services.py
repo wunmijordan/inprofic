@@ -54,7 +54,8 @@ def persist_webhook_events(payload):
                 event_payload = {"kind": "message", "phone_number_id": phone_id, "message": message,
                                  "contact": (value.get("contacts") or [{}])[0]}
                 try:
-                    WhatsAppWebhookEvent.objects.create(event_key=key, payload=event_payload)
+                    with transaction.atomic():
+                        WhatsAppWebhookEvent.objects.create(event_key=key, payload=event_payload)
                     accepted += 1
                 except IntegrityError:
                     continue
@@ -62,10 +63,11 @@ def persist_webhook_events(payload):
                 stamp = str(status.get("timestamp") or "")
                 key = f"status:{phone_id}:{status.get('id', '')}:{status.get('status', '')}:{stamp}"
                 try:
-                    WhatsAppWebhookEvent.objects.create(
-                        event_key=key,
-                        payload={"kind": "status", "phone_number_id": phone_id, "status": status},
-                    )
+                    with transaction.atomic():
+                        WhatsAppWebhookEvent.objects.create(
+                            event_key=key,
+                            payload={"kind": "status", "phone_number_id": phone_id, "status": status},
+                        )
                     accepted += 1
                 except IntegrityError:
                     continue
@@ -106,7 +108,7 @@ def process_one_event(event):
 
     if data.get("kind") == "status":
         status_data = data.get("status") or {}
-        message = WhatsAppMessage.objects.filter(
+        message = WhatsAppMessage.raw_objects.filter(
             business_id=connection.business_id,
             provider_message_id=status_data.get("id"),
             direction=WhatsAppMessage.DIRECTION_OUT,

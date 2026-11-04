@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+{% include "core/_finance_tools_nav.html" %}
+<div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+  <div><a href="{% url 'books_home' %}" class="text-xs font-semibold text-stone-800">&larr; Books</a><h1 class="mt-1 text-2xl font-semibold font-display text-stone-800">Journal</h1></div>
+  <div class="flex gap-2 text-xs font-semibold"><a data-button-surface href="?format=csv{% if source %}&source={{ source }}{% endif %}" class="rounded-xl border border-[#D9CFB4] bg-white px-3 py-2 text-stone-700">Download CSV</a>{% if can_edit %}<a href="{% url 'books_journal_new' %}" class="rounded-xl workspace-action-primary px-3 py-2 text-white">New manual journal</a>{% endif %}</div>
+</div>
+<form method="get" class="mb-4 flex flex-wrap items-end gap-2 rounded-2xl border border-[#E7DFCC] bg-white p-3 text-xs">
+  <label class="font-semibold text-stone-600">Source <select name="source" class="ml-1 rounded-lg border border-[#D9CFB4] px-2 py-1"><option value="">All</option>{% for s in sources %}<option value="{{ s }}" {% if s == source %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+  <label class="font-semibold text-stone-600">From <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="ml-1 rounded-lg border border-[#D9CFB4] px-2 py-1"></label>
+  <label class="font-semibold text-stone-600">To <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="ml-1 rounded-lg border border-[#D9CFB4] px-2 py-1"></label>
+  <button class="rounded-lg workspace-action-primary px-3 py-1.5 font-semibold text-white">Filter</button>
+</form>
+{% if truncated %}<p class="mb-2 text-[11px] text-stone-500">Showing the latest 200 entries. Narrow the dates, or download the CSV for everything.</p>{% endif %}
+<div class="space-y-2 pb-8">
+{% for e in entries %}
+  <div class="rounded-xl border border-[#E7DFCC] bg-white p-3 text-xs">
+    <div class="flex flex-wrap items-center justify-between gap-2"><div><span class="font-semibold text-stone-800">#{{ e.pk }} · {{ e.date|date:"j M Y" }}</span> <span class="rounded-full bg-[#FAF6EA] px-2 py-0.5 text-[10px] text-stone-500">{{ e.source_type }}</span> <span class="text-stone-500">{{ e.memo }}</span></div>
+    {% if can_edit and not e.is_system and not e.reverses_id %}<form method="post" action="{% url 'books_journal_reverse' e.pk %}" onsubmit="return confirm('Reverse this journal?');">{% csrf_token %}<button class="text-[11px] font-semibold text-rose-700 underline">Reverse</button></form>{% endif %}</div>
+    <table class="mt-2 w-full"><tbody>{% for l in e.lines.all %}<tr><td class="py-0.5 font-mono text-stone-400">{{ l.account.code }}</td><td class="py-0.5">{{ l.account.name }}</td><td class="py-0.5 text-right font-mono">{% if l.debit %}{{ l.debit|floatformat:"2g" }}{% endif %}</td><td class="py-0.5 pl-4 text-right font-mono">{% if l.credit %}{{ l.credit|floatformat:"2g" }}{% endif %}</td></tr>{% endfor %}</tbody></table>
+  </div>
+{% empty %}<div class="rounded-2xl border border-[#E7DFCC] bg-white p-8 text-center text-sm text-stone-400">No journal entries match.</div>{% endfor %}
+</div>
+{% endblock %}

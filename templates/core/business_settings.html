@@ -19,9 +19,9 @@
     {% if form.non_field_errors %}<div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-3">{{ form.non_field_errors }}</div>{% endif %}
     <input type="hidden" name="active_profile_tab" id="active-profile-tab" value="{{ active_profile_tab|default:'profile' }}">
     <div class="mb-4 flex flex-wrap gap-2 border-stone-200 pb-3" role="tablist" aria-label="Business settings sections">
-      <button type="button" data-profile-tab="profile" aria-selected="true" class="rounded-lg border px-3 py-2 text-sm font-semibold">Profile</button>
-      <button type="button" data-profile-tab="appearance" aria-selected="false" class="rounded-lg border px-3 py-2 text-sm font-semibold">Appearance</button>
-      <button type="button" data-profile-tab="service" aria-selected="false" class="rounded-lg border px-3 py-2 text-sm font-semibold">Service & currency</button>
+      <button data-button-surface type="button" data-profile-tab="profile" aria-selected="true" class="rounded-lg border px-3 py-2 text-sm font-semibold">Profile</button>
+      <button data-button-surface type="button" data-profile-tab="appearance" aria-selected="false" class="rounded-lg border px-3 py-2 text-sm font-semibold">Appearance</button>
+      <button data-button-surface type="button" data-profile-tab="service" aria-selected="false" class="rounded-lg border px-3 py-2 text-sm font-semibold">Service & currency</button>
     </div>
     <div data-profile-panel="profile" role="tabpanel" class="grid sm:grid-cols-2 gap-x-4">
       {% include "_field.html" with field=form.name %}
@@ -60,9 +60,17 @@
     </div>
     <div class="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900"><strong>Public link notice:</strong> changing this address updates your storefront and connected website links. Update any shared or connected links immediately after saving.</div>
     <p class="text-xs text-stone-500 mb-4">Changing the service adjusts labels and workflow capability; it does not rewrite or delete existing inventory, orders, sales, or finance data. Wholesale and retail use direct product procurement and stock sales, so Production is safely hidden and blocked while either service is selected.</p>
-    <button class="px-4 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save preferences</button>
+    <button data-button-surface class="px-4 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save preferences</button>
     </div>
   </form>
+
+  {% if assistant_can_configure %}
+  <section class="mt-5 bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-5" id="assistant-settings">
+    <h3 class="font-medium">Assistant</h3>
+    <p class="text-xs text-stone-500 mt-1 mb-3">Choose whether the read-only assistant is on for this business, and which quick facts it offers.</p>
+    <a href="{% url 'assistant_settings' %}" data-button-surface class="inline-block px-4 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Assistant settings</a>
+  </section>
+  {% endif %}
 
   <section class="mt-5 bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-5">
     <h3 class="font-medium">Enabled modules</h3>

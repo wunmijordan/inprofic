@@ -6,7 +6,7 @@
   <div id="founder-signup-live-toast" class="pointer-events-none fixed right-4 top-4 z-[190] hidden max-w-sm rounded-xl border border-emerald-200 bg-white px-4 py-3 shadow-xl" role="status" aria-live="polite"><div class="text-[10px] font-black uppercase tracking-[.16em] text-emerald-700">New business signup</div><div id="founder-signup-live-toast-copy" class="mt-1 text-sm font-semibold text-stone-800"></div></div>
 
   <div id="founder-push-panel" class="mb-5 rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-4" data-config-url="{% url 'founder_push_config' %}" data-subscribe-url="{% url 'founder_push_subscribe' %}" data-unsubscribe-url="{% url 'founder_push_unsubscribe' %}">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 class="text-sm font-semibold text-stone-900">Founder signup alerts on this device</h2><p class="mt-1 text-xs leading-5 text-stone-500">This browser subscription is shared with eligible business alerts. Enable it once per browser or installed app; disabling it here or in Commerce turns off all background alerts on this device.</p></div><button type="button" data-founder-push-toggle class="shrink-0 rounded-lg border border-[#8f172d] bg-white px-3.5 py-2 text-xs font-semibold text-[#8f172d]">Enable signup alerts</button></div>
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 class="text-sm font-semibold text-stone-900">Founder signup alerts on this device</h2><p class="mt-1 text-xs leading-5 text-stone-500">This browser subscription is shared with eligible business alerts. Enable it once per browser or installed app; disabling it here or in Commerce turns off all background alerts on this device.</p></div><button data-button-surface type="button" data-founder-push-toggle class="shrink-0 rounded-lg border border-[#8f172d] bg-white px-3.5 py-2 text-xs font-semibold text-[#8f172d]">Enable signup alerts</button></div>
     <p data-founder-push-status class="mt-3 text-xs text-stone-500" aria-live="polite"></p>
   </div>
 
@@ -124,7 +124,7 @@
       <div id="signup-mailing-list" class="mt-4 overflow-hidden rounded-lg border border-[#E7DFCC] bg-white">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7DFCC] px-4 py-3">
           <div><div class="text-xs font-semibold">Signup contacts · mailing list</div><div class="mt-0.5 text-[11px] text-stone-500"><span id="founder-signup-contact-count">{{ founder_analytics.signup_contacts_count }}</span> unique signup email{{ founder_analytics.signup_contacts_count|pluralize }}. Addresses are captured from completed business registrations.</div></div>
-          <a href="{% url 'founder_mailing_list_csv' %}" class="rounded-md border border-[#D9CFB4] bg-[#FFFDF8] px-3 py-2 text-xs font-semibold text-[#8f172d]">Export CSV</a>
+          <a data-button-surface href="{% url 'founder_mailing_list_csv' %}" class="rounded-md border border-[#D9CFB4] bg-[#FFFDF8] px-3 py-2 text-xs font-semibold text-[#8f172d]">Export CSV</a>
         </div>
         <div class="max-h-72 overflow-auto">
           <table class="w-full min-w-[760px] text-xs">
@@ -253,33 +253,60 @@
     {{ founder_analytics.marketing_map_points|json_script:"founder-marketing-map-points" }}
     {{ founder_analytics.marketing_daily_visits|json_script:"founder-marketing-daily-visits" }}
     <div class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
-      <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="font-semibold">Native platform management</h2><p class="mt-1 text-xs text-stone-500">Manage businesses and global accounts here without leaving the Founder Console. Django administration remains available as a separate technical tool.</p></div><div class="flex flex-wrap gap-2"><a href="{% url 'platform_mailing_workspace' %}" class="rounded-md border border-[#8f172d] bg-white px-4 py-2 text-sm font-semibold text-[#8f172d]">Mailing workspace</a><a href="{% url 'founder_platform_user_add' %}" class="rounded-md bg-[#050733] px-4 py-2 text-sm font-semibold text-white">Add project user</a><a href="{% url 'admin:index' %}" target="_blank" rel="noopener" class="rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-medium">Open Django admin ↗</a></div></div>
-      <form method="get" action="{% url 'founder_subscriptions' %}" class="mt-4 flex flex-col gap-2 sm:flex-row"><input type="hidden" name="workspace" value="management"><input name="platform_q" value="{{ platform_query }}" class="min-w-0 flex-1" placeholder="Search businesses, usernames, email or phone"><button class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Search platform</button>{% if platform_query %}<a href="{% url 'founder_subscriptions' %}?workspace=management#platform-management" class="rounded-md border border-stone-300 bg-white px-4 py-2 text-center text-sm font-medium">Clear</a>{% endif %}</form>
+      <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="font-semibold">Native platform management</h2><p class="mt-1 text-xs text-stone-500">Manage businesses and global accounts here without leaving the Founder Console. Django administration remains available as a separate technical tool.</p></div><div class="flex flex-wrap gap-2"><a data-button-surface href="{% url 'platform_mailing_workspace' %}" class="rounded-md border border-[#8f172d] bg-white px-4 py-2 text-sm font-semibold text-[#8f172d]">Mailing workspace</a><a data-button-surface href="{% url 'founder_platform_user_add' %}" class="rounded-md bg-[#050733] px-4 py-2 text-sm font-semibold text-white">Add project user</a><a data-button-surface href="{% url 'admin:index' %}" target="_blank" rel="noopener" class="rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-medium">Open Django admin ↗</a></div></div>
+      <form method="get" action="{% url 'founder_subscriptions' %}" class="mt-4 flex flex-col gap-2 sm:flex-row"><input type="hidden" name="workspace" value="management"><input name="platform_q" value="{{ platform_query }}" class="min-w-0 flex-1" placeholder="Search businesses, usernames, email or phone"><button data-button-surface class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Search platform</button>{% if platform_query %}<a data-button-surface href="{% url 'founder_subscriptions' %}?workspace=management#platform-management" class="rounded-md border border-stone-300 bg-white px-4 py-2 text-center text-sm font-medium">Clear</a>{% endif %}</form>
     </div>
     <form id="platform-integrations" method="post" class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">{% csrf_token %}
       <div class="flex flex-wrap items-start justify-between gap-4">
         <div><h2 class="font-semibold">Platform integrations</h2><p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">Founder-level availability controls. Turning an integration off removes its tenant-facing surfaces and blocks its operation without deleting saved tenant credentials or historical records.</p></div>
-        <button name="action" value="save_platform_integrations" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Save integrations</button>
+        <button data-button-surface name="action" value="save_platform_integrations" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Save integrations</button>
       </div>
       <label class="mt-4 flex items-start justify-between gap-4 rounded-xl border border-[#D9CFB4] bg-white p-4 cursor-pointer">
         <span class="inline-flex items-center gap-1.5">
           <span class="text-sm font-semibold">Shipbubble delivery provider</span>
           {% include "_help_tip.html" with help_text="When off, Shipbubble is not shown or callable anywhere outside this Founder control. Existing business configuration stays dormant and is restored if you enable it later. When on, each business must still configure and activate its own approved Shipbubble account." label="Shipbubble delivery provider" %}
         </span>
-        <span class="relative inline-flex h-6 w-11 shrink-0"><input type="checkbox" name="shipbubble_enabled" class="peer sr-only" {% if integration_settings.shipbubble_enabled %}checked{% endif %}><span class="absolute inset-0 rounded-full bg-stone-300 transition peer-checked:bg-[#8f172d]"></span><span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span></span>
+        <span class="cf-switch shrink-0"><input type="checkbox" name="shipbubble_enabled" class="peer sr-only" {% if integration_settings.shipbubble_enabled %}checked{% endif %}><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span>
       </label>
       <label class="mt-3 flex items-start justify-between gap-4 rounded-xl border border-[#D9CFB4] bg-white p-4 cursor-pointer">
         <span class="inline-flex items-center gap-1.5">
           <span class="text-sm font-semibold">WhatsApp Storefront</span>
           {% include "_help_tip.html" with help_text="When off, WhatsApp setup, inbox access, assistant replies and the plan feature listing are unavailable outside this Founder control. Existing tenant connections and conversation history stay saved. When on, each business still connects its own WhatsApp Business account and needs Commerce enabled." label="WhatsApp Storefront availability" %}
         </span>
-        <span class="relative inline-flex h-6 w-11 shrink-0"><input type="checkbox" name="whatsapp_storefront_enabled" class="peer sr-only" {% if integration_settings.whatsapp_storefront_enabled %}checked{% endif %}><span class="absolute inset-0 rounded-full bg-stone-300 transition peer-checked:bg-[#8f172d]"></span><span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span></span>
+        <span class="cf-switch shrink-0"><input type="checkbox" name="whatsapp_storefront_enabled" class="peer sr-only" {% if integration_settings.whatsapp_storefront_enabled %}checked{% endif %}><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span>
       </label>
+    </form>
+    <form id="platform-assistant" method="post" class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">{% csrf_token %}
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div><h2 class="font-semibold">Staff assistant</h2><p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">Founder-level controls for the read-only assistant. The main switch hides and blocks it for every business at once; each business can then narrow it further in its own Business Settings. Nothing here deletes any business data.{% if not assistant_platform.env_enabled %} <strong class="text-red-700">The ASSISTANT_ENABLED environment switch is off, which overrides everything below.</strong>{% endif %}</p></div>
+        <button data-button-surface name="action" value="save_platform_assistant" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Save assistant settings</button>
+      </div>
+      <div class="mt-4 grid gap-3 sm:grid-cols-2">
+        <label class="flex items-start gap-3 rounded-xl border border-[#D9CFB4] bg-white p-4 text-sm"><span class="cf-switch shrink-0"><input type="checkbox" name="assistant_enabled" {% if assistant_platform.row.assistant_enabled %}checked{% endif %} class="mt-1"><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span><span><strong>Assistant available (main switch)</strong><span class="block text-xs text-stone-500">Off removes the Assistant menu item and blocks every request, for all businesses.</span></span></label>
+        <label class="flex items-start gap-3 rounded-xl border border-[#D9CFB4] bg-white p-4 text-sm"><span class="cf-switch shrink-0"><input type="checkbox" name="quick_facts_enabled" {% if assistant_platform.row.quick_facts_enabled %}checked{% endif %} class="mt-1"><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span><span><strong>Quick facts</strong><span class="block text-xs text-stone-500">Built-in questions answered straight from the records. No AI provider needed.</span></span></label>
+        <label class="flex items-start gap-3 rounded-xl border border-[#D9CFB4] bg-white p-4 text-sm"><span class="cf-switch shrink-0"><input type="checkbox" name="free_text_enabled" {% if assistant_platform.row.free_text_enabled %}checked{% endif %} class="mt-1"><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span><span><strong>AI answers to typed questions</strong><span class="block text-xs text-stone-500">{% if assistant_platform.model_configured %}An AI provider is connected.{% else %}No AI provider key is set (ASSISTANT_AI_API_KEY), so this has no effect yet; typed questions are matched to quick facts.{% endif %}</span></span></label>
+        <label class="flex items-start gap-3 rounded-xl border border-[#D9CFB4] bg-white p-4 text-sm"><span class="cf-switch shrink-0"><input type="checkbox" name="open_to_all_businesses" {% if assistant_platform.row.open_to_all_businesses %}checked{% endif %} class="mt-1"><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span><span><strong>Open to every business</strong><span class="block text-xs text-stone-500">Off: only the pilot businesses below. On: every business admin (businesses can still turn it off for themselves).</span></span></label>
+      </div>
+      <h3 class="mt-5 text-sm font-semibold">Quick facts available platform-wide</h3>
+      <p class="mt-1 text-xs text-stone-500">Untick a fact to switch it off for every business. Members also need access to the module behind it.</p>
+      {% for group in assistant_platform.groups %}
+      <p class="mt-3 text-[11px] font-bold uppercase tracking-[0.12em] text-stone-500">{{ group.name }}</p>
+      <div class="mt-1 grid gap-x-4 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+        {% for fact in group.facts %}<label class="flex items-center gap-2 text-sm"><span class="cf-switch shrink-0"><input type="checkbox" name="quick_fact" value="{{ fact.key }}" {% if fact.checked %}checked{% endif %}><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span> {{ fact.label }}</label>{% endfor %}
+      </div>
+      {% endfor %}
+      <h3 class="mt-5 text-sm font-semibold">Pilot businesses</h3>
+      <p class="mt-1 text-xs text-stone-500">{% if assistant_platform.row.open_to_all_businesses %}Open to every business is on, so the pilot list is not needed right now.{% else %}Only these businesses can use the assistant. Untick to remove one.{% endif %}</p>
+      <div class="mt-2 flex flex-wrap gap-x-5 gap-y-1">
+        {% for business in assistant_platform.pilots %}<label class="flex items-center gap-2 text-sm"><input type="checkbox" name="pilot_keep" value="{{ business.pk }}" checked> {{ business.name }} <span class="text-xs text-stone-400">({{ business.slug }})</span></label>{% empty %}<span class="text-xs text-stone-500">No pilot businesses yet.</span>{% endfor %}
+      </div>
+      <label class="mt-3 block text-sm"><span class="text-xs text-stone-500">Add pilot businesses by slug (comma or space separated)</span><input name="pilot_add" class="mt-1 w-full" placeholder="e.g. alpha-bakery, beta-foods" autocomplete="off"></label>
+      <div class="mt-4 text-right"><button data-button-surface name="action" value="save_platform_assistant" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Save assistant settings</button></div>
     </form>
     <form id="privacy-policy-management" method="post" enctype="multipart/form-data" class="rounded-xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">{% csrf_token %}
       <div class="flex flex-wrap items-start justify-between gap-4">
         <div><h2 class="font-semibold">Privacy Policy</h2><p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">Platform-wide public privacy policy for INPROFIC. Edit the web policy directly, or upload HTML/TXT/Markdown, PDF, or a formatted Word (.docx) replacement. PDF is displayed inline as uploaded; Word is rendered from the uploaded document without sending it to an external viewer. Saving invalidates the cached public copy immediately.</p></div>
-        <div class="flex gap-2"><a href="{% url 'privacy_policy' %}" target="_blank" rel="noopener" class="rounded-md border border-[#D9CFB4] bg-white px-4 py-2 text-sm font-semibold text-[#8f172d]">View public policy ↗</a><button name="action" value="save_privacy_policy" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Publish policy</button></div>
+        <div class="flex gap-2"><a data-button-surface href="{% url 'privacy_policy' %}" target="_blank" rel="noopener" class="rounded-md border border-[#D9CFB4] bg-white px-4 py-2 text-sm font-semibold text-[#8f172d]">View public policy ↗</a><button data-button-surface name="action" value="save_privacy_policy" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Publish policy</button></div>
       </div>
       {% if privacy_policy_form.non_field_errors %}<div class="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{{ privacy_policy_form.non_field_errors }}</div>{% endif %}
       <div class="mt-4 grid gap-4 lg:grid-cols-2">
@@ -303,12 +330,12 @@
     <form method="post" class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg p-5">{% csrf_token %}
       <h2 class="font-semibold mb-3">Grant founder lifetime access</h2>
       {% include '_field.html' with field=form.business %}{% include '_field.html' with field=form.plan %}{% include '_field.html' with field=form.note %}
-      <button name="action" value="grant" class="px-4 py-2 bg-[#8f172d] text-white rounded-md text-sm">Grant lifetime plan</button>
+      <button data-button-surface name="action" value="grant" class="px-4 py-2 bg-[#8f172d] text-white rounded-md text-sm">Grant lifetime plan</button>
     </form>
     <div>
       <h2 class="font-semibold mb-2">Pending plan payments</h2>
       <div class="bg-white border border-[#E7DFCC] rounded-lg overflow-hidden">
-        {% for p in pending_payments %}<form method="post" class="p-3 border-b last:border-0 flex justify-between gap-3 items-center">{% csrf_token %}<input type="hidden" name="payment_id" value="{{ p.pk }}"><div><div class="font-medium text-sm">{{ p.subscription.primary_business.name }}</div><div class="text-xs text-stone-500">{{ p.reference }} · {{ p.plan.name }} · {{ p.get_billing_cycle_display }} · {{ p.get_provider_display }} · <span class="font-mono">{{ p.amount|money:p.subscription.primary_business.currency_symbol }}</span></div></div><button name="action" value="mark_paid" class="px-3 py-1.5 rounded bg-emerald-700 text-white text-xs">Mark paid</button></form>{% empty %}<div class="p-4 text-sm text-stone-500">No pending payments.</div>{% endfor %}
+        {% for p in pending_payments %}<form method="post" class="p-3 border-b last:border-0 flex justify-between gap-3 items-center">{% csrf_token %}<input type="hidden" name="payment_id" value="{{ p.pk }}"><div><div class="font-medium text-sm">{{ p.subscription.primary_business.name }}</div><div class="text-xs text-stone-500">{{ p.reference }} · {{ p.plan.name }} · {{ p.get_billing_cycle_display }} · {{ p.get_provider_display }} · <span class="font-mono">{{ p.amount|money:p.subscription.primary_business.currency_symbol }}</span></div></div><button data-button-surface name="action" value="mark_paid" class="px-3 py-1.5 rounded bg-emerald-700 text-white text-xs">Mark paid</button></form>{% empty %}<div class="p-4 text-sm text-stone-500">No pending payments.</div>{% endfor %}
       </div>
     </div>
   </div>
@@ -323,7 +350,7 @@
         <div class="text-sm font-semibold">General trial length</div>
         <p class="mt-1 text-[11px] leading-5 text-stone-500">Used for new eligible plan trials and paid-plan trials. Free-forever Starter remains non-expiring.</p>
         <div class="mt-3">{% include '_field.html' with field=trial_policy_form.general_trial_days %}</div>
-        <button name="action" value="save_trial_policy" class="mt-1 rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Save trial policy</button>
+        <button data-button-surface name="action" value="save_trial_policy" class="mt-1 rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Save trial policy</button>
       </form>
       <form method="post" class="rounded-xl border border-[#D9CFB4] bg-white p-4">{% csrf_token %}
         <div class="text-sm font-semibold">Grant / extend business trial</div>
@@ -335,7 +362,7 @@
           {% include '_field.html' with field=trial_grant_form.days %}
           {% include '_field.html' with field=trial_grant_form.note %}
         </div>
-        <button name="action" value="grant_trial" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Grant trial time</button>
+        <button data-button-surface name="action" value="grant_trial" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Grant trial time</button>
       </form>
     </div>
     <div class="mt-4 overflow-hidden rounded-xl border border-[#E7DFCC] bg-white">
@@ -350,7 +377,7 @@
         <h2 class="font-semibold">Subscription payment channels</h2>
         <p class="text-xs text-stone-500 mt-1">Choose which providers businesses can use for new INPROFIC plan payments. Existing attempts can still complete safely.</p>
       </div>
-      <button name="action" value="save_payment_channels" class="px-4 py-2 bg-[#8f172d] text-white rounded-md text-sm font-medium">Save payment channels</button>
+      <button data-button-surface name="action" value="save_payment_channels" class="px-4 py-2 bg-[#8f172d] text-white rounded-md text-sm font-medium">Save payment channels</button>
     </div>
     <div class="grid sm:grid-cols-2 gap-3 mt-4">
       <label class="flex items-center justify-between gap-4 rounded-lg border border-[#D9CFB4] bg-white p-4 cursor-pointer">
@@ -358,27 +385,27 @@
           <span class="text-sm font-medium">Paystack</span>
           {% include "_help_tip.html" with help_text="Allow new subscription checkouts through Paystack." label="Paystack" %}
         </span>
-        <span class="relative inline-flex h-6 w-11 shrink-0"><input type="checkbox" name="paystack_enabled" class="peer sr-only" {% if payment_settings.paystack_enabled %}checked{% endif %}><span class="absolute inset-0 rounded-full bg-stone-300 transition peer-checked:bg-[#8f172d]"></span><span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span></span>
+        <span class="cf-switch shrink-0"><input type="checkbox" name="paystack_enabled" class="peer sr-only" {% if payment_settings.paystack_enabled %}checked{% endif %}><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span>
       </label>
       <label class="flex items-center justify-between gap-4 rounded-lg border border-[#D9CFB4] bg-white p-4 cursor-pointer">
         <span class="inline-flex items-center gap-1.5">
           <span class="text-sm font-medium">Monnify</span>
           {% include "_help_tip.html" with help_text="Allow new subscription checkouts through Monnify." label="Monnify" %}
         </span>
-        <span class="relative inline-flex h-6 w-11 shrink-0"><input type="checkbox" name="monnify_enabled" class="peer sr-only" {% if payment_settings.monnify_enabled %}checked{% endif %}><span class="absolute inset-0 rounded-full bg-stone-300 transition peer-checked:bg-[#8f172d]"></span><span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span></span>
+        <span class="cf-switch shrink-0"><input type="checkbox" name="monnify_enabled" class="peer sr-only" {% if payment_settings.monnify_enabled %}checked{% endif %}><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span>
       </label>
     </div>
   </form>
 
   <form method="post" data-founder-section="plans" class="mb-7">{% csrf_token %}
-    <div class="flex flex-wrap justify-between items-end gap-3 mb-2"><div><h2 class="font-semibold">Plan pricing & capacity</h2><p class="text-xs text-stone-500">Set pricing, users and additional service profiles. Starter always stays at one user and no add-ons, while you can safely switch its commercial mode between free forever and paid.</p></div><button name="action" value="save_plan_pricing" class="px-4 py-2 bg-[#8f172d] text-white rounded-md text-sm font-medium">Save all plan settings</button></div>
+    <div class="flex flex-wrap justify-between items-end gap-3 mb-2"><div><h2 class="font-semibold">Plan pricing & capacity</h2><p class="text-xs text-stone-500">Set pricing, users and additional service profiles. Starter always stays at one user and no add-ons, while you can safely switch its commercial mode between free forever and paid.</p></div><button data-button-surface name="action" value="save_plan_pricing" class="px-4 py-2 bg-[#8f172d] text-white rounded-md text-sm font-medium">Save all plan settings</button></div>
     <div class="grid md:grid-cols-3 gap-3">
       {% for plan in plans %}<div class="bg-white border border-[#E7DFCC] rounded-lg p-4">
         <div class="font-semibold text-sm">{{ plan.name }}</div>
         {% if plan.code == 'starter' %}<label class="mt-3 flex items-center justify-between gap-3 rounded-lg border border-[#E7DFCC] bg-[#FFFDF8] px-3 py-2 text-xs"><span class="inline-flex items-center gap-1.5">
           <strong class="text-stone-700">Free forever</strong>
           {% include "_help_tip.html" with help_text="Turn off to make Starter payable. Existing free Starter tenants receive the Founder-configured trial transition window; turning it back on restores non-expiring access." label="Free forever" %}
-        </span><span class="relative inline-flex h-6 w-11 shrink-0"><input type="checkbox" name="free_forever_{{ plan.pk }}" data-starter-free-toggle class="peer sr-only" {% if plan.is_free_forever %}checked{% endif %}><span class="absolute inset-0 rounded-full bg-stone-300 transition peer-checked:bg-[#8f172d]"></span><span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span></span></label>{% endif %}
+        </span><span class="cf-switch shrink-0"><input type="checkbox" name="free_forever_{{ plan.pk }}" data-starter-free-toggle class="peer sr-only" {% if plan.is_free_forever %}checked{% endif %}><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label>{% endif %}
         <label class="block text-xs text-stone-500 mt-3">Monthly price</label><input name="monthly_price_{{ plan.pk }}" value="{{ plan.monthly_price }}" type="number" step="0.01" min="0" data-plan-monthly-price {% if plan.code == 'starter' and plan.is_free_forever %}readonly{% endif %} class="w-full border rounded px-2 py-1.5 text-sm font-mono {% if plan.code == 'starter' and plan.is_free_forever %}bg-stone-100{% endif %}"><div class="text-[11px] text-stone-500 mt-1">{% if plan.is_free_forever %}Free forever · no renewal{% else %}Current monthly: <span class="font-mono">{{ plan.monthly_price|money:"₦" }}</span>{% if plan.code == 'starter' %} · paid Starter{% endif %}{% endif %}</div>
         <label class="block text-xs text-stone-500 mt-2">Quarterly discount % (3 months)</label><input name="quarterly_discount_{{ plan.pk }}" value="{{ plan.quarterly_discount_percent }}" type="number" step="0.01" min="0" max="100" class="w-full border rounded px-2 py-1.5 text-sm font-mono">
         <div class="text-[11px] text-emerald-700 mt-1">Base quarterly price after discount: <span class="font-mono">{{ plan.quarterly_price|money:"₦" }}</span></div>
@@ -389,23 +416,23 @@
         <label class="block text-xs text-stone-500 mt-2">Additional service discount %</label><input name="addon_discount_{{ plan.pk }}" value="{{ plan.additional_service_discount_percent }}" type="number" step="0.01" min="0" max="100" class="w-full border rounded px-2 py-1.5 text-sm font-mono">
         <div class="mt-3 border-t pt-3">
           <label class="block text-xs text-stone-500">Maximum users</label><input name="user_limit_{{ plan.pk }}" value="{{ plan.user_limit|default:'' }}" type="number" min="1" {% if plan.code == 'starter' %}readonly{% endif %} class="w-full border rounded px-2 py-1.5 text-sm font-mono {% if plan.code == 'starter' %}bg-stone-100{% endif %}">
-          {% if plan.code != 'starter' %}<label class="mt-2 flex items-center justify-between gap-3 text-xs"><span>Unlimited users</span><span class="relative inline-flex h-6 w-11"><input type="checkbox" name="users_unlimited_{{ plan.pk }}" class="peer sr-only" {% if plan.user_limit == None %}checked{% endif %}><span class="absolute inset-0 rounded-full bg-stone-300 peer-checked:bg-[#8f172d]"></span><span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span></span></label>{% endif %}
+          {% if plan.code != 'starter' %}<label class="mt-2 flex items-center justify-between gap-3 text-xs"><span>Unlimited users</span><span class="cf-switch shrink-0"><input type="checkbox" name="users_unlimited_{{ plan.pk }}" class="peer sr-only" {% if plan.user_limit == None %}checked{% endif %}><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label>{% endif %}
           <label class="mt-3 block text-xs text-stone-500">Additional service profiles</label><input name="service_limit_{{ plan.pk }}" value="{{ plan.additional_service_limit|default:'0' }}" type="number" min="0" {% if plan.code == 'starter' %}readonly{% endif %} class="w-full border rounded px-2 py-1.5 text-sm font-mono {% if plan.code == 'starter' %}bg-stone-100{% endif %}">
-          {% if plan.code != 'starter' %}<label class="mt-2 flex items-center justify-between gap-3 text-xs"><span>Unlimited additional services</span><span class="relative inline-flex h-6 w-11"><input type="checkbox" name="services_unlimited_{{ plan.pk }}" class="peer sr-only" {% if plan.additional_service_limit == None %}checked{% endif %}><span class="absolute inset-0 rounded-full bg-stone-300 peer-checked:bg-[#8f172d]"></span><span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span></span></label>{% endif %}
+          {% if plan.code != 'starter' %}<label class="mt-2 flex items-center justify-between gap-3 text-xs"><span>Unlimited additional services</span><span class="cf-switch shrink-0"><input type="checkbox" name="services_unlimited_{{ plan.pk }}" class="peer sr-only" {% if plan.additional_service_limit == None %}checked{% endif %}><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label>{% endif %}
         </div>
       </div>{% endfor %}
     </div>
-    <div class="mt-3 text-right"><button name="action" value="save_plan_pricing" class="px-4 py-2 bg-[#8f172d] text-white rounded-md text-sm font-medium">Save all plan pricing</button></div>
+    <div class="mt-3 text-right"><button data-button-surface name="action" value="save_plan_pricing" class="px-4 py-2 bg-[#8f172d] text-white rounded-md text-sm font-medium">Save all plan pricing</button></div>
   </form>
 
   <section id="payroll-addon-pricing" data-founder-section="plans" class="mb-7 rounded-2xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
     <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="font-semibold">Payroll add-on pricing</h2><p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">Set the primary payroll package per paid plan (a fixed staff capacity, or unlimited), and optional extra-staff batches businesses can add without upgrading. Batches are charged pro-rata until the next renewal and then renew with the package. Payroll is included during free trials and Founder lifetime access, then becomes a separately paid add-on without joining normal module entitlements.</p></div><span class="rounded-full bg-[#050733] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white">Supplementary add-on</span></div>
     <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{% for tier in payroll_tiers %}<div class="rounded-xl border border-[#E7DFCC] bg-white p-4"><div class="text-[10px] font-bold uppercase tracking-wider text-stone-400">{{ tier.plan.name }}</div><div class="mt-1 font-semibold">{{ tier.capacity_label }}</div><div class="mt-2 font-mono text-lg">{{ tier.monthly_price|money:"₦" }} <span class="font-sans text-xs text-stone-400">/ month</span></div><div class="mt-2 flex items-center justify-between gap-2"><span class="text-[11px] text-stone-500">{% if tier.active %}Active{% else %}Retired{% endif %}</span><form method="post">{% csrf_token %}<input type="hidden" name="payroll_tier_id" value="{{ tier.pk }}"><button name="action" value="delete_payroll_tier" class="text-xs font-semibold text-rose-700 underline">Remove</button></form></div></div>{% empty %}<p class="text-sm text-stone-500 md:col-span-2 xl:col-span-3">No payroll packages configured yet.</p>{% endfor %}</div>
-    <form method="post" class="mt-4 grid gap-3 rounded-xl border border-[#D9CFB4] bg-white p-4 md:grid-cols-2">{% csrf_token %}{% for error in payroll_tier_form.non_field_errors %}<div class="md:col-span-2 rounded-lg bg-rose-50 p-2 text-xs text-rose-700">{{ error }}</div>{% endfor %}{% for field in payroll_tier_form %}{% include '_field.html' with field=field %}{% endfor %}<div class="md:col-span-2"><button name="action" value="add_payroll_tier" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Add payroll package</button></div></form>
+    <form method="post" class="mt-4 grid gap-3 rounded-xl border border-[#D9CFB4] bg-white p-4 md:grid-cols-2">{% csrf_token %}{% for error in payroll_tier_form.non_field_errors %}<div class="md:col-span-2 rounded-lg bg-rose-50 p-2 text-xs text-rose-700">{{ error }}</div>{% endfor %}{% for field in payroll_tier_form %}{% include '_field.html' with field=field %}{% endfor %}<div class="md:col-span-2"><button data-button-surface name="action" value="add_payroll_tier" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Add payroll package</button></div></form>
     <h3 class="mt-6 text-sm font-semibold">Extra-staff batches</h3>
     <p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">Optional top-ups for businesses on a limited package, available on every plan (not tied to a plan). Not offered with an unlimited package. Retiring a batch hides it from new buyers; businesses already holding it keep it and it still renews for them at the price shown here.</p>
     <div class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{% for batch in payroll_batches %}<div class="rounded-xl border border-[#E7DFCC] bg-white p-4"><div class="text-[10px] font-bold uppercase tracking-wider text-stone-400">All plans</div><div class="mt-1 font-semibold">{{ batch.label }}</div><div class="mt-2 font-mono text-lg">{{ batch.monthly_price|money:"₦" }} <span class="font-sans text-xs text-stone-400">/ month</span></div><div class="mt-2 flex items-center justify-between gap-2"><span class="text-[11px] text-stone-500">{% if batch.active %}Active{% else %}Retired{% endif %}</span><form method="post">{% csrf_token %}<input type="hidden" name="payroll_batch_id" value="{{ batch.pk }}"><button name="action" value="delete_payroll_batch" class="text-xs font-semibold text-rose-700 underline">Remove</button></form></div></div>{% empty %}<p class="text-sm text-stone-500 md:col-span-2 xl:col-span-3">No extra-staff batches configured yet.</p>{% endfor %}</div>
-    <form method="post" class="mt-4 grid gap-3 rounded-xl border border-[#D9CFB4] bg-white p-4 md:grid-cols-2">{% csrf_token %}{% for error in payroll_batch_form.non_field_errors %}<div class="md:col-span-2 rounded-lg bg-rose-50 p-2 text-xs text-rose-700">{{ error }}</div>{% endfor %}{% for field in payroll_batch_form %}{% include '_field.html' with field=field %}{% endfor %}<div class="md:col-span-2"><button name="action" value="add_payroll_batch" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Add extra-staff batch</button></div></form>
+    <form method="post" class="mt-4 grid gap-3 rounded-xl border border-[#D9CFB4] bg-white p-4 md:grid-cols-2">{% csrf_token %}{% for error in payroll_batch_form.non_field_errors %}<div class="md:col-span-2 rounded-lg bg-rose-50 p-2 text-xs text-rose-700">{{ error }}</div>{% endfor %}{% for field in payroll_batch_form %}{% include '_field.html' with field=field %}{% endfor %}<div class="md:col-span-2"><button data-button-surface name="action" value="add_payroll_batch" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Add extra-staff batch</button></div></form>
   </section>
 
   <section id="plan-entitlements" data-founder-section="plans" class="mb-7 rounded-2xl border border-[#E7DFCC] bg-[#FFFDF8] p-5">
@@ -422,13 +449,13 @@
               {% if entitlement.module == 'reports' %}
                 <label class="block rounded-xl border border-stone-200 bg-stone-50 p-3"><span class="flex items-center justify-between gap-2"><span class="text-sm font-medium">{{ entitlement.get_module_display }}</span><span class="text-[10px] font-bold uppercase tracking-wider text-[#8f172d]">{% if entitlement.level == 'basic' %}Basic{% elif entitlement.level == 'full' %}Full{% else %}Off{% endif %}</span></span><select name="module_{{ plan.pk }}_reports" class="mt-2 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-2 text-xs"><option value="none" {% if entitlement.level == 'none' or not entitlement.enabled %}selected{% endif %}>Not included</option><option value="basic" {% if entitlement.enabled and entitlement.level == 'basic' %}selected{% endif %}>Basic reports</option><option value="full" {% if entitlement.enabled and entitlement.level == 'full' %}selected{% endif %}>Full reports</option></select></label>
               {% else %}
-                <label class="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-stone-200 px-3 py-2.5 transition hover:bg-stone-50"><span class="text-sm">{{ entitlement.get_module_display }}</span><span class="relative inline-flex h-6 w-11 shrink-0"><input type="checkbox" name="module_{{ plan.pk }}_{{ entitlement.module }}" class="peer sr-only" {% if entitlement.enabled %}checked{% endif %}><span class="absolute inset-0 rounded-full bg-stone-300 transition peer-checked:bg-[#8f172d]"></span><span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span></span></label>
+                <label class="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-stone-200 px-3 py-2.5 transition hover:bg-stone-50"><span class="text-sm">{{ entitlement.get_module_display }}</span><span class="cf-switch shrink-0"><input type="checkbox" name="module_{{ plan.pk }}_{{ entitlement.module }}" class="peer sr-only" {% if entitlement.enabled %}checked{% endif %}><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label>
               {% endif %}
             {% endfor %}
           </div>
         </div>{% endfor %}
       </div>
-      <div class="mt-4 flex justify-end"><button name="action" value="save_plan_entitlements" class="rounded-xl bg-[#8f172d] px-5 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30">Save all module access</button></div>
+      <div class="mt-4 flex justify-end"><button data-button-surface name="action" value="save_plan_entitlements" class="rounded-xl bg-[#8f172d] px-5 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30">Save all module access</button></div>
     </form>
   </section>
 
@@ -439,14 +466,14 @@
     </div>
     <form method="post" class="mt-4 rounded-xl border border-[#E7DFCC] bg-white p-4">{% csrf_token %}
       {% include '_field.html' with field=trust_settings_form.enabled %}
-      <button name="action" value="save_trust_settings" class="mt-3 rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Save strip visibility</button>
+      <button data-button-surface name="action" value="save_trust_settings" class="mt-3 rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Save strip visibility</button>
     </form>
     <form method="post" enctype="multipart/form-data" class="mt-4 grid gap-3 rounded-xl border border-[#E7DFCC] bg-white p-4 md:grid-cols-3">{% csrf_token %}
       {% for error in trust_logo_form.non_field_errors %}<div class="md:col-span-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{{ error }}</div>{% endfor %}
       {% include '_field.html' with field=trust_logo_form.name %}
       {% include '_field.html' with field=trust_logo_form.logo %}
       {% include '_field.html' with field=trust_logo_form.sort_order %}
-      <div class="md:col-span-3"><button name="action" value="add_trust_logo" class="rounded-md bg-[#050733] px-4 py-2 text-sm font-semibold text-white">Upload logo</button></div>
+      <div class="md:col-span-3"><button data-button-surface name="action" value="add_trust_logo" class="rounded-md bg-[#050733] px-4 py-2 text-sm font-semibold text-white">Upload logo</button></div>
     </form>
     <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {% for logo in trust_logos %}<div class="flex items-center gap-3 rounded-xl border border-[#E7DFCC] bg-white p-3"><div class="grid h-14 w-20 shrink-0 place-items-center rounded-lg bg-stone-50 p-2"><img src="{{ logo.logo.url }}" alt="{{ logo.name }} logo" class="max-h-full max-w-full object-contain"></div><div class="min-w-0 flex-1"><strong class="block truncate text-sm">{{ logo.name }}</strong><span class="text-[11px] text-stone-500">Order {{ logo.sort_order }} · {% if logo.active %}Visible{% else %}Hidden{% endif %}</span></div><div class="flex flex-col items-end gap-1"><form method="post">{% csrf_token %}<input type="hidden" name="trust_logo_id" value="{{ logo.pk }}"><button name="action" value="toggle_trust_logo" class="text-xs font-semibold text-[#8f172d] underline">{% if logo.active %}Hide{% else %}Show{% endif %}</button></form><form method="post" onsubmit="return confirm('Delete this trusted-business logo permanently?')">{% csrf_token %}<input type="hidden" name="trust_logo_id" value="{{ logo.pk }}"><button name="action" value="delete_trust_logo" class="text-xs font-semibold text-rose-700 underline">Delete</button></form></div></div>{% empty %}<p class="text-sm text-stone-500 sm:col-span-2 lg:col-span-3">No manually uploaded logos yet. Paid businesses with a storefront logo can still appear automatically.</p>{% endfor %}
@@ -471,7 +498,7 @@
       {% include '_field.html' with field=promotion_form.billing_cycle %}
       {% include '_field.html' with field=promotion_form.starts_at %}
       {% include '_field.html' with field=promotion_form.ends_at %}
-      <div class="md:col-span-2"><button name="action" value="create_promotion" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Schedule promotion</button></div>
+      <div class="md:col-span-2"><button data-button-surface name="action" value="create_promotion" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Schedule promotion</button></div>
     </form>
     <div class="mt-5 overflow-x-auto rounded-lg border border-[#E7DFCC] bg-white">
       <table class="w-full text-xs"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Plan / reason</th><th>Discount</th><th>Billing</th><th>Window</th><th>Status</th><th></th></tr></thead><tbody>
@@ -518,21 +545,21 @@
             <select class="rounded border border-[#D9CFB4] bg-white px-2 py-1 text-xs" data-editor-size aria-label="Font size">
               <option value="16px">16</option><option value="20px">20</option><option value="28px">28</option><option value="36px">36</option><option value="48px">48</option><option value="64px">64</option>
             </select>
-            <button type="button" class="rounded border bg-white px-2 py-1 text-xs font-bold" data-editor-command="bold">B</button>
-            <button type="button" class="rounded border bg-white px-2 py-1 text-xs italic" data-editor-command="italic">I</button>
-            <button type="button" class="rounded border bg-white px-2 py-1 text-xs underline" data-editor-command="underline">U</button>
-            <button type="button" class="rounded border bg-white px-2 py-1 text-xs" data-editor-align="left">Left</button>
-            <button type="button" class="rounded border bg-white px-2 py-1 text-xs" data-editor-align="center">Centre</button>
-            <button type="button" class="rounded border bg-white px-2 py-1 text-xs" data-editor-align="right">Right</button>
+            <button data-button-surface type="button" class="rounded border bg-white px-2 py-1 text-xs font-bold" data-editor-command="bold">B</button>
+            <button data-button-surface type="button" class="rounded border bg-white px-2 py-1 text-xs italic" data-editor-command="italic">I</button>
+            <button data-button-surface type="button" class="rounded border bg-white px-2 py-1 text-xs underline" data-editor-command="underline">U</button>
+            <button data-button-surface type="button" class="rounded border bg-white px-2 py-1 text-xs" data-editor-align="left">Left</button>
+            <button data-button-surface type="button" class="rounded border bg-white px-2 py-1 text-xs" data-editor-align="center">Centre</button>
+            <button data-button-surface type="button" class="rounded border bg-white px-2 py-1 text-xs" data-editor-align="right">Right</button>
             <label class="ml-1 flex items-center gap-1 text-[10px] uppercase tracking-wider text-stone-500">Colour <input type="color" value="#ffffff" class="h-7 w-8 rounded border bg-white p-0" data-editor-color></label>
-            <button type="button" class="ml-auto rounded border bg-white px-2 py-1 text-xs" data-editor-clear>Clear formatting</button>
+            <button data-button-surface type="button" class="ml-auto rounded border bg-white px-2 py-1 text-xs" data-editor-clear>Clear formatting</button>
           </div>
           <div contenteditable="true" data-campaign-editor class="min-h-[260px] px-4 py-4 text-base leading-7 outline-none" style="font-family:Sora,sans-serif" aria-label="Campaign rich text editor"></div>
         </div>
         <p class="mt-2 text-[11px] leading-5 text-stone-500">Available system fonts: Sora, Fraunces and IBM Plex Mono. Formatting is sanitised on save; scripts, links and unsafe styles are discarded.</p>
         <div class="mt-4 flex flex-wrap gap-2">
-          <button name="action" value="save_marketing_campaign" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">{% if campaign_instance %}Update marketing creative{% else %}Create marketing creative{% endif %}</button>
-          {% if campaign_instance %}<a href="{% url 'founder_subscriptions' %}#marketing-promo-campaigns" class="rounded-md border border-[#D9CFB4] bg-white px-4 py-2 text-sm font-semibold">New creative</a>{% endif %}
+          <button data-button-surface name="action" value="save_marketing_campaign" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">{% if campaign_instance %}Update marketing creative{% else %}Create marketing creative{% endif %}</button>
+          {% if campaign_instance %}<a data-button-surface href="{% url 'founder_subscriptions' %}#marketing-promo-campaigns" class="rounded-md border border-[#D9CFB4] bg-white px-4 py-2 text-sm font-semibold">New creative</a>{% endif %}
         </div>
       </div>
     </form>
@@ -560,8 +587,8 @@
       {% include '_field.html' with field=restore_form.source_business_id %}
       {% include '_field.html' with field=restore_form.confirmation %}
       <div class="md:col-span-2 flex flex-wrap gap-2">
-        <button name="action" value="backup_preview" class="rounded-md border border-[#8f172d] bg-white px-4 py-2 text-sm font-semibold text-[#8f172d]">Preview backup</button>
-        <button name="action" value="backup_restore" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Restore selected business</button>
+        <button data-button-surface name="action" value="backup_preview" class="rounded-md border border-[#8f172d] bg-white px-4 py-2 text-sm font-semibold text-[#8f172d]">Preview backup</button>
+        <button data-button-surface name="action" value="backup_restore" class="rounded-md bg-[#8f172d] px-4 py-2 text-sm font-semibold text-white">Restore selected business</button>
       </div>
       <p class="md:col-span-2 text-[11px] leading-5 text-stone-500">To restore, re-upload the same backup and type <span class="font-mono">RESTORE &lt;business-address&gt;</span>. Subscription plans, founder grants, module access, notification history, saved notification devices, and uploaded attachments are not restored. A backup containing one business is selected automatically; if several businesses are present, choose the business number shown in the preview.</p>
     </form>

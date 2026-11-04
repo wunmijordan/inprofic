@@ -12,8 +12,9 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 from django.db.models.functions import Coalesce
-from django.db.models import Case, Count, DecimalField, ExpressionWrapper, F, OuterRef, Q, Subquery, Sum, Value, When, Window
+from django.db.models import Count, DecimalField, ExpressionWrapper, F, OuterRef, Q, Subquery, Sum, Value, Window
 from openpyxl import Workbook
+from . import ledger
 from .models import CashAccount, FinancialTransaction, AuditLog
 from accounts.platform_integrations import redact_disabled_integrations
 from accounts.services import user_has_permission
@@ -27,31 +28,18 @@ from inventory.services import record_raw_material_movement, record_finished_goo
 from .finance_cache import FINANCE_ALERT_CACHE_TIMEOUT, finance_alert_cache_key
 from .performance import performance_section
 from .accounting import (
-    compare_periods, daily_components, fiscal_period, margin_trend, period_buckets, period_options,
+    _sale_expressions, compare_periods, daily_components, fiscal_period, margin_trend, period_buckets, period_options,
     product_profitability, shift_period, summarise,
 )
 
 def today(): return timezone.localdate()
 
 
-def _finance_open_items(business):
-    money_field = DecimalField(max_digits=24, decimal_places=6)
-    sale_line_value = Case(
-        When(
-            commercial_quantity__isnull=False,
-            commercial_unit_price__isnull=False,
-            then=ExpressionWrapper(
-                F("commercial_quantity") * F("commercial_unit_price"),
-                output_field=money_field,
-            ),
-        ),
-        default=ExpressionWrapper(
-            (F("batch_qty") * F("finished_good__units_per_batch") + F("piece_qty"))
-            * (F("price") - F("discount")),
-            output_field=money_field,
-        ),
-        output_field=money_field,
-    )
+def _finance_open_items(business, *, detail_limit=30):
+    """Current settlement totals; None includes every detail row for full reports."""
+    # Shared with Books, tax, reports and the Daily Brief so a receivable never
+    # drifts from the sale line's frozen batch yield or commercial snapshot.
+    money_field, sale_line_value, _cogs, _units = _sale_expressions(prefix="")
     sale_total_sq = (
         SaleItem.objects.filter(sale_id=OuterRef("pk"))
         .values("sale_id")
@@ -59,13 +47,13 @@ def _finance_open_items(business):
         .values("total")[:1]
     )
     sale_paid_sq = (
-        CustomerPayment.objects.filter(sale_id=OuterRef("pk"))
+        CustomerPayment.raw_objects.filter(sale_id=OuterRef("pk"))
         .values("sale_id")
         .annotate(total=Sum("amount"))
         .values("total")[:1]
     )
     open_sales = list(
-        Sale.objects.filter(
+        Sale.raw_objects.filter(
             business=business,
             source__in=("distribution_order", "online_order", "walkin"),
             transaction_type__in=("unpaid", "partial"),
@@ -91,11 +79,11 @@ def _finance_open_items(business):
             if is_customer_order:
                 receivables += balance
                 outstanding_sales_count += 1
-                if len(outstanding_sales) < 30:
+                if detail_limit is None or len(outstanding_sales) < detail_limit:
                     outstanding_sales.append({"sale": sale, "balance": balance})
             elif is_walkin:
                 unpaid_invoice_count += 1
-                if len(unpaid_invoice_sales) < 10:
+                if detail_limit is None or len(unpaid_invoice_sales) < min(10, detail_limit):
                     unpaid_invoice_sales.append({"sale": sale, "balance": balance})
         elif is_customer_order or is_walkin:
             settlement_sale_count += 1
@@ -114,17 +102,17 @@ def _finance_open_items(business):
         .values("total")[:1]
     )
     po_paid_sq = (
-        SupplierPayment.objects.filter(purchase_order_id=OuterRef("pk"))
+        SupplierPayment.raw_objects.filter(purchase_order_id=OuterRef("pk"))
         .values("purchase_order_id")
         .annotate(total=Sum("amount"))
         .values("total")[:1]
     )
     open_pos = list(
-        PurchaseOrder.objects.filter(
+        PurchaseOrder.raw_objects.filter(
             business=business, payment_status__in=("unpaid", "partial"), status="received"
         ).only(
-            "id", "supplier", "date", "received_date", "payment_status", "status"
-        ).annotate(
+            "id", "supplier", "supplier_master__name", "date", "received_date", "payment_status", "status"
+        ).select_related('supplier_master').annotate(
             _invoice_total=Coalesce(Subquery(po_total_sq, output_field=po_money_field), Value(Decimal("0"), output_field=po_money_field)),
             _paid_total=Coalesce(Subquery(po_paid_sq, output_field=po_money_field), Value(Decimal("0"), output_field=po_money_field)),
         )
@@ -139,58 +127,28 @@ def _finance_open_items(business):
         if balance:
             purchase_payables += balance
             outstanding_pos_count += 1
-            if len(outstanding_pos) < 30:
+            if detail_limit is None or len(outstanding_pos) < detail_limit:
                 outstanding_pos.append({"po": po, "balance": balance})
         else:
             settlement_po_count += 1
             if len(settlement_po_ids) < 8:
                 settlement_po_ids.append(po.pk)
 
-    from .context import get_ledger_cutover_date, get_ledger_scope
-    from .models import LedgerCutover, OpeningPosition
-    ledger_scope = get_ledger_scope()
-    cutover_date = get_ledger_cutover_date()
-    cutover = None
-    if cutover_date and ledger_scope == "live":
-        cutover = LedgerCutover.raw_objects.filter(business=business).order_by("-id").first()
-    if cutover and cutover.status in {LedgerCutover.STATUS_OPEN, LedgerCutover.STATUS_COMPLETE, LedgerCutover.STATUS_ARCHIVED}:
-        from sales.models import Customer
-        from procurement.models import Supplier
-        for kind, model, target, rows in (
-            ("receivable", Customer, "receivables", outstanding_sales),
-            ("payable", Supplier, "purchase_payables", outstanding_pos),
-        ):
-            positions = OpeningPosition.raw_objects.filter(
-                business=business, cutover=cutover, segment="live", kind=kind,
-                amount__gt=0,
-            ).order_by("object_id")
-            for position in positions:
-                party = model.objects.filter(pk=position.object_id, business=business).first()
-                if not party:
-                    continue
-                balance = position.amount
-                if target == "receivables":
-                    receivables += balance
-                    outstanding_sales_count += 1
-                    rows.append({"sale": None, "name": party.name, "balance": balance, "opening_position": True})
-                else:
-                    purchase_payables += balance
-                    outstanding_pos_count += 1
-                    rows.append({"po": None, "name": party.name, "balance": balance, "opening_position": True})
-
+    from expenses.services import with_outstanding
     unpaid_expenses = list(
-        Expense.objects.filter(business=business, payment_status="unpaid")
-        .only("id", "date", "description", "amount")
+        with_outstanding(Expense.raw_objects.filter(business=business, payment_status="unpaid"))
+        .filter(_remaining_balance__gt=0)
+        .only("id", "date", "description", "amount", "vendor")
         .annotate(
-            _all_unpaid_total=Window(expression=Sum("amount")),
+            _all_unpaid_total=Window(expression=Sum("_remaining_balance")),
             _all_unpaid_count=Window(expression=Count("pk")),
         )
-        .order_by("-date", "-id")[:30]
+        .order_by("-date", "-id")[:detail_limit]
     )
     expense_payables = (unpaid_expenses[0]._all_unpaid_total or Decimal("0")) if unpaid_expenses else Decimal("0")
     expense_payable_count = int(unpaid_expenses[0]._all_unpaid_count or 0) if unpaid_expenses else 0
     outstanding_expenses = [
-        {"expense": expense, "balance": expense.amount}
+        {"expense": expense, "balance": expense._remaining_balance}
         for expense in unpaid_expenses
     ]
     return {
@@ -214,63 +172,10 @@ def _finance_open_items(business):
 
 
 def _cash_account_balances(business, *, active_only=False):
-    from .context import get_ledger_cutover_date, get_ledger_scope
-    from .models import LedgerCutover, OpeningPosition
-    from .ledger import active_cutover
-    scope = get_ledger_scope()
-    cutover_date = get_ledger_cutover_date()
-    cutover = active_cutover(business)
-    if not cutover and scope == "live" and cutover_date:
-        cutover = LedgerCutover.raw_objects.filter(
-            business=business, status=LedgerCutover.STATUS_ARCHIVED,
-        ).order_by("-id").first()
-    if cutover and cutover.status == LedgerCutover.STATUS_MERGED:
-        scope = "live"
-        cutover_date = cutover.cutover_date
     account_qs = CashAccount.objects.filter(business=business)
     if active_only:
         account_qs = account_qs.filter(active=True)
-    accounts = list(
-        account_qs.annotate(
-            _money_in=Sum(
-                "transactions__amount",
-                filter=Q(transactions__transaction_type=FinancialTransaction.INCOME),
-            ),
-            _money_out=Sum(
-                "transactions__amount",
-                filter=Q(transactions__transaction_type=FinancialTransaction.OUTFLOW),
-            ),
-        )
-    )
-    for account in accounts:
-        opening = account.opening_balance
-        if scope in {"live", "backlog"} and cutover_date:
-            position = OpeningPosition.raw_objects.filter(
-                business=business, cutover=cutover, segment=scope,
-                kind="cash", object_id=account.pk,
-            ).first() if cutover else None
-            if position and position.amount is not None:
-                opening = position.amount
-            if scope == "live":
-                account._money_in = sum((item.amount for item in account.transactions.filter(
-                    transaction_type=FinancialTransaction.INCOME, date__gte=cutover_date,
-                )), Decimal("0"))
-                account._money_out = sum((item.amount for item in account.transactions.filter(
-                    transaction_type=FinancialTransaction.OUTFLOW, date__gte=cutover_date,
-                )), Decimal("0"))
-            else:
-                account._money_in = sum((item.amount for item in account.transactions.filter(
-                    transaction_type=FinancialTransaction.INCOME, date__lt=cutover_date,
-                )), Decimal("0"))
-                account._money_out = sum((item.amount for item in account.transactions.filter(
-                    transaction_type=FinancialTransaction.OUTFLOW, date__lt=cutover_date,
-                )), Decimal("0"))
-        account._calculated_balance = (
-            opening
-            + (account._money_in or Decimal("0"))
-            - (account._money_out or Decimal("0"))
-        )
-    return accounts
+    return ledger.apply_cash_totals(account_qs)
 
 
 def _finance_transactions(request):
@@ -506,66 +411,110 @@ def cash_account_delete(request, pk):
 
 @login_required
 def supplier_payment_form(request):
-    form=SupplierPaymentForm(request.POST or None,initial={"date":today()})
-    if request.method=="POST" and form.is_valid():
+    form = SupplierPaymentForm(request.POST or None, business=request.business, initial={'date': ledger.default_entry_date()})
+    if request.method == 'GET' and request.GET.get('purchase_order', '').isdigit():
+        selected = form.fields['purchase_order'].queryset.filter(pk=request.GET['purchase_order']).first()
+        if selected:
+            form.initial.update(purchase_order=selected.pk, supplier=selected.supplier)
+    if request.method == 'POST' and form.is_valid():
         with transaction.atomic():
-            x=form.save(commit=False); x.business=request.business; x.created_by=request.user
-            if x.purchase_order:
-                po=x.purchase_order
-                x.supplier_master = po.supplier_master
-                paid_before=sum((p.amount for p in po.payments.exclude(pk=x.pk)), Decimal("0"))
-                outstanding=max(Decimal("0"), po.total-paid_before)
-                new_paid=paid_before+x.amount
-                po.payment_status="paid" if new_paid >= po.total else "partial"
-                if new_paid >= po.total: po.payment_status="paid"
-                po.save(update_fields=["payment_status","updated_at"])
-                supplier=po.supplier or x.supplier
-            else:
-                supplier=x.supplier
-            from procurement.services import resolve_supplier
-            x.supplier_master = x.supplier_master or resolve_supplier(
-                request.business, supplier, created_by=request.user
-            )
-            x.supplier = supplier or x.supplier
-            x.save()
-            record_cash(request.business,request.user,date=x.date,amount=x.amount,transaction_type=FinancialTransaction.OUTFLOW,category="Supplier payment",description=f"Payment to {supplier}",payment_method=x.payment_method,reference=x.reference or f"SUPPAY-{x.pk}",account=x.account)
-            audit(request.business,request.user,"create",x,"Supplier payment recorded",{"amount":str(x.amount),"purchase_order":getattr(x.purchase_order,"pk",None)})
-        messages.success(request,"Supplier payment recorded and payable updated."); return redirect("finance_dashboard")
-    return render(request,"core/payment_form.html",{"form":form,"supplier_payload":form.supplier_payload,"title":"Supplier Payment","help_text":"Pay an outstanding received purchase order. Stock was already received when the PO was received; this payment only settles the payable."})
+            payment = form.save(commit=False)
+            payment.business, payment.created_by = request.business, request.user
+            po = payment.purchase_order
+            if po:
+                po = PurchaseOrder.raw_objects.select_for_update().get(pk=po.pk, business=request.business)
+                paid = SupplierPayment.raw_objects.filter(business=request.business, purchase_order=po).aggregate(v=Sum('amount'))['v'] or Decimal('0')
+                outstanding = Decimal('0') if po.payment_status == 'paid' else max(po.total - paid, Decimal('0'))
+                if payment.amount > outstanding:
+                    form.add_error('amount', 'Payment exceeds the current vendor balance. Reload to review recent payments.')
+            if not form.errors:
+                supplier = po.supplier if po else payment.supplier
+                from procurement.services import resolve_supplier
+                payment.supplier = supplier
+                payment.supplier_master = po.supplier_master if po else resolve_supplier(request.business, supplier, created_by=request.user)
+                payment.save()
+                if po:
+                    po.payment_status = 'paid' if paid + payment.amount >= po.total else 'partial'
+                    po.save(update_fields=['payment_status','updated_at'])
+                record_cash(request.business, request.user, date=payment.date, amount=payment.amount,
+                            transaction_type=FinancialTransaction.OUTFLOW, category='Supplier payment',
+                            description=f'Payment to {supplier}', payment_method=payment.payment_method,
+                            reference=payment.reference or f'SUPPAY-{payment.pk}', account=payment.account)
+                audit(request.business, request.user, 'create', payment, 'Supplier payment recorded',
+                      {'amount': str(payment.amount), 'purchase_order': po.pk if po else None})
+                messages.success(request, 'Vendor payment recorded and balance updated.')
+                return redirect('finance_dashboard')
+    return render(request, 'core/payment_form.html', {'form':form, 'supplier_payload':form.supplier_payload,
+        'title':'Supplier Payment', 'help_text':'Select one vendor purchase order. Pay an advance or settle received goods; this records money only and does not receive stock.'})
 @login_required
 def customer_payment_form(request):
-    form=CustomerPaymentForm(request.POST or None,initial={"date":today()})
-    if request.method=="POST" and form.is_valid():
-        with transaction.atomic():
-            x=form.save(commit=False); x.business=request.business; x.created_by=request.user; x.save()
-            sale=x.sale
-            paid_before=sum((p.amount for p in sale.payments.exclude(pk=x.pk)), Decimal("0"))
-            new_paid=paid_before+x.amount
-            sale.transaction_type="paid" if new_paid >= sale.total else "partial"
-            sale.save(update_fields=["transaction_type","updated_at"])
-            if sale.linked_order and sale.source in ("distribution_order", "online_order"):
-                # Customer orders have their own payment-status field. Keep the
-                # physical-store transaction_type untouched; only a fully settled
-                # receivable becomes Received on the originating order.
-                linked_order = sale.linked_order
-                if new_paid >= sale.total:
-                    linked_order.customer_payment_status = "paid"
-                    linked_order.save(update_fields=["customer_payment_status","updated_at"])
-            record_cash(request.business,request.user,date=x.date,amount=x.amount,transaction_type=FinancialTransaction.INCOME,category="Customer payment",description=f"Payment from {sale.customer} — Sale #{sale.pk}",payment_method=x.payment_method,reference=x.reference or f"CUSTPAY-{x.pk}",account=x.account)
-            audit(request.business,request.user,"create",x,"Customer payment recorded",{"amount":str(x.amount),"sale":sale.pk,"customer":sale.customer})
-        messages.success(request,"Customer payment recorded and receivable updated."); return redirect("finance_dashboard")
-    return render(request,"core/payment_form.html",{"form":form,"sales_payload":form.sales_payload,"title":"Customer Payment","help_text":"Only Distribution and Online customer sales appear here. Select the customer and then the specific sale being settled."})
+    from .finance_forms import CustomerPaymentPartFormSet
+    split_mode = request.method != 'POST' or 'payments-TOTAL_FORMS' in request.POST
+    form = CustomerPaymentForm(request.POST or None, business=request.business, split_mode=split_mode,
+                               initial={'date': ledger.default_entry_date()})
+    parts = CustomerPaymentPartFormSet(
+        request.POST if request.method == 'POST' and split_mode else None, prefix='payments',
+        initial=[{'payment_method': method, 'amount': '0'} for method, _ in Sale.PAYMENT_CHOICES],
+        form_kwargs={'business': request.business}) if split_mode else None
+    if request.method == 'GET' and request.GET.get('sale', '').isdigit():
+        selected = form.fields['sale'].queryset.filter(pk=request.GET['sale']).first()
+        if selected:
+            form.initial.update(sale=selected.pk, customer=selected.customer)
+    if request.method == 'POST':
+        valid = form.is_valid()
+        if parts is not None:
+            valid = parts.is_valid() and valid
+        if valid:
+            entries = ([p.cleaned_data for p in parts.forms if p.cleaned_data.get('amount')]
+                       if parts is not None else [form.cleaned_data])
+            amount = sum((p['amount'] for p in entries), Decimal('0'))
+            with transaction.atomic():
+                sale = Sale.raw_objects.select_for_update().get(pk=form.cleaned_data['sale'].pk, business=request.business)
+                paid_before = CustomerPayment.raw_objects.filter(business=request.business, sale=sale).aggregate(v=Sum('amount'))['v'] or Decimal('0')
+                outstanding = Decimal('0') if sale.transaction_type == 'paid' else max(sale.total - paid_before, Decimal('0'))
+                if amount > outstanding:
+                    form.add_error(None, 'The combined payment exceeds the outstanding sale balance. Reload to review recent payments.')
+                else:
+                    for entry in entries:
+                        payment = CustomerPayment.objects.create(
+                            business=request.business, created_by=request.user, date=form.cleaned_data['date'],
+                            customer=sale.customer, customer_master=sale.customer_master, sale=sale,
+                            amount=entry['amount'], payment_method=entry['payment_method'], account=entry['account'],
+                            reference=entry.get('reference') or form.cleaned_data.get('reference', ''),
+                            notes=form.cleaned_data.get('notes', ''))
+                        record_cash(request.business, request.user, date=payment.date, amount=payment.amount,
+                                    transaction_type=FinancialTransaction.INCOME, category='Customer payment',
+                                    description=f'Payment from {sale.customer} — Sale #{sale.pk}',
+                                    payment_method=payment.payment_method, reference=payment.reference or f'CUSTPAY-{payment.pk}', account=payment.account)
+                        audit(request.business, request.user, 'create', payment, 'Customer payment recorded',
+                              {'amount': str(payment.amount), 'sale': sale.pk, 'payment_method': payment.payment_method})
+                    new_paid = paid_before + amount
+                    sale.transaction_type = 'paid' if new_paid >= sale.total else 'partial'
+                    sale.save(update_fields=['transaction_type', 'updated_at'])
+                    if sale.linked_order and new_paid >= sale.total:
+                        linked = sale.linked_order
+                        linked.customer_payment_status = 'paid'
+                        linked.save(update_fields=['customer_payment_status', 'updated_at'])
+                    messages.success(request, 'Customer payment recorded across the selected methods and accounts.')
+                    return redirect('finance_dashboard')
+    return render(request, 'core/payment_form.html', {
+        'form': form, 'payment_parts': parts, 'sales_payload': form.sales_payload, 'title': 'Customer Payment',
+        'help_text': 'Choose a customer and invoice. Enter what arrived by Cash, Card and Transfer; each amount posts to its own receiving account.'})
 @login_required
 def stock_adjustment_form(request):
-    form=StockAdjustmentForm(request.POST or None,initial={"date":today()})
+    form=StockAdjustmentForm(request.POST or None,initial={"date":ledger.default_entry_date()})
     if request.method=="POST" and form.is_valid():
         with transaction.atomic():
             x=form.save(commit=False); x.business=request.business; x.created_by=request.user
             if x.raw_material:
+                from inventory.models import RawMaterial
+                x.raw_material = RawMaterial.objects.select_for_update().get(pk=x.raw_material_id, business=request.business)
                 x.unit_value=x.raw_material.cost_per_unit
                 if x.quantity + x.raw_material.stock < 0:
                     form.add_error("quantity","Adjustment would make stock negative."); return render(request,"core/adjustment_form.html",{"form":form})
             else:
+                from inventory.models import FinishedGood
+                x.finished_good = FinishedGood.objects.select_for_update().get(pk=x.finished_good_id, business=request.business)
                 if x.finished_good.stock is None:
                     form.add_error("finished_good","This product is not in physical-store stock."); return render(request,"core/adjustment_form.html",{"form":form})
                 if x.quantity + x.finished_good.stock < 0:

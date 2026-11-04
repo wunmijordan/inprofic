@@ -1,7 +1,8 @@
 {% load core_extras static %}
 <!doctype html>
-<html lang="en-NG">
+<html lang="en-NG" data-tenant="marketing" data-tenant-accent="#D14900" data-tenant-background="#050733">
 <head>
+  <script>document.documentElement.classList.add('js');</script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Inventory, production management, staff payroll, orders and sales software for Nigerian businesses. Run stock, recipes, POS, online ordering and payroll in naira in one workspace.">
@@ -13,382 +14,37 @@
   <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="INPROFIC · From Stock to Sale, in one place"><meta name="twitter:description" content="Inventory, production, payroll, orders and sales for Nigerian businesses in one workspace."><meta name="twitter:image" content="{{ social_image_url }}">
   <title>INPROFIC: Inventory, Production &amp; Sales Software in Nigeria</title>
   <script type="application/ld+json">{{ json_ld|safe }}</script>
-  <script>document.documentElement.classList.add('js')</script>
-  <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
-  <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}">
+  <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}?v={{ static_asset_version }}">
+  <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}?v={{ static_asset_version }}">
+  <link rel="stylesheet" href="{% static 'core/css/workspace.css' %}?v={{ static_asset_version }}">
+  <link rel="stylesheet" href="{% static 'core/css/button-surfaces.css' %}?v={{ static_asset_version }}">
+  <link rel="stylesheet" href="{% static 'core/css/interactions.css' %}?v={{ static_asset_version }}">
+  <link rel="stylesheet" href="{% static 'core/css/marketing.css' %}?v={{ static_asset_version }}">
+  <script src="{% static 'core/js/workspace.js' %}?v={{ static_asset_version }}"></script>
+  <script src="{% static 'core/js/interactions.js' %}?v={{ static_asset_version }}" data-inprofic-ui defer></script>
+  <script src="{% static 'core/js/brand-assets.js' %}?v={{ static_asset_version }}" defer></script>
+  <script src="{% static 'core/js/form-experience.js' %}?v={{ static_asset_version }}" defer></script>
+  <link rel="stylesheet" href="{% static 'core/css/marketing-demos.css' %}?v={{ static_asset_version }}">
+  <link rel="stylesheet" href="{% static 'core/css/marketing-restored.css' %}?v={{ static_asset_version }}">
+  <script src="{% static 'core/js/marketing-demos.js' %}?v={{ static_asset_version }}" defer></script>
   {% include "pwa/head.html" %}
-  <style>
-    @font-face { font-family:'Sora'; src:url('{% static "core/fonts/Sora-Variable.ttf" %}') format('truetype'); font-weight:100 800; font-style:normal; font-display:swap; }
-    @font-face { font-family:'Fraunces'; src:url('{% static "core/fonts/Fraunces-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
-    @font-face { font-family:'IBM Plex Mono'; src:url('{% static "core/fonts/IBMPlexMono-Regular.ttf" %}') format('truetype'); font-weight:400; font-style:normal; font-display:swap; }
-    :root { --accent:#d14900; --deep:#050733; --gold:#e7bd65; --paper:#faf6ef; }
-    html { scroll-behavior:smooth; }
-    body { font-family:'Sora',sans-serif; background:var(--paper); color:#211d1a; }
-    .font-display { font-family:'Fraunces',serif; }
-    .font-subheading { font-family:'Sora',sans-serif; font-weight:800; letter-spacing:-.025em; }
-    .hero-grid { background-image:linear-gradient(rgba(255,255,255,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.055) 1px,transparent 1px); background-size:30px 30px; }
-    .glass { background:rgba(255,255,255,.09); border:1px solid rgba(255,255,255,.14); backdrop-filter:blur(14px); }
-    .soft-card { box-shadow:0 18px 55px rgba(52,34,28,.09); }
-    .feature-card { position:relative; transition:transform .22s ease,box-shadow .22s ease; }
-    .feature-card:hover { transform:translateY(-3px); box-shadow:0 22px 55px rgba(52,34,28,.12); }
-    .feature-card.is-flippable { display:flex; min-height:15rem; flex-direction:column; cursor:pointer; isolation:isolate; overflow:hidden; transform-style:preserve-3d; backface-visibility:hidden; -webkit-backface-visibility:hidden; background:linear-gradient(145deg,rgba(255,255,255,.99),rgba(255,253,248,.97)); box-shadow:0 18px 50px rgba(35,27,24,.09),inset 0 1px 0 rgba(255,255,255,.9); }
-    .feature-card.is-flippable::before { content:""; position:absolute; inset:0; z-index:-1; border-radius:inherit; padding:1px; background:linear-gradient(120deg,rgba(209,73,0,.42),rgba(231,189,101,.2),rgba(5,7,51,.2),rgba(209,73,0,.3)); -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude; }
-    .feature-card.is-flippable:hover { box-shadow:0 22px 55px rgba(52,34,28,.14),inset 0 1px 0 rgba(255,255,255,.9); }
-    .feature-card.is-opening { animation:module-card-flip-cue .46s cubic-bezier(.2,.75,.2,1) both !important; }
-    .feature-demo-hint { display:inline-flex; align-items:center; justify-content:flex-end; gap:.35rem; margin-top:auto; padding-top:.8rem; color:#a8a29e; font-size:.62rem; font-weight:750; }
-    .feature-demo-hint svg { width:.8rem; height:.8rem; }
-    .feature-mini-head { display:flex; align-items:flex-start; justify-content:space-between; gap:.75rem; }
-    .feature-mini-title { font-size:1.15rem; font-weight:850; color:#292524; }
-    .feature-mini-kicker { margin-top:.25rem; color:#78716c; font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
-    .feature-mini-state { border-radius:999px; background:#ecfdf5; color:#047857; padding:.38rem .62rem; font-size:.62rem; font-weight:850; }
-    .feature-mini-kpis { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.65rem; margin-top:1.1rem; }
-    .feature-mini-kpi { min-width:0; border:1px solid #eee7d7; border-radius:.8rem; background:#fff; padding:.78rem; }
-    .feature-mini-kpi small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#78716c; font-size:.56rem; font-weight:800; text-transform:uppercase; }
-    .feature-mini-kpi strong { display:block; margin-top:.25rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#44403c; font-size:.82rem; }
-    .feature-mini-list { margin-top:.8rem; overflow:hidden; border:1px solid #eee7d7; border-radius:.85rem; background:#fff; }
-    .feature-mini-row { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,.72fr) auto; gap:.55rem; align-items:center; padding:.72rem .78rem; border-top:1px solid #f3eee5; font-size:.68rem; }
-    .feature-mini-row:first-child { border-top:0; }
-    .feature-mini-row strong,.feature-mini-row span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .feature-mini-row span { color:#78716c; }
-    .feature-mini-chip { border-radius:999px; background:#f5efe0; color:#8f172d !important; padding:.25rem .42rem; font-size:.54rem; font-weight:850; }
-    .feature-mini-chip.good { background:#ecfdf5; color:#047857 !important; }
-    .feature-mini-chip.warn { background:#fff7ed; color:#c2410c !important; }
-    .feature-mini-back { margin-top:.8rem; color:#8f172d; font-size:.64rem; font-weight:800; }
-    .capability-stage { position:relative; isolation:isolate; }
-    .capability-stage::before { content:""; position:absolute; z-index:-2; inset:3rem -1rem 2rem; border-radius:3rem; background:radial-gradient(circle at 12% 18%,rgba(209,73,0,.12),transparent 28%),radial-gradient(circle at 86% 72%,rgba(5,7,51,.12),transparent 32%),linear-gradient(135deg,rgba(255,255,255,.74),rgba(245,239,224,.55)); border:0; overflow:hidden; }
-    .capability-stage::after { content:""; position:absolute; z-index:-1; width:15rem; height:15rem; right:4%; top:22%; border-radius:999px; background:conic-gradient(from 90deg,rgba(209,73,0,.20),rgba(231,189,101,.10),rgba(5,7,51,.12),rgba(209,73,0,.20)); filter:blur(38px); opacity:.65; animation:capability-orbit 12s linear infinite; }
-    .capability-grid { position:relative; isolation:isolate; }
-    .capability-connectors { position:absolute; z-index:0; inset:0; width:100%; height:100%; overflow:visible; }
-    .capability-connector-base { fill:none; stroke:rgba(5,7,51,.13); stroke-width:1.35; }
-    .capability-connector-flow { fill:none; stroke:url(#capability-flow-gradient); stroke-width:2.6; stroke-linecap:round; stroke-dasharray:13 18; animation:capability-flow 2.1s linear infinite; filter:drop-shadow(0 0 4px rgba(209,73,0,.28)); }
-    .capability-grid .feature-card { position:relative; z-index:2; }
-    .capability-grid .feature-card.is-flippable { animation:capability-card-float 7s ease-in-out infinite; animation-delay:calc(var(--module-index,0) * -0.72s); }
-    .capability-grid .feature-card.is-flippable:nth-of-type(2n) { --module-tilt:-.35deg; }
-    .capability-grid .feature-card.is-flippable:nth-of-type(3n) { --module-tilt:.35deg; }
-    .capability-hub { position:relative; z-index:1; grid-column:1/-1; display:grid; place-items:center; min-height:9rem; pointer-events:none; isolation:isolate; }
-    .capability-hub::before,.capability-hub::after { content:""; position:absolute; border-radius:999px; border:1px solid rgba(209,73,0,.22); animation:capability-hub-pulse 4.8s ease-in-out infinite; }
-    .capability-hub::before { width:8.7rem; height:8.7rem; }
-    .capability-hub::after { width:11rem; height:11rem; border-color:rgba(5,7,51,.12); animation-delay:-2.4s; }
-    .capability-hub-mark { position:relative; z-index:2; display:grid; place-items:center; width:6.9rem; height:6.9rem; border-radius:2rem; background:rgba(255,255,255,.94); border:1px solid rgba(231,223,204,.95); box-shadow:0 22px 55px rgba(35,27,24,.15),0 0 0 10px rgba(255,255,255,.35); animation:capability-hub-float 5.6s ease-in-out infinite; }
-    .capability-hub-mark img { display:block; width:68%; height:68%; object-fit:contain; }
-    @media(min-width:1024px){
-      .capability-grid { display:grid !important; grid-template-columns:repeat(12,minmax(0,1fr)); gap:1rem; align-items:stretch; }
-      .capability-grid .feature-card:nth-of-type(1){grid-column:1/4;grid-row:1}.capability-grid .feature-card:nth-of-type(2){grid-column:4/7;grid-row:1}.capability-grid .feature-card:nth-of-type(3){grid-column:7/10;grid-row:1}.capability-grid .feature-card:nth-of-type(4){grid-column:10/13;grid-row:1}
-      .capability-grid .feature-card:nth-of-type(5){grid-column:1/4;grid-row:2}.capability-grid .feature-card:nth-of-type(6){grid-column:10/13;grid-row:2}
-      .capability-grid .feature-card:nth-of-type(7){grid-column:2/5;grid-row:3}.capability-grid .feature-card:nth-of-type(8){grid-column:5/8;grid-row:3}.capability-grid .feature-card:nth-of-type(9){grid-column:8/11;grid-row:3}
-      .capability-hub { grid-column:4/10; grid-row:2; min-height:15rem; }
-    }
-    .module-preview-overlay[hidden] { display:none; }
-    .module-preview-overlay { position:fixed; z-index:130; inset:0; display:grid; place-items:center; padding:1.25rem; opacity:0; visibility:hidden; transition:opacity .26s ease,visibility .26s ease; perspective:1200px; }
-    .module-preview-overlay.is-open { opacity:1; visibility:visible; }
-    .module-preview-backdrop { position:absolute; inset:0; width:100%; height:100%; border:0; background:rgba(5,7,51,.4); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); cursor:pointer; }
-    .module-preview-shell { position:relative; width:min(42rem,calc(100vw - 2.5rem)); max-height:min(38rem,calc(100dvh - 2.5rem)); overflow:auto; border:1px solid rgba(255,255,255,.75); border-radius:1.35rem; background:linear-gradient(145deg,#fffdf8,#fff); box-shadow:0 32px 90px rgba(5,7,51,.3); padding:1.3rem; opacity:0; transform:translateY(18px) rotateY(-13deg) scale(.96); transform-origin:center; transition:opacity .32s ease,transform .44s cubic-bezier(.16,1,.3,1); }
-    .module-preview-overlay.is-open .module-preview-shell { opacity:1; transform:translateY(0) rotateY(0) scale(1); }
-    .module-preview-toolbar { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:.9rem; }
-    .module-preview-label { color:#d14900; font-size:.64rem; font-weight:850; letter-spacing:.14em; text-transform:uppercase; }
-    .module-preview-close { display:grid; place-items:center; width:2.35rem; height:2.35rem; flex:0 0 auto; border:1px solid #e7dfcc; border-radius:999px; background:#fff; color:#292524; transition:transform .2s ease,background-color .2s ease; }
-    .module-preview-close:hover { transform:rotate(7deg); background:#faf6ef; }
-    .module-preview-close svg { width:1rem; height:1rem; }
-    body.module-preview-open { overflow:hidden; }
-    @keyframes capability-card-float { 0%,100%{translate:0 0;rotate:var(--module-tilt,0deg)} 50%{translate:0 -7px;rotate:var(--module-tilt,0deg)} }
-    @keyframes capability-flow { to{stroke-dashoffset:-62} }
-    @keyframes module-card-flip-cue { 0%{transform:translateY(-3px) rotateY(0)} 48%{transform:translateY(-5px) rotateY(10deg) scale(.985)} 100%{transform:translateY(-3px) rotateY(0)} }
-    @keyframes capability-orbit { to{transform:rotate(360deg)} }
-    @keyframes capability-hub-float { 0%,100%{transform:translateY(0) rotate(-1deg)} 50%{transform:translateY(-7px) rotate(1deg)} }
-    @keyframes capability-hub-pulse { 0%,100%{transform:scale(.9);opacity:.38} 50%{transform:scale(1.06);opacity:.82} }
-    .ambient-orb { animation:ambient-drift 12s ease-in-out infinite alternate; will-change:transform; }
-    .ambient-orb-delayed { animation-delay:-5s; animation-duration:16s; }
-    .payroll-offer-sticker { position:absolute; z-index:20; top:1.75rem; right:clamp(.8rem,3vw,3rem); width:clamp(11.5rem,17vw,15rem); line-height:0; animation:payroll-sticker-float 6s ease-in-out infinite; filter:drop-shadow(0 18px 22px rgba(209,73,0,.34)) drop-shadow(0 4px 8px rgba(5,7,51,.35)); }
-    .payroll-offer-sticker img { display:block; width:100%; height:auto; }
-    .hero-preview { animation:preview-float 7s ease-in-out infinite; }
-    .bridge-card > div { animation:bridge-rise .65s both cubic-bezier(.2,.8,.2,1); }
-    .bridge-card > div:nth-child(2) { animation-delay:.1s; }
-    .bridge-card > div:nth-child(3) { animation-delay:.2s; }
-    .process-flow { position:relative; }
-    .process-flow::before { content:""; position:absolute; left:1.95rem; top:2rem; bottom:2rem; width:2px; background:linear-gradient(180deg,transparent,var(--accent) 18%,var(--accent) 82%,transparent); background-size:100% 180%; animation:flow-line 4.5s ease-in-out infinite; opacity:.3; }
-    .flow-step { position:relative; transition:transform .22s ease,background-color .22s ease; }
-    .flow-step:hover { transform:translateX(4px); background:#fff; }
-    #faq [data-faq-toggle] { display:none; }
-    .js #faq [data-faq-toggle] { display:inline-flex; }
-    .js #faq [data-faq-list][data-expanded="false"] > details:nth-child(n+4) { display:none; }
-    @keyframes ambient-drift { from{transform:translate3d(-3%,0,0) scale(.96)} to{transform:translate3d(8%,-7%,0) scale(1.08)} }
-    @keyframes payroll-sticker-float { 0%,100%{transform:translateY(0) rotate(6deg)} 50%{transform:translateY(-7px) rotate(3deg)} }
-    @keyframes preview-float { 0%,100%{transform:translateY(0) rotate(-.15deg)} 50%{transform:translateY(-8px) rotate(.15deg)} }
-    @keyframes bridge-rise { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
-    @keyframes flow-line { 0%,100%{background-position:0 100%} 50%{background-position:0 0} }
-    .promo-stage { position:relative; overflow:hidden; margin-top:0; padding-top:4.75rem; background:#050733; }
-    .promo-bridge-shell { position:relative; background:#050733; }
-    .promo-bridge-overlap { position:absolute; inset:0 0 auto; z-index:30; transform:translateY(-50%); }
-    .promo-bridge-overlap > div { pointer-events:auto; }
-    .promo-stage::before { content:""; position:absolute; inset:-40%; background:conic-gradient(from 90deg,transparent 0 20%,rgba(209,73,0,.26) 30%,transparent 42% 70%,rgba(231,189,101,.2) 82%,transparent 92%); animation:promo-orbit 14s linear infinite; }
-    .promo-slide { --promo-fg:#fff; --promo-muted:rgba(255,255,255,.72); --promo-chip:rgba(255,255,255,.12); display:none; position:relative; min-height:330px; color:var(--promo-fg); isolation:isolate; }
-    .promo-slide.is-active { display:grid; animation:promo-enter .75s cubic-bezier(.2,.8,.2,1) both; }
-    .promo-theme-midnight { background:linear-gradient(120deg,#050733,#11165f 54%,#3c1608); }
-    .promo-theme-ember { background:linear-gradient(120deg,#4a1604,#d14900 52%,#050733); }
-    .promo-theme-gold { background:linear-gradient(120deg,#050733,#6e531b 55%,#d14900); }
-    .promo-theme-paper { --promo-fg:#211d1a; --promo-muted:#6b625c; --promo-chip:rgba(5,7,51,.08); background:linear-gradient(120deg,#faf6ef,#f5efe0 55%,#f6d8bd); }
-    .promo-slide-grid { display:grid; width:min(1280px,100%); margin:auto; grid-template-columns:minmax(0,1.15fr) minmax(260px,.85fr); align-items:center; gap:34px; padding:38px 28px; }
-    .promo-copy { position:relative; z-index:3; }
-    .promo-copy h2,.promo-copy h3 { margin:.15em 0; line-height:1.02; }
-    .promo-copy p { margin:.45em 0; }
-    .promo-meta { display:flex; flex-wrap:wrap; gap:8px; margin-top:18px; }
-    .promo-chip { border:1px solid color-mix(in srgb,var(--promo-fg) 18%,transparent); border-radius:999px; background:var(--promo-chip); padding:7px 11px; font-size:11px; font-weight:700; backdrop-filter:blur(10px); }
-    .promo-cta { display:inline-flex; align-items:center; gap:8px; margin-top:18px; border-radius:14px; background:#d14900; color:#fff; padding:12px 16px; font-size:12px; font-weight:800; box-shadow:0 16px 34px rgba(209,73,0,.28); }
-    .promo-media { position:relative; z-index:2; min-height:250px; overflow:hidden; border-radius:28px; border:1px solid rgba(255,255,255,.16); background:rgba(255,255,255,.08); box-shadow:0 28px 70px rgba(0,0,0,.28); transform:perspective(900px) rotateY(-4deg); }
-    .promo-media img,.promo-media video { width:100%; height:100%; min-height:250px; object-fit:cover; }
-    .promo-media::after { content:""; position:absolute; inset:0; background:linear-gradient(135deg,rgba(255,255,255,.15),transparent 30% 72%,rgba(209,73,0,.18)); }
-    .promo-animation-kinetic.is-active .promo-copy > * { animation:promo-rise .72s both cubic-bezier(.2,.8,.2,1); }
-    .promo-animation-kinetic.is-active .promo-copy > *:nth-child(2){animation-delay:.08s}.promo-animation-kinetic.is-active .promo-copy > *:nth-child(3){animation-delay:.16s}.promo-animation-kinetic.is-active .promo-copy > *:nth-child(4){animation-delay:.24s}
-    .promo-animation-spotlight.is-active .promo-media { animation:promo-spotlight 4.5s ease-in-out infinite alternate; }
-    .promo-animation-parallax.is-active .promo-media { animation:promo-float 5.5s ease-in-out infinite; }
-    .promo-animation-marquee::after { content:"PROMO • INPROFIC • PROMO • INPROFIC • PROMO • INPROFIC •"; position:absolute; left:-8%; right:-8%; bottom:18px; white-space:nowrap; overflow:hidden; color:color-mix(in srgb,var(--promo-fg) 9%,transparent); font:700 40px 'IBM Plex Mono',monospace; letter-spacing:.12em; transform:rotate(-2deg); animation:promo-marquee 14s linear infinite; z-index:1; }
-    .promo-progress { position:absolute; left:50%; bottom:12px; z-index:5; display:flex; gap:5px; transform:translateX(-50%); }
-    .promo-progress span { width:28px; height:3px; border-radius:999px; background:rgba(255,255,255,.25); overflow:hidden; }
-    .promo-progress span.is-active::after { content:""; display:block; height:100%; background:#d14900; animation:promo-timer 7s linear both; }
-
-    .marketing-demo-intro { padding-top:8rem; }
-    @media(min-width:1024px){ .marketing-demo-intro { padding-top:9rem; } }
-    .hero-typewrap { position:relative; display:inline-block; width:11.35ch; min-width:11.35ch; height:1.08em; vertical-align:-.07em; white-space:nowrap; line-height:1; overflow:visible; }
-    .hero-typeword { position:absolute; left:0; top:.185em; display:inline-block; width:auto; height:1.08em; white-space:nowrap; line-height:1; transform:none; }
-    .hero-typed-text { display:inline-block; padding-bottom:.12em; background:linear-gradient(100deg,#e7bd65 0%,#ffd59b 16%,#d14900 46%,#8f172d 72%,#e7bd65 100%); background-size:240% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; -webkit-text-fill-color:transparent; animation:hero-gradient 5.5s ease-in-out infinite alternate; }
-    .hero-typecursor { position:absolute; left:calc(100% + .12em); top:.16em; width:.56em; height:.56em; overflow:visible; animation:hero-cursor-blink .82s steps(1,end) infinite; }
-    .hero-typecursor path,.hero-typecursor circle,.hero-typecursor rect,.hero-typecursor line,.hero-typecursor polyline { fill:none; stroke:url(#heroCursorGradient); stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; }
-    .hero-subline { color:rgba(255,255,255,.66); }
-    .ip-demo { --demo-accent:#d14900; position:relative; overflow:hidden; border:1px solid #e7dfcc; border-radius:28px; background:#fffdf8; box-shadow:0 4px 8px #000000d2; }
-    .ip-demo-head { display:grid; grid-template-columns:minmax(0,1fr); gap:10px; padding:14px 16px; border-bottom:1px solid #eee7d7; background:linear-gradient(180deg,#fff,#fbf7ef); }
-    .ip-demo-head-copy { height:2.75rem; min-height:2.75rem; overflow:hidden; }
-    .ip-demo-label { line-height:1.35; overflow-wrap:anywhere; }
-    .ip-demo-caption { min-height:1.4rem; line-height:1.4; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; }
-    .ip-demo-controls { display:flex; width:100%; min-height:34px; flex-wrap:wrap; align-items:center; gap:10px; }
-    .ip-demo-tabs { display:flex; gap:7px; overflow-x:auto; scrollbar-width:none; }
-    .ip-demo-tabs::-webkit-scrollbar { display:none; }
-    .ip-demo-tab { flex:none; border:1px solid #e7dfcc; border-radius:999px; background:#fff; color:#57534e; padding:7px 11px; font-size:11px; font-weight:800; transition:transform .18s ease,background .18s ease,color .18s ease,border-color .18s ease; }
-    .ip-demo-tab:hover { transform:translateY(-1px); border-color:#d14900; }
-    .ip-demo-tab.is-active { border-color:#d14900; background:#d14900; color:#fff; box-shadow:0 8px 20px rgba(209,73,0,.20); }
-    .ip-demo-window { position:relative; display:grid; grid-template-columns:116px minmax(0,1fr); height:350px; background:#f7f3eb; overflow:hidden; }
-    .ip-demo.is-compact .ip-demo-window { height:300px; grid-template-columns:96px minmax(0,1fr); }
-    .ip-demo-sidebar { padding:16px 11px; background:#050733; color:#fff; }
-    .ip-demo-sidebar-title { font:800 9px/1.2 'IBM Plex Mono',monospace; letter-spacing:.12em; text-transform:uppercase; color:#e7bd65; }
-    .ip-demo-nav { display:grid; gap:6px; margin-top:13px; }
-    .ip-demo-nav button { display:block; width:100%; border:0; border-radius:9px; padding:7px 8px; background:transparent; color:rgba(255,255,255,.55); text-align:left; font-size:9px; font-weight:700; transition:background .18s ease,color .18s ease,transform .18s ease; }
-    .ip-demo-nav button:hover { color:#fff; transform:translateX(2px); }
-    .ip-demo-nav button.is-active { background:rgba(209,73,0,.24); color:#fff; box-shadow:inset 2px 0 0 #d14900; }
-    .ip-demo-main { min-width:0; height:100%; padding:16px; overflow-y:auto; overscroll-behavior-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y; scrollbar-width:none; }
-    .ip-demo-main::-webkit-scrollbar { display:none; }
-    .ip-demo-topbar { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
-    .ip-demo-eyebrow { font:800 9px/1.2 'IBM Plex Mono',monospace; letter-spacing:.09em; text-transform:uppercase; color:#a8a29e; }
-    .ip-demo-title { margin-top:3px; color:#292524; font-size:17px; font-weight:800; }
-    .ip-demo-state { flex:none; border-radius:999px; background:#ecfdf5; color:#047857; padding:5px 8px; font-size:8px; font-weight:850; }
-    .ip-demo-subnav { display:flex; min-height:30px; gap:6px; margin-top:9px; overflow-x:auto; scrollbar-width:none; }
-    .ip-demo-subnav:empty { visibility:hidden; }
-    .ip-demo-subnav::-webkit-scrollbar { display:none; }
-    .ip-demo-subnav button { flex:none; border:1px solid #e7dfcc; border-radius:999px; background:#fff; color:#57534e; padding:5px 8px; font-size:8px; font-weight:800; transition:background .18s ease,border-color .18s ease,color .18s ease; }
-    .ip-demo-subnav button.is-active { border-color:#050733; background:#050733; color:#fff; }
-    .ip-demo-kpis { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:8px; }
-    .ip-demo-kpi { min-width:0; border:1px solid #ebe3d5; border-radius:12px; background:#fff; padding:9px; }
-    .ip-demo-kpi small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#a8a29e; font-size:8px; text-transform:uppercase; letter-spacing:.06em; font-weight:800; }
-    .ip-demo-kpi strong { display:block; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#44403c; font-size:13px; }
-    .ip-demo-panel { margin-top:10px; overflow:hidden; border:1px solid #ebe3d5; border-radius:13px; background:#fff; }
-    .ip-demo-row { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,.8fr) auto; align-items:center; gap:8px; padding:9px 10px; border-top:1px solid #f2ece2; font-size:9px; }
-    .ip-demo-row:first-child { border-top:0; }
-    .ip-demo-row strong,.ip-demo-row span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .ip-demo-row strong { color:#44403c; }
-    .ip-demo-row span { color:#78716c; }
-    .ip-demo-chip { border-radius:999px; background:#f5efe0; color:#8f172d !important; padding:4px 7px; font-size:7px; font-weight:850; }
-    .ip-demo-chip.good { background:#ecfdf5; color:#047857 !important; }
-    .ip-demo-chip.warn { background:#fff7ed; color:#c2410c !important; }
-    .ip-demo-progress { height:7px; visibility:hidden; overflow:hidden; border-radius:999px; background:#eee7dc; margin:10px 0 2px; }
-    .ip-demo-progress.is-visible { visibility:visible; }
-    .ip-demo-progress span { display:block; width:0; height:100%; border-radius:inherit; background:linear-gradient(90deg,#050733,#8f172d,#d14900); transition:width .55s cubic-bezier(.2,.8,.2,1); }
-    .ip-demo-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; padding:9px; }
-    .ip-demo-field { display:grid; gap:3px; min-width:0; border:0; border-radius:9px; background:#faf7f1; padding:7px 8px; text-align:left; transition:background .18s ease,box-shadow .18s ease,transform .18s ease; }
-    .ip-demo-field:hover,.ip-demo-field.is-demo-focus { background:#fff7ed; box-shadow:0 0 0 1px rgba(209,73,0,.22); transform:translateY(-1px); }
-    .ip-demo-field small { color:#a8a29e; font-size:7px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; }
-    .ip-demo-field strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#44403c; font-size:9px; }
-    .ip-demo-actions { display:flex; min-height:30px; justify-content:flex-end; gap:6px; margin-top:8px; }
-    .ip-demo-actions button { border:1px solid #d9cfb4; border-radius:9px; background:#fff; color:#57534e; padding:6px 9px; font-size:8px; font-weight:850; transition:transform .18s ease,background .18s ease,color .18s ease,border-color .18s ease; }
-    .ip-demo-actions button:hover { transform:translateY(-1px); border-color:#d14900; }
-    .ip-demo-actions button.primary { border-color:#d14900; background:#d14900; color:#fff; }
-    .ip-demo-note { min-height:3.35rem; padding:12px 16px; border-top:1px solid #eee7d7; background:#fff; color:#78716c; font-size:10px; line-height:1.6; }
-    .ip-demo-pointer { position:absolute; z-index:20; left:0; top:0; width:28px; height:28px; opacity:0; pointer-events:none; transform:translate3d(18px,80px,0); transition:transform .68s cubic-bezier(.2,.78,.2,1),opacity .22s ease; filter:drop-shadow(0 5px 9px rgba(5,7,51,.24)); will-change:transform; }
-    .ip-demo-pointer.is-visible { opacity:1; }
-    .ip-demo-pointer svg { display:block; width:24px; height:24px; overflow:visible; }
-    .ip-demo-pointer .pointer-fill { fill:#fff; stroke:#050733; stroke-width:1.7; stroke-linejoin:round; }
-    .ip-demo-pointer .pointer-accent { fill:#d14900; stroke:#fff; stroke-width:1.2; }
-    .ip-demo-pointer-ring { position:absolute; left:9px; top:8px; width:12px; height:12px; border:2px solid rgba(209,73,0,.78); border-radius:50%; opacity:0; transform:scale(.4); }
-    .ip-demo-pointer.is-clicking .ip-demo-pointer-ring { animation:ip-demo-click .48s ease-out; }
-    .ip-demo-pointer.is-clicking svg { transform:scale(.9); }
-    .ip-demo-service-label { display:flex; align-items:center; gap:.45rem; color:#78716c; font-size:.62rem; font-weight:800; text-transform:uppercase; letter-spacing:.06em; }
-    .ip-demo-service-select { min-width:11.5rem; border:1px solid #e7dfcc; border-radius:999px; background:#fff; color:#44403c; padding:.46rem 1.8rem .46rem .7rem; font-size:.68rem; font-weight:750; text-transform:none; letter-spacing:0; }
-    .marketing-service-control { display:inline-flex; flex-wrap:wrap; align-items:center; gap:.55rem; border:1px solid #e7dfcc; border-radius:1rem; background:#fffdf8; padding:.55rem .65rem .55rem .8rem; box-shadow:0 10px 28px rgba(52,34,28,.07); }
-    .marketing-service-control .ip-demo-service-select { min-width:min(18rem,72vw); }
-    .ip-demo.is-detailed .ip-demo-window { height:395px; }
-    .ip-demo.is-detailed .ip-demo-panel { margin-top:14px; }
-    .ip-demo-channel { display:inline-flex; align-items:center; gap:.28rem; margin-left:.35rem; border-radius:999px; padding:.18rem .38rem; background:#eef2ff; color:#4338ca; font-size:.47rem; font-weight:850; vertical-align:middle; }
-    .ip-demo-channel.internal { background:#fff7ed; color:#c2410c; }
-    #storefront-demo .ip-demo-head-copy { height:5rem; min-height:5rem; overflow:visible; }
-    #storefront-demo .ip-demo-caption { display:block; min-height:0; overflow:visible; -webkit-line-clamp:unset; }
-    #general-product-demo .ip-demo-head-copy { height:3.75rem; min-height:3.75rem; overflow:hidden; }
-    .js [data-reveal] { opacity:0; transform:translateY(34px); transition:opacity .72s ease,transform .72s cubic-bezier(.2,.75,.2,1); transition-delay:var(--reveal-delay,0ms); }
-    .js [data-reveal].is-revealed { opacity:1; transform:translateY(0); }
-    @keyframes demo-bars { from{transform:scaleY(.76);opacity:.72} to{transform:scaleY(1);opacity:1} }
-    @keyframes hero-gradient { from{background-position:0% 50%} to{background-position:100% 50%} }
-    @keyframes hero-cursor-blink { 0%,46%{opacity:1} 47%,100%{opacity:.08} }
-    @keyframes promo-enter { from{opacity:0;transform:scale(.985)} to{opacity:1;transform:scale(1)} }
-    @keyframes promo-rise { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
-    @keyframes promo-float { 0%,100%{transform:perspective(900px) rotateY(-4deg) translateY(0)} 50%{transform:perspective(900px) rotateY(2deg) translateY(-12px)} }
-    @keyframes promo-spotlight { from{filter:saturate(.9) brightness(.88);transform:perspective(900px) rotateY(-5deg) scale(.98)} to{filter:saturate(1.15) brightness(1.08);transform:perspective(900px) rotateY(1deg) scale(1.025)} }
-    @keyframes promo-marquee { from{transform:translateX(0) rotate(-2deg)} to{transform:translateX(-18%) rotate(-2deg)} }
-    @keyframes promo-orbit { to{transform:rotate(360deg)} }
-    @keyframes promo-timer { from{width:0} to{width:100%} }
-    @keyframes ip-demo-click { 0%{opacity:.95;transform:scale(.35)} 100%{opacity:0;transform:scale(2.2)} }
-    @media(max-width:780px){#storefront-demo .ip-demo-head-copy{height:6.25rem;min-height:6.25rem}.ip-demo-window{height:430px;grid-template-columns:92px minmax(0,1fr)}.ip-demo.is-detailed .ip-demo-window{height:455px}.ip-demo.is-compact .ip-demo-window{height:380px}.ip-demo-form{grid-template-columns:1fr}.promo-bridge-shell{padding-top:1px}.promo-bridge-overlap{position:relative;transform:none;margin:-2rem auto 0}.promo-stage{padding-top:1.5rem}.promo-slide-grid{grid-template-columns:1fr;padding:30px 20px 42px}.promo-media{min-height:210px;transform:none}.promo-media img,.promo-media video{min-height:210px}.promo-animation-marquee::after{font-size:28px}.ip-demo-window,.ip-demo.is-compact .ip-demo-window{grid-template-columns:72px minmax(0,1fr)}.ip-demo-sidebar{padding:13px 7px}.ip-demo-nav button{padding:6px 5px;font-size:8px}.ip-demo-main{padding:12px}.ip-demo-kpis{gap:5px}.ip-demo-kpi{padding:7px}.ip-demo-row{grid-template-columns:minmax(0,1fr) auto}.ip-demo-row>span:nth-child(2){display:none}}
-    @media(max-width:780px){
-      .ip-demo { touch-action:pan-y; }
-      #storefront-demo .ip-demo-head-copy { height:auto; min-height:0; overflow:visible; }
-      .ip-demo-window,.ip-demo.is-compact .ip-demo-window { height:auto; min-height:380px; overflow:visible; }
-      .ip-demo.is-detailed .ip-demo-window { height:auto; min-height:455px; }
-      .ip-demo-main { height:auto; min-height:380px; overflow:visible; }
-      .ip-demo.is-detailed .ip-demo-main { min-height:455px; }
-    }
-    /* The first operational walkthrough must never resize as richer scenes render.
-       Keep its viewport and caption area fixed through tablet/mobile; only the
-       inner operation pane scrolls when a scene needs more vertical room. */
-    @media(max-width:1024px){
-      #general-product-demo .ip-demo-head-copy { height:3.75rem; min-height:3.75rem; overflow:hidden; }
-      #general-product-demo .ip-demo-window { height:430px; min-height:430px; overflow:hidden; }
-      #general-product-demo .ip-demo-main { height:100%; min-height:0; overflow-y:auto; overflow-x:hidden; }
-    }
-    @media(max-width:780px){
-      #general-product-demo .ip-demo-window { height:440px; min-height:440px; overflow:hidden; }
-      #general-product-demo .ip-demo-main { height:100%; min-height:0; overflow-y:auto; overflow-x:hidden; }
-    }
-    /* Storefront walkthrough: same fixed footprint as the general demo. The mobile rules above let it grow
-       with its content (height:auto), which pushed the page down on text-heavy scenes. Keep the header and
-       window a constant size; only the inner pane scrolls. */
-    @media(max-width:780px){
-      #storefront-demo .ip-demo-head-copy { height:6.5rem; min-height:6.5rem; overflow-y:auto; overflow-x:hidden; }
-      #storefront-demo .ip-demo-window { height:455px; min-height:455px; overflow:hidden; }
-      #storefront-demo .ip-demo-main { height:100%; min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior-y:contain; }
-    }
-    .marketing-whatsapp { position:fixed; right:1.15rem; bottom:1.15rem; z-index:80; display:flex; align-items:center; gap:.55rem; color:#fff; text-decoration:none; filter:drop-shadow(0 12px 24px rgba(0,0,0,.22)); }
-    .marketing-whatsapp-label { border-radius:999px; background:#fff; color:#292524; padding:.62rem .78rem; font-size:.7rem; font-weight:800; box-shadow:0 8px 24px rgba(0,0,0,.12); transition:transform .2s ease,opacity .2s ease; }
-    .marketing-whatsapp-icon { display:grid; place-items:center; width:3.25rem; height:3.25rem; border-radius:999px; background:#25D366; box-shadow:0 0 0 6px rgba(37,211,102,.12); animation:whatsapp-pulse 3s ease-in-out infinite; }
-    .marketing-whatsapp-icon svg { width:1.75rem; height:1.75rem; }
-    .marketing-whatsapp:hover .marketing-whatsapp-label { transform:translateX(-3px); }
-    @keyframes whatsapp-pulse { 0%,100%{box-shadow:0 0 0 6px rgba(37,211,102,.12)} 50%{box-shadow:0 0 0 11px rgba(37,211,102,.04)} }
-    @media(max-width:780px){ .marketing-whatsapp{right:.8rem;bottom:.8rem}.marketing-whatsapp-label{display:none}.marketing-whatsapp-icon{width:3rem;height:3rem} }
-    @media(max-width:780px){
-      #plans { padding-top:10.5rem; }
-      #plans .payroll-offer-sticker { top:1.4rem; right:.75rem; width:9.5rem; filter:drop-shadow(0 10px 14px rgba(209,73,0,.3)) drop-shadow(0 3px 5px rgba(5,7,51,.3)); }
-    }
-    @media(max-width:780px){
-      .capability-stage { overflow:hidden; padding-left:0 !important; padding-right:0 !important; }
-      .capability-stage > .max-w-2xl { padding-left:1.25rem; padding-right:1.25rem; }
-      .capability-stage::before { inset:2.2rem .7rem 1.2rem; border-radius:2rem; }
-      .capability-stage::after { width:11rem; height:11rem; right:-3rem; top:18rem; }
-      .capability-grid { display:grid !important; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.72rem; overflow:visible; padding:0 1.05rem 1.25rem; margin-top:2rem !important; }
-      .capability-hub { grid-column:1/-1; min-height:6.5rem; margin:.15rem 0; }
-      .capability-hub::before { width:6.1rem; height:6.1rem; }
-      .capability-hub::after { width:7.5rem; height:7.5rem; }
-      .capability-hub-mark { width:4.8rem; height:4.8rem; border-radius:1.35rem; box-shadow:0 14px 32px rgba(35,27,24,.14),0 0 0 7px rgba(255,255,255,.32); }
-      .capability-grid .feature-card { width:100%; min-width:0; }
-      .capability-grid .feature-card.is-flippable { min-height:8.25rem; align-items:center; justify-content:center; gap:.55rem; padding:.85rem; text-align:center; animation-duration:6.2s; }
-      .capability-grid .feature-card.is-flippable > span:first-child { display:grid; place-items:center; margin:0; }
-      .capability-grid .feature-card.is-flippable > span:first-child svg { width:1.85rem; height:1.85rem; }
-      .capability-grid .feature-card.is-flippable > h3 { margin-top:0 !important; font-size:.82rem !important; line-height:1.15; }
-      .capability-grid .feature-card.is-flippable > p,.capability-grid .feature-card.is-flippable > .feature-demo-hint { display:none !important; }
-      .module-preview-overlay { padding:.75rem; }
-      .module-preview-shell { width:calc(100vw - 1.5rem); max-height:calc(100dvh - 1.5rem); border-radius:1.15rem; padding:1rem; }
-      .feature-mini-kpis { gap:.45rem; }
-      .feature-mini-kpi { padding:.62rem .5rem; }
-      .feature-mini-row { grid-template-columns:minmax(0,1fr) auto; }
-      .feature-mini-row > span:nth-child(2) { display:none; }
-    }
-    /* Header menu (four section links) */
-    .site-menu { position:relative; }
-    .site-menu-btn { display:grid; place-items:center; width:2.5rem; height:2.5rem; border-radius:999px; border:1px solid rgba(255,255,255,.22); background:transparent; color:#fff; cursor:pointer; transition:background .15s ease; }
-    .site-menu-btn:hover, .site-menu-btn[aria-expanded="true"] { background:rgba(255,255,255,.14); }
-    .site-menu-btn:focus-visible, .site-menu-panel a:focus-visible { outline:2px solid var(--gold); outline-offset:2px; }
-    .site-menu-btn svg { width:1.15rem; height:1.15rem; }
-    .site-menu-panel { position:absolute; right:0; top:calc(100% + .6rem); z-index:40; min-width:13.5rem; padding:.4rem; border-radius:1.1rem; border:1px solid rgba(255,255,255,.14); background:rgba(8,10,56,.96); backdrop-filter:blur(14px); box-shadow:0 24px 50px -20px rgba(0,0,0,.6); }
-    .site-menu-panel[hidden] { display:none; }
-    .site-menu-panel:not([hidden]) { animation:siteMenuIn .14s ease-out; }
-    .site-menu-panel a { display:block; padding:.72rem .9rem; border-radius:.8rem; color:#fff; font-size:.92rem; font-weight:600; text-decoration:none; }
-    .site-menu-panel a:hover { background:rgba(255,255,255,.1); }
-    @keyframes siteMenuIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:none} }
-    @media (max-width:479px) { header .site-nav { flex-wrap:wrap; row-gap:.75rem; } header .site-logo { width:7rem !important; } header .site-nav-actions > a { padding:.45rem .7rem; font-size:.75rem; } .site-menu-btn { width:2.25rem; height:2.25rem; } }
-    /* About section */
-    section.about { padding-bottom:1.75rem; overflow-x:clip; }
-    @media (min-width:640px) { section.about { padding-top:6rem; padding-bottom:2.25rem; } }
-    /* The demo intro's large top padding was sized for sitting directly under the hero; right under About it only stacks on the gap. */
-    .about + .marketing-demo-intro { padding-top:2.5rem; }
-    @media (min-width:1024px) { .about + .marketing-demo-intro { padding-top:3rem; } }
-    /* Module cards glide in from the right on scroll (staggered); see the .about-modules observer in the page script. */
-    .js .about-modules > li { opacity:0; transform:translate3d(3.5rem,0,0) scale(.97); transition:opacity .6s ease, transform .85s cubic-bezier(.16,1,.3,1); transition-delay:calc(var(--i,0) * 70ms); }
-    .js .about-modules:not(.is-in) > li { will-change:transform,opacity; }
-    .js .about-modules.is-in > li { opacity:1; transform:none; }
-    .about-kicker { display:inline-flex; align-items:center; gap:.55rem; margin:0 0 1rem; font-size:.85rem; font-weight:600; color:#6b625c; }
-    .about-kicker span { width:.55rem; height:.55rem; border-radius:999px; background:var(--accent); box-shadow:0 0 0 4px rgba(209,73,0,.14); }
-    .about h2 { margin:0; max-width:20ch; font-size:clamp(1.9rem,4.6vw,3.4rem); line-height:1.08; letter-spacing:-.02em; font-weight:600; color:var(--deep); }
-    .about-lead { margin:1.1rem 0 0; max-width:64ch; font-size:1.05rem; line-height:1.7; color:#5f5850; }
-    .about-modules { list-style:none; margin:2rem 0 0; padding:0; display:grid; gap:.6rem; grid-template-columns:repeat(2,minmax(0,1fr)); }
-    @media (min-width:880px) { .about-modules { grid-template-columns:repeat(5,minmax(0,1fr)); gap:.75rem; } }
-    .about-module { display:flex; align-items:center; gap:.65rem; min-height:3.25rem; padding:.55rem .75rem .55rem .6rem; border:1px solid #e7dfcc; border-radius:.9rem; background:#fffdf8; color:var(--deep); font-size:.82rem; font-weight:600; line-height:1.25; text-decoration:none; transition:transform .2s ease, border-color .2s ease, box-shadow .2s ease; }
-    .about-module:hover { transform:translateY(-2px); border-color:#d9cfb4; box-shadow:0 12px 26px -18px rgba(5,7,51,.4); }
-    .about-module:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-    .about-icon { flex:none; display:grid; place-items:center; width:2rem; height:2rem; border-radius:.6rem; background:rgba(5,7,51,.045); }
-    .about-icon svg { width:1.15rem; height:1.15rem; }
-    .about-module small { display:block; margin-top:.1rem; font-size:.66rem; font-weight:600; color:#8a7f73; }
-    .about-note { margin:1rem 0 0; font-size:.85rem; color:#6b625c; }
-    .about-note a { color:var(--accent); font-weight:600; text-underline-offset:2px; }
-    @media (prefers-reduced-motion:reduce) { .about-module { transition:none; } .about-module:hover { transform:none; } .js .about-modules > li { opacity:1!important; transform:none!important; transition:none!important; } }
-    @media (prefers-reduced-motion:reduce) { html{scroll-behavior:auto}.js [data-reveal]{opacity:1!important;transform:none!important;transition:none!important}.feature-card,.flow-step,.module-preview-overlay,.module-preview-shell{transition:none!important}.ambient-orb,.payroll-offer-sticker,.hero-preview,.bridge-card>div,.process-flow::before,.promo-stage::before,.promo-slide,.promo-copy>*,.promo-media,.promo-animation-marquee::after,.promo-progress span::after,.hero-typed-text,.hero-typecursor,.ip-demo-chart i,.ip-demo-pointer,.ip-demo-pointer-ring,.capability-grid .feature-card.is-flippable,.capability-connector-flow,.capability-stage::after,.capability-hub-mark,.capability-hub::before,.capability-hub::after,.trust-logo-track{animation:none!important;transition:none!important} }
-    .plan-card { transition: transform .24s ease, box-shadow .24s ease; }
-    .plan-card:hover { transform: translateY(-4px); }
-
-    .trust-strip { position:relative; display:grid; grid-template-columns:minmax(8.5rem,12rem) minmax(0,1fr); overflow:hidden; border-radius:1.5rem; background:linear-gradient(105deg,rgba(5,7,51,.14),rgba(5,7,51,.07) 62%,rgba(209,73,0,.045)); color:#050733; }
-    .trust-count { position:relative; z-index:2; display:flex; min-height:7.5rem; flex-direction:column; justify-content:center; padding:1.1rem 1.35rem; background:linear-gradient(135deg,#8f172d,#d14900); color:#fff; }
-    .trust-count strong { font-family:'Sora',serif; font-size:clamp(2.2rem,5vw,3.75rem); line-height:.9; }
-    .trust-count span { margin-top:.55rem; font-size:.67rem; font-weight:800; line-height:1.35; letter-spacing:.1em; text-transform:uppercase; }
-    .trust-logo-window { display:flex; min-width:0; align-items:center; overflow:hidden; -webkit-mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent); mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent); }
-    .trust-logo-track { display:flex; width:max-content; align-items:center; padding:1rem 0; animation:trust-logo-flow 28s linear infinite; will-change:transform; }
-    .trust-logo-track.is-building,.trust-logo-track--empty { animation:none; }
-    .trust-logo-set { display:flex; flex:0 0 auto; align-items:center; gap:1.25rem; padding:0 .625rem; }
-    @media(hover:hover){ .trust-logo-window:hover .trust-logo-track { animation-play-state:paused; } }
-    .trust-logo-window.is-paused .trust-logo-track { animation-play-state:paused; }
-    .trust-logo { display:flex; width:9.5rem; height:5.4rem; min-width:0; flex:0 0 auto; align-items:center; justify-content:center; overflow:hidden; padding:.55rem .75rem; line-height:0; contain:layout paint; }
-    .trust-logo img { display:block; width:100%; height:100%; max-width:none; max-height:none; object-fit:contain; object-position:center; }
-    .trust-empty { min-width:18rem; color:rgba(5,7,51,.7); font-size:.78rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
-    @keyframes trust-logo-flow { to { transform:translate3d(-50%,0,0); } }
-    @media(max-width:640px){ .trust-strip{grid-template-columns:6.6rem minmax(0,1fr);border-radius:1.2rem}.trust-count{min-height:6.5rem;padding:.85rem}.trust-count strong{font-size:2.15rem}.trust-count span{font-size:.56rem}.trust-logo{width:7.4rem;height:4.4rem;padding:.45rem .55rem}.trust-logo-track{padding:.75rem 0}.trust-logo-set{gap:.8rem;padding:0 .4rem} }
-  </style>
 </head>
-<body>
+<body class="marketing-page restored-marketing">
+  <a class="ui-skip-link" href="#main-content">Skip to main content</a>
   <header class="relative isolate z-0 overflow-hidden text-white" style="background:var(--deep)">
-    <div class="hero-grid absolute inset-0 opacity-60"></div>
-    <div class="ambient-orb absolute -right-20 top-24 h-80 w-80 rounded-full bg-[#d14900]/60 blur-3xl"></div>
-    <div class="ambient-orb ambient-orb-delayed absolute -left-28 bottom-0 h-72 w-72 rounded-full bg-[#e7bd65]/20 blur-3xl"></div>
+    <div class="hero-grid absolute inset-0 opacity-60" aria-hidden="true"></div>
+    <div class="ambient-orb absolute -right-20 top-24 h-80 w-80 rounded-full bg-[#d14900]/60 blur-3xl" aria-hidden="true"></div>
+    <div class="ambient-orb ambient-orb-delayed absolute -left-28 bottom-0 h-72 w-72 rounded-full bg-[#e7bd65]/20 blur-3xl" aria-hidden="true"></div>
     <nav class="site-nav relative mx-auto flex max-w-7xl items-center justify-between px-5 py-6 sm:px-8" aria-label="Main">
-      <a href="{% url 'marketing_home' %}" aria-label="INPROFIC home"><img src="{% static 'core/brand/inprofic-wordmark-on-dark.png' %}" alt="INPROFIC" class="site-logo max-w-full" style="width:clamp(8.75rem,14vw,11.5rem);height:auto" width="1827" height="290"></a>
+      <a href="{% url 'marketing_home' %}" aria-label="INPROFIC home"><img src="{% static 'core/brand/inprofic-wordmark-on-dark.png' %}" data-brand-logo-light="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" data-brand-logo-dark="{% static 'core/brand/inprofic-wordmark-on-dark.png' %}" alt="INPROFIC" class="site-logo max-w-full" style="width:clamp(8.75rem,14vw,11.5rem);height:auto" width="1827" height="290"></a>
       <div class="site-nav-actions flex items-center gap-2">
         {% if user.is_authenticated %}
-        <a href="{% url 'dashboard' %}" class="rounded-full bg-[#d14900] px-4 py-2 text-sm font-bold text-white shadow-lg transition hover:brightness-110">Go to your Workspace</a>
+        <a data-button-surface href="{% url 'dashboard' %}" class="ui-button-primary rounded-full bg-[#d14900] px-4 py-2 text-sm font-bold text-white shadow-lg transition hover:brightness-110">Go to your Workspace</a>
         {% else %}
-        <a href="{% url 'login' %}" class="rounded-full border border-white/20 px-4 py-2 text-sm font-semibold hover:bg-white/10">Sign In</a>
-        <a href="{% url 'signup' %}" class="rounded-full bg-white px-4 py-2 text-sm font-bold text-[#050733] shadow-lg hover:bg-[#fff7e8]">Start Free</a>
+        <a data-button-surface href="{% url 'login' %}" class="rounded-full border border-white/20 px-4 py-2 text-sm font-semibold hover:bg-white/10">Sign In</a>
+        <a data-button-surface href="{% url 'signup' %}" class="ui-button-primary rounded-full bg-white px-4 py-2 text-sm font-bold text-[#050733] shadow-lg hover:bg-[#fff7e8]">Start Free</a>
         {% endif %}
-        <div class="site-menu" data-site-menu>
-          <button type="button" class="site-menu-btn" aria-label="Open menu" aria-haspopup="true" aria-expanded="false" aria-controls="site-menu-panel" data-site-menu-btn>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
-          </button>
-          <div class="site-menu-panel" id="site-menu-panel" hidden>
-            <a href="#about">About</a>
-            <a href="#capabilities">Capabilities</a>
-            <a href="#plans">Plans</a>
-            <a href="#faq">FAQ</a>
-          </div>
-        </div>
+        <span data-ui-site-menu></span>
       </div>
     </nav>
 
@@ -396,19 +52,20 @@
       <div>
         <p class="text-xs font-bold uppercase tracking-[.24em] text-[#e7bd65]">Production to commerce</p>
         <h1 class="mt-5 max-w-3xl font-display text-4xl font-semibold leading-[1.12] sm:text-6xl">
-          Run <span class="hero-typing hero-typewrap italic" data-static="0" data-words='["Stock","Production","Sales","Delivery"]'><span class="hero-typeword" aria-live="polite"><span class="hero-typed-text" data-typed-text>stock</span><svg class="hero-typecursor" data-typing-cursor viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="heroCursorGradient" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse"><stop stop-color="#e7bd65"/><stop offset=".36" stop-color="#ffd59b"/><stop offset=".68" stop-color="#d14900"/><stop offset="1" stop-color="#8f172d"/></linearGradient></defs><g data-typing-icon><path d="M4 7l8 -4l8 4l-8 4z"/><path d="M4 7v10l8 4l8 -4v-10"/><path d="M12 11v10"/></g></svg></span></span><br>
-          in one clear Workspace.
+          <span class="sr-only">Run stock, production, sales and delivery in one clear workspace.</span><span class="hero-opening" aria-hidden="true"><span>Run</span><span class="hero-typing hero-typewrap italic" data-static="0" data-words='["Stock","Production","Sales","Delivery"]'><span class="hero-typeword" aria-hidden="true"><span class="hero-typed-text" data-typed-text>stock</span><svg class="hero-typecursor" data-typing-cursor viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="heroCursorGradient" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse"><stop stop-color="#e7bd65"/><stop offset=".36" stop-color="#ffd59b"/><stop offset=".68" stop-color="#d14900"/><stop offset="1" stop-color="#8f172d"/></linearGradient></defs><g data-typing-icon><path d="M4 7l8 -4l8 4l-8 4z"/><path d="M4 7v10l8 4l8 -4v-10"/><path d="M12 11v10"/></g></svg></span></span></span><br>
+          <span aria-hidden="true">in one clear Workspace.</span>
         </h1>
+
         <p class="mt-5 max-w-2xl text-base leading-7 text-white/70 sm:text-lg">INPROFIC keeps inventory, buying, formulas, production, commerce, finance and fulfilment connected—so you can see what is available, what is moving and what each order is worth.</p>
         <p class="mt-2 max-w-2xl text-sm leading-6 hero-subline">One system for buying, making, selling and delivering—without losing operational truth.</p>
         <div class="mt-8 flex flex-wrap gap-3">
-          <a href="{% url 'signup' %}" class="rounded-xl bg-[#d14900] px-5 py-3 text-sm font-bold text-white shadow-[0_14px_35px_rgba(209,73,0,.34)] hover:brightness-110">Create your Workspace</a>
-          <a href="#capabilities" class="rounded-xl border border-white/20 bg-white/5 px-5 py-3 text-sm font-semibold hover:bg-white/10">Explore INPROFIC</a>
+          <a data-button-surface href="{% url 'signup' %}" class="ui-button-primary rounded-xl bg-[#d14900] px-5 py-3 text-sm font-bold text-white shadow-[0_14px_35px_rgba(209,73,0,.34)] hover:brightness-110">Create your Workspace</a>
+          <a data-button-surface href="#capabilities" class="rounded-xl border border-white/20 bg-white/5 px-5 py-3 text-sm font-semibold hover:bg-white/10">Explore INPROFIC</a>
         </div>
       </div>
       <div class="hero-preview glass soft-card rounded-[2rem] p-4 sm:p-6">
         <div class="rounded-3xl bg-[#fffdf8] p-5 text-stone-900 shadow-2xl sm:p-6">
-          <div class="flex items-center justify-between"><div><p class="text-[10px] font-bold uppercase tracking-[.2em] text-stone-400">Today at a glance</p><h2 class="mt-1 font-display text-2xl font-semibold">A clearer operation</h2></div><span class="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">✓</span></div>
+          <div class="flex items-center justify-between"><div><p class="text-[10px] font-bold uppercase tracking-[.2em] text-stone-400">Today at a glance</p><h2 class="mt-1 font-display text-2xl font-semibold">A clearer operation</h2><p class="example-label">Illustrative workspace preview</p></div><span class="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">✓</span></div>
           <div class="mt-5 grid grid-cols-2 gap-3">
             <div class="rounded-2xl bg-[#f5efe0] p-4"><p class="text-xs text-stone-500">Stock Health</p><p class="mt-2 text-2xl font-bold text-emerald-700">Visible</p></div>
             <div class="rounded-2xl bg-[#f5efe0] p-4"><p class="text-xs text-stone-500">Orders</p><p class="mt-2 text-2xl font-bold text-[#d14900]">Connected</p></div>
@@ -423,7 +80,7 @@
     </div>
   </header>
 
-  <main class="relative z-10">
+  <main id="main-content" class="relative z-10">
     {% if marketing_campaigns %}
     <section class="promo-bridge-shell" aria-label="Current INPROFIC promotions">
       <div class="promo-bridge-overlap mx-auto max-w-6xl px-5 sm:px-8">{% include "marketing/_bridge.html" %}</div>
@@ -451,7 +108,7 @@
       </div>
     </section>
     {% else %}
-    <section class="relative z-30 mx-auto -mt-12 max-w-6xl px-5 sm:px-8">{% include "marketing/_bridge.html" %}</section>
+    <section class="marketing-bridge-section relative z-30 mx-auto -mt-12 max-w-6xl px-5 sm:px-8">{% include "marketing/_bridge.html" %}</section>
     {% endif %}
 
     {% if trust_strip_enabled %}
@@ -470,8 +127,8 @@
 
     <section id="about" class="about mx-auto max-w-7xl px-5 py-16 sm:px-8" aria-labelledby="about-title">
       <div>
-        <p class="about-kicker"><span aria-hidden="true"></span>Built for Nigerian Businesses</p>
         <h2 id="about-title" class="font-display">One connected system for buying, making and selling.</h2>
+<p class="about-kicker"><span aria-hidden="true"></span>Built for Nigerian Businesses</p>
         <p class="about-lead">INPROFIC is a production-aware commercial management system for businesses that buy materials or products, make or prepare finished goods, manage inventory, sell through multiple channels and deliver orders. It keeps payables, receivables and cash flow beside them, giving you one reliable record of what happened across the business, in naira by default.</p>
       </div>
       <ul class="about-modules" role="list">
@@ -536,7 +193,8 @@
     </section>
 
     <section id="capabilities" class="capability-stage mx-auto max-w-7xl px-5 py-24 sm:px-8">
-      <div class="max-w-2xl"><p class="text-xs font-bold uppercase tracking-[.22em] text-[#d14900]">The whole operation</p><h2 class="mt-3 font-display text-3xl font-semibold sm:text-5xl">Less switching. Fewer blind spots.</h2><p class="mt-4 leading-7 text-stone-500">Every module shares the same business context and audit trail, so teams can act without stitching together scattered spreadsheets.</p></div>
+      <div class="max-w-2xl"><h2 class="mt-3 font-display text-3xl font-semibold sm:text-5xl">Less switching. Fewer blind spots.</h2>
+<p class="text-xs font-bold uppercase tracking-[.22em] text-[#d14900]">The whole operation</p><p class="mt-4 leading-7 text-stone-500">Every module shares the same business context and audit trail, so teams can act without stitching together scattered spreadsheets.</p></div>
       <div class="capability-grid mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-module-grid>
         <svg class="capability-connectors" data-module-connectors aria-hidden="true">
           <defs>
@@ -589,7 +247,7 @@
           <p class="mt-2 text-sm leading-6 text-stone-500">Handle walk-ins, direct orders, online demand, distribution pricing, customer credit and fulfilment without losing context.</p>
         </article>
         <div class="capability-hub" data-module-hub aria-hidden="true">
-          <span class="capability-hub-mark"><img src="{% static 'core/brand/inprofic-mark.png' %}" alt=""></span>
+          <span class="capability-hub-mark"><img data-brand-logo-light="{% static 'core/brand/inprofic-mark.png' %}" data-brand-logo-dark="{% static 'core/brand/inprofic-mark-on-dark.png' %}" src="{% static 'core/brand/inprofic-mark.png' %}" alt=""></span>
         </div>
         <article class="feature-card soft-card rounded-2xl border border-stone-200 bg-white p-5">
           <span class="text-2xl">
@@ -641,25 +299,25 @@
           <p class="mt-2 text-sm leading-6 text-stone-500">Cashier-only users can land straight in the counter storefront, sell safely, and log out without entering the wider workspace.</p>
         </article>
       </div>
-      <div class="module-preview-overlay" data-module-overlay hidden>
-        <button type="button" class="module-preview-backdrop" data-module-close tabindex="-1" aria-label="Close module preview"></button>
-        <div id="module-preview-dialog" class="module-preview-shell" data-module-dialog role="dialog" aria-modal="true" aria-labelledby="module-preview-title" tabindex="-1">
+      <dialog class="module-preview-overlay" data-module-overlay aria-label="Module preview">
+        <div id="module-preview-dialog" class="module-preview-shell" data-module-dialog aria-labelledby="module-preview-title" tabindex="-1">
           <div class="module-preview-toolbar">
             <span class="module-preview-label">Interactive module preview</span>
             <button type="button" class="module-preview-close" data-module-close aria-label="Close module preview">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
             </button>
           </div>
-          <div data-module-preview></div>
+          <p class="module-preview-example">Illustrative data · Explore the same module for your selected business service.</p><div data-module-preview></div>
         </div>
-      </div>
+      </dialog>
 
     </section>
 
-    <section class="bg-[#050733] py-24 text-white">
+    <section class="marketing-services bg-[#050733] py-24 text-white">
       <div class="mx-auto max-w-7xl px-5 sm:px-8">
         <div class="grid gap-10 lg:grid-cols-2">
-          <div><p class="text-xs font-bold uppercase tracking-[.22em] text-[#e7bd65]">Fits the work</p><h2 class="mt-3 font-display text-3xl font-semibold sm:text-5xl">Purpose-built nuance, without separate systems.</h2><p class="mt-4 max-w-xl leading-7 text-white/60">Choose a service and INPROFIC adjusts its vocabulary and capabilities while keeping the shared commercial foundation intact.</p></div>
+          <div><h2 class="mt-3 font-display text-3xl font-semibold sm:text-5xl">Purpose-built nuance, without separate systems.</h2>
+<p class="text-xs font-bold uppercase tracking-[.22em] text-[#e7bd65]">Fits the work</p><p class="mt-4 max-w-xl leading-7 text-white/60">Choose a service and INPROFIC adjusts its vocabulary and capabilities while keeping the shared commercial foundation intact.</p></div>
           <div class="grid gap-3 sm:grid-cols-2">
             <div class="glass rounded-2xl p-4"><strong>Bakery</strong><p class="mt-1 text-xs leading-5 text-white/60">Recipes, batches, production and distribution.</p></div>
             <div class="glass rounded-2xl p-4"><strong>Restaurant & Food Service</strong><p class="mt-1 text-xs leading-5 text-white/60">Recipes, prep, table service and bulk orders.</p></div>
@@ -671,10 +329,10 @@
       </div>
     </section>
 
-    <section class="mx-auto grid max-w-7xl gap-12 px-5 py-24 sm:px-8 lg:grid-cols-2">
+    <section class="marketing-commerce mx-auto grid max-w-7xl gap-12 px-5 py-24 sm:px-8 lg:grid-cols-2">
       <div class="p-6 sm:p-8">
-        <p class="text-xs font-bold uppercase tracking-[.2em] text-[#d14900]">Sell beyond the counter</p>
         <h2 class="mt-3 font-display text-3xl font-semibold">Don't own a Website yet?</h2>
+<p class="text-xs font-bold uppercase tracking-[.2em] text-[#d14900]">Sell beyond the counter</p>
         <p class="mt-4 text-sm leading-7 text-stone-500">Publish a branded catalogue grouped by business-defined product categories, accept multi-product baskets, quote delivery before payment, offer channel-specific prices and let customers return to saved order and delivery tracking links.</p>
         <div class="process-flow mt-6 space-y-3">
           <div class="flow-step flex gap-4 rounded-2xl bg-[#f5efe0] p-4"><span class="relative z-10 font-display text-xl text-[#d14900]">01</span><div><strong>Validate</strong><p class="mt-1 text-xs text-stone-500">Publication, quantity, channel price and availability are checked centrally.</p></div></div>
@@ -687,40 +345,140 @@
       <div class="flex flex-col justify-center">
         <div class="mb-8">{% include "marketing/_native_demo.html" with demo_id="storefront-demo" demo_kind="storefront" demo_label="Storefront operations" demo_detailed=True demo_note="This flow includes customer-facing storefront/headless checkout and the staff-only in-premise POS, then follows payment, operational handoff and delivery." %}</div>
       </div>
+      <details id="workflows" class="workflow-controls"><summary>See the connected controls</summary>
+        <div class="workflow-content">
+      <div class="marketing-section-head"><h3>From stock to sale, in one place.</h3><p>The order is only the beginning. Keep the materials, production, customer balances and fulfilment connected as the work moves through your business.</p></div>
+      <div class="order-ledger" data-workflow-example aria-label="Illustrative service workflow">
+        <div class="order-ledger-head">
+          <span>Shared Run / Bakery example</span><span class="example-label">Illustrative data</span>
+        </div>
+        <h2>Two orders. One material release.</h2>
+        <table>
+          <caption class="sr-only">Customer demand remains separate in a Shared Run</caption>
+          <thead>
+            <tr>
+              <th scope="col">
+                Customer order
+              </th>
+              <th scope="col">
+                Required
+              </th>
+              <th scope="col">
+                Record
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                Amaka’s shop
+              </td>
+              <td>
+                30 loaves
+              </td>
+              <td>
+                Separate order
+              </td>
+            </tr>
+            <tr>
+              <td>
+                Tunde’s café
+              </td>
+              <td>
+                20 loaves
+              </td>
+              <td>
+                Separate order
+              </td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <th scope="row">
+                Planned output
+              </th>
+              <td>
+                50 loaves
+              </td>
+              <td>
+                One Shared Run
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+        <div class="recipe-note">
+          <span>Reference recipe</span><strong>20 kg flour → 110 loaves</strong><span>Proportional flour requirement</span><strong>50 ÷ 110 × 20 = 9.091 kg</strong>
+        </div>
+        <p>Approval releases the material once. Customer demand and balances stay with each order.</p><button data-button-surface type="button" class="ui-button" onclick="document.getElementById('workflow-example').showModal()">See what happens next <span aria-hidden="true">→</span></button>
+      </div>
+      <div class="workflow-rows" data-workflow-rows>
+        <article>
+          <span class="workflow-number">01</span>
+          <div>
+            <h3>Buy in bags. Use in grams.</h3><p>Receive purchases in supplier units, then keep stock and recipe usage in the units your team actually measures. Track warning and low-stock states separately.</p>
+          </div>
+          <span class="workflow-area">Inventory / Purchasing</span>
+        </article>
+        <article>
+          <span class="workflow-number">02</span>
+          <div>
+            <h3>Make the quantity. Keep the demand.</h3><p>Release recipes proportionally. Coordinate orders in Shared Runs, record floor output and variance, and keep planned offcut separate from unexpected excess and shortage.</p>
+          </div>
+          <span class="workflow-area">Production / Floor entry</span>
+        </article>
+        <article>
+          <span class="workflow-number">03</span>
+          <div>
+            <h3>Take payment. Then hand over the work.</h3><p>Sell through a hosted storefront, POS or your own connected website. Checkout reservations and payment verification precede operational intake; delivery follows the order.</p>
+          </div>
+          <span class="workflow-area">Commerce / Delivery</span>
+        </article>
+        <article>
+          <span class="workflow-number">04</span>
+          <div>
+            <h3>Close the day with the evidence.</h3><p>Review cash, balances, double-entry books, VAT and provider-ready e-invoices. Send a Daily Brief or Weekly Summary covering stock, sales, profit, cash and operations: key indicators in a WhatsApp-ready image, with the full report in accompanying text and a QR/dashboard link. Use a controlled ledger cut-over for older records.</p>
+          </div>
+          <span class="workflow-area">Finance / Shareable summaries</span>
+        </article>
+      </div>
+        {% include "accounts/_workflow_comparison.html" with comparison_heading="How the controls connect" %}
+        </div>
+      </details>
     </section>
 
-    <section id="plans" class="relative isolate overflow-hidden bg-[#050733] py-24 text-white">
-      <div class="hero-grid absolute inset-0 opacity-60"></div>
-      <div class="ambient-orb absolute -left-28 top-24 h-80 w-80 rounded-full bg-[#d14900]/60 blur-3xl"></div>
-      <div class="ambient-orb ambient-orb-delayed absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-[#e7bd65]/20 blur-3xl"></div>
+    <section id="plans" class="plans-flow-section relative isolate overflow-hidden bg-[#050733] py-24 text-white">
+    <div class="hero-grid absolute inset-0 opacity-60" aria-hidden="true"></div>
+    <div class="ambient-orb absolute -right-20 top-24 h-80 w-80 rounded-full bg-[#d14900]/60 blur-3xl" aria-hidden="true"></div>
+    <div class="ambient-orb ambient-orb-delayed absolute -left-28 bottom-0 h-72 w-72 rounded-full bg-[#e7bd65]/20 blur-3xl" aria-hidden="true"></div>
       <div class="payroll-offer-sticker" title="Included during free trial and complimentary access; paid by staff tier afterward.">
         <img src="{% static 'core/brand/payroll-addon-sticker.webp' %}" alt="Payroll add-on, available on all plans" width="760" height="572" decoding="async">
       </div>
       <div class="relative mx-auto max-w-7xl px-5 sm:px-8">
-        <div class="mx-auto max-w-2xl text-center"><p class="text-xs font-bold uppercase tracking-[.22em] text-[#e7bd65]">Plans</p><h2 class="mt-3 font-display text-3xl font-semibold sm:text-5xl">Start with what you need.</h2><p class="mt-4 text-white/60">All Plans with a {{ general_trial_days }}-day Trial · No Setup Fee · Cancel Anytime.</p></div>
-        <div class="mt-8 flex justify-center">{% include "accounts/_billing_switch.html" with plans=plans theme="dark" %}</div>
+        <div class="mx-auto max-w-2xl text-center"><h2 class="mt-3 font-display text-3xl font-semibold sm:text-5xl">Start with what you need.</h2>
+<p class="text-xs font-bold uppercase tracking-[.22em] text-[#e7bd65]">Plans</p><p class="mt-4 text-white/60">All Plans with a {{ general_trial_days }}-day Trial · No Setup Fee · Cancel Anytime.</p></div>
+        <div class="mt-8 flex justify-center">{% include "accounts/_billing_switch.html" with plans=plans %}</div>
 <div class="mt-10 grid items-stretch gap-5 lg:grid-cols-3">
           {% for plan in plans %}
           <article class="relative flex h-full flex-col rounded-3xl border {% if plan.code == 'business_pro' %}border-[#e7bd65]/60 ring-1 ring-[#e7bd65]/20{% else %}border-white/15{% endif %} bg-white/[.07] p-6 backdrop-blur-sm transition hover:-translate-y-1 hover:bg-white/[.1]">
             <div class="flex items-center justify-between gap-2"><h3 class="font-subheading text-2xl text-white">{{ plan.matrix_display_name|default:plan.name }}</h3>{% if plan.code == 'business_pro' %}<span class="rounded-full bg-[#e7bd65] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#050733]">Complete</span>{% endif %}</div>
-            {% include "accounts/_plan_cycle_prices.html" with plan=plan symbol="₦" theme="dark" %}
+            {% include "accounts/_plan_cycle_prices.html" with plan=plan symbol="₦" %}
             <div class="mt-5 border-t border-white/10 pt-4 text-xs leading-6 text-white/65">
               <p><strong class="text-white">{% if plan.user_limit %}{{ plan.user_limit }} user{{ plan.user_limit|pluralize }}{% else %}Unlimited users{% endif %}</strong></p>
               <p>{% if plan.additional_service_limit == None %}Unlimited additional service profiles{% elif plan.additional_service_limit %}{{ plan.additional_service_limit }} additional service profile{{ plan.additional_service_limit|pluralize }}{% else %}Single service profile{% endif %}</p>
-              {% include "accounts/_plan_payroll_addon.html" with plan=plan symbol="₦" theme="dark" %}
+              {% include "accounts/_plan_payroll_addon.html" with plan=plan symbol="₦" %}
             </div>
-            <a href="{% url 'signup' %}" class="plan-card mt-auto pt-6 block rounded-xl px-4 py-3 text-center text-sm font-bold {% if plan.code == 'business_pro' %}bg-[#d14900] text-white{% else %}border border-white/20 bg-white/10 text-white hover:bg-white/15{% endif %}">{% if plan.is_free_forever %}Create free workspace{% else %}Start {{ general_trial_days }}-day trial{% endif %}</a>
+            <a data-button-surface href="{% url 'signup' %}" class="ui-button-primary plan-card mt-auto pt-6 block rounded-xl px-4 py-3 text-center text-sm font-bold {% if plan.code == 'business_pro' %}bg-[#d14900] text-white{% else %}border border-white/20 bg-white/10 text-white hover:bg-white/15{% endif %}">{% if plan.is_free_forever %}Create free workspace{% else %}Start {{ general_trial_days }}-day trial{% endif %}</a>
           </article>
           {% empty %}<p class="col-span-full text-center text-sm text-white/55">Plans are being prepared. Create your workspace and review the current Starter terms when plans become available.</p>{% endfor %}
         </div>
-        {% if plans %}<div class="mt-7 bg-white/[.07] backdrop-blur-sm">{% include "accounts/_plan_feature_matrix.html" with matrix_theme="dark" %}</div>{% endif %}
+        {% if plans %}<div class="mt-7 bg-white/[.07] backdrop-blur-sm">{% include "accounts/_plan_feature_matrix.html" with hide_workflow_comparison=True %}</div>{% endif %}
       </div>
     </section>
 
     <section id="faq" class="mx-auto max-w-7xl px-5 py-24 sm:px-8">
       <div class="mx-auto max-w-3xl text-center">
-        <p class="text-xs font-bold uppercase tracking-[.22em] text-[#d14900]">Questions, answered</p>
         <h2 class="mt-3 font-display text-3xl font-semibold sm:text-5xl">How INPROFIC fits the way you work.</h2>
+<p class="text-xs font-bold uppercase tracking-[.22em] text-[#d14900]">Questions, answered</p>
         <p class="mt-4 leading-7 text-stone-500">From purchasing and production to storefronts, staff access and reporting, these are the questions businesses most often need answered before bringing their operation into one place.</p>
       </div>
       <div class="mt-10 grid items-start gap-4 lg:grid-cols-2" data-faq-grid>
@@ -756,543 +514,84 @@
           <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can INPROFIC alert staff about commerce activity?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Commerce activity can appear in the in-app notification tray, with supported device notifications available when enabled.</p></details>
           <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can I install INPROFIC like an app?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Supported browsers can install the workspace to the device home screen for quicker access, while the same account remains available through the web.</p></details>
           <details class="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">Can I start small and add more later?<span class="text-[#d14900] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-sm leading-6 text-stone-500">Yes. Starter remains the focused one-user entry plan{% if starter_plan and starter_plan.is_free_forever %} and is currently free forever{% endif %}, while larger plans add capacity and modules. Eligible promotions can apply to monthly or yearly payments.</p></details>
+<details class="group rounded-2xl border p-5">
+          <summary class="cursor-pointer font-semibold">
+            Do I need Production if I only resell goods?
+          </summary>
+          <p class="mt-3 text-sm leading-6">No. Stock-first wholesale and retail workflows receive purchased goods directly into sellable inventory. Recipes and production controls belong to businesses that make products.</p>
+        </details>
+<details class="group rounded-2xl border p-5">
+          <summary class="cursor-pointer font-semibold">
+            Does WhatsApp need a Meta template?
+          </summary>
+          <p class="mt-3 text-sm leading-6">Manually share Daily Brief, Weekly Summary, purchase requests, stock distribution and recorded-return snapshots through WhatsApp. Each image includes a QR code and a link to its dashboard or record; recipients need sign-in and permission. Availability follows your enabled modules and business type. Manual sharing needs no Meta template. Automatic scheduled delivery requires a configured, approved Meta template and recipient consent. Storefront chat has its own connection and messaging rules.</p>
+        </details>
+<details class="group rounded-2xl border p-5">
+          <summary class="cursor-pointer font-semibold">
+            Are e-invoices automatically cleared?
+          </summary>
+          <p class="mt-3 text-sm leading-6">No. The tax workspace prepares and tracks eligible sale invoices. Submission and clearance depend on the configured provider, credentials and applicable transaction rules; manual clearance tracking is also available.</p>
+        </details>
+<details class="group rounded-2xl border p-5">
+          <summary class="cursor-pointer font-semibold">
+            Can I bring older records into the ledger?
+          </summary>
+          <p class="mt-3 text-sm leading-6">An admin can set the live start date, review opening positions and enable backlog entry. Preview the backlog before merging it; review the cut-over and reversal controls with your finance team.</p>
+        </details>
         </div>
       </div>
       <div class="mt-8 text-center">
-        <button type="button" data-faq-toggle aria-expanded="false" class="inline-flex items-center gap-2 rounded-full border border-stone-300 bg-white px-5 py-2.5 text-sm font-semibold text-stone-800 shadow-sm transition hover:border-[#d14900] hover:text-[#d14900]">
+        <button data-button-surface type="button" data-faq-toggle aria-expanded="false" class="inline-flex items-center gap-2 rounded-full border border-stone-300 bg-white px-5 py-2.5 text-sm font-semibold text-stone-800 shadow-sm transition hover:border-[#d14900] hover:text-[#d14900]">
           <span data-faq-toggle-label>Show all questions</span>
           <svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current transition" stroke-width="2" data-faq-toggle-icon aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
         </button>
       </div>
     </section>
 
+
     <section class="mx-auto max-w-5xl px-5 py-24 text-center sm:px-8">
-      <p class="text-xs font-bold uppercase tracking-[.22em] text-[#d14900]">Ready when you are</p><h2 class="mt-3 font-display text-4xl font-semibold sm:text-5xl">Give every item, order and payment a connected story.</h2><p class="mx-auto mt-4 max-w-2xl leading-7 text-stone-500">Create a workspace for your business, choose the service that fits, and grow into the modules you need.</p>
-      <div class="mt-8 flex flex-wrap justify-center gap-3"><a href="{% url 'signup' %}" class="rounded-xl bg-[#d14900] px-6 py-3 text-sm font-bold text-white shadow-lg">Start free</a><a href="{% url 'login' %}" class="rounded-xl border border-stone-300 bg-white px-6 py-3 text-sm font-semibold">Sign in to INPROFIC</a></div>
+      <h2 class="mt-3 font-display text-4xl font-semibold sm:text-5xl">Give every item, order and payment a connected story.</h2>
+<p class="text-xs font-bold uppercase tracking-[.22em] text-[#d14900]">Ready when you are</p><p class="mx-auto mt-4 max-w-2xl leading-7 text-stone-500">Create a workspace for your business, choose the service that fits, and grow into the modules you need.</p>
+      <div class="mt-8 flex flex-wrap justify-center gap-3"><a data-button-surface href="{% url 'signup' %}" class="ui-button-primary rounded-xl bg-[#d14900] px-6 py-3 text-sm font-bold text-white shadow-lg">Start free</a><a data-button-surface href="{% url 'login' %}" class="rounded-xl border border-stone-300 bg-white px-6 py-3 text-sm font-semibold">Sign in to INPROFIC</a></div>
     </section>
   </main>
+
+  <dialog id="workflow-example" class="marketing-example">
+      <div class="marketing-example-head">
+        <h2>Follow the output, then the money.</h2>
+      </div>
+      <ol data-workflow-next>
+        <li>
+          <strong>Record the physical result.</strong> Actual output, wastage and shortages are entered at completion.
+        </li>
+        <li>
+          <strong>Keep the allocation clear.</strong> Original demand is fulfilled first; planned offcut and unexpected excess follow their own allocation paths.
+        </li>
+        <li>
+          <strong>Review each balance.</strong> Each customer retains their own sale and receivable. Payment remains a separate finance event.
+        </li>
+        <li>
+          <strong>Correct with evidence.</strong> Compensating reversal preserves the record and checks downstream activity.
+        </li>
+      </ol>
+      <button data-button-surface class="ui-button" type="button" onclick="document.getElementById('workflow-example').close()">Close example</button>
+    </dialog>
 
   <footer class="border-t border-stone-200 bg-[#f5efe0] px-5 py-8">
     <div class="mx-auto flex max-w-7xl flex-col gap-3 text-sm text-stone-500 sm:flex-row sm:items-center sm:justify-between">
       <p class="text-xs leading-5">
-        <span style="display:inline-block;font-size:inherit;line-height:inherit;vertical-align:baseline;position:relative;top:.06em">&copy;</span> {% now "Y" %} <img src="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" alt="INPROFIC" style="display:inline-block;width:4.75rem;height:auto;margin:0 1rem 0 .18rem;vertical-align:baseline" width="1944" height="309"><span>An ITERATID LTD Product. All Rights Reserved.</span>
+        <span style="display:inline-block;font-size:inherit;line-height:inherit;vertical-align:baseline;position:relative;top:.06em">&copy;</span> {% now "Y" %} <img src="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" data-brand-logo-light="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" data-brand-logo-dark="{% static 'core/brand/inprofic-wordmark-on-dark.png' %}" alt="INPROFIC" style="display:inline-block;width:4.75rem;height:auto;margin:0 1rem 0 .18rem;vertical-align:baseline" width="1944" height="309"><span>An ITERATID LTD Product. All Rights Reserved.</span>
       </p>
       <p class="flex items-center gap-3"><span>Inventory, Operations and Commerce—working together.</span><a href="{% url 'privacy_policy' %}" class="font-semibold text-[#8f172d] underline underline-offset-2">Privacy Policy</a></p>
     </div>
   </footer>
   {% include "pwa/install_prompt.html" %}
   {% include "_privacy_notice.html" %}
-  {% if marketing_campaigns|length > 1 %}<script>
-  (() => {
-    const stage = document.querySelector('[data-promo-stage]'); if (!stage) return;
-    const slides = [...stage.querySelectorAll('[data-promo-slide]')]; const bars = [...stage.querySelectorAll('.promo-progress span')];
-    if (slides.length < 2 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    let index = 0, timer;
-    const show = next => { slides[index].classList.remove('is-active'); slides[index].setAttribute('aria-hidden','true'); bars[index]?.classList.remove('is-active'); index = next % slides.length; slides[index].classList.add('is-active'); slides[index].setAttribute('aria-hidden','false'); bars[index]?.classList.add('is-active'); };
-    const start = () => { clearInterval(timer); timer = setInterval(() => show(index + 1), 7000); };
-    stage.addEventListener('mouseenter', () => clearInterval(timer)); stage.addEventListener('mouseleave', start); stage.addEventListener('focusin', () => clearInterval(timer)); stage.addEventListener('focusout', start); start();
-  })();
-  </script>{% endif %}
+  {% if marketing_campaigns|length > 1 %}{% endif %}
 
-  <script>
-  (() => {
-    const serviceProfiles = {
-      bakery:{label:'Bakery',usesProduction:true,stockLabel:'Flour',stockMeta:'68 kg',secondary:'Butter',secondaryMeta:'14 kg',product:'Mini loaves',productMeta:'48 ready',supplier:'BakeSupply',production:'Bake batch #021',productionTarget:'120 loaves',channel:'Online order',counter:'Bakery counter',customer:'Celebration order',delivery:'Pickup / delivery'},
-      restaurant:{label:'Restaurant & Food Service',usesProduction:true,stockLabel:'Long grain rice',stockMeta:'68 kg',secondary:'Cooking oil',secondaryMeta:'6 L',product:'Jollof + Chicken',productMeta:'42 portions',supplier:'KitchenMart',production:'Jollof prep #021',productionTarget:'120 portions',channel:'Delivery / online',counter:'Restaurant POS',customer:'Table / delivery order',delivery:'Rider / provider'},
-      general:{label:'General Production',usesProduction:true,stockLabel:'Steel sheet',stockMeta:'84 sheets',secondary:'Fasteners',secondaryMeta:'1,240 pcs',product:'Filter Unit',productMeta:'36 units',supplier:'Industrial Supply Co.',production:'Assembly run #021',productionTarget:'50 units',channel:'Online / customer order',counter:'Direct sales desk',customer:'Customer order',delivery:'Dispatch / collection'},
-      wholesale:{label:'Wholesale',usesProduction:false,stockLabel:'Detergent cartons',stockMeta:'84 cartons',secondary:'Bottled water',secondaryMeta:'128 cases',product:'Trade stock',productMeta:'212 units',supplier:'Prime Distribution',production:'',productionTarget:'',channel:'Wholesale / online trade',counter:'Trade counter',customer:'Trade order',delivery:'Warehouse dispatch'},
-      retail:{label:'Retail',usesProduction:false,stockLabel:'Sneakers',stockMeta:'38 pairs',secondary:'T-shirts',secondaryMeta:'74 pcs',product:'Shop stock',productMeta:'186 units',supplier:'City Merchants',production:'',productionTarget:'',channel:'Retail / online',counter:'Retail POS',customer:'Customer basket',delivery:'Pickup / delivery'}
-    };
-    let activeService = localStorage.getItem('inprofic-marketing-demo-service') || 'general';
-    if (!serviceProfiles[activeService]) activeService = 'general';
 
-    const good = /healthy|ready|paid|complete|delivered|posted|active|live|verified|received|confirmed|done|published|matched|available|released|reconciled/i;
-    const warn = /low|verify|issue|due|awaiting|next|on route|running|active|pending|attention/i;
-    const statusClass = value => good.test(String(value||'')) ? 'good' : warn.test(String(value||'')) ? 'warn' : '';
 
-    function generalConfig(profile) {
-      const productionFields = profile.usesProduction
-        ? [
-            {id:'fg-name',label:'Finished good',value:profile.product},
-            {id:'fg-unit',label:'Base production unit',value:profile.label === 'Restaurant & food service' ? 'portion' : profile.label === 'Bakery' ? 'loaf' : 'unit'},
-            {id:'fg-sale',label:'Customer selling unit',value:profile.label === 'Restaurant & food service' ? 'plate / pack' : 'unit / pack'},
-            {id:'fg-price',label:'Selling price',value:'₦ configured'},
-          ]
-        : [
-            {id:'fg-name',label:'Stock product',value:profile.product},
-            {id:'fg-unit',label:'Stock unit',value:profile.label === 'Wholesale' ? 'carton / unit' : 'piece / pair'},
-            {id:'fg-sale',label:'Customer selling unit',value:profile.label === 'Wholesale' ? 'case / unit' : 'piece'},
-            {id:'fg-price',label:'Selling price',value:'₦ configured'},
-          ];
 
-      const procurement = {
-        tab:'Buy', module:'Procurement', scenes:[
-          {eyebrow:'Purchase orders',title:'Open supplier purchases',state:'Pending',caption:`${profile.label} purchasing starts with a supplier-side record before stock changes.`,kpis:[['Supplier',profile.supplier],['POs','2 open'],['Status','Awaiting']],rows:[[profile.stockLabel,'Expected '+profile.stockMeta,'Pending'],[profile.secondary,'Expected '+profile.secondaryMeta,'Pending'],['Supplier terms','Recorded','Active']],actions:[{id:'receive-po',label:'Receive purchase',primary:true,nextScene:1}],auto:['receive-po']},
-          {eyebrow:'Goods received',title:'Receive against the purchase',state:'Received',caption:'Receiving posts the arrival, updates stock and preserves the supplier cost trail.',kpis:[['Supplier',profile.supplier],['Arrival',profile.stockMeta],['Stock','Updated']],rows:[[profile.stockLabel,profile.stockMeta,'Received'],[profile.secondary,profile.secondaryMeta,'Received'],['Purchase cost','Captured','Posted']],actions:[{id:'open-inventory',label:'Open Inventory',primary:true,nextModule:'Inventory'}],auto:['module-Inventory']}
-        ]
-      };
-
-      const inventoryScenes = profile.usesProduction ? [
-        {eyebrow:'Inventory overview',title:'Stock is separated by what it represents',state:'Live',caption:'Move from the inventory overview into raw materials and finished goods without leaving the module.',kpis:[['Raw materials','2 tracked'],['Finished goods',profile.productMeta],['Alerts','2']],rows:[[profile.stockLabel,profile.stockMeta,'Healthy'],[profile.secondary,profile.secondaryMeta,'Low'],[profile.product,profile.productMeta,'Ready']],subnav:[{id:'raw-materials',label:'Raw materials',nextScene:1},{id:'finished-goods',label:'Finished goods',nextScene:4}],auto:['raw-materials']},
-        {eyebrow:'Raw materials',title:'Raw material stock',state:'Live',caption:'Production inputs keep their own purchase units, stock units, warnings and movement history.',kpis:[['Materials','2'],['Low stock','1'],['Movements','18']],rows:[[profile.stockLabel,profile.stockMeta,'Healthy'],[profile.secondary,profile.secondaryMeta,'Low'],['Packaging','32 packs','Healthy']],subnav:[{id:'raw-materials',label:'Raw materials',active:true},{id:'finished-goods',label:'Finished goods',nextScene:4}],actions:[{id:'add-raw',label:'+ Add raw material',primary:true,nextScene:2}],auto:['add-raw']},
-        {eyebrow:'Raw material form',title:'Add a raw material',state:'Editing',caption:'The form captures the real buying and stock relationship before production ever uses the material.',kpis:[['Unit model','Configured'],['Reorder','Enabled'],['Supplier','Optional']],fields:[{id:'raw-name',label:'Material name',value:profile.stockLabel},{id:'raw-purchase-unit',label:'Purchase unit',value:profile.label==='Restaurant & food service'?'bag / litre':'supplier unit'},{id:'raw-stock-unit',label:'Stock unit',value:profile.label==='Restaurant & food service'?'kg / ml':'measured unit'},{id:'raw-reorder',label:'Reorder level',value:'10'}],actions:[{id:'save-raw',label:'Save raw material',primary:true,nextScene:3}],auto:['raw-name','raw-stock-unit','save-raw']},
-        {eyebrow:'Raw materials',title:'Material saved to inventory',state:'Saved',caption:'The new material is immediately available to purchasing, recipes and stock movement history.',kpis:[['Saved',profile.stockLabel],['Stock','Ready'],['Audit','Logged']],rows:[[profile.stockLabel,'New record','Done'],['Movement history','Available','Live'],['Recipe use','Available','Ready']],subnav:[{id:'raw-materials',label:'Raw materials',active:true},{id:'finished-goods',label:'Finished goods',nextScene:4}],auto:['finished-goods']},
-        {eyebrow:'Finished goods',title:'Finished goods catalogue',state:'Live',caption:'Finished goods carry the sellable product definition while production keeps the input relationship behind it.',kpis:[['Products',profile.productMeta],['Channels','Connected'],['Warnings','0']],rows:[[profile.product,profile.productMeta,'Ready'],['Standard selling unit','Configured','Done'],['Channel pricing','Configured','Live']],subnav:[{id:'raw-materials',label:'Raw materials',nextScene:1},{id:'finished-goods',label:'Finished goods',active:true}],actions:[{id:'add-finished',label:'+ Add finished good',primary:true,nextScene:5}],auto:['add-finished']},
-        {eyebrow:'Finished good form',title:'Add a finished good',state:'Editing',caption:'The product form holds the unit, selling and channel definition; production configuration stays specific to production-capable services.',kpis:[['Product','New'],['Selling','Configuring'],['Channels','Available']],fields:productionFields,actions:[{id:'save-finished',label:'Save finished good',primary:true,nextScene:6}],auto:['fg-name','fg-sale','save-finished']},
-        {eyebrow:'Finished goods',title:'Sellable product saved',state:'Saved',caption:'The product can now be referenced by recipes/production and by its permitted selling channels.',kpis:[['Product',profile.product],['Stock','Ready'],['Audit','Logged']],rows:[[profile.product,'Product record','Done'],['Customer unit','Configured','Done'],['Channel availability','Configured','Live']],actions:[{id:'open-production',label:'Open Production',primary:true,nextModule:'Production'}],auto:['module-Production']}
-      ] : [
-        {eyebrow:'Stock inventory',title:'Purchased-for-resale stock',state:'Live',caption:`${profile.label} stays stock-first: procure products, hold stock and sell them without production-only concepts.`,kpis:[['Products',profile.productMeta],['Low stock','1'],['Movements','24']],rows:[[profile.stockLabel,profile.stockMeta,'Healthy'],[profile.secondary,profile.secondaryMeta,'Low'],[profile.product,profile.productMeta,'Ready']],subnav:[{id:'stock-products',label:'Stock products',nextScene:1}],auto:['stock-products']},
-        {eyebrow:'Stock products',title:'Product catalogue',state:'Live',caption:'Stock products combine procurement units, stock quantities, pack options and selling channels.',kpis:[['Products','12'],['Suppliers','4'],['Channels','2']],rows:[[profile.product,profile.productMeta,'Ready'],[profile.stockLabel,profile.stockMeta,'Healthy'],['Bulk / pack options','Available','Live']],subnav:[{id:'stock-products',label:'Stock products',active:true}],actions:[{id:'add-stock-product',label:'+ Add stock product',primary:true,nextScene:2}],auto:['add-stock-product']},
-        {eyebrow:'Stock product form',title:'Add a purchased product',state:'Editing',caption:'There are no recipes, batches or raw-material relationships—only the stock and selling information the business needs.',kpis:[['Source','Procured'],['Stock','Configuring'],['Channels','Available']],fields:productionFields,actions:[{id:'save-stock-product',label:'Save stock product',primary:true,nextScene:3}],auto:['fg-name','fg-unit','save-stock-product']},
-        {eyebrow:'Stock products',title:'Product saved to inventory',state:'Saved',caption:'The product is ready for procurement, POS, online selling or distribution according to its channel settings.',kpis:[['Product',profile.product],['Stock','Ready'],['Audit','Logged']],rows:[[profile.product,'Product record','Done'],['Procurement unit','Configured','Done'],['Selling channels','Configured','Live']],actions:[{id:'open-commerce',label:'Open Commerce',primary:true,nextModule:'Commerce'}],auto:['module-Commerce']}
-      ];
-
-      const steps = [procurement,{tab:'Stock',module:'Inventory',scenes:inventoryScenes}];
-      if (profile.usesProduction) steps.push({tab:'Make',module:'Production',scenes:[
-        {eyebrow:'Production queue',title:'Production orders',state:'Ready',caption:'Production starts from an intentional order using the finished-good configuration you just created.',kpis:[['Product',profile.product],['Open runs','2'],['Inputs','Available']],rows:[[profile.production,'Planned','Ready'],['Materials','Checked','Done'],['Target',profile.productionTarget,'Ready']],actions:[{id:'create-production',label:'+ Create production',primary:true,nextScene:1}],auto:['create-production']},
-        {eyebrow:'Production form',title:'Plan the production run',state:'Editing',caption:'Select the product and target; INPROFIC resolves the configured recipe/formula inputs before release.',kpis:[['Recipe / formula','Linked'],['Stock','Checked'],['Target',profile.productionTarget]],fields:[{id:'prod-product',label:'Finished good',value:profile.product},{id:'prod-target',label:'Target output',value:profile.productionTarget},{id:'prod-date',label:'Production date',value:'Today'},{id:'prod-method',label:'Sizing method',value:'Product quantity'}],actions:[{id:'release-inputs',label:'Release inputs',primary:true,nextScene:2}],auto:['prod-product','prod-target','release-inputs']},
-        {eyebrow:'Production in progress',title:profile.production,state:'Running',caption:'Released inputs and measurable output stay attached to this production run.',kpis:[['Target',profile.productionTarget],['Inputs','Released'],['Yield','96%']],progress:76,rows:[['Inputs / materials','Released','Done'],['Work in progress','76%','Running'],['Output / quality','Measured','Logged']],actions:[{id:'complete-batch',label:'Complete production',primary:true,nextScene:3}],auto:['complete-batch']},
-        {eyebrow:'Production complete',title:'Finished output posted',state:'Complete',caption:'Output returns to finished-goods stock with its production and material history intact.',kpis:[['Output',profile.productionTarget],['Stock','Updated'],['Audit','Logged']],rows:[[profile.product,'Output posted','Done'],['Material usage','Finalised','Done'],['Cost snapshot','Captured','Posted']],actions:[{id:'open-commerce',label:'Open Commerce',primary:true,nextModule:'Commerce'}],auto:['module-Commerce']}
-      ]});
-      steps.push(
-        {tab:'Sell',module:'Commerce',scenes:[
-          {eyebrow:profile.channel,title:'Orders and channels',state:'Live',caption:'Selling starts from the same product record, with the correct price and availability for each channel.',kpis:[['Channel',profile.channel],['Product',profile.product],['Orders','3']],rows:[[profile.product,'Available','Live'],['Online / direct price','Applied','Matched'],['Latest order','Awaiting payment','Pending']],actions:[{id:'open-order',label:'Open latest order',primary:true,nextScene:1}],auto:['open-order']},
-          {eyebrow:'Order detail',title:profile.customer,state:'Verified',caption:'Payment, product choice and fulfilment state remain one connected order record.',kpis:[['Product',profile.product],['Payment','Confirmed'],['Fulfilment','Ready']],rows:[[profile.product,'× 2','Ready'],['Channel price','Applied','Matched'],['Payment','Verified','Posted']],actions:[{id:'open-delivery',label:'Send to Delivery',primary:true,nextModule:'Delivery'}],auto:['module-Delivery']}
-        ]},
-        {tab:'Deliver',module:'Delivery',scenes:[
-          {eyebrow:'Delivery queue',title:'Ready for fulfilment',state:'Ready',caption:'The paid order enters the delivery workspace without losing customer or payment context.',kpis:[['Method',profile.delivery],['Jobs','2'],['Status','Ready']],rows:[[profile.customer,'Paid','Done'],['Delivery quote','Accepted','Done'],['Assignment','Not assigned','Next']],actions:[{id:'assign-delivery',label:'Assign delivery',primary:true,nextScene:1}],auto:['assign-delivery']},
-          {eyebrow:'Active delivery',title:profile.delivery,state:'On route',caption:'Assignment, tracking and proof remain synchronized to the same order timeline.',kpis:[['Method',profile.delivery],['Status','On route'],['Proof','Pending']],progress:64,rows:[['Order','Ready','Done'],['Handoff','Assigned','Done'],['Destination','Customer','On route']],actions:[{id:'mark-delivered',label:'Mark delivered',primary:true,nextScene:2}],auto:['mark-delivered']},
-          {eyebrow:'Delivery complete',title:'Delivered with proof',state:'Delivered',caption:'The completed delivery is visible to operations, the customer tracking view and reporting.',kpis:[['Status','Delivered'],['Proof','Saved'],['Updates','Synced']],rows:[['Customer tracking','Delivered','Done'],['Proof of delivery','Saved','Done'],['Order','Fulfilled','Complete']],actions:[{id:'open-finance',label:'Review Finance',primary:true,nextModule:'Finance'}],auto:['module-Finance']}
-        ]},
-        {tab:'Review',module:'Finance',scenes:[
-          {eyebrow:'Financial review',title:'Operational value reconciled',state:'Posted',caption:'The money view keeps its source order, stock and fulfilment context.',kpis:[['Revenue','Matched'],['Cost','Captured'],['Cash','Reconciled']],rows:[['Customer payment','Matched','Posted'],['Sale revenue','Linked','Posted'],['Operating cost','Traceable','Reconciled']],actions:[{id:'restart-flow',label:'Replay workflow',nextModule:'Procurement'}],auto:['module-Procurement']}
-        ]}
-      );
-      return {nav:steps.map(step=>step.module),steps};
-    }
-
-    function storefrontConfig(profile) {
-      return {nav:['Catalogue','Checkout','POS','Payments','Operations','Delivery'],steps:[
-        {tab:'Publish',module:'Catalogue',scenes:[
-          {eyebrow:'Product catalogue',title:'Choose what customers can see',state:'Live',channel:'External',caption:`${profile.label} storefront publishing starts from the business product catalogue.`,kpis:[['Product',profile.product],['Categories','Active'],['Online','Enabled']],rows:[[profile.product,'Public product','Live'],['Category','Customer-facing','Active'],['Physical Store price','Internal only','Protected']],actions:[{id:'edit-public-product',label:'Edit public product',primary:true,nextScene:1}],auto:['edit-public-product']},
-          {eyebrow:'Public product form',title:'Configure storefront selling',state:'Editing',channel:'External',caption:'Only external-safe fields and channel prices are represented here; Physical Store pricing remains internal.',kpis:[['Channel','Online / Bulk'],['Stock','Available'],['Category','Selected']],fields:[{id:'catalog-name',label:'Product',value:profile.product},{id:'catalog-price',label:'Online price',value:'₦ configured'},{id:'catalog-category',label:'Category',value:'Featured products'},{id:'catalog-option',label:'Selling option',value:'Standard / plain option'}],actions:[{id:'publish-product',label:'Publish product',primary:true,nextScene:2}],auto:['catalog-name','catalog-price','publish-product']},
-          {eyebrow:'External storefront',title:'Product is live for customers',state:'Published',channel:'External',caption:'The public catalogue now exposes only the permitted product information and external selling modes.',kpis:[['Product',profile.product],['Online','Live'],['Stock','Available']],rows:[[profile.product,'Public price','Published'],['Category','Featured products','Live'],['Physical Store price','Not exposed','Protected']],actions:[{id:'open-checkout',label:'Open storefront',primary:true,nextModule:'Checkout'}],auto:['module-Checkout']}
-        ]},
-        {tab:'Web order',module:'Checkout',scenes:[
-          {eyebrow:'Customer storefront',title:'Browse and choose a product',state:'Open',channel:'External',caption:'The storefront uses the same catalogue truth while remaining customer-safe.',kpis:[['Products','12'],['Delivery','Available'],['Basket','0']],rows:[[profile.product,'Available','Live'],['Plain / pack option','Available','Live'],['Category','Featured','Active']],actions:[{id:'add-to-basket',label:'Add to basket',primary:true,nextScene:1}],auto:['add-to-basket']},
-          {eyebrow:'Basket',title:'Review the customer basket',state:'Ready',channel:'External',caption:'Quantity, selling option and public pricing are fixed before checkout begins.',kpis:[['Basket','2 items'],['Subtotal','Calculated'],['Mode','Online']],rows:[[profile.product,'× 2','Added'],['Selling option','Selected','Done'],['Delivery','Quote next','Next']],actions:[{id:'continue-checkout',label:'Continue to checkout',primary:true,nextScene:2}],auto:['continue-checkout']},
-          {eyebrow:'Checkout form',title:'Address and delivery details',state:'Editing',channel:'External',caption:'Customer address, order mode and delivery quote are captured before payment.',kpis:[['Basket','2 items'],['Delivery','Quoted'],['Checkout','Ready']],fields:[{id:'checkout-name',label:'Customer name',value:'A. Customer'},{id:'checkout-address',label:'Delivery address',value:'Saved / mapped address'},{id:'checkout-mode',label:'Order mode',value:'Online'},{id:'checkout-delivery',label:'Delivery quote',value:'₦ calculated'}],actions:[{id:'place-order',label:'Place web order',primary:true,nextScene:3}],auto:['checkout-address','checkout-delivery','place-order']},
-          {eyebrow:'Web order created',title:'External checkout becomes an order',state:'Created',channel:'External',caption:'The external order now exists inside INPROFIC with the customer-safe channel data preserved.',kpis:[['Order','#1048'],['Payment','Pending'],['Delivery','Quoted']],rows:[[profile.product,'× 2','Ready'],['Checkout data','Saved','Done'],['Physical Store price','Never exposed','Protected']],actions:[{id:'compare-pos',label:'Compare in-premise POS',primary:true,nextModule:'POS'}],auto:['module-POS']}
-        ]},
-        {tab:'Counter',module:'POS',scenes:[
-          {eyebrow:'In-premise POS',title:profile.counter,state:'Open',channel:'Internal',caption:'Counter staff see the internal direct-selling surface, including Physical Store pricing that never appears externally.',kpis:[['Channel','Physical Store'],['Basket','0'],['Staff','Authorised']],rows:[[profile.product,'Available','Live'],['Physical Store price','Internal','Protected'],['Distribution / bulk','Available','Live']],actions:[{id:'pos-add',label:'Add product',primary:true,nextScene:1}],auto:['pos-add']},
-          {eyebrow:'POS basket',title:'Review the counter sale',state:'Ready',channel:'Internal',caption:'The staff basket uses the same stock truth with staff-controlled settlement methods.',kpis:[['Basket','2 items'],['Channel','In-premise'],['Receipt','Pending']],rows:[[profile.product,'× 1','Added'],['Customer','Optional','Ready'],['Payment method','Staff selects','Next']],actions:[{id:'pos-pay',label:'Take payment',primary:true,nextModule:'Payments'}],auto:['module-Payments']}
-        ]},
-        {tab:'Pay',module:'Payments',scenes:[
-          {eyebrow:'Payment confirmation',title:'Confirm authoritative paid state',state:'Review',channel:'Internal + External',caption:'Gateway, direct transfer and counter settlement converge on one payment truth.',kpis:[['Gateway','Auto'],['Transfer','Review'],['POS','Staff']],rows:[['Online gateway','Trusted callback','Verified'],['Direct transfer','Proof reviewed','Pending'],['Counter payment','Staff confirmed','Posted']],actions:[{id:'verify-payment',label:'Verify payment',primary:true,nextScene:1}],auto:['verify-payment']},
-          {eyebrow:'Payment confirmed',title:'Order can move to operations',state:'Verified',channel:'Internal + External',caption:'Only confirmed payment releases the order into the next operational step.',kpis:[['Payment','Verified'],['Order','Released'],['Audit','Logged']],rows:[['Payment receipt','Created','Done'],['Order state','Paid','Done'],['Handoff','Ready','Next']],actions:[{id:'handoff-order',label:'Open operational handoff',primary:true,nextModule:'Operations'}],auto:['module-Operations']}
-        ]},
-        {tab:'Handoff',module:'Operations',scenes:[
-          {eyebrow:'Operational handoff',title:profile.usesProduction?'Stock or production moves next':'Stock fulfilment moves next',state:'Released',channel:'Internal + External',caption:profile.usesProduction?'Stocked items deduct immediately while made-to-order demand can enter production under staff control.':'Procured stock is reserved/released without introducing production-only steps.',kpis:[['Stock','Checked'],['Order','Created once'],['Audit','Linked']],rows:[[profile.product,'Availability checked','Done'],[profile.usesProduction?'Production intake':'Warehouse / shop pick','Controlled','Released'],['Order history','Single source','Posted']],actions:[{id:'send-delivery',label:'Send to Delivery',primary:true,nextModule:'Delivery'}],auto:['module-Delivery']}
-        ]},
-        {tab:'Track',module:'Delivery',scenes:[
-          {eyebrow:'Delivery assignment',title:'Assign fulfilment',state:'Ready',channel:'External',caption:'The delivery workspace receives the paid order with its quote, address and customer context intact.',kpis:[['Delivery','Quoted'],['Assignment','Ready'],['Updates','Synced']],rows:[['Order','Paid','Done'],['Address','Validated','Done'],['Rider / provider','Choose next','Next']],actions:[{id:'assign-track',label:'Assign delivery',primary:true,nextScene:1}],auto:['assign-track']},
-          {eyebrow:'Customer + staff tracking',title:'Follow fulfilment to delivery',state:'On route',channel:'External',caption:'Customer tracking and staff/rider/provider updates stay synchronized to the same delivery record.',kpis:[['Delivery','Assigned'],['ETA','Visible'],['Updates','Synced']],progress:72,rows:[['Confirmed','Customer sees it','Done'],['Picked up','Staff/rider update','Done'],['Delivered','Proof + status','Next']],actions:[{id:'complete-track',label:'Complete delivery',primary:true,nextScene:2}],auto:['complete-track']},
-          {eyebrow:'Delivered',title:'The order closes cleanly',state:'Delivered',channel:'External',caption:'Proof, tracking and final fulfilment state stay available to the customer and the business.',kpis:[['Status','Delivered'],['Proof','Saved'],['Customer','Updated']],rows:[['Tracking page','Delivered','Done'],['Proof of delivery','Saved','Done'],['Order history','Complete','Posted']],actions:[{id:'replay-storefront',label:'Replay storefront flow',nextModule:'Catalogue'}],auto:['module-Catalogue']}
-        ]}
-      ]};
-    }
-
-    function miniScene(module, profile) {
-      const common = {
-        inventory:{title:'Inventory',kicker:profile.usesProduction?'Inputs + finished stock':'Stock-first inventory',state:'Live',kpis:[['Primary',profile.stockMeta],['Products',profile.productMeta],['Alerts','2']],rows:[[profile.stockLabel,profile.stockMeta,'Healthy'],[profile.secondary,profile.secondaryMeta,'Low'],[profile.product,profile.productMeta,'Ready']]},
-        procurement:{title:'Procurement',kicker:'Purchases + receiving',state:'Received',kpis:[['Supplier',profile.supplier],['Open POs','4'],['Due','2']],rows:[['Latest arrival',profile.stockMeta,'Received'],['Unit cost','Captured','Posted'],['Inventory movement','Automatic','Done']]},
-        production: profile.usesProduction ? {title:'Production',kicker:'Recipe / formula → output',state:'Running',kpis:[['Target',profile.productionTarget],['Yield','96%'],['Active','3']],rows:[[profile.production,'76%','Running'],['Materials','Released','Done'],['Quality / output','Measured','Logged']]} : {title:'Stock-first workflow',kicker:'No production module required',state:'Procured',kpis:[['Source','Supplier'],['Stock',profile.productMeta],['Production','Not needed']],rows:[['Purchase order','Supplier stock','Received'],['Warehouse / shop','Available','Ready'],['Customer sale','Stock fulfilment','Done']]},
-        sales:{title:'Sales & customers',kicker:profile.channel,state:'Active',kpis:[['Channel',profile.channel],['Orders','31'],['Credit','Tracked']],rows:[[profile.customer,profile.product,'Paid'],['Customer balance','Current','Matched'],['Fulfilment','Linked','Ready']]},
-        finance:{title:'Finance & expenses',kicker:'Money trail',state:'Matched',kpis:[['Cash','Visible'],['Receivable','Tracked'],['Payable','Tracked']],rows:[['Payment received','Linked order','Posted'],['Supplier cost','Linked PO','Posted'],['Expense','Accounted','Matched']]},
-        reports:{title:'Reports & backup',kicker:'Review + export',state:'Ready',kpis:[['Sales','Visible'],['Stock','Traceable'],['Exports','Ready']],rows:[['Performance','Current period','View'],['Stock movement','Full trail','Export'],['Backup','Available','Ready']]},
-        delivery:{title:'Delivery operations',kicker:profile.delivery,state:'On route',kpis:[['Ready','5'],['On route','4'],['Issues','1']],rows:[['Quote','Before payment','Done'],['Assignment','Rider / provider','Active'],['Tracking','Customer-visible','Live']]},
-        audit:{title:'Audit Workspace',kicker:'Read-only evidence',state:'Controlled',kpis:[['Queries','2'],['Flags','1'],['Exports','Ready']],rows:[['Activity trail','Tenant-scoped','Ready'],['Audit query','Response due','Attention'],['Evidence pack','Exportable','Ready']]},
-        pos:{title:'In-premise POS',kicker:profile.counter,state:'Open',kpis:[['Product',profile.product],['Basket','3 items'],['Payment','Staff']],rows:[[profile.product,'× 1','Added'],['Channel pricing','In-premise','Matched'],['Receipt','Ready','Done']]}
-      };
-      return common[module] || common.inventory;
-    }
-
-    function renderMini(back, module, profile) {
-      const scene = miniScene(module, profile);
-      back.innerHTML = `<div class="feature-mini-head"><div><div class="feature-mini-title" id="module-preview-title">${scene.title}</div><div class="feature-mini-kicker">${scene.kicker}</div></div><span class="feature-mini-state">${scene.state}</span></div><div class="feature-mini-kpis">${scene.kpis.map(([l,v])=>`<div class="feature-mini-kpi"><small>${l}</small><strong>${v}</strong></div>`).join('')}</div><div class="feature-mini-list">${scene.rows.map(([a,b,c])=>`<div class="feature-mini-row"><strong>${a}</strong><span>${b}</span><span class="feature-mini-chip ${statusClass(c)}">${c}</span></div>`).join('')}</div><div class="feature-mini-back">Close this preview to explore another module.</div>`;
-    }
-
-    const demoRoots = [...document.querySelectorAll('[data-inprofic-demo]')];
-    function configFor(root) {
-      const profile = serviceProfiles[activeService];
-      return root.dataset.inproficDemo === 'storefront' ? storefrontConfig(profile) : generalConfig(profile);
-    }
-    function initDemo(root) {
-      const tabs=root.querySelector('[data-demo-tabs]'),nav=root.querySelector('[data-demo-nav]'),caption=root.querySelector('[data-demo-caption]'),eyebrow=root.querySelector('[data-demo-eyebrow]'),title=root.querySelector('[data-demo-title]'),state=root.querySelector('[data-demo-state]'),channel=root.querySelector('[data-demo-channel]'),subnav=root.querySelector('[data-demo-subnav]'),kpis=root.querySelector('[data-demo-kpis]'),panel=root.querySelector('[data-demo-panel]'),progress=root.querySelector('[data-demo-progress]'),actions=root.querySelector('[data-demo-actions]'),service=root.querySelector('[data-demo-service]'),pointer=root.querySelector('[data-demo-pointer]');
-      let index=0,sceneIndex=0,buttons=[],autoTimer=null,clickTimer=null,actionTimer=null,autoTargetIndex=0,renderVersion=0,manualPauseUntil=0,hoverPaused=false;
-      const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-      const currentConfig=()=>configFor(root);
-      const currentStep=()=>currentConfig().steps[index];
-      const currentScene=()=>currentStep()?.scenes?.[sceneIndex] || currentStep()?.scenes?.[0];
-      const escapeHtml=value=>String(value??'').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
-      const targetById=id=>[...root.querySelectorAll('[data-demo-target]')].find(el=>el.dataset.demoTarget===id);
-      const moduleIndex=module=>currentConfig().steps.findIndex(step=>step.module===module);
-      const pauseManual=()=>{manualPauseUntil=Date.now()+12000;clearTimeout(autoTimer);clearTimeout(clickTimer);clearTimeout(actionTimer);pointer?.classList.remove('is-clicking');};
-      const scheduleAuto=(delay=1050)=>{clearTimeout(autoTimer);if(reduced)return;autoTimer=setTimeout(runAuto,delay);};
-      const canAuto=()=>!reduced&&!hoverPaused&&Date.now()>=manualPauseUntil;
-
-      function movePointer(target,onClick){
-        if(reduced||!pointer||!target)return;
-        const rootRect=root.getBoundingClientRect(),targetRect=target.getBoundingClientRect();
-        if(!targetRect.width||!targetRect.height)return;
-        const x=Math.max(5,Math.min(root.clientWidth-32,targetRect.left-rootRect.left+Math.min(targetRect.width*.56,targetRect.width-6)));
-        const y=Math.max(5,Math.min(root.clientHeight-34,targetRect.top-rootRect.top+Math.min(targetRect.height*.56,targetRect.height-6)));
-        pointer.classList.add('is-visible');pointer.classList.remove('is-clicking');pointer.style.transform=`translate3d(${x}px,${y}px,0)`;
-        clearTimeout(clickTimer);clearTimeout(actionTimer);
-        clickTimer=setTimeout(()=>{pointer.classList.add('is-clicking');actionTimer=setTimeout(()=>{pointer.classList.remove('is-clicking');onClick?.();},250);},720);
-      }
-
-      function gotoStep(nextIndex,nextScene=0){
-        const config=currentConfig(); if(!config.steps.length)return;
-        index=((nextIndex%config.steps.length)+config.steps.length)%config.steps.length;
-        sceneIndex=Math.max(0,Math.min(nextScene,(config.steps[index].scenes?.length||1)-1));
-        renderScene();
-      }
-      function gotoModule(module){const next=moduleIndex(module);if(next>=0)gotoStep(next,0);}
-      function gotoScene(nextScene){sceneIndex=Math.max(0,Math.min(nextScene,(currentStep().scenes?.length||1)-1));renderScene();}
-
-      function renderSubnav(scene){
-        subnav.replaceChildren();
-        (scene.subnav||[]).forEach(item=>{
-          const btn=document.createElement('button');btn.type='button';btn.textContent=item.label;btn.dataset.demoTarget=item.id;btn.classList.toggle('is-active',!!item.active);
-          btn.addEventListener('click',()=>{if(Number.isInteger(item.nextScene))gotoScene(item.nextScene);else if(item.nextModule)gotoModule(item.nextModule);});
-          subnav.appendChild(btn);
-        });
-      }
-      function renderPanel(scene){
-        if(scene.fields?.length){
-          panel.innerHTML=`<div class="ip-demo-form">${scene.fields.map(field=>`<button type="button" class="ip-demo-field" data-demo-target="${escapeHtml(field.id)}"><small>${escapeHtml(field.label)}</small><strong>${escapeHtml(field.value)}</strong></button>`).join('')}</div>`;
-          panel.querySelectorAll('.ip-demo-field').forEach(field=>field.addEventListener('click',()=>{field.classList.add('is-demo-focus');setTimeout(()=>field.classList.remove('is-demo-focus'),650);}));
-        } else {
-          panel.innerHTML=(scene.rows||[]).map(([a,b,c])=>`<div class="ip-demo-row"><strong>${escapeHtml(a)}</strong><span>${escapeHtml(b)}</span><span class="ip-demo-chip ${statusClass(c)}">${escapeHtml(c)}</span></div>`).join('');
-        }
-      }
-      function renderActions(scene){
-        actions.replaceChildren();
-        (scene.actions||[]).forEach(action=>{
-          const btn=document.createElement('button');btn.type='button';btn.textContent=action.label;btn.dataset.demoTarget=action.id;if(action.primary)btn.classList.add('primary');
-          btn.addEventListener('click',()=>{if(Number.isInteger(action.nextScene))gotoScene(action.nextScene);else if(action.nextModule)gotoModule(action.nextModule);});
-          actions.appendChild(btn);
-        });
-      }
-      function renderScene(){
-        renderVersion+=1;autoTargetIndex=0;
-        const config=currentConfig(),step=config.steps[index],scene=step.scenes?.[sceneIndex]||step.scenes?.[0]; if(!scene)return;
-        buttons.forEach((b,n)=>{b.classList.toggle('is-active',n===index);b.setAttribute('aria-selected',n===index?'true':'false');});
-        nav.querySelectorAll('[data-demo-module]').forEach(el=>el.classList.toggle('is-active',el.dataset.demoModule===step.module));
-        caption.textContent=scene.caption||'';eyebrow.textContent=scene.eyebrow||step.module;title.textContent=scene.title||step.module;state.textContent=scene.state||'Connected';
-        if(channel){channel.hidden=!scene.channel;channel.textContent=scene.channel||'';channel.classList.toggle('internal',/internal/i.test(scene.channel||''));}
-        renderSubnav(scene);
-        kpis.innerHTML=(scene.kpis||[]).map(([l,v])=>`<div class="ip-demo-kpi"><small>${escapeHtml(l)}</small><strong>${escapeHtml(v)}</strong></div>`).join('');
-        progress.classList.toggle('is-visible',!!scene.progress);progress.setAttribute('aria-hidden',scene.progress?'false':'true');progress.firstElementChild.style.width=`${scene.progress||0}%`;
-        renderPanel(scene);renderActions(scene);
-        scheduleAuto(1150);
-      }
-      function rebuild(){
-        const config=currentConfig();nav.replaceChildren();tabs.replaceChildren();
-        config.steps.forEach((step,i)=>{
-          const navBtn=document.createElement('button');navBtn.type='button';navBtn.textContent=step.module;navBtn.dataset.demoModule=step.module;navBtn.dataset.demoTarget=`module-${step.module}`;navBtn.addEventListener('click',()=>gotoStep(i,0));nav.appendChild(navBtn);
-          const tab=document.createElement('button');tab.type='button';tab.className='ip-demo-tab';tab.textContent=step.tab;tab.setAttribute('role','tab');tab.dataset.demoTarget=`tab-${step.module}`;tab.addEventListener('click',()=>gotoStep(i,0));tabs.appendChild(tab);
-        });
-        buttons=[...tabs.querySelectorAll('.ip-demo-tab')];index=Math.min(index,Math.max(0,config.steps.length-1));sceneIndex=0;renderScene();
-      }
-      function runAuto(){
-        if(!canAuto()){scheduleAuto(900);return;}
-        const scene=currentScene();if(!scene)return;
-        const ids=scene.auto||[];
-        if(autoTargetIndex>=ids.length){scheduleAuto(1200);return;}
-        const id=ids[autoTargetIndex],target=targetById(id);
-        if(!target){autoTargetIndex+=1;scheduleAuto(450);return;}
-        const before=renderVersion;
-        movePointer(target,()=>{
-          target.click();
-          if(renderVersion===before){autoTargetIndex+=1;scheduleAuto(820);}
-        });
-      }
-      function refresh(reset){if(reset){index=0;sceneIndex=0;autoTargetIndex=0;}rebuild();}
-
-      if(service){service.value=activeService;service.addEventListener('change',()=>{activeService=service.value;localStorage.setItem('inprofic-marketing-demo-service',activeService);document.querySelectorAll('[data-demo-service]').forEach(other=>{if(other!==service)other.value=activeService;});refresh(true);window.dispatchEvent(new CustomEvent('inprofic:marketing-vertical',{detail:{vertical:activeService}}));});}
-      root.addEventListener('pointerdown',event=>{if(event.isTrusted)pauseManual();},true);
-      root.addEventListener('mouseenter',()=>{hoverPaused=true;clearTimeout(autoTimer);});
-      root.addEventListener('mouseleave',()=>{hoverPaused=false;scheduleAuto(700);});
-      root.addEventListener('focusin',event=>{if(event.isTrusted)pauseManual();});
-      root.addEventListener('focusout',()=>scheduleAuto(900));
-      root.__refreshDemo=refresh;refresh(true);
-    }
-    demoRoots.forEach(initDemo);
-    document.querySelectorAll('[data-demo-service]').forEach(service=>{
-      if(service.closest('[data-inprofic-demo]'))return;
-      service.value=activeService;
-      service.addEventListener('change',()=>{
-        activeService=service.value;
-        localStorage.setItem('inprofic-marketing-demo-service',activeService);
-        document.querySelectorAll('[data-demo-service]').forEach(other=>{if(other!==service)other.value=activeService;});
-        window.dispatchEvent(new CustomEvent('inprofic:marketing-vertical',{detail:{vertical:activeService}}));
-      });
-    });
-
-    const trustCount=document.querySelector('[data-trust-count]');
-    if(trustCount){
-      const target=Number(trustCount.dataset.count||0);
-      const showCount=()=>{
-        if(matchMedia('(prefers-reduced-motion: reduce)').matches){trustCount.textContent=target.toLocaleString();return;}
-        const started=performance.now(),duration=1200;
-        const tick=now=>{const progress=Math.min(1,(now-started)/duration);trustCount.textContent=Math.round(target*(1-Math.pow(1-progress,3))).toLocaleString();if(progress<1)requestAnimationFrame(tick);};
-        requestAnimationFrame(tick);
-      };
-      if('IntersectionObserver'in window){const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){observer.disconnect();showCount();}},{threshold:.35});observer.observe(trustCount);}else showCount();
-    }
-
-    const trustLogoWindow=document.querySelector('[data-trust-logo-window]');
-    const trustLogoTrack=trustLogoWindow?.querySelector('[data-trust-logo-track]');
-    const trustLogoSet=trustLogoTrack?.querySelector('[data-trust-logo-set]');
-    const trustLogoCopy=trustLogoTrack?.querySelector('[data-trust-logo-copy]');
-    if(trustLogoWindow&&trustLogoTrack&&trustLogoSet&&trustLogoCopy){
-      const sourceLogos=[...trustLogoSet.children].map(logo=>logo.cloneNode(true));
-      const makeDecorative=logo=>{logo.setAttribute('aria-hidden','true');const image=logo.querySelector('img');if(image)image.alt='';return logo;};
-      const buildTrustLogoLoop=()=>{
-        trustLogoTrack.classList.add('is-building');
-        trustLogoSet.replaceChildren(...sourceLogos.map(logo=>logo.cloneNode(true)));
-        let repeats=0;
-        while(trustLogoSet.scrollWidth<trustLogoWindow.clientWidth&&repeats<24){
-          trustLogoSet.append(...sourceLogos.map(logo=>makeDecorative(logo.cloneNode(true))));
-          repeats+=1;
-        }
-        trustLogoCopy.replaceChildren(...[...trustLogoSet.children].map(logo=>makeDecorative(logo.cloneNode(true))));
-        requestAnimationFrame(()=>trustLogoTrack.classList.remove('is-building'));
-      };
-      let trustLogoWidth=Math.round(trustLogoWindow.clientWidth);
-      buildTrustLogoLoop();
-      if('ResizeObserver'in window)new ResizeObserver(entries=>{const width=Math.round(entries[0].contentRect.width);if(width===trustLogoWidth)return;trustLogoWidth=width;buildTrustLogoLoop();}).observe(trustLogoWindow);
-      let trustResumeTimer;
-      const pauseTrustLogos=()=>{clearTimeout(trustResumeTimer);trustLogoWindow.classList.add('is-paused');};
-      const resumeTrustLogos=()=>{clearTimeout(trustResumeTimer);trustResumeTimer=setTimeout(()=>trustLogoWindow.classList.remove('is-paused'),1200);};
-      trustLogoWindow.addEventListener('touchstart',pauseTrustLogos,{passive:true});
-      trustLogoWindow.addEventListener('touchend',resumeTrustLogos,{passive:true});
-      trustLogoWindow.addEventListener('touchcancel',resumeTrustLogos,{passive:true});
-    }
-    const titleMap = {'Inventory':'inventory','Procurement':'procurement','Production':'production','Sales & customers':'sales','Finance & expenses':'finance','Reports & backup':'reports','Delivery operations':'delivery','Audit Workspace':'audit','Dedicated in-premise POS':'pos'};
-    const moduleGrid=document.querySelector('[data-module-grid]');
-    const moduleOverlay=document.querySelector('[data-module-overlay]');
-    const moduleDialog=moduleOverlay?.querySelector('[data-module-dialog]');
-    if(moduleOverlay&&moduleOverlay.parentElement!==document.body)document.body.appendChild(moduleOverlay);
-    const modulePreview=moduleOverlay?.querySelector('[data-module-preview]');
-    let activeModuleCard=null;
-    let moduleCloseTimer=null;
-
-    function openModulePreview(card,module){
-      if(!moduleOverlay||!moduleDialog||!modulePreview)return;
-      window.clearTimeout(moduleCloseTimer);
-      if(activeModuleCard&&activeModuleCard!==card)activeModuleCard.setAttribute('aria-expanded','false');
-      activeModuleCard=card;
-      card.setAttribute('aria-expanded','true');
-      card.classList.remove('is-opening');
-      void card.offsetWidth;
-      card.classList.add('is-opening');
-      window.setTimeout(()=>card.classList.remove('is-opening'),470);
-      renderMini(modulePreview,module,serviceProfiles[activeService]);
-      moduleOverlay.hidden=false;
-      document.body.classList.add('module-preview-open');
-      window.requestAnimationFrame(()=>{
-        moduleOverlay.classList.add('is-open');
-        moduleDialog.focus({preventScroll:true});
-      });
-    }
-
-    function closeModulePreview(){
-      if(!moduleOverlay||moduleOverlay.hidden)return;
-      moduleOverlay.classList.remove('is-open');
-      document.body.classList.remove('module-preview-open');
-      activeModuleCard?.setAttribute('aria-expanded','false');
-      const returnTarget=activeModuleCard;
-      activeModuleCard=null;
-      moduleCloseTimer=window.setTimeout(()=>{
-        moduleOverlay.hidden=true;
-        returnTarget?.focus({preventScroll:true});
-      },matchMedia('(prefers-reduced-motion: reduce)').matches?0:280);
-    }
-
-    moduleOverlay?.querySelectorAll('[data-module-close]').forEach(button=>button.addEventListener('click',closeModulePreview));
-    document.addEventListener('keydown',event=>{
-      if(!moduleOverlay||moduleOverlay.hidden)return;
-      if(event.key==='Escape'){event.preventDefault();closeModulePreview();return;}
-      if(event.key!=='Tab')return;
-      const focusable=[...moduleOverlay.querySelectorAll('button:not([disabled]),[href],[tabindex]:not([tabindex="-1"])')].filter(element=>element.offsetParent!==null);
-      if(!focusable.length)return;
-      const first=focusable[0],last=focusable[focusable.length-1];
-      if(event.shiftKey&&(document.activeElement===first||document.activeElement===moduleDialog)){event.preventDefault();last.focus();}
-      else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
-    });
-
-    const moduleCards=[...document.querySelectorAll('#capabilities .feature-card')];
-    moduleCards.forEach((card,moduleCardIndex)=>{
-      card.style.setProperty('--module-index',moduleCardIndex);
-      const heading=card.querySelector('h3');
-      const module=titleMap[heading?.textContent.trim()];
-      if(!module)return;
-      card.classList.add('is-flippable');
-      card.dataset.featureDemo=module;
-      card.tabIndex=0;
-      card.setAttribute('role','button');
-      card.setAttribute('aria-haspopup','dialog');
-      card.setAttribute('aria-controls','module-preview-dialog');
-      card.setAttribute('aria-expanded','false');
-      card.setAttribute('aria-label',`${heading.textContent.trim()}: open an interactive module preview`);
-      card.insertAdjacentHTML('beforeend','<span class="feature-demo-hint">Click to preview <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17L17 7"/></svg></span>');
-      const open=()=>openModulePreview(card,module);
-      card.addEventListener('click',open);
-      card.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();open();}});
-    });
-
-    function drawModuleConnectors(){
-      const svg=moduleGrid?.querySelector('[data-module-connectors]');
-      const pathLayer=svg?.querySelector('[data-module-connector-paths]');
-      const hubMark=moduleGrid?.querySelector('.capability-hub-mark');
-      if(!svg||!pathLayer||!hubMark)return;
-      const gridRect=moduleGrid.getBoundingClientRect();
-      const hubRect=hubMark.getBoundingClientRect();
-      const width=moduleGrid.clientWidth;
-      const height=moduleGrid.clientHeight;
-      if(!width||!height)return;
-      svg.setAttribute('viewBox',`0 0 ${width} ${height}`);
-      pathLayer.replaceChildren();
-      const center=rect=>({x:rect.left-gridRect.left+rect.width/2,y:rect.top-gridRect.top+rect.height/2});
-      const edge=(from,to,rect,inset=9)=>{
-        const dx=to.x-from.x,dy=to.y-from.y;
-        const halfWidth=Math.max(1,rect.width/2-inset),halfHeight=Math.max(1,rect.height/2-inset);
-        const scale=1/Math.max(Math.abs(dx)/halfWidth,Math.abs(dy)/halfHeight);
-        return {x:from.x+dx*scale,y:from.y+dy*scale};
-      };
-      const hubCenter=center(hubRect);
-      moduleCards.forEach((card,index)=>{
-        const cardRect=card.getBoundingClientRect();
-        const cardCenter=center(cardRect);
-        const start=edge(hubCenter,cardCenter,hubRect,5);
-        const end=edge(cardCenter,hubCenter,cardRect,12);
-        const dx=end.x-start.x,dy=end.y-start.y;
-        const vertical=Math.abs(dy)>=Math.abs(dx);
-        const d=vertical
-          ? `M ${start.x} ${start.y} C ${start.x} ${start.y+dy*.46}, ${end.x} ${end.y-dy*.18}, ${end.x} ${end.y}`
-          : `M ${start.x} ${start.y} C ${start.x+dx*.46} ${start.y}, ${end.x-dx*.18} ${end.y}, ${end.x} ${end.y}`;
-        ['capability-connector-base','capability-connector-flow'].forEach(className=>{
-          const path=document.createElementNS('http://www.w3.org/2000/svg','path');
-          path.setAttribute('d',d);
-          path.setAttribute('class',className);
-          if(className==='capability-connector-flow')path.style.animationDelay=`${index*-.19}s`;
-          pathLayer.appendChild(path);
-        });
-      });
-    }
-    window.requestAnimationFrame(drawModuleConnectors);
-    if('ResizeObserver'in window&&moduleGrid)new ResizeObserver(()=>window.requestAnimationFrame(drawModuleConnectors)).observe(moduleGrid);
-    else window.addEventListener('resize',drawModuleConnectors,{passive:true});
-
-    window.addEventListener('inprofic:marketing-vertical',()=>{
-      demoRoots.forEach(root=>root.__refreshDemo?.(true));
-      if(activeModuleCard&&modulePreview)renderMini(modulePreview,activeModuleCard.dataset.featureDemo,serviceProfiles[activeService]);
-    });
-
-    const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const revealTargets=[...document.querySelectorAll('main > section, #capabilities .feature-card, #plans article, #faq details')];
-    revealTargets.forEach((el,i)=>{el.dataset.reveal='';el.style.setProperty('--reveal-delay',`${Math.min((i%6)*55,275)}ms`);});
-    const aboutList=document.querySelector('.about-modules');
-    if(aboutList){
-      aboutList.querySelectorAll(':scope > li').forEach((li,i)=>li.style.setProperty('--i',i));
-      if(reduced||!('IntersectionObserver'in window)){aboutList.classList.add('is-in');}
-      else{const aboutObserver=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){aboutList.classList.add('is-in');aboutObserver.disconnect();}},{threshold:.18,rootMargin:'0px 0px -6%'});aboutObserver.observe(aboutList);}
-    }
-    if(reduced){revealTargets.forEach(el=>el.classList.add('is-revealed'));}else{const observer=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add('is-revealed');observer.unobserve(entry.target);}}),{threshold:.08,rootMargin:'0px 0px -7%'});revealTargets.forEach(el=>observer.observe(el));}
-  })();
-  </script>
-  <script>
-  (() => {
-    const faq = document.getElementById('faq');
-    const toggle = faq?.querySelector('[data-faq-toggle]');
-    const lists = [...(faq?.querySelectorAll('[data-faq-list]') || [])];
-    if (!toggle || !lists.length) return;
-    const questions = [...faq.querySelectorAll('details')];
-    questions.forEach(question => question.addEventListener('toggle', () => {
-      if (!question.open) return;
-      questions.forEach(other => { if (other !== question) other.open = false; });
-    }));
-    const label = toggle.querySelector('[data-faq-toggle-label]');
-    const icon = toggle.querySelector('[data-faq-toggle-icon]');
-    toggle.addEventListener('click', () => {
-      const expanded = toggle.getAttribute('aria-expanded') !== 'true';
-      toggle.setAttribute('aria-expanded', String(expanded));
-      lists.forEach(list => {
-        list.dataset.expanded = String(expanded);
-        if (!expanded) list.querySelectorAll('details:nth-child(n+4)').forEach(item => item.open = false);
-      });
-      if (label) label.textContent = expanded ? 'Show fewer questions' : 'Show all questions';
-      if (icon) icon.style.transform = expanded ? 'rotate(180deg)' : '';
-      if (!expanded) faq.scrollIntoView({behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start'});
-    });
-  })();
-  </script>
-<script>
-(() => {
-  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const cursorIcons = {
-    Stock:'<path d="M4 7l8 -4l8 4l-8 4z"/><path d="M4 7v10l8 4l8 -4v-10"/><path d="M12 11v10"/>',
-    Production:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3m10 -10h-3m-14 0h-3m17.1 -7.1l-2.1 2.1m-10 10l-2.1 2.1m0 -14.2l2.1 2.1m10 10l2.1 2.1"/>',
-    Sales:'<path d="M5 21v-16a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v16l-3 -2l-2 2l-2 -2l-2 2l-2 -2l-3 2"/><path d="M9 7h6m-6 4h6m-3 4h3"/>',
-    Delivery:'<path d="M3 17h2a2 2 0 1 0 4 0h6a2 2 0 1 0 4 0h2v-6l-3 -4h-5v10"/><path d="M3 5h10v12H9m-6 -8h5"/>'
-  };
-  document.querySelectorAll('.hero-typing').forEach((wrap) => {
-    const wordEl = wrap.querySelector('.hero-typeword');
-    const textEl = wrap.querySelector('[data-typed-text]');
-    const iconEl = wrap.querySelector('[data-typing-icon]');
-    let words = [];
-    try { words = JSON.parse(wrap.dataset.words || '[]'); } catch(_) {}
-    words = words.filter(Boolean);
-    const setIcon = word => { if(iconEl) iconEl.innerHTML = cursorIcons[word] || cursorIcons.stock; };
-    if (!wordEl || !textEl || words.length < 2 || reduced) {
-      wrap.dataset.static = '1';
-      if (textEl && words[0]) textEl.textContent = words[0];
-      setIcon(words[0] || 'stock');
-      return;
-    }
-    let index = 0, deleting = false;
-    let current = words[0];
-    textEl.textContent = current;
-    setIcon(words[0]);
-    const tick = () => {
-      const target = words[index];
-      if (!deleting) {
-        current = target.slice(0, current.length + 1);
-        textEl.textContent = current;
-        if (current === target) {
-          deleting = true;
-          return setTimeout(tick, 1200);
-        }
-        return setTimeout(tick, 80);
-      }
-      current = target.slice(0, Math.max(0, current.length - 1));
-      textEl.textContent = current;
-      if (!current.length) {
-        deleting = false;
-        index = (index + 1) % words.length;
-        setIcon(words[index]);
-        return setTimeout(tick, 220);
-      }
-      setTimeout(tick, 45);
-    };
-    setTimeout(tick, 700);
-  });
-})();
-</script>
 
 
 <script>
@@ -1326,17 +625,6 @@
     <span class="marketing-whatsapp-label">Chat with us</span>
     <span class="marketing-whatsapp-icon" aria-hidden="true"><svg viewBox="0 0 32 32" role="img"><path fill="currentColor" d="M16 3a12.8 12.8 0 0 0-11 19.36L3.5 29l6.82-1.43A12.94 12.94 0 1 0 16 3Zm0 23.45a10.5 10.5 0 0 1-5.35-1.46l-.38-.22-4.05.85.87-3.94-.25-.4A10.42 10.42 0 1 1 16 26.45Zm5.74-7.82c-.31-.16-1.85-.91-2.14-1.02-.29-.11-.5-.16-.71.16-.21.31-.81 1.02-.99 1.23-.18.21-.37.24-.68.08-.31-.16-1.32-.49-2.51-1.55a9.45 9.45 0 0 1-1.74-2.17c-.18-.31-.02-.48.14-.64.14-.14.31-.37.47-.55.16-.18.21-.31.31-.52.11-.21.05-.39-.03-.55-.08-.16-.71-1.71-.97-2.34-.26-.62-.52-.54-.71-.55h-.6c-.21 0-.55.08-.84.39-.29.31-1.1 1.08-1.1 2.63s1.13 3.05 1.29 3.26c.16.21 2.22 3.39 5.38 4.75.75.32 1.34.52 1.8.66.76.24 1.44.21 1.99.13.61-.09 1.85-.76 2.11-1.49.26-.73.26-1.36.18-1.49-.08-.13-.29-.21-.6-.37Z"/></svg></span>
   </a>
-  <script>
-  (function () {
-    var root = document.querySelector('[data-site-menu]'); if (!root) return;
-    var btn = root.querySelector('[data-site-menu-btn]'), panel = root.querySelector('.site-menu-panel');
-    function set(open) { panel.hidden = !open; btn.setAttribute('aria-expanded', open ? 'true' : 'false'); btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu'); }
-    btn.addEventListener('click', function () { set(panel.hidden); });
-    panel.addEventListener('click', function (e) { if (e.target.closest('a')) set(false); });
-    document.addEventListener('pointerdown', function (e) { if (!panel.hidden && !root.contains(e.target)) set(false); });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !panel.hidden) { set(false); btn.focus(); } });
-  })();
-  </script>
-  <script src="{% static 'core/js/form-experience.js' %}" defer></script>
+
 </body>
 </html>

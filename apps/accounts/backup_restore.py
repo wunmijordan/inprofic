@@ -10,6 +10,8 @@ ephemeral notification records are intentionally excluded.
 from __future__ import annotations
 
 import json
+import re
+import secrets
 import sqlite3
 import tempfile
 from collections import defaultdict, deque
@@ -28,8 +30,11 @@ from .services import seed_business_roles
 
 MAX_SQLITE_BYTES = 200 * 1024 * 1024
 MAX_JSON_BYTES = 25 * 1024 * 1024
-TENANT_APPS = {"core", "accounts", "inventory", "procurement", "production", "sales", "expenses", "commerce"}
+TENANT_APPS = {"core", "accounts", "inventory", "procurement", "production", "sales", "expenses", "commerce", "whatsapp_storefront"}
 EXCLUDED_LABELS = {
+    # User/session preferences and public bearer links are not transferable operating history.
+    'core.dailybriefpreference', 'core.auditquery', 'core.financialpackshare',
+
     # The destination tenant's SaaS/commercial boundary remains authoritative.
     "accounts.businessmoduleaccess",
     "accounts.businessfeatureaccess",
@@ -184,12 +189,14 @@ def _field_to_business(model):
     return None
 
 
-def _tenant_models():
+def tenant_operational_models():
     all_models = [
         model for model in apps.get_models()
         if model._meta.app_label in TENANT_APPS
         and _model_label(model) not in EXCLUDED_LABELS
         and model is not Business
+        and (model._meta.app_label != 'accounts' or model._meta.model_name.startswith(
+            ('payrollstaffprofile', 'payrollrecurringadjustment', 'payrollcalculationrule', 'payrollrun', 'payslip')))
     ]
     selected = {model for model in all_models if _field_to_business(model)}
     changed = True
@@ -206,12 +213,15 @@ def _tenant_models():
     return selected
 
 
+# Compatibility for the existing restore callers. Export and restore share this registry.
+_tenant_models = tenant_operational_models
+
 def _dependency_order(selected):
     dependencies = {model: set() for model in selected}
     dependents = defaultdict(set)
     for model in selected:
         for field in model._meta.concrete_fields:
-            if field.is_relation and field.related_model in selected and field.related_model is not model:
+            if field.is_relation and not field.null and field.related_model in selected and field.related_model is not model:
                 dependencies[model].add(field.related_model)
                 dependents[field.related_model].add(model)
     queue = deque(sorted((m for m, deps in dependencies.items() if not deps), key=_model_label))
@@ -677,6 +687,127 @@ def _copy_business_profile(db, source_business_id, target_business):
     return updated
 
 
+def _restore_safety(model, values):
+    """Restores recover history; they never resume outbound automation or credentials."""
+    label = model._meta.label_lower
+    for name in list(values):
+        if name in {'api_key', 'api_secret', 'webhook_secret', 'paystack_secret_key', 'monnify_secret_key', 'monnify_api_key'}:
+            values[name] = ''
+    if label == 'sales.saleitem' and values.get('units_per_batch_snapshot') is None and values.get('finished_good_id'):
+        Good = apps.get_model('inventory.FinishedGood')
+        values['units_per_batch_snapshot'] = Good.raw_objects.get(pk=values['finished_good_id']).units_per_batch or 1
+        values['quantity_snapshot_source'] = 'legacy_current_yield'
+    if label == 'commerce.commerceintegration':
+        values.update(api_key=secrets.token_urlsafe(32), webhook_secret='', active=False)
+    if label == 'whatsapp_storefront.whatsappconnection':
+        values.update(status='disconnected', assistant_enabled=False, ai_enabled=False)
+    if label == 'whatsapp_storefront.whatsappmessage' and values.get('direction') == 'out' and values.get('status') in {'queued', 'sending'}:
+        values.update(status='failed', error='Restored message: review before sending again.')
+    if label == 'commerce.commercepaymentconfiguration':
+        values.update(paystack_enabled=False, monnify_enabled=False, bank_transfer_enabled=False)
+    return values
+
+
+def _remap_operational_references(business, mappings):
+    """Repair deliberately non-FK references after every row has its new ID."""
+    def mapped(label, old_id):
+        model = apps.get_model(label)
+        return mappings.get(model, {}).get(int(old_id))
+
+    kinds = {'raw': 'inventory.RawMaterial', 'fg': 'inventory.FinishedGood', 'cash': 'core.CashAccount',
+             'receivable': 'sales.Customer', 'payable': 'procurement.Supplier'}
+    Position = apps.get_model('core.OpeningPosition')
+    for row in Position.raw_objects.filter(business=business):
+        value = mapped(kinds[row.kind], row.object_id)
+        if value is None:
+            raise BackupRestoreError('An opening position refers to an item missing from the backup.')
+        row.object_id = value
+        row.save(update_fields=['object_id'])
+    Cutover = apps.get_model('core.LedgerCutover')
+    for cutover in Cutover.raw_objects.filter(business=business):
+        snapshot = cutover.merge_snapshot or {}
+        for key, label in [('positions', 'core.OpeningPosition'), ('costs', 'inventory.RawMaterial'), ('market_lots', 'inventory.MarketStockLot')]:
+            for row in snapshot.get(key, []):
+                row['pk'] = mapped(label, row['pk'])
+                if row['pk'] is None:
+                    raise BackupRestoreError('The ledger merge history is incomplete.')
+        for row in snapshot.get('variances', []):
+            row['id'] = mapped(kinds[row['kind']], row['id'])
+            if row['id'] is None:
+                raise BackupRestoreError('The ledger merge history is incomplete.')
+        cutover.merge_snapshot = snapshot
+        cutover.save(update_fields=['merge_snapshot'])
+    prefixes = {'SALE': 'sales.Sale', 'ORDER': 'production.Order', 'PROD': 'production.Order',
+                'PO': 'procurement.PurchaseOrder', 'EXP': 'expenses.Expense', 'EXPPAY': 'expenses.ExpensePayment',
+                'SUPPAY': 'procurement.SupplierPayment', 'CUSTPAY': 'sales.CustomerPayment',
+                'RUN': 'production.ProductionRun', 'PAYRUN': 'accounts.PayrollRun', 'PAYSLIP': 'accounts.Payslip'}
+    for label in ['core.FinancialTransaction', 'inventory.StockMovement']:
+        Model = apps.get_model(label)
+        for row in Model.raw_objects.filter(business=business).exclude(reference=''):
+            match = re.match(r'^(REV-)?([A-Z]+)-(\d+)(.*)$', row.reference)
+            if match and match[2] in prefixes:
+                value = mapped(prefixes[match[2]], match[3])
+                if value is not None:
+                    row.reference = f'{match[1] or ""}{match[2]}-{value}{match[4]}'
+                    row.save(update_fields=['reference'])
+    Account = apps.get_model('core.LedgerAccount')
+    for account in Account.raw_objects.filter(business=business, system_key__startswith='cash_'):
+        value = mapped('core.CashAccount', account.system_key[5:])
+        if value is None:
+            raise BackupRestoreError('A cash ledger account has no corresponding cash account in the backup.')
+        account.system_key = f'cash_{value}'
+        account.save(update_fields=['system_key'])
+    for label in ['commerce.CommerceIntakeItem', 'commerce.CommerceCheckoutItem']:
+        Model = apps.get_model(label)
+        for row in Model.objects.filter(pk__in=mappings.get(Model, {}).values()):
+            contents = row.contents_snapshot or []
+            for component in contents:
+                target = {'raw_material': 'inventory.RawMaterial', 'finished_good': 'inventory.FinishedGood'}.get(component.get('kind'))
+                if target and component.get('id') is not None:
+                    value = mapped(target, component['id'])
+                    if value is None:
+                        raise BackupRestoreError('An assembly component is missing from the backup.')
+                    component['id'] = value
+            row.contents_snapshot = contents
+            row.save(update_fields=['contents_snapshot'])
+    Payment = apps.get_model('commerce.CommercePayment')
+    for payment in Payment.raw_objects.filter(business=business):
+        metadata = payment.gateway_metadata or {}
+        route = metadata.get('manual_transfer_route')
+        if isinstance(route, dict):
+            for key, label in [('id', 'commerce.CommerceDirectTransferRoute'), ('cash_account_id', 'core.CashAccount')]:
+                if route.get(key) is not None:
+                    value = mapped(label, route[key])
+                    if value is None and key == 'cash_account_id':
+                        raise BackupRestoreError('A saved payment route is missing its restored cash account.')
+                    route[key] = value
+            payment.gateway_metadata = metadata
+            payment.save(update_fields=['gateway_metadata'])
+    Report = apps.get_model('production.OrderFlexibleMaterialReport')
+    def remap_keys(values, label):
+        result = {}
+        for old_id, value in (values or {}).items():
+            new_id = mapped(label, old_id)
+            if new_id is None:
+                raise BackupRestoreError('A production report refers to an item missing from the backup.')
+            result[str(new_id)] = value
+        return result
+    for report in Report.raw_objects.filter(business=business):
+        report.flexible_totals = remap_keys(report.flexible_totals, 'inventory.RawMaterial')
+        report.output = remap_keys(report.output, 'production.OrderItem')
+        report.flexible_per_batch = {
+            key: remap_keys(value, 'inventory.RecipeItem')
+            for key, value in remap_keys(report.flexible_per_batch, 'production.OrderItem').items()
+        }
+        report.save(update_fields=['flexible_totals', 'output', 'flexible_per_batch'])
+    # System journals are reproducible; retain manual journals and derive fresh
+    # source IDs/chart references from the restored operating documents.
+    Entry = apps.get_model('core.JournalEntry')
+    if Entry.raw_objects.filter(business=business).exists():
+        from core.books import rebuild_books
+        rebuild_books(business)
+
+
 def _transform_row(model, row, *, target_business, mappings, user_map, role_map, membership_map):
     kwargs = {}
     deferred = []
@@ -725,7 +856,7 @@ def _transform_row(model, row, *, target_business, mappings, user_map, role_map,
             continue
         if field.column in row:
             kwargs[field.name] = _parse_scalar(field, row.get(field.column))
-    return kwargs, deferred
+    return _restore_safety(model, kwargs), deferred
 
 
 def restore_backup_sqlite(uploaded_file, target_business, source_business_id, *, actor=None):
@@ -817,6 +948,7 @@ def restore_backup_sqlite(uploaded_file, target_business, source_business_id, *,
                 setattr(obj, field.attname, value_by_pk[obj.pk])
             manager.bulk_update(objects, [field_name], batch_size=250)
 
+        _remap_operational_references(target_business, mappings)
         total_rows = sum(imported_counts.values())
         AuditLog.raw_objects.create(
             business=target_business,
@@ -874,6 +1006,10 @@ class BackupJSONFixture:
                 self.uploaded_file.seek(0)
             except Exception:
                 pass
+        if isinstance(payload, dict):
+            if payload.get('format') != 'inprofic-tenant-backup' or payload.get('version') != 2:
+                raise BackupRestoreError('This backup format/version is not supported.')
+            payload = payload.get('records')
         if not isinstance(payload, list):
             raise BackupRestoreError("This backup file does not contain the records expected by INPROFIC.")
         for index, record in enumerate(payload, start=1):
@@ -1354,7 +1490,7 @@ def _transform_fixture_record(model, record, *, target_business, mappings, custo
             continue
         if field.name in fields:
             kwargs[field.name] = _fixture_scalar(field, fields.get(field.name))
-    return kwargs, deferred
+    return _restore_safety(model, kwargs), deferred
 
 
 def restore_backup_fixture(uploaded_file, target_business, source_business_id, *, actor=None):
@@ -1471,6 +1607,7 @@ def restore_backup_fixture(uploaded_file, target_business, source_business_id, *
                 setattr(obj, field.attname, values[obj.pk])
             manager.bulk_update(objects, [field_name], batch_size=250)
 
+        _remap_operational_references(target_business, mappings)
         total_rows = sum(imported_counts.values())
         identity_stats = {"users_created": 0, "users_matched": 0, "memberships": 0}
         AuditLog.raw_objects.create(

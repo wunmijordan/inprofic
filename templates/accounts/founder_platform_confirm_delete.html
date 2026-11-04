@@ -18,8 +18,8 @@
       <ul class="mt-3 max-h-72 list-disc overflow-y-auto break-words pl-5 text-xs leading-5 text-stone-600">{{ deleted_objects|unordered_list }}</ul>
     </details>
     <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-      <a href="{% if object_kind == 'business' %}{% url 'founder_platform_business' target.pk %}{% else %}{% url 'founder_platform_user' target.pk %}{% endif %}" class="rounded-md border border-stone-300 bg-white px-4 py-2 text-center text-sm font-semibold">Cancel</a>
-      {% if not blocked %}<form method="post">{% csrf_token %}<button name="confirm_delete" value="yes" class="w-full rounded-md border border-rose-700 bg-rose-700 px-4 py-2 text-sm font-semibold text-white sm:w-auto">Yes, permanently delete {{ object_kind }}</button></form>{% endif %}
+      <a data-button-surface href="{% if object_kind == 'business' %}{% url 'founder_platform_business' target.pk %}{% else %}{% url 'founder_platform_user' target.pk %}{% endif %}" class="rounded-md border border-stone-300 bg-white px-4 py-2 text-center text-sm font-semibold">Cancel</a>
+      {% if not blocked %}<form method="post">{% csrf_token %}<button data-button-surface name="confirm_delete" value="yes" class="w-full rounded-md border border-rose-700 bg-rose-700 px-4 py-2 text-sm font-semibold text-white sm:w-auto">Yes, permanently delete {{ object_kind }}</button></form>{% endif %}
     </div>
   </section>
 </div>

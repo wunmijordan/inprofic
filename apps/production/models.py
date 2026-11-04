@@ -8,12 +8,12 @@ from core.models import BusinessOwnedModel, TimestampedModel
 
 
 class Order(BusinessOwnedModel):
-    ledger_date_field = "date"
     """A production order — either for a specific customer (made to order,
     delivered directly, never touches shelf stock) or a physical store
     restock (adds to shelf stock on completion, not tied to any customer).
     Approved and completed as a whole — all its line items together, not
     item-by-item. See docs/ARCHITECTURE.md for the full flow."""
+    ledger_date_field = "date"
 
     BASIS_PRODUCT_QUANTITY = "product_quantity"
     BASIS_BASE_MATERIAL = "base_material"
@@ -633,7 +633,6 @@ class OrderMaterialUsage(BusinessOwnedModel):
 
 
 class ProductionRun(BusinessOwnedModel):
-    ledger_date_field = "date"
     """Optional parent production event spanning several customer/store orders.
 
     A shared run coordinates several commercial Orders as one production
@@ -641,6 +640,7 @@ class ProductionRun(BusinessOwnedModel):
     normal proportional recipe requirement. Approval aggregates those exact
     requirements and releases the combined quantities together.
     """
+    ledger_date_field = "date"
     STATUS_CHOICES = [
         ("draft", "Draft"),
         ("approved", "Approved / in production"),
@@ -720,13 +720,13 @@ class ProductionRunMaterial(BusinessOwnedModel):
 
 
 class ProductionBatch(BusinessOwnedModel):
-    ledger_date_field = "production_date"
     """A traceable production output record for one finished-good order line.
 
     The batch records planned output, gross production, wastage and saleable
     output. It is the bridge between the production event, its frozen cost,
     quality inspection and any customer/shelf movement that follows.
     """
+    ledger_date_field = "production_date"
     order = models.ForeignKey(Order, on_delete=models.PROTECT, related_name="production_batches")
     production_run = models.ForeignKey("ProductionRun", null=True, blank=True, on_delete=models.SET_NULL, related_name="production_batches")
     order_item = models.ForeignKey(OrderItem, on_delete=models.PROTECT, related_name="production_batches")

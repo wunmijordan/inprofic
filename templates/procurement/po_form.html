@@ -1,8 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Purchasing</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit Purchase Order{% else %}New Purchase Order{% endif %}</h2><p class="mt-1 max-w-2xl text-sm text-stone-500">Record what was bought, what it cost and how the supplier was paid.</p></div>
+<header data-snapshot-heading class="mb-5 flex items-start justify-between gap-3">
+  <div class="min-w-0"><h2 class="text-2xl font-semibold font-display">{% if obj %}Edit purchase request{% else %}New purchase request{% endif %}</h2><p class="mt-1 max-w-2xl text-sm text-stone-500">Request items across vendors in one approval. Assign a vendor per row, or use the default vendor. Record an advance only if money has actually been paid.{% if obj %} Save changes before sharing the saved request.{% endif %}</p></div>
+  {% include "partials/_snapshot_share.html" with snapshot_image_url=share_image_url snapshot_id="purchase-share" snapshot_text=share_text snapshot_filename="purchase-request" snapshot_dropdown=True snapshot_label="Share request" snapshot_save_form="purchase-request-form" %}
+</header>
 <div class="cf-form-shell max-w-4xl"><div class="cf-form-body">
-  <form method="post">
+  <form method="post" id="purchase-request-form">
     {% csrf_token %}
     {% if form.non_field_errors %}<div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-3">{{ form.non_field_errors }}</div>{% endif %}
     <div class="grid grid-cols-2 gap-3">
@@ -10,6 +13,7 @@
       {% include "_field.html" with field=form.supplier %}
       <datalist id="supplier-name-options">{% for supplier in suppliers %}<option value="{{ supplier.name }}"></option>{% endfor %}</datalist>
       {% include "_field.html" with field=form.payment_status %}
+      <div id="payment-vendor-wrap">{% include "_field.html" with field=form.payment_supplier %}</div>
       <div id="initial-payment-wrap">{% include "_field.html" with field=form.amount_paid %}</div>
       {% include "_field.html" with field=form.payment_method %}
       {% include "_field.html" with field=form.account %}
@@ -18,20 +22,21 @@
     {% if formset.non_form_errors %}<div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md p-3 mb-3">{{ formset.non_form_errors }}</div>{% endif %}
     <div class="mb-1 flex items-center gap-1.5 text-xs font-medium text-stone-600">
       <span>Items</span>
-      {% include "_help_tip.html" with help_text="Enter the quantity actually purchased and the total amount paid for that quantity. Fractional quantities are supported — for example, 0.5 bag at ₦35,000. INPROFIC calculates the equivalent cost of one whole purchase unit automatically. For products for resale, quantity uses the product's stock unit." label="Purchase order items" %}
+      {% include "_help_tip.html" with help_text="Enter the quantity requested and the total amount paid for that quantity. Fractional quantities are supported — for example, 0.5 bag at ₦35,000. INPROFIC calculates the equivalent cost of one whole purchase unit automatically. For products for resale, quantity uses the product's stock unit." label="Purchase order items" %}
     </div>
     {{ formset.management_form }}
     <div class="border border-[#E7DFCC] rounded-md overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full min-w-[680px] text-sm">
           <thead class="bg-[#F0EAD9] text-stone-600 text-xs"><tr>
-            <th class="text-left px-2 py-1.5">Inventory Item</th><th class="text-right px-2 py-1.5 w-24">Qty</th><th class="text-right px-2 py-1.5 w-32">Total Purchase Cost</th><th class="text-right px-2 py-1.5 w-32">Whole Unit Cost</th><th class="text-right px-2 py-1.5 w-28">Previous Cost</th><th class="w-16"></th>
+            <th class="text-left px-2 py-1.5">Inventory Item</th><th class="text-left px-2 py-1.5">Vendor</th><th class="text-right px-2 py-1.5 w-24">Qty</th><th class="text-right px-2 py-1.5 w-32">Total Purchase Cost</th><th class="text-right px-2 py-1.5 w-32">Whole Unit Cost</th><th class="text-right px-2 py-1.5 w-28">Previous Cost</th><th class="w-16"></th>
           </tr></thead>
           <tbody id="po-rows">
             {% for f in formset %}
             <tr {% if forloop.first %}data-formset-row{% endif %} class="border-t border-[#E7DFCC]" data-row>
-              <td class="px-2 py-1.5">{{ f.id }}{{ f.item }}{% if f.item.errors %}<div class="text-[11px] text-rose-600 mt-1">{{ f.item.errors|join:", " }}</div>{% endif %}</td>
-              <td class="px-2 py-1.5">{{ f.qty }}</td>
+              <td class="px-2 py-1.5">{{ f.id }}{{ f.item }}{% if f.non_field_errors %}<div class="errorlist">{{ f.non_field_errors }}</div>{% endif %}{% if f.item.errors %}<div class="text-[11px] text-rose-600 mt-1">{{ f.item.errors|join:", " }}</div>{% endif %}<div class="po-stock" data-stock-note aria-live="polite"></div></td>
+              <td class="px-2 py-1.5 min-w-40">{{ f.supplier }}{{ f.supplier.errors }}</td>
+              <td class="px-2 py-1.5">{{ f.qty }}{% if f.qty.errors %}<div class="errorlist">{{ f.qty.errors }}</div>{% endif %}</td>
               <td class="px-2 py-1.5">{{ f.unit_cost }}{% if f.unit_cost.errors %}<div class="text-[11px] text-rose-600 mt-1">{{ f.unit_cost.errors|join:", " }}</div>{% endif %}</td>
               <td class="px-2 py-1.5 text-right text-xs text-stone-700 font-mono derived-unit-cost-display">—</td>
               <td class="px-2 py-1.5 text-right text-xs text-stone-400 font-mono current-cost-display">—</td>
@@ -50,20 +55,34 @@
 
     <div class="flex justify-end gap-2 mt-4">
       <a href="{% url 'procurement_list' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a>
-      <button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save</button>
+      <button data-button-surface type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Submit request</button>
     </div>
   </form>
 </div>
 {{ current_costs|json_script:"mat-costs" }}
+{{ stock_levels|json_script:"mat-stock" }}
+<style>
+  .po-stock { margin-top: .3rem; font-size: .6875rem; line-height: 1.35; }
+  .po-stock:empty { display: none; }
+  .po-stock .po-dot { display: inline-block; width: .5rem; height: .5rem; margin-right: .35rem; border-radius: 999px; background: currentColor; vertical-align: baseline; }
+  .po-stock.is-out, .po-stock.is-low { color: #b91c1c; }
+  .po-stock.is-warning { color: #b45309; }
+  .po-stock.is-ok { color: #166534; }
+  .po-stock.is-untracked { color: #78716c; }
+  .po-stock .po-after { display: block; opacity: .85; font-weight: 600; }
+</style>
 <script>
   const CURRENT_COSTS = JSON.parse(document.getElementById('mat-costs').textContent);
+  const STOCK = JSON.parse(document.getElementById('mat-stock').textContent);
+  const STOCK_TIME = "{{ stock_time|default:""|escapejs }}";
+  const numFmt = new Intl.NumberFormat(undefined, {maximumFractionDigits: 2});
   function wireRows() {
     document.querySelectorAll('#po-rows tr[data-row]').forEach((row) => {
       ['qty', 'unit_cost'].forEach((suffix) => {
         const input = row.querySelector(`input[name$="-${suffix}"]`);
         if (input && input.value === '') input.value = '0';
       });
-      const select = row.querySelector('select');
+      const select = row.querySelector('select[name$="-item"]');
       const currentCell = row.querySelector('.current-cost-display');
       const derivedCell = row.querySelector('.derived-unit-cost-display');
       const qtyInput = row.querySelector('input[name$="-qty"]');
@@ -81,6 +100,32 @@
       qtyInput?.addEventListener('input', updateDerived);
       totalInput?.addEventListener('input', updateDerived);
       updateDerived();
+      // Live stock position of the selected item (re-rendered when the item or quantity changes).
+      const note = row.querySelector('[data-stock-note]');
+      const renderStock = () => {
+        if (!note) return;
+        const info = select && STOCK[select.value];
+        note.textContent = '';
+        if (!info) { note.className = 'po-stock'; return; }
+        note.className = 'po-stock is-' + info.status;
+        const dot = document.createElement('span'); dot.className = 'po-dot'; note.appendChild(dot);
+        const text = info.tracked
+          ? 'Stock now: ' + info.text + (info.packs ? ' (= ' + info.packs + ')' : '') + ' · ' + info.label + (info.reorder_text ? ' · ' + info.reorder_text : '')
+          : info.label;
+        note.appendChild(document.createTextNode(text + (STOCK_TIME ? ' (as of ' + STOCK_TIME + ')' : '')));
+        const qty = Number(qtyInput?.value || 0);
+        if (info.tracked && qty > 0) {
+          const after = document.createElement('span'); after.className = 'po-after';
+          after.textContent = '→ ' + numFmt.format(Number(info.stock) + qty * Number(info.factor || 1)) + ' ' + info.unit + ' once this request is received';
+          note.appendChild(after);
+        }
+      };
+      if (!row.dataset.stockWired) {
+        row.dataset.stockWired = '1';
+        qtyInput?.addEventListener('input', renderStock);
+        select?.addEventListener('change', renderStock);
+      }
+      renderStock();
       if (!select || select.dataset.wired) return;
       select.dataset.wired = '1';
       select.addEventListener('change', () => {
@@ -99,6 +144,7 @@
     if (!wrap) return;
     const show = status === 'partial';
     wrap.style.display = show ? 'block' : 'none';
+    document.getElementById('payment-vendor-wrap').hidden = !show;
     if (!show && amount && status === 'unpaid') amount.value = '';
   }
 

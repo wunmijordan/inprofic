@@ -1046,8 +1046,8 @@ class PayrollCalculationRule(BusinessOwnedModel):
 
 
 class PayrollRun(BusinessOwnedModel):
-    ledger_date_field = "period_start"
     """One posted wage run that groups issued payslips and Finance outflows."""
+    ledger_date_field = "period_start"
 
     KIND_BULK = "bulk"
     KIND_SINGLE = "single"

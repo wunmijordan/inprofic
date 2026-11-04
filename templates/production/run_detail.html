@@ -8,8 +8,8 @@
   </div>
   <div class="flex flex-wrap gap-2">
     {% if run.status == 'draft' %}
-      <a href="{% url 'production_run_edit' run.pk %}" class="px-3 py-2 text-sm rounded-md border border-[#D9CFB4]">Attach / remove existing orders</a>
-      <a href="{% url 'order_add' %}?run={{ run.pk }}" class="px-3 py-2 text-sm rounded-md bg-sky-700 text-white">+ Add New Customer Order</a>
+      <a data-button-surface href="{% url 'production_run_edit' run.pk %}" class="px-3 py-2 text-sm rounded-md border border-[#D9CFB4]">Attach / remove existing orders</a>
+      <a data-button-surface href="{% url 'order_add' %}?run={{ run.pk }}" class="px-3 py-2 text-sm rounded-md bg-sky-700 text-white">+ Add New Customer Order</a>
     {% endif %}
     <a href="{% url 'production_runs' %}" class="px-3 py-2 text-sm text-stone-500">All runs</a>
   </div>
@@ -37,8 +37,8 @@
     <label class="text-[11px] font-semibold text-stone-600">Adjust pool{% if base_pool.material %} ({{ base_pool.material.usage_unit }}){% endif %}
       <input type="number" name="base_material_quantity" value="{{ base_pool.total|unlocalize }}" min="0.0001" step="0.0001" required class="mt-1 block w-40 rounded-md border border-stone-300 bg-white px-2 py-1.5 font-mono text-sm text-stone-900">
     </label>
-    <button type="submit" class="rounded-md bg-[#8f172d] px-3 py-1.5 text-xs font-semibold text-white">Update pool</button>
-    {% if base_pool.overflow > 0 %}<button type="submit" name="use_needed" value="1" class="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700">Raise pool to {{ base_pool.needed|num }} (minimum for this output)</button>{% endif %}
+    <button data-button-surface type="submit" class="rounded-md bg-[#8f172d] px-3 py-1.5 text-xs font-semibold text-white">Update pool</button>
+    {% if base_pool.overflow > 0 %}<button data-button-surface type="submit" name="use_needed" value="1" class="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700">Raise pool to {{ base_pool.needed|num }} (minimum for this output)</button>{% endif %}
   </form>
   {% if not base_pool.material %}<p class="mt-2 text-xs text-amber-800">The {{ vertical_ui.base_material_label|lower }} comes from the products of the orders in this run. Add orders whose products share one {{ vertical_ui.base_material_label|lower }}.</p>{% endif %}
 </div>
@@ -55,7 +55,7 @@
           <div class="flex justify-between gap-3"><a class="text-[#8f172d] font-medium hover:underline" href="{% url 'order_detail' o.pk %}">Order #{{ o.display_number }}</a><span class="text-xs">{{ o.display_order_type }} · {{ o.get_status_display }}</span></div>
           <div class="text-xs text-stone-500 mt-1">{% if o.is_multi_channel %}Several channels{% elif o.order_type == 'physical_store' %}{{ vertical_ui.stock_location }}{% else %}{{ o.customer_name|default:'Unspecified customer' }}{% endif %}</div>
           {% for i in o.items.all %}<div class="text-sm mt-1">{{ i.finished_good.name }} — requested {{ i.total_units|num }}, production target {{ i.production_total_units|num }}</div>{% endfor %}
-          {% if run.status == 'approved' and o.status == 'approved' %}<a href="{% url 'order_complete' o.pk %}" class="inline-block mt-2 text-xs px-2.5 py-1.5 rounded bg-[#8f172d] text-white">Complete this order's outputs</a>{% endif %}
+          {% if run.status == 'approved' and o.status == 'approved' %}<a data-button-surface href="{% url 'order_complete' o.pk %}" class="inline-block mt-2 text-xs px-2.5 py-1.5 rounded bg-[#8f172d] text-white">Complete this order's outputs</a>{% endif %}
         </div>
       {% empty %}
         <div class="p-4 text-sm text-stone-500">No orders attached yet. Add existing Pending orders or create a new customer order directly in this run.</div>
@@ -85,8 +85,8 @@
 
 <div class="flex flex-wrap gap-2">
 {% if run.status == 'draft' %}
-  <form id="approve-run-form" method="post" action="{% url 'production_run_approve' run.pk %}">{% csrf_token %}<button class="px-3.5 py-2 rounded-md bg-[#8f172d] text-white text-sm font-medium">Approve Run — release combined materials</button></form>
-  {% if confirm_approve %}<form method="post" action="{% url 'production_run_approve' run.pk %}">{% csrf_token %}<input type="hidden" name="force" value="1">{% for row in flexible_usages %}<input type="hidden" name="{{ row.input_name }}" value="{{ row.input_value }}">{% endfor %}<button class="px-3.5 py-2 rounded-md bg-rose-600 text-white text-sm">Approve anyway (allow negative raw stock)</button></form>{% endif %}
+  <form id="approve-run-form" method="post" action="{% url 'production_run_approve' run.pk %}" class="flex flex-wrap items-center gap-2">{% csrf_token %}{% include "partials/_event_date.html" with label="Approve on" min=run.date|date:"Y-m-d" value=request.POST.event_date %}<button data-button-surface class="px-3.5 py-2 rounded-md bg-[#8f172d] text-white text-sm font-medium">Approve Run — release combined materials</button></form>
+  {% if confirm_approve %}<form method="post" action="{% url 'production_run_approve' run.pk %}">{% csrf_token %}<input type="hidden" name="force" value="1"><input type="hidden" name="event_date" value="{{ request.POST.event_date }}">{% for row in flexible_usages %}<input type="hidden" name="{{ row.input_name }}" value="{{ row.input_value }}">{% endfor %}<button data-button-surface class="px-3.5 py-2 rounded-md bg-rose-600 text-white text-sm">Approve anyway (allow negative raw stock)</button></form>{% endif %}
   <form method="post" action="{% url 'production_run_delete' run.pk %}" onsubmit="return confirm('Delete this draft production run? Orders themselves will remain.');">{% csrf_token %}<button class="px-3.5 py-2 text-sm text-stone-500">Delete draft</button></form>
 {% endif %}
 </div>

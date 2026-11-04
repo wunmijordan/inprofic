@@ -28,6 +28,8 @@ from inventory.services import (
 from inventory.models import DistributionReturn, StockMovement
 from core.invoice import production_order_pdf
 from core.services import record_cash, audit
+from core import ledger
+from inventory.recipe_ratios import pool_ratio_warnings
 from core.models import Business, FinancialTransaction
 from accounts.services import is_business_admin
 
@@ -266,7 +268,7 @@ def order_form(request, pk=None):
             messages.success(request, "Order updated." if obj else "Order created — approve it from the Orders page when ready.")
             return redirect("order_detail", pk=order.pk)
     else:
-        new_initial = {"date": today(), "order_type": "physical_store" if kitchen else "distribution"}
+        new_initial = {"date": ledger.default_entry_date(), "order_type": "physical_store" if kitchen else "distribution"}
         new_basis, new_pool = Order.BASIS_PRODUCT_QUANTITY, Decimal("0")
         form = OrderForm(instance=obj, initial=None if obj else new_initial, business=request.business)
         store_replenishment = bool(
@@ -905,7 +907,7 @@ def production_run_form(request, pk=None):
     else:
         initial = {}
         if not run:
-            initial = {"date": today(), "run_number": f"RUN-{today().strftime('%y%m%d')}-{get_random_string(4).upper()}"}
+            initial = {"date": ledger.default_entry_date(), "run_number": f"RUN-{today().strftime('%y%m%d')}-{get_random_string(4).upper()}"}
         form = ProductionRunForm(instance=instance, initial=initial, business=request.business)
     return render(request, "production/run_form.html", {"form": form, "run": run, "order_bases": form.order_base_map})
 
@@ -981,11 +983,14 @@ def production_run_adjust_pool(request, pk):
 
 
 @login_required
+@transaction.atomic
 def production_run_approve(request, pk):
-    run = get_object_or_404(ProductionRun, pk=pk)
+    run = get_object_or_404(ProductionRun.objects.select_for_update(), pk=pk)
     if request.method != "POST" or run.status != "draft":
         return redirect("production_run_detail", pk=pk)
-    force = request.POST.get("force") == "1"
+    # Backlog entry records history, so live shortage checks do not apply.
+    force = request.POST.get("force") == "1" or ledger.is_backlog_scope()
+    approved_on = ledger.resolve_event_date(request, run.date)
     orders = list(run.orders.all())
     if len(orders) < 2:
         messages.error(request, "A shared production run needs at least two pending orders. Add another existing or new customer/store order before approval.")
@@ -1021,6 +1026,11 @@ def production_run_approve(request, pk):
             "run": run, "flexible_usages": flexible_rows, "shortages": [],
             "plan_errors": errors, "material_summary": material_summary, "base_pool": base_pool,
         })
+    # Lock every shared input in stable order before checking its live balance.
+    locked_materials = {m.pk: m for m in RawMaterial.objects.select_for_update().filter(
+        pk__in=sorted(aggregated), business=request.business).order_by('pk')}
+    for material_id, (_material, needed) in list(aggregated.items()):
+        aggregated[material_id] = [locked_materials[material_id], needed]
     shortages = []
     for mat, needed in aggregated.values():
         if needed > mat.stock:
@@ -1038,7 +1048,7 @@ def production_run_approve(request, pk):
         locked_run = ProductionRun.objects.select_for_update().get(pk=run.pk)
         if locked_run.status != "draft":
             return redirect("production_run_detail", pk=pk)
-        locked_orders = list(Order.objects.select_for_update().filter(pk__in=[o.pk for o in orders]))
+        locked_orders = list(Order.objects.select_for_update().filter(pk__in=[o.pk for o in orders]).order_by("pk"))
         if any(o.status != "pending" for o in locked_orders):
             messages.error(request, "A member order changed status before the run could be approved.")
             return redirect("production_run_detail", pk=pk)
@@ -1052,9 +1062,9 @@ def production_run_approve(request, pk):
             record_raw_material_movement(
                 mat, -needed, StockMovement.RAW_CONSUMPTION,
                 note=f"Materials released for shared production run {run.run_number}",
-                reference=f"RUN-{run.pk}", unit_value=material_cost, on_date=run.date,
+                reference=f"RUN-{run.pk}", unit_value=material_cost, on_date=approved_on,
             )
-        approved_date = today()
+        approved_date = approved_on
         Order.objects.filter(pk__in=[o.pk for o in locked_orders]).update(status="approved", approved_date=approved_date)
         locked_run.status = "approved"
         locked_run.approved_date = approved_date
@@ -1107,7 +1117,7 @@ def order_detail(request, pk):
     flexible_usages = _material_release_plan(order)[0] if order.status == "pending" and not in_draft_run else []
     batches = order.production_batches.select_related("finished_good").prefetch_related("quality_check", "offcut_allocations__customer")
     allocations = list(order.allocations.select_related("customer", "sale").prefetch_related("lines__order_item__finished_good")) if order.is_multi_channel else []
-    return render(request, "production/order_detail.html", {"order": order, "kitchen_summary": summarize_report(order), "shortages": shortages, "batches": batches, "flexible_usages": flexible_usages, "production_run": run_link.production_run if run_link else None, "kitchen_view": kitchen, "allocations": allocations})
+    return render(request, "production/order_detail.html", {"order": order, "kitchen_summary": summarize_report(order), "shortages": shortages, "batches": batches, "flexible_usages": flexible_usages, "production_run": run_link.production_run if run_link else None, "kitchen_view": kitchen, "allocations": allocations, "pool_ratio_warnings": pool_ratio_warnings(order) if order.status in ("pending", "approved") else []})
 
 
 @login_required
@@ -1144,8 +1154,9 @@ def order_flexible_save(request, pk):
 
 
 @login_required
+@transaction.atomic
 def order_approve(request, pk):
-    order = get_object_or_404(Order, pk=pk)
+    order = get_object_or_404(Order.objects.select_for_update(), pk=pk)
     if request.method != "POST" or order.status != "pending":
         return redirect("order_detail", pk=pk)
     run_link = order.production_run_links.select_related("production_run").first()
@@ -1155,7 +1166,8 @@ def order_approve(request, pk):
     if order.order_type == Order.TYPE_UNASSIGNED:
         messages.error(request, "Decide where this order goes before approving it: choose its channel, or assign it across channels.")
         return redirect("order_detail", pk=pk)
-    force = request.POST.get("force") == "1"
+    force = request.POST.get("force") == "1" or ledger.is_backlog_scope()
+    approved_on = ledger.resolve_event_date(request, order.date)
     flexible_usages, usage_entries, aggregated, errors = _material_release_plan(order, request.POST)
     if errors:
         for error in errors:
@@ -1165,6 +1177,11 @@ def order_approve(request, pk):
             "flexible_usages": flexible_usages,
             "batches": order.production_batches.select_related("finished_good").prefetch_related("quality_check"),
         })
+    # Lock every shared input in stable order before checking its live balance.
+    locked_materials = {m.pk: m for m in RawMaterial.objects.select_for_update().filter(
+        pk__in=sorted(aggregated), business=request.business).order_by('pk')}
+    for material_id, (_material, needed) in list(aggregated.items()):
+        aggregated[material_id] = [locked_materials[material_id], needed]
     shortages = []
     for mat, needed in aggregated.values():
         if needed > mat.stock:
@@ -1190,10 +1207,10 @@ def order_approve(request, pk):
             record_raw_material_movement(
                 mat, -needed, StockMovement.RAW_CONSUMPTION,
                 note=f"Materials released for order #{order.display_number}", reference=f"PROD-{order.pk}", unit_value=material_cost,
-                location=movement_location, on_date=order.date,
+                location=movement_location, on_date=approved_on,
             )
         order.status = "approved"
-        order.approved_date = today()
+        order.approved_date = approved_on
         order.save()
         audit(request.business, request.user, "approve", order, f"Order #{order.display_number} approved", {
             "flexible_materials": [
@@ -1293,6 +1310,8 @@ def order_complete(request, pk):
     order = get_object_or_404(Order.objects.select_related("customer"), pk=pk)
     if order.status != "approved":
         return redirect("orders_list")
+    # Optional "event_date" lets staff record production on the day it happened.
+    completed_on = ledger.resolve_event_date(request, order.approved_date or order.date)
     scheduled_day_color = ProductionDaySetting.objects.filter(
         business=order.business, date=order.date
     ).first()
@@ -1392,10 +1411,14 @@ def order_complete(request, pk):
 
         if valid:
             with transaction.atomic():
+                order = Order.objects.select_for_update().get(pk=order.pk)
+                if order.status != "approved":
+                    messages.info(request, "This order has already changed status. Its output was not posted again.")
+                    return redirect("order_detail", pk=order.pk)
                 movement_location = default_location(order.business)
                 material_cost_cache = {}
                 allocation_sales = {}
-                order.completed_date = today()
+                order.completed_date = completed_on
                 for item, form, offcut_formset in completion_forms:
                     produced = form.cleaned_data["produced_units"]
                     wastage = form.cleaned_data["wastage_units"]
@@ -2068,3 +2091,47 @@ def reset_order_numbering(request):
 def order_invoice(request, pk):
     order = get_object_or_404(Order.objects.prefetch_related("items__finished_good"), pk=pk)
     return production_order_pdf(order)
+
+
+@login_required
+def production_variance(request):
+    """Recipe-versus-actual: planned vs released ingredients, yield and waste."""
+    import csv
+    from datetime import date as date_cls
+    from django.http import HttpResponse
+    from .variance import REVIEW_THRESHOLD, variance_report
+
+    today_ = today()
+
+    def parse(name, default):
+        raw = (request.GET.get(name) or "").strip()
+        try:
+            return date_cls.fromisoformat(raw) if raw else default
+        except ValueError:
+            return default
+
+    start = parse("start", today_.replace(day=1))
+    end = parse("end", today_)
+    if start > end:
+        start, end = end, start
+    report = variance_report(request.business, start, end)
+    if request.GET.get("format") == "csv":
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = f'attachment; filename="recipe-variance-{start}-{end}.csv"'
+        writer = csv.writer(response)
+        writer.writerow(["Ingredient", "Unit", "Planned (recipe)", "Actual released", "Variance", "Variance %",
+                         "Variance value", "Written off", "Written-off value", "Status"])
+        for r in report["ingredients"]:
+            writer.writerow([r["name"], r["unit"], r["planned"], r["actual"], r["variance"],
+                             "" if r["variance_pct"] is None else f"{r['variance_pct']:.1f}", f"{r['variance_value']:.2f}",
+                             r["shrink_qty"], f"{r['shrink_value']:.2f}", r["status"]])
+        writer.writerow([])
+        writer.writerow(["Product", "Batches", "Planned units", "Produced", "Wasted", "Yield %", "Waste %", "Waste value"])
+        for r in report["outputs"]:
+            writer.writerow([r["name"], r["batches"], r["planned"], r["produced"], r["wasted"],
+                             "" if r["yield_pct"] is None else f"{r['yield_pct']:.1f}",
+                             "" if r["waste_pct"] is None else f"{r['waste_pct']:.1f}", f"{r['waste_value']:.2f}"])
+        return response
+    return render(request, "production/variance.html", {
+        "report": report, "start": start, "end": end, "threshold": REVIEW_THRESHOLD,
+    })

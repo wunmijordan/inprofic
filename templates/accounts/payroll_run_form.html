@@ -214,11 +214,11 @@
     </section>
 
     <div class="flex flex-wrap justify-end gap-2">
-      <a href="{% url 'payroll_workspace' %}" class="rounded-md border border-[#D9CFB4] px-4 py-2.5 text-sm">
+      <a data-button-surface href="{% url 'payroll_workspace' %}" class="rounded-md border border-[#D9CFB4] px-4 py-2.5 text-sm">
         Cancel
       </a>
       <button
-        type="submit"
+ data-button-surface        type="submit"
         class="rounded-md bg-[#8f172d] px-4 py-2.5 text-sm font-semibold text-white"
         onclick="return confirm('Generate the selected payslips and record the wage spend in Finance?');"
       >

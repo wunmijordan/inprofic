@@ -1,68 +1,27 @@
 {% extends "base.html" %}
 {% load core_extras static %}
 {% block head_scripts %}
+<link rel="stylesheet" href="{% static 'core/css/dashboard.css' %}">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
 <script defer src="{% static 'core/js/financial-outlook.js' %}"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.17.1/dist/cdn.min.js"></script>
+<script defer src="{% static 'core/js/alpine.min.js' %}?v={{ static_asset_version }}"></script>
 <script defer src="{% static 'core/js/dashboard-stock-ticker.js' %}"></script>
 {% endblock %}
 {% block content %}
-<style>
-  .dashboard-kpi { transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease; }
-  .dashboard-kpi:hover { transform: translateY(-2px); border-color: color-mix(in srgb,var(--ui-accent) 28%,var(--ui-border)); box-shadow: var(--ui-shadow-raised); }
-  @media (prefers-reduced-motion: reduce) { .dashboard-kpi { transition: none; } .dashboard-kpi:hover { transform: none; } }
-  /* Daily-balance ticker on the Raw materials / Products cards */
-  /* Fixed-height slot: reserved from first paint so the card never grows when the ticker data arrives. */
-  .stock-ticker { position: relative; margin-top: .55rem; height: 5rem; overflow: hidden; border-top: 1px dashed var(--ui-border); padding-top: .45rem; }
-  .stock-ticker.is-loading::before, .stock-ticker.is-empty::before { content: ""; position: absolute; inset: .45rem 0 0 0; }
-  .stock-ticker.is-loading::before { background: linear-gradient(var(--ui-border), var(--ui-border)) 0 .1rem / 55% .55rem no-repeat, linear-gradient(var(--ui-border), var(--ui-border)) 0 1.45rem / 30% .45rem no-repeat, linear-gradient(var(--ui-border), var(--ui-border)) 0 2.35rem / 70% .8rem no-repeat, linear-gradient(var(--ui-border), var(--ui-border)) 0 3.55rem / 45% .4rem no-repeat; border-radius: .25rem; opacity: .55; animation: stk-skeleton 1.4s ease-in-out infinite; }
-  .stock-ticker.is-empty::before { content: "No stock balances to show yet"; font-size: .65rem; color: var(--ui-surface-muted-text); }
-  .stock-ticker.is-loading .stock-ticker__item, .stock-ticker.is-empty .stock-ticker__item { visibility: hidden; }
-  .stock-ticker[hidden] { display: none; }
-  .stock-ticker__item { transform-origin: left center; }
-  .stock-ticker__item.is-in { animation: stk-scale-in .28s cubic-bezier(.2,.8,.2,1) both; }
-  .stock-ticker__item.is-out { animation: stk-scale-out .24s ease-in both; }
-  .stock-ticker__name { font-size: .7rem; font-weight: 700; color: var(--ui-surface-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .stock-ticker__bal { perspective: 600px; margin-top: .15rem; }
-  .stock-ticker__bal.is-in { animation: stk-swipe-in .4s .12s cubic-bezier(.2,.8,.2,1) both; }
-  .stock-ticker__bal.is-updated .stock-ticker__val { animation: stk-pulse .9s ease; }
-  .stock-ticker__flip { position: relative; display: grid; transition: transform .55s cubic-bezier(.4,.2,.2,1); transform-style: preserve-3d; }
-  .stock-ticker.is-flipped .stock-ticker__flip { transform: rotateX(180deg); }
-  .stock-ticker__face { grid-area: 1 / 1; backface-visibility: hidden; -webkit-backface-visibility: hidden; min-width: 0; }
-  .stock-ticker__face[data-t-face="b"] { transform: rotateX(180deg); }
-  .stock-ticker__face[hidden] { display: none; }
-  .stock-ticker__label { font-size: .58rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ui-accent, #8f172d); }
-  .stock-ticker__val { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .95rem; font-weight: 700; color: var(--ui-surface-text); }
-  .stock-ticker__unit { font-size: .65rem; color: var(--ui-surface-muted-text); }
-  .stock-ticker__line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .stock-ticker__unit--bd { font-size: .75rem; font-style: italic; }
-  .stock-ticker__sub { font-size: .6rem; color: var(--ui-surface-muted-text); opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  @keyframes stk-scale-in { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: scale(1); } }
-  @keyframes stk-scale-out { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(.6); } }
-  @keyframes stk-swipe-in { from { opacity: 0; transform: translateX(1.6rem); } to { opacity: 1; transform: translateX(0); } }
-  @keyframes stk-skeleton { 0%, 100% { opacity: .35; } 50% { opacity: .7; } }
-  @keyframes stk-pulse { 0% { color: #10b981; } 100% { color: var(--ui-surface-text); } }
-  @media (prefers-reduced-motion: reduce) {
-    .stock-ticker__item.is-in, .stock-ticker__item.is-out, .stock-ticker__bal.is-in, .stock-ticker__bal.is-updated .stock-ticker__val { animation: none; }
-    .stock-ticker__flip { transition: none; }
-    .stock-ticker.is-loading::before { animation: none; }
-  }
-</style>
+
 <span hidden data-stock-ticker-url="{% url 'dashboard_stock_ticker' %}"></span>
 <div x-data="{ dashboardView: new URLSearchParams(window.location.search).has('stock_item') ? 'stock' : 'overview' }">
 <header data-tour-target="dashboard" class="mb-4 flex items-end justify-between gap-4">
   <div>
-    <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">Workspace Overview</p>
-    <h1 class="text-2xl md:text-3xl font-semibold font-display text-[#8f172d]">{{ biz.name }}</h1>
-    <p class="text-xs text-stone-500 mt-1">{% now "l, j F Y" %}</p>
+    <h1 class="text-2xl md:text-3xl font-semibold font-display text-[#8f172d]">Basic dashboard</h1>
+    <p class="text-xs text-stone-500 mt-1">{{ biz.name }} · {% now "l, j F Y" %}</p>
   </div>
   <div class="flex items-center gap-2">
-  {% if can_manage_business %}<a href="{% url 'complete_dashboard' %}" data-dashboard-complete class="hidden sm:inline-flex rounded-xl border border-[#D9CFB4] bg-white px-3 py-2 text-xs font-semibold text-stone-700">Executive Workspace</a>{% endif %}
+  {% if can_use_complete_dashboard %}{% include "core/_dashboard_switch.html" with dashboard_mode="simple" %}{% endif %}
   <details class="relative sm:hidden">
     <summary class="list-none rounded-full border border-[#D9CFB4] bg-white px-3 py-2 text-xs font-semibold text-[#8f172d]">Quick actions</summary>
     <div class="absolute right-0 z-30 mt-2 w-52 overflow-hidden rounded-xl border border-[#E7DFCC] bg-white p-1 shadow-xl">
-      {% if can_manage_business %}<a href="{% url 'complete_dashboard' %}" data-dashboard-complete class="block rounded-lg px-3 py-2 text-sm">Executive Workspace</a>{% endif %}
       <a href="{% url 'po_add' %}" class="block rounded-lg px-3 py-2 text-sm">Log a purchase</a>
       {% if vertical_ui.uses_production %}<a href="{% url 'order_add' %}" class="block rounded-lg px-3 py-2 text-sm">New order</a>{% endif %}
       <a href="{% url 'sale_add' %}" class="block rounded-lg px-3 py-2 text-sm">Record a sale</a>
@@ -70,16 +29,16 @@
   </details>
   </div>
 </header>
-<script>document.querySelectorAll('[data-dashboard-complete]').forEach(link => link.addEventListener('click', () => { document.cookie = `dashboard_view_${document.documentElement.dataset.tenant}=complete; Max-Age=31536000; Path=/; SameSite=Lax`; }));</script>
+
 
 {% include "core/_dashboard_search.html" %}
-<nav class="sticky top-0 z-20 mb-4 flex gap-1 overflow-x-auto rounded-2xl border border-[#E7DFCC] bg-[#FFFDF8]/95 p-1.5 shadow-sm backdrop-blur" aria-label="Dashboard sections">
-  <button type="button" @click="dashboardView = 'overview'" class="flex-1 min-w-[100px] rounded-xl px-4 py-2.5 text-xs font-semibold transition" :class="dashboardView === 'overview' ? 'bg-[#8f172d] text-white shadow-sm' : 'text-stone-500 hover:bg-white'">Overview</button>
-  <button type="button" @click="dashboardView = 'insights'" class="flex-1 min-w-[100px] rounded-xl px-4 py-2.5 text-xs font-semibold transition" :class="dashboardView === 'insights' ? 'bg-[#8f172d] text-white shadow-sm' : 'text-stone-500 hover:bg-white'">Insights</button>
-  <button type="button" @click="dashboardView = 'stock'" class="flex-1 min-w-[100px] rounded-xl px-4 py-2.5 text-xs font-semibold transition" :class="dashboardView === 'stock' ? 'bg-[#8f172d] text-white shadow-sm' : 'text-stone-500 hover:bg-white'">Stock</button>
+<nav class="sticky top-0 z-20 mb-4 flex gap-1 overflow-x-auto rounded-2xl border border-[#E7DFCC] bg-[#FFFDF8]/95 p-1.5 shadow-sm backdrop-blur" role="tablist" aria-label="Dashboard sections">
+  <button type="button" id="dashboard-tab-overview" role="tab" aria-controls="dashboard-panel-overview" :aria-selected="dashboardView === 'overview'" @click="dashboardView = 'overview'" class="flex-1 min-w-[100px] rounded-xl px-4 py-2.5 text-xs font-semibold transition" :class="dashboardView === 'overview' ? 'bg-[#8f172d] text-white shadow-sm' : 'text-stone-500 hover:bg-white'">Overview</button>
+  <button type="button" id="dashboard-tab-insights" role="tab" aria-controls="dashboard-panel-insights" :aria-selected="dashboardView === 'insights'" @click="dashboardView = 'insights'" class="flex-1 min-w-[100px] rounded-xl px-4 py-2.5 text-xs font-semibold transition" :class="dashboardView === 'insights' ? 'bg-[#8f172d] text-white shadow-sm' : 'text-stone-500 hover:bg-white'">Insights</button>
+  <button type="button" id="dashboard-tab-stock" role="tab" aria-controls="dashboard-panel-stock" :aria-selected="dashboardView === 'stock'" @click="dashboardView = 'stock'" class="flex-1 min-w-[100px] rounded-xl px-4 py-2.5 text-xs font-semibold transition" :class="dashboardView === 'stock' ? 'bg-[#8f172d] text-white shadow-sm' : 'text-stone-500 hover:bg-white'">Stock</button>
 </nav>
 
-<section x-show="dashboardView === 'overview'" x-transition.opacity>
+<section id="dashboard-panel-overview" role="tabpanel" aria-labelledby="dashboard-tab-overview" x-show="dashboardView === 'overview'" x-transition.opacity>
 <div class="grid grid-cols-2 lg:grid-cols-5 gap-2 md:gap-3 mb-4">
   <a href="{% url 'inventory' %}#raw" class="dashboard-surface dashboard-kpi rounded-2xl p-3 md:p-4">
     <div class="text-xs flex items-center uppercase tracking-wider font-bold text-[#8f172d] block mb-1 gap-2">
@@ -160,7 +119,7 @@
     <div class="flex flex-wrap gap-2 mt-4">
       <!-- Clickable Critical Button -->
       <button
-        @click="openModal = 'critical'"
+ data-button-surface        @click="openModal = 'critical'"
         type="button"
         class="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20 hover:bg-red-100 transition cursor-pointer">
         <span class="h-1.5 w-1.5 rounded-full bg-red-600 animate-pulse"></span>
@@ -169,7 +128,7 @@
 
       <!-- Clickable Warning Button -->
       <button
-        @click="openModal = 'warning'"
+ data-button-surface        @click="openModal = 'warning'"
         type="button"
         class="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-600/30 hover:bg-amber-100 transition cursor-pointer">
         <span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
@@ -306,7 +265,7 @@
         <!-- Modal Footer -->
         <div class="px-4 py-3 border-t border-stone-100 bg-stone-50 flex justify-end">
           <button
-            @click="openModal = null"
+ data-button-surface            @click="openModal = null"
             type="button"
             class="rounded-md bg-white px-3 px-3 py-2 text-xs font-semibold text-stone-700 shadow-xs ring-1 ring-inset ring-stone-300 hover:bg-stone-50 cursor-pointer">
             Close Window
@@ -377,7 +336,7 @@
 </div>
 </section>
 
-<section x-show="dashboardView === 'insights'" x-cloak x-transition.opacity>
+<section id="dashboard-panel-insights" role="tabpanel" aria-labelledby="dashboard-tab-insights" x-show="dashboardView === 'insights'" x-cloak x-transition.opacity>
 <div class="dashboard-surface rounded-2xl p-4 md:p-5 mb-6">
   <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
     <div>
@@ -391,8 +350,8 @@
       <p class="text-[11px] text-stone-400 mt-0.5">Switch between cash flow and profit &amp; loss. Spend includes procurement, expenses and payroll.</p>
     </div>
     <div class="flex gap-2">
-      <a href="{% url 'export_financial_csv' %}" class="text-[11px] px-2.5 px-3 py-2 rounded-md border border-[#D9CFB4] bg-white text-[#8f172d]">CSV</a>
-      <a href="{% url 'export_financial_xlsx' %}" class="text-[11px] px-2.5 px-3 py-2 rounded-md border border-[#D9CFB4] bg-white text-[#8f172d]">Excel</a>
+      <a data-button-surface href="{% url 'export_financial_csv' %}" class="text-[11px] px-2.5 px-3 py-2 rounded-md border border-[#D9CFB4] bg-white text-[#8f172d]">CSV</a>
+      <a data-button-surface href="{% url 'export_financial_xlsx' %}" class="text-[11px] px-2.5 px-3 py-2 rounded-md border border-[#D9CFB4] bg-white text-[#8f172d]">Excel</a>
     </div>
   </div>
   <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
@@ -678,7 +637,7 @@
           <div class="px-4 py-3 border-t border-stone-100 bg-stone-50 flex justify-end">
 
             <button
-              type="button"
+ data-button-surface              type="button"
               @click="channelModal = null"
               class="rounded-md bg-white px-3 px-3 py-2 text-xs font-semibold text-stone-700 shadow-xs ring-1 ring-inset ring-stone-300 hover:bg-stone-50"
             >
@@ -695,7 +654,7 @@
 </div>
 </section>
 
-<section x-show="dashboardView === 'stock'" x-cloak x-transition.opacity>
+<section id="dashboard-panel-stock" role="tabpanel" aria-labelledby="dashboard-tab-stock" x-show="dashboardView === 'stock'" x-cloak x-transition.opacity>
 <div class="dashboard-surface rounded-2xl p-4 md:p-5 mb-6">
   <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
     <h3 class="text-xs flex items-center justify-between uppercase tracking-tight font-bold text-[#8f172d] mb-1 gap-2">
@@ -960,12 +919,12 @@ function renderFinancialBreakdown(scope, data) {
   revenueCanvas._chartInstance = new Chart(revenueCanvas, {
     type: 'doughnut',
     data: { labels: revenue.map(x => x.label), datasets: [{ data: revenue.map(x => x.value), borderWidth: 2 }] },
-    options: { responsive: true, maintainAspectRatio: false, cutout: '58%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 }, color: inproficChartTheme().text } }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${money(ctx.raw)}` } } } }
+    options: { font: {family: 'Sora, sans-serif'}, responsive: true, maintainAspectRatio: false, cutout: '58%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 }, color: inproficChartTheme().text } }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${money(ctx.raw)}` } } } }
   });
   outflowCanvas._chartInstance = new Chart(outflowCanvas, {
     type: 'doughnut',
     data: { labels: outflows.map(x => x.label), datasets: [{ data: outflows.map(x => x.value), borderWidth: 2 }] },
-    options: { responsive: true, maintainAspectRatio: false, cutout: '58%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 }, color: inproficChartTheme().text } }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${money(ctx.raw)}` } } } }
+    options: { font: {family: 'Sora, sans-serif'}, responsive: true, maintainAspectRatio: false, cutout: '58%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 }, color: inproficChartTheme().text } }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${money(ctx.raw)}` } } } }
   });
 }
 

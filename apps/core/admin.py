@@ -4,8 +4,8 @@ from .models import Business, CashAccount, FinancialTransaction, AuditLog
 
 @admin.register(Business)
 class BusinessAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "vertical", "currency_symbol", "accent_color", "background_color")
-    list_filter = ("vertical",)
+    list_display = ("name", "slug", "vertical", "currency_symbol", "accent_color", "background_color", "assistant_enabled")
+    list_filter = ("vertical", "assistant_enabled")
     search_fields = ("name", "slug")
     ordering = ("name",)
 

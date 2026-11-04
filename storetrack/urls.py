@@ -19,6 +19,7 @@ urlpatterns = [
     path("expenses/", include("expenses.urls")),
     path("", include("commerce.urls")),
     path("", include("whatsapp_storefront.urls")),
+    path("", include("assistant.urls")),
 ]
 
 if settings.DEBUG:

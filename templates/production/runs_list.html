@@ -3,7 +3,7 @@
 {% block content %}
 <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
   <div><h2 class="text-xl font-semibold font-display text-[#8f172d]">{{ vertical_ui.runs }}</h2><p class="text-sm text-stone-500 mt-0.5">Coordinate several customer/store orders in one production approval while keeping every order's normal proportional {{ vertical_ui.recipe_label|lower }} usage.</p></div>
-  <div class="flex gap-2"><a href="{% url 'orders_list' %}" class="px-3.5 py-2 text-sm rounded-md border border-[#D9CFB4] text-stone-600">{{ vertical_ui.orders }}</a>{% if module_permissions.production.edit %}<a href="{% url 'production_run_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white">+ New {{ vertical_ui.runs|slice:":-1" }}</a>{% endif %}</div>
+  <div class="flex gap-2"><a data-button-surface href="{% url 'orders_list' %}" class="px-3.5 py-2 text-sm rounded-md border border-[#D9CFB4] text-stone-600">{{ vertical_ui.orders }}</a>{% if module_permissions.production.edit %}<a data-button-surface href="{% url 'production_run_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white">+ New {{ vertical_ui.runs|slice:":-1" }}</a>{% endif %}</div>
 </div>
 {% if not runs %}<div class="text-center py-10 text-sm text-stone-400 italic">No shared production runs yet.</div>{% else %}
 <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg overflow-x-auto">
@@ -18,7 +18,7 @@
         <p class="text-[11px] uppercase tracking-wide text-stone-400">Run {{ r.run_number }}</p>
         <p class="mt-1 text-xs text-stone-500">{{ r.date }} &middot; {{ r.orders.all|length }} order{{ r.orders.all|length|pluralize }}</p>
       </div>
-      <form method="dialog"><button class="rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-xs text-stone-600 hover:bg-stone-50">Close</button></form>
+      <form method="dialog"><button data-button-surface class="rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-xs text-stone-600 hover:bg-stone-50">Close</button></form>
     </div>
   </div>
   <div class="max-h-[60vh] overflow-auto p-4">

@@ -1,6 +1,7 @@
 from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.conf import settings
 from django.db.models.functions import Lower
 from core.models import BusinessOwnedModel, TimestampedModel
 
@@ -26,12 +27,21 @@ class Supplier(BusinessOwnedModel):
         return self.name
 
 
+class PurchaseRequest(BusinessOwnedModel):
+    """One approval/share envelope; vendor orders retain their own settlement."""
+
+    def __str__(self):
+        return f"Purchase request #{self.pk}"
+
+
 class PurchaseOrder(BusinessOwnedModel):
     ledger_date_field = "date"
-    STATUS_CHOICES = [("draft", "Draft"), ("ordered", "Ordered"), ("received", "Received")]
+    STATUS_CHOICES = [("draft", "Requested"), ("ordered", "Requested (legacy)"), ("approved", "Approved"), ("received", "Received")]
     PAYMENT_STATUS_CHOICES = [("paid", "Paid"), ("partial", "Partially Paid"), ("unpaid", "Unpaid")]
     PAYMENT_METHOD_CHOICES = [("Cash", "Cash"), ("Card", "Card"), ("Transfer", "Transfer")]
 
+    request = models.ForeignKey(PurchaseRequest, null=True, blank=True, on_delete=models.PROTECT,
+                                related_name="vendor_orders")
     date = models.DateField()
     carried_from_date = models.DateField(null=True, blank=True)
     supplier = models.CharField(max_length=120, blank=True)
@@ -39,6 +49,8 @@ class PurchaseOrder(BusinessOwnedModel):
         Supplier, null=True, blank=True, on_delete=models.SET_NULL, related_name="purchase_orders"
     )
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="draft")
+    approved_at = models.DateTimeField(null=True, blank=True, editable=False)
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="approved_purchase_orders", editable=False)
     received_date = models.DateField(null=True, blank=True)
     payment_status = models.CharField(max_length=10, choices=PAYMENT_STATUS_CHOICES, default="paid")
     payment_method = models.CharField(max_length=10, choices=PAYMENT_METHOD_CHOICES, default="Transfer")
@@ -51,6 +63,11 @@ class PurchaseOrder(BusinessOwnedModel):
             models.Index(fields=["business", "date"], name="po_biz_date_idx"),
             models.Index(fields=["business", "status", "received_date"], name="po_biz_status_recv_idx"),
         ]
+
+    def clean(self):
+        super().clean()
+        if self.request_id and self.request.business_id != self.business_id:
+            raise ValidationError({'request': 'The request must belong to this business.'})
 
     def __str__(self):
         return f"PO #{self.id} — {self.supplier or 'Unnamed supplier'}"
@@ -72,6 +89,8 @@ class PurchaseOrderItem(TimestampedModel):
     )
     qty = models.DecimalField(max_digits=12, decimal_places=2)
     unit_cost = models.DecimalField(max_digits=12, decimal_places=2)
+    requested_qty = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, editable=False)
+    approval_reason = models.TextField(blank=True, default="", editable=False)
 
     class Meta:
         constraints = [
@@ -86,7 +105,7 @@ class PurchaseOrderItem(TimestampedModel):
 
     def clean(self):
         super().clean()
-        if self.qty is not None and self.qty <= 0:
+        if self.qty is not None and (self.qty < 0 or (self.qty == 0 and not self.approval_reason)):
             raise ValidationError("Purchase quantity must be greater than zero.")
         if self.unit_cost is not None and self.unit_cost < 0:
             raise ValidationError("Purchase unit cost cannot be negative.")
@@ -130,7 +149,6 @@ class PurchaseOrderItem(TimestampedModel):
 
 
 class RawMaterialCostSnapshot(BusinessOwnedModel):
-    ledger_date_field = "effective_date"
     """Historical procurement price that becomes available when a purchase is received.
 
     Production costing uses the latest received snapshot at the production date;

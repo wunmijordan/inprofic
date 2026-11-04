@@ -6,7 +6,7 @@ description: >
   not enough context. Covers tenant isolation, proportional recipes, shared
   production runs, inventory, finance, reversals, and safe extension rules.
 version: "1.0"
-updated: 2026-09-04
+updated: 2026-10-28
 ---
 
 # StoreTrack — Full Project Skill
@@ -23,6 +23,12 @@ finished inventory, sell through several channels, and track the resulting
 cash, payables and receivables.
 
 Current apps:
+
+For every user-facing change, apply `frontend-design/SKILL.md`: shared workspace
+and form-experience assets define the visual contract. Use neutral theme-aware
+text and surfaces, consistent ordinary tables, and contrast-aware Inventory stock
+states. Connect new pages to permission-aware desktop/mobile navigation and their
+parent workspace; routes alone are not a complete user surface.
 
 | App | Responsibility |
 | --- | --- |

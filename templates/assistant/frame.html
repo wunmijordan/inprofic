@@ -1,0 +1,20 @@
+{% load static %}<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Business assistant</title>
+<link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}?v={{ static_asset_version }}">
+<link rel="stylesheet" href="{% static 'core/css/workspace.css' %}?v={{ static_asset_version }}">
+<link rel="stylesheet" href="{% static 'core/css/button-surfaces.css' %}?v={{ static_asset_version }}">
+<style>@font-face{font-family:Sora;src:url('{% static "core/fonts/Sora-Variable.woff2" %}') format('woff2');font-weight:100 800;font-display:swap}@font-face{font-family:Fraunces;src:url('{% static "core/fonts/Fraunces-SemiBold.woff2" %}') format('woff2');font-weight:500 700;font-display:swap}@font-face{font-family:'IBM Plex Mono';src:url('{% static "core/fonts/IBMPlexMono-Regular.woff2" %}') format('woff2');font-weight:400;font-display:swap}html,body{margin:0;min-width:0;background:var(--ui-surface);color:var(--ui-surface-text);font-family:Sora, sans-serif}body{padding:1rem}a{color:inherit}button,textarea{font:inherit}textarea{min-width:0}body .asst-msg{background:var(--ui-surface);color:var(--ui-surface-text)}body .asst-msg.is-user{background:var(--ui-surface-muted)}</style>
+<script>
+(() => {
+  if (parent === window) return;
+  const sync = () => {
+    const source = parent.document.documentElement;
+    document.documentElement.toggleAttribute('data-theme-changing', source.hasAttribute('data-theme-changing'));
+    document.documentElement.dataset.theme = source.dataset.theme || 'light';
+    const styles = parent.getComputedStyle(source);
+    for (const name of styles) if (name.startsWith('--ui-') || name.startsWith('--tenant-')) document.documentElement.style.setProperty(name, styles.getPropertyValue(name));
+  };
+  sync(); new MutationObserver(sync).observe(parent.document.documentElement, {attributes:true});
+})();
+</script></head><body data-ui-workspace><main>{% block content %}{% endblock %}</main></body></html>

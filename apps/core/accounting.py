@@ -86,10 +86,11 @@ def _sale_expressions(prefix="items__"):
     def f(name):
         return F(f"{prefix}{name}")
 
-    units_per_batch = Case(
+    current_yield = Case(
         When(**{f"{prefix}finished_good__units_per_batch__gt": 0}, then=f("finished_good__units_per_batch")),
         default=Value(Decimal("1")), output_field=units_field,
     )
+    units_per_batch = Coalesce(f("units_per_batch_snapshot"), current_yield, output_field=units_field)
     total_units = ExpressionWrapper(f("batch_qty") * units_per_batch + f("piece_qty"), output_field=units_field)
     standard = ExpressionWrapper(total_units * (f("price") - f("discount")), output_field=money_field)
     commercial = ExpressionWrapper(f("commercial_quantity") * f("commercial_unit_price"), output_field=money_field)

@@ -7,9 +7,9 @@
     <p class="text-sm text-stone-500 mt-0.5">Business spending outside supplier purchase orders</p>
   </div>
   <div class="flex gap-2">
-    <a href="{% url 'export_expenses_csv' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export CSV</a>
-    <a href="{% url 'export_expenses_xlsx' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export Excel</a>
-    {% if module_permissions.expenses.edit %}<a href="{% url 'expense_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ Record Expense</a>{% endif %}
+    <a data-button-surface href="{% url 'export_expenses_csv' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export CSV</a>
+    <a data-button-surface href="{% url 'export_expenses_xlsx' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export Excel</a>
+    {% if module_permissions.expenses.edit %}<a data-button-surface href="{% url 'expense_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ Record Expense</a>{% endif %}
   </div>
 </div>
 <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg shadow-[0_2px_8px_#000000d2] overflow-x-auto overflow-y-auto max-h-[34rem]">
@@ -30,7 +30,9 @@
         <td class="px-3 py-2 text-xs text-stone-500">{{ e.created_by.username|default:"—" }}</td>
         <td class="px-3 py-2 text-right whitespace-nowrap">
           <a href="{% url 'expense_invoice' e.pk %}" class="text-[#8f172d] hover:text-[#4D1C25] mr-2">PDF</a>{% if module_permissions.expenses.edit %}<a href="{% url 'expense_edit' e.pk %}" class="text-stone-400 hover:text-[#8f172d] mr-2">Edit</a>{% endif %}
+          {% if module_permissions.expenses.edit and e.payment_status == "unpaid" and not e.payments.exists %}
           <form action="{% url 'expense_delete' e.pk %}" method="post" class="inline" onsubmit="return confirm('Delete this expense?');">{% csrf_token %}<button class="text-stone-400 hover:text-rose-600">Delete</button></form>
+          {% endif %}
         </td>
       </tr>
       {% empty %}

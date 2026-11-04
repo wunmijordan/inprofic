@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+{% include "core/_finance_tools_nav.html" %}
+<div class="mb-4"><a href="{% url 'books_home' %}" class="text-xs font-semibold text-stone-800">&larr; Books</a><h1 class="mt-1 text-2xl font-semibold font-display text-stone-800">{{ account.code }} · {{ account.name }}</h1><p class="text-xs text-stone-500">{{ account.get_account_type_display }} account · balance shown in its normal direction ({{ account.normal_side }})</p></div>
+<form method="get" class="mb-4 flex flex-wrap items-end gap-2 rounded-2xl border border-[#E7DFCC] bg-white p-3 text-xs">
+  <label class="font-semibold text-stone-600">From <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="ml-1 rounded-lg border border-[#D9CFB4] px-2 py-1"></label>
+  <label class="font-semibold text-stone-600">To <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="ml-1 rounded-lg border border-[#D9CFB4] px-2 py-1"></label>
+  <button class="rounded-lg workspace-action-primary px-3 py-1.5 font-semibold text-white">Apply</button></form>
+<section class="mb-8 overflow-hidden rounded-2xl border border-[#E7DFCC] bg-white"><div class="overflow-x-auto"><table class="min-w-[620px] w-full text-xs">
+<thead class="bg-[#FAF6EA] text-left text-[10px] uppercase tracking-wider text-stone-500"><tr><th class="px-4 py-2">Date</th><th class="px-2 py-2">Entry</th><th class="px-2 py-2 text-right">Debit</th><th class="px-2 py-2 text-right">Credit</th><th class="px-4 py-2 text-right">Balance</th></tr></thead><tbody class="divide-y divide-[#E7DFCC]">
+<tr class="bg-stone-50"><td class="px-4 py-2" colspan="4">Opening balance</td><td class="px-4 py-2 text-right font-mono">{{ register.opening|floatformat:"2g" }}</td></tr>
+{% for r in register.rows %}<tr><td class="px-4 py-2 whitespace-nowrap">{{ r.line.entry.date|date:"j M Y" }}</td><td class="px-2 py-2">#{{ r.line.entry.pk }} {{ r.line.entry.memo }}</td><td class="px-2 py-2 text-right font-mono">{% if r.line.debit %}{{ r.line.debit|floatformat:"2g" }}{% endif %}</td><td class="px-2 py-2 text-right font-mono">{% if r.line.credit %}{{ r.line.credit|floatformat:"2g" }}{% endif %}</td><td class="px-4 py-2 text-right font-mono">{{ r.balance|floatformat:"2g" }}</td></tr>
+{% empty %}<tr><td class="px-4 py-6 text-center text-stone-400" colspan="5">No activity in this period.</td></tr>{% endfor %}
+<tr class="bg-[#FAF6EA] font-semibold"><td class="px-4 py-2" colspan="4">Closing balance</td><td class="px-4 py-2 text-right font-mono">{{ register.closing|floatformat:"2g" }}</td></tr>
+</tbody></table></div></section>
+{% endblock %}

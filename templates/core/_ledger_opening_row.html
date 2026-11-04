@@ -1,0 +1,7 @@
+<tr>
+  <td class="px-4 py-2 font-medium text-stone-800">{{ r.name }}</td>
+  <td class="px-2 py-2 text-stone-500">{% if r.kind == 'raw' %}Raw material{% elif r.kind == 'fg' %}Product{% else %}Cash{% endif %}</td>
+  <td class="px-2 py-2 text-right"><input type="number" name="pos_{{ r.kind }}_{{ r.id }}" value="{{ r.quantity }}" step="{{ r.step }}" class="w-32 rounded-lg border border-[#D9CFB4] px-2 py-1 text-right font-mono text-xs"> <span class="text-[10px] text-stone-400">{{ r.unit }}</span></td>
+  <td class="px-2 py-2">{% if r.source == 'counted' %}<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Counted</span>{% elif r.source == 'merged' %}<span class="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">Merged</span>{% else %}<span class="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">Provisional</span>{% endif %}</td>
+  <td class="px-4 py-2"><input type="text" name="note_{{ r.kind }}_{{ r.id }}" value="{{ r.note }}" maxlength="255" class="w-full min-w-[8rem] rounded-lg border border-[#E7DFCC] px-2 py-1 text-xs" placeholder="Count note"></td>
+</tr>

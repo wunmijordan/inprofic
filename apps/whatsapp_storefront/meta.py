@@ -79,3 +79,34 @@ def send_text(connection, recipient, body):
             "text": {"preview_url": False, "body": body[:4096]},
         },
     )
+
+
+def clean_template_param(value, limit=1000):
+    """WhatsApp rejects template variables containing newlines, tabs or runs of spaces."""
+    text = str(value or "").replace("\r", " ").replace("\n", " · ").replace("\t", " ")
+    while "    " in text:
+        text = text.replace("    ", "   ")
+    return text.strip()[:limit] or "-"
+
+
+def send_template(connection, recipient, template_name, language, parameters):
+    """Send an approved message template (the only way a business may message someone first).
+
+    ``parameters`` fill the template body's {{1}}, {{2}}, ... in order.
+    """
+    if not template_name:
+        raise MetaWhatsAppError("No message template name is set.")
+    token = decrypt_access_token(connection.encrypted_access_token)
+    template = {"name": template_name, "language": {"code": language or "en"}}
+    if parameters:
+        template["components"] = [{
+            "type": "body",
+            "parameters": [{"type": "text", "text": clean_template_param(p)} for p in parameters],
+        }]
+    return graph_request(
+        f"{connection.phone_number_id}/messages",
+        method="POST",
+        token=token,
+        body={"messaging_product": "whatsapp", "recipient_type": "individual", "to": recipient,
+              "type": "template", "template": template},
+    )

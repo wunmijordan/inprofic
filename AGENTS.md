@@ -17,6 +17,9 @@ It applies to the repository unless a more-specific nested `AGENTS.md` overrides
 | --- | --- |
 | `storetrack` | Cross-app, architectural, or broad INPROFIC changes |
 | `frontend-design` | Django templates, forms, formsets, modals, dashboards, tables, navigation, UI/UX |
+| `impeccable` | Substantial visual design, craft review, responsive polish and design system documentation; follow the frontend-design contract |
+| `web-design-guidelines` | Final interaction and accessibility review against Vercel's current guidelines |
+| `playwright-cli` | Chrome exploration and repeatable browser verification |
 | `excalidraw-diagram` | Architecture diagrams, process maps, pitch visuals, diagrammatic documentation |
 | `production-integrity` | Recipes, production, Shared Runs, stock, batches, offcuts, reversal |
 | `finance-integrity` | Money movement, payments, Sales, receivables/payables, finance reversal |
@@ -31,6 +34,7 @@ All skill files live at `.codex/skills/<skill>/SKILL.md`.
 
 ## Critical INPROFIC invariants
 
+- Shared workspace and form-experience assets in `apps/core/static/core` define global UI styling. Use neutral theme-aware text and cards; tenant colors belong to action fills and focus/selection, not general text. Ordinary tables share one theme-aware treatment; Inventory warning/low stock rows preserve their semantic backgrounds with matching text and sticky-cell contrast.
 - Preserve business scoping. Do not make a Business-owned query global by accident.
 - Stock-mutating operations must remain auditable and transactional.
 - Raw-material recipe usage is proportional to output against the product's registered batch yield.

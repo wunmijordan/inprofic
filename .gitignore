@@ -9,3 +9,10 @@ staticfiles/
 media/
 .vscode/
 node_modules/
+# Playwright CLI output (may contain credentials)
+.playwright-cli/
+
+# Reproducible UI run artifacts
+playwright-report/
+test-results/
+.impeccable/review/

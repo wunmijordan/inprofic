@@ -273,8 +273,8 @@
 
     <div class="flex flex-wrap justify-end gap-2 mt-5">
       <a href="{% url 'inventory' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a>
-      {% if not obj %}<button type="submit" name="save_add_new" value="1" class="px-3.5 py-2 text-sm rounded-md font-medium border border-[#8f172d] bg-white text-[#8f172d] hover:bg-[#FFF5F4]">Save &amp; add new</button>{% endif %}
-      <button type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save</button>
+      {% if not obj %}<button data-button-surface type="submit" name="save_add_new" value="1" class="px-3.5 py-2 text-sm rounded-md font-medium border border-[#8f172d] bg-white text-[#8f172d] hover:bg-[#FFF5F4]">Save &amp; add new</button>{% endif %}
+      <button data-button-surface type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save</button>
     </div>
   </form>
 </div>

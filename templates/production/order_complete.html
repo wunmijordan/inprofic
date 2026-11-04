@@ -9,6 +9,7 @@
 </div>
 {% endif %}
 <form method="post" class="space-y-5">{% csrf_token %}
+<div class="max-w-5xl rounded-xl border border-[#E7DFCC] bg-white px-4 py-3">{% include "partials/_event_date.html" with label="Production date" min=order.approved_date|default:order.date|date:"Y-m-d" value=request.POST.event_date %}<span class="ml-2 text-[11px] text-stone-400">Records the batch, stock and costs as of this day.</span></div>
 {% for item, form, offcut_formset in completion_forms %}
 <div class="cf-form-shell max-w-5xl" data-completion-card><div class="cf-form-body">
   <div class="flex justify-between gap-3 mb-3"><div><h3 class="font-semibold text-stone-700">{{ item.finished_good.name }}</h3><p class="text-xs text-stone-400">{% if order.is_customer_order %}Customer requires: <span class="font-mono">{{ item.total_units|num }}</span> {{ item.finished_good.unit }} · {% endif %}Production target: <span class="font-mono">{{ item.production_total_units|num }}</span> {{ item.finished_good.unit }}{% if item.planned_overproduction_units > 0 %} · Planned offcut: <span class="font-mono text-emerald-700">{{ item.planned_overproduction_units|num }}</span> to allocate{% endif %}</p></div></div>
@@ -17,7 +18,7 @@
     {% include "_field.html" with field=form.produced_units %}
     {% include "_field.html" with field=form.wastage_units %}
     {% include "_field.html" with field=form.batch_number %}
-    <div>{% include "_field.html" with field=form.expiry_date %}{% if scheduled_day_color.expiry_date %}<button type="button" data-apply-scheduled-expiry data-target="{{ form.expiry_date.id_for_label }}" data-expiry="{{ scheduled_day_color.expiry_date|date:'Y-m-d' }}" class="mt-1 rounded-md border border-[#8f172d]/30 bg-white px-2 py-1 text-[10px] font-semibold text-[#8f172d] hover:bg-[#FFF4F6]">Apply suggested expiry</button>{% endif %}</div>
+    <div>{% include "_field.html" with field=form.expiry_date %}{% if scheduled_day_color.expiry_date %}<button data-button-surface type="button" data-apply-scheduled-expiry data-target="{{ form.expiry_date.id_for_label }}" data-expiry="{{ scheduled_day_color.expiry_date|date:'Y-m-d' }}" class="mt-1 rounded-md border border-[#8f172d]/30 bg-white px-2 py-1 text-[10px] font-semibold text-[#8f172d] hover:bg-[#FFF4F6]">Apply suggested expiry</button>{% endif %}</div>
     {% include "_field.html" with field=form.wastage_reason %}
     {% include "_field.html" with field=form.qc_status %}
   </div>
@@ -53,7 +54,7 @@
     <div class="border border-emerald-200 rounded-md bg-white/60 p-3 mb-3" data-offcut-formset>
       <div class="flex items-center justify-between gap-3 mb-2">
         <div><div class="text-xs font-semibold text-emerald-800">Interested customer allocations</div><div class="text-[10px] text-stone-500">Each allocation becomes its own Distribution/Online sale and receivable using the applicable customer/channel/default price.</div></div>
-        <button type="button" data-add-offcut class="shrink-0 px-2.5 py-1.5 rounded-md border border-emerald-300 bg-emerald-50 text-emerald-800 text-xs font-medium hover:bg-emerald-100">+ Add customer</button>
+        <button data-button-surface type="button" data-add-offcut class="shrink-0 px-2.5 py-1.5 rounded-md border border-emerald-300 bg-emerald-50 text-emerald-800 text-xs font-medium hover:bg-emerald-100">+ Add customer</button>
       </div>
       {{ offcut_formset.management_form }}
       {% if offcut_formset.non_form_errors %}<div class="text-xs bg-rose-50 text-rose-700 border border-rose-200 rounded-md px-2 py-1.5 mb-2">{{ offcut_formset.non_form_errors }}</div>{% endif %}
@@ -94,7 +95,7 @@
   <p data-form-help-text data-form-help-for="{{ form.qc_notes.id_for_label }}" class="text-[11px] leading-5 text-stone-500">Saleable output = gross units produced − wastage/rejected units. Yield compares saleable output with the production target. Expiry date is the batch's final sellable date and drives Market Stock blocking/write-off alerts. {% if order.is_customer_order %}Uncommitted planned offcut is retained automatically as general stock; output above the target must still be fully allocated; customer shortage is measured only against the ordered quantity.{% elif order.is_market_stock_order %}Output up to the target enters Distribution Market Stock; output above the target must still be fully allocated.{% else %}Output above the target must be fully allocated.{% endif %}</p>
 </div></div>
 {% endfor %}
-<div class="flex flex-wrap gap-2"><a href="{% url 'order_detail' order.pk %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a><button class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Complete Production</button></div>
+<div class="flex flex-wrap gap-2"><a href="{% url 'order_detail' order.pk %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a><button data-button-surface class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Complete Production</button></div>
 </form>
 <script>
 document.addEventListener('DOMContentLoaded', () => {

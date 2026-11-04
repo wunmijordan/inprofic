@@ -8,6 +8,7 @@
       const hasCommerce = dock.dataset.hasCommerce === '1';
       const hasInventory = dock.dataset.hasInventory === '1';
       const hasFinance = dock.dataset.hasFinance === '1';
+      const hasAssistant = dock.dataset.hasAssistant === '1';
       let commerceAvailable = hasCommerce;
       let inventoryAvailable = hasInventory;
       let financeAvailable = hasFinance;
@@ -174,11 +175,16 @@
         return match ? decodeURIComponent(match[1]) : '';
       }
       function channelIsAvailable(channel) {
+        if (channel === 'assistant') return hasAssistant;
         return channel === 'commerce' ? commerceAvailable : (channel === 'inventory' ? inventoryAvailable : financeAvailable);
       }
       function selectChannel(channel, userChoice) {
         if (!channelIsAvailable(channel)) return;
         activeChannel = channel;
+        if (channel === 'assistant' && expanded) {
+          const frame = dock.querySelector('[data-assistant-src]');
+          if (frame && !frame.getAttribute('src')) frame.src = frame.dataset.assistantSrc;
+        }
         if (userChoice) window.localStorage.setItem('inprofic-alert-tray-channel', channel);
         channelButtons.forEach(button => {
           const active = button.dataset.alertChannel === channel;
@@ -450,14 +456,14 @@
         if (financeCount) financeCount.textContent = fCount;
         totalCount.textContent = total;
         totalPlural.textContent = total === 1 ? '' : 's';
-        if (!total) {
+        if (!total && !hasAssistant) {
           dock.classList.add('hidden');
           setExpanded(false);
           return;
         }
         dock.classList.remove('hidden');
         requestAnimationFrame(reconcileDockPosition);
-        if (!channelIsAvailable(activeChannel)) activeChannel = commerceAvailable ? 'commerce' : (inventoryAvailable ? 'inventory' : 'finance');
+        if (!channelIsAvailable(activeChannel)) activeChannel = commerceAvailable ? 'commerce' : (inventoryAvailable ? 'inventory' : (financeAvailable ? 'finance' : 'assistant'));
         if (!expanded) selectChannel(activeChannel, false);
       }
 
@@ -658,6 +664,15 @@
         if (response.ok) pollInventory();
       }
 
+      function openAssistant() {
+        if (!hasAssistant) return;
+        dock.classList.remove('hidden'); setExpanded(true); selectChannel('assistant', true);
+        dock.querySelector('[data-alert-channel="assistant"]')?.focus({preventScroll:true});
+      }
+      document.addEventListener('click', event => {
+        if (event.target.closest('[data-open-assistant]')) { event.preventDefault(); openAssistant(); }
+      });
+      if (new URLSearchParams(location.search).get('assistant') === '1') openAssistant();
       channelButtons.forEach(button => button.addEventListener('click', () => { selectChannel(button.dataset.alertChannel, true); setExpanded(true); }));
       inventoryTabs.forEach(button => button.addEventListener('click', () => selectInventoryTab(button.dataset.inventoryTab, true)));
       expand.addEventListener('click', () => setExpanded(!expanded));
@@ -665,7 +680,7 @@
       if (commerceList) commerceList.addEventListener('click', event => { const button = event.target.closest('.commerce-notification-read'); if (button) acknowledgeCommerce({ notification_ids: [button.dataset.notificationId] }); });
       if (commerceReadAll) commerceReadAll.addEventListener('click', () => acknowledgeCommerce({ all: true }));
       [rawList, finishedList].filter(Boolean).forEach(list => list.addEventListener('click', event => { const button = event.target.closest('.inventory-alert-ack'); if (button) acknowledgeInventory(button.dataset.alertId); }));
-      document.addEventListener('click', event => { if (expanded && !dock.contains(event.target)) setExpanded(false); });
+      document.addEventListener('click', event => { if (expanded && !dock.contains(event.target) && !event.target.closest('[data-open-assistant]')) setExpanded(false); });
       document.addEventListener('keydown', event => { if (event.key === 'Escape') setExpanded(false); });
       document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (commerceAvailable) { pollCommerce(); connectSocket(); } if (inventoryAvailable) pollInventory(); if (financeAvailable) pollFinance(); } });
       window.addEventListener('pagehide', () => {

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+{% include "core/_finance_tools_nav.html" %}
+<div class="mb-5">
+  <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">Finance</p>
+  <h1 class="mt-1 text-2xl font-semibold font-display text-stone-800">Bank Reconciliation</h1>
+  <p class="mt-1 max-w-2xl text-xs text-stone-500">Load a statement, match it line by line against your cash records, and prove the balance. Your cash records are never changed by reconciling.</p>
+</div>
+
+<form method="post" enctype="multipart/form-data" class="mb-6 rounded-2xl border border-[#E7DFCC] bg-white p-4">{% csrf_token %}
+  <div class="grid gap-3 md:grid-cols-4">
+    <label class="text-xs font-semibold text-stone-600">Account
+      <select required name="account" class="mt-1 block w-full rounded-xl border border-[#D9CFB4] px-3 py-2 text-sm">{% for a in accounts %}<option value="{{ a.pk }}">{{ a.name }}</option>{% endfor %}</select></label>
+    <label class="text-xs font-semibold text-stone-600">Statement closing balance
+      <input required name="closing_balance" inputmode="decimal" class="mt-1 block w-full rounded-xl border border-[#D9CFB4] px-3 py-2 text-sm" placeholder="0.00"></label>
+    <label class="text-xs font-semibold text-stone-600">Label (optional)
+      <input name="label" maxlength="120" class="mt-1 block w-full rounded-xl border border-[#D9CFB4] px-3 py-2 text-sm" placeholder="e.g. March statement"></label>
+    <label class="text-xs font-semibold text-stone-600">Statement CSV
+      <input required type="file" name="statement" accept=".csv,text/csv" class="mt-1 block w-full text-xs"></label>
+  </div>
+  <p class="mt-3 text-[11px] leading-4 text-stone-500">The file needs a header row with a date column and either one <em>Amount</em> column (money out negative) or separate <em>Debit</em> and <em>Credit</em> columns. Dates may be YYYY-MM-DD or DD/MM/YYYY.</p>
+  <div class="mt-3 text-right"><button class="rounded-xl workspace-action-primary px-4 py-2 text-xs font-semibold text-white">Load and match</button></div>
+</form>
+
+<section class="overflow-hidden rounded-2xl border border-[#E7DFCC] bg-white">
+  <div class="border-b border-[#E7DFCC] px-4 py-3"><h2 class="text-sm font-semibold text-stone-800">Statements</h2></div>
+  <table class="w-full text-xs"><tbody class="divide-y divide-[#E7DFCC]">
+  {% for s in statements %}<tr><td class="px-4 py-2.5"><a class="font-semibold text-stone-800" href="{% url 'reconcile_detail' s.pk %}">{{ s.account.name }}{% if s.label %} · {{ s.label }}{% endif %}</a><div class="text-[11px] text-stone-400">{{ s.period_start|date:"j M Y" }} – {{ s.period_end|date:"j M Y" }}</div></td><td class="px-4 py-2.5 text-right">{% if s.status == 'reconciled' %}<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Reconciled</span>{% else %}<span class="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">In progress</span>{% endif %}</td></tr>
+  {% empty %}<tr><td class="px-4 py-8 text-center text-stone-400">No statements loaded yet.</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+{% endblock %}

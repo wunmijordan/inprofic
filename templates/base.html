@@ -2,27 +2,33 @@
 <!doctype html>
 <html lang="en" data-tenant="{{ biz.pk|default:'global' }}" data-tenant-accent="{{ biz.accent_color|default:'#D14900' }}" data-tenant-background="{{ biz.background_color|default:'#050733' }}" style="--tenant-background:{{ biz.background_color|default:'#050733' }};--tenant-background-contrast:{{ biz.background_text_color|default:'#FFFFFF' }};--tenant-button:{{ biz.accent_color|default:'#D14900' }};--tenant-button-contrast:{{ biz.button_text_color|default:'#FFFFFF' }}">
 <head>
+  <script>if(window.parent!==window&&window.name==='inprofic-form-dialog')document.documentElement.dataset.uiEmbedded='true';</script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% if biz %}{{ biz.name }} · {% endif %}INPROFIC</title>
   <meta name="robots" content="noindex,nofollow">
   <link rel="preload" href="{% static 'core/fonts/Sora-Variable.woff2' %}" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
+  <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}?v={{ static_asset_version }}">
   <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}?v={{ static_asset_version }}">
   <link rel="stylesheet" href="{% static 'core/css/workspace.css' %}?v={{ static_asset_version }}">
-  <script src="{% static 'core/js/workspace.js' %}"></script>
+  <link rel="stylesheet" href="{% static 'core/css/button-surfaces.css' %}?v={{ static_asset_version }}">
+  <link rel="stylesheet" href="{% static 'core/css/interactions.css' %}?v={{ static_asset_version }}">
+  <script src="{% static 'core/js/interactions.js' %}?v={{ static_asset_version }}" data-inprofic-ui defer></script>
+  <script src="{% static 'core/js/workspace.js' %}?v={{ static_asset_version }}"></script>
   {% include "pwa/head.html" %}
   {% block head_scripts %}{% endblock %}
   <style>
+    @font-face{font-family:Inter;src:url('{% static "core/fonts/Inter-Regular.ttf" %}') format('truetype');font-weight:400;font-display:swap}
+    @font-face{font-family:Inter;src:url('{% static "core/fonts/Inter-SemiBold.ttf" %}') format('truetype');font-weight:600 800;font-display:swap}
     @font-face { font-family:'Sora'; src:url('{% static "core/fonts/Sora-Variable.woff2" %}') format('woff2'), url('{% static "core/fonts/Sora-Variable.ttf" %}') format('truetype'); font-weight:100 800; font-style:normal; font-display:swap; }
     @font-face { font-family:'Fraunces'; src:url('{% static "core/fonts/Fraunces-SemiBold.woff2" %}') format('woff2'), url('{% static "core/fonts/Fraunces-SemiBold.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
     @font-face { font-family:'IBM Plex Mono'; src:url('{% static "core/fonts/IBMPlexMono-Regular.woff2" %}') format('woff2'), url('{% static "core/fonts/IBMPlexMono-Regular.ttf" %}') format('truetype'); font-weight:400; font-style:normal; font-display:swap; }
     @font-face { font-family:'IBM Plex Mono'; src:url('{% static "core/fonts/IBMPlexMono-Medium.woff2" %}') format('woff2'), url('{% static "core/fonts/IBMPlexMono-Medium.ttf" %}') format('truetype'); font-weight:500 700; font-style:normal; font-display:swap; }
     body { font-family: 'Sora', sans-serif; background:#FAF6EF; color:#211D1A; }
-    .font-display { font-family: 'Fraunces', serif; }
+    .font-display { font-family: 'Fraunces', Georgia, serif; }
     .font-sans { font-family: 'Sora', sans-serif; }
     .font-mono { font-family: 'IBM Plex Mono', monospace; }
-    .font-subheading { font-family:'Sora',sans-serif; font-weight:800; letter-spacing:-.025em; }
+    .font-subheading { font-family:'Sora',sans-serif; font-weight:600; letter-spacing:-.025em; }
     table { font-variant-numeric: tabular-nums; }
     [x-cloak] { display: none !important; }
     .field-client-invalid { border-color: #e11d48 !important; box-shadow: 0 0 0 1px rgba(225,29,72,.15); }
@@ -77,29 +83,30 @@
       .desktop-sidebar { position: fixed; inset: 0 auto 0 0; width: 14rem; height: 100dvh; overflow: hidden; z-index: 50; }
       .desktop-main { margin-left: 14rem; min-height: 100vh; }
     }
-    #commerce-notification-dock { width:min(22rem,calc(100vw - 1.5rem)); transition:width 180ms ease; will-change:left,transform; }
+    #commerce-notification-dock { width:min(28rem,calc(100vw - 1.5rem)); transition:width 180ms ease; will-change:left,transform; }
     .notification-tray-handle { touch-action:none; }
+    #notification-tray-body [data-alert-channel] { flex:0 0 auto; min-width:max-content; }
     @media (max-width: 767px) {
-      #commerce-notification-dock { position:fixed; bottom:.75rem; width:min(16.5rem,calc(75vw - 1.125rem)); }
+      #commerce-notification-dock { position:fixed; bottom:.75rem; width:calc(100vw - 1.5rem); }
       #commerce-notification-dock[data-expanded="false"] { width:min(10.5rem,calc(75vw - 1.125rem)); }
       #commerce-notification-dock[data-expanded="false"] #commerce-notification-expand > span:last-child { font-size:.72rem; }
     }
     @media (prefers-reduced-motion: reduce) { #commerce-notification-dock { transition:none; } }
   </style>
   <script src="{% static 'core/js/form-experience.js' %}?v={{ static_asset_version }}" defer></script>
+  <script src="{% static 'core/js/brand-assets.js' %}?v={{ static_asset_version }}" defer></script>
 </head>
-<body class="min-h-screen flex">
+<body data-ui-workspace class="min-h-screen flex">
+  <a class="ui-skip-link" href="#main-content">Skip to main content</a>
   <div class="page-progress" aria-hidden="true"></div>
 
   {% if is_live_tester %}<div class="fixed right-3 top-3 z-[120] rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-900 shadow-lg" title="Demo access can browse and open forms, but cannot save changes.">Demo · Read Only</div>{% endif %}
-
-  {% if request.ledger_scope == 'backlog' %}<div class="workspace-back fixed right-3 top-3 z-[110] flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2 px-3 py-2 text-[11px]"><span>Backlog entry · dates before {{ request.ledger_cutover.cutover_date }}</span><form method="post" action="{% url 'ledger_mode' %}">{% csrf_token %}<input type="hidden" name="mode" value="live"><input type="hidden" name="next" value="{{ request.path }}"><button class="workspace-icon-button underline">Return to Live</button></form></div>{% elif request.ledger_cutover and request.ledger_cutover.status != 'merged' and request.ledger_cutover.status != 'archived' and module_permissions.dashboard.view %}<div class="workspace-back fixed right-3 top-3 z-[110] flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2 px-3 py-2 text-[11px]"><span>Live ledger · from {{ request.ledger_cutover.cutover_date }}</span>{% if backlog_entry_allowed %}<form method="post" action="{% url 'ledger_mode' %}">{% csrf_token %}<input type="hidden" name="mode" value="backlog"><input type="hidden" name="next" value="{{ request.path }}"><button class="workspace-icon-button underline">Enter backlog</button></form>{% endif %}</div>{% endif %}
 
   {% if user.is_authenticated %}
   <aside class="desktop-sidebar tenant-sidebar hidden md:flex flex-col">
     <div class="shrink-0 px-5 py-5 border-b border-white/10">
       <a href="{% if not biz %}{% url 'platform_mailing_workspace' %}{% else %}{% url 'dashboard' %}{% endif %}" aria-label="INPROFIC dashboard" class="block">
-        <img src="{% if not biz or biz.background_text_color == '#FFFFFF' %}{% static 'core/brand/inprofic-wordmark-on-dark.png' %}{% else %}{% static 'core/brand/inprofic-wordmark-on-light.png' %}{% endif %}" alt="INPROFIC" class="max-w-full" style="width:10.5rem;height:auto" width="1827" height="290">
+        <img data-brand-logo-light="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" data-brand-logo-dark="{% static 'core/brand/inprofic-wordmark-on-dark.png' %}" src="{% if not biz or biz.background_text_color == '#FFFFFF' %}{% static 'core/brand/inprofic-wordmark-on-dark.png' %}{% else %}{% static 'core/brand/inprofic-wordmark-on-light.png' %}{% endif %}" alt="INPROFIC" class="max-w-full" style="width:10.5rem;height:auto" width="1827" height="290">
       </a>
       <div class="mt-3 min-w-0 truncate font-display font-semibold">{% if biz %}{{ biz.name }}{% else %}Project Mailing{% endif %}</div>
       <div class="tenant-tagline text-[10px] tracking-[0.2em]">{% if biz %}{{ biz.tagline|default:vertical_ui.platform_label }}{% else %}Project-wide communications{% endif %}</div>
@@ -125,7 +132,7 @@
   <div id="mobile-nav-shell" class="tenant-sidebar md:hidden fixed top-0 inset-x-0 z-40">
     <div class="relative z-10 flex items-center justify-between px-4 py-3 tenant-sidebar">
       <a href="{% if not biz %}{% url 'platform_mailing_workspace' %}{% else %}{% url 'dashboard' %}{% endif %}" class="flex min-w-0 items-center gap-2 font-semibold font-display">
-        <img src="{% if not biz or biz.background_text_color == '#FFFFFF' %}{% static 'core/brand/inprofic-wordmark-on-dark.png' %}{% else %}{% static 'core/brand/inprofic-wordmark-on-light.png' %}{% endif %}" alt="INPROFIC" class="max-w-32 shrink-0" style="width:7.5rem;height:auto" width="1827" height="290">
+        <img data-brand-logo-light="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" data-brand-logo-dark="{% static 'core/brand/inprofic-wordmark-on-dark.png' %}" src="{% if not biz or biz.background_text_color == '#FFFFFF' %}{% static 'core/brand/inprofic-wordmark-on-dark.png' %}{% else %}{% static 'core/brand/inprofic-wordmark-on-light.png' %}{% endif %}" alt="INPROFIC" class="max-w-32 shrink-0" style="width:7.5rem;height:auto" width="1827" height="290">
         <span class="truncate">{% if biz %}{{ biz.name }}{% else %}Project Mailing{% endif %}</span>
       </a>
       <button type="button" id="mobile-nav-button" aria-controls="mobile-nav-panel" aria-expanded="false" aria-label="Toggle navigation" class="cursor-pointer p-1 text-xl leading-none"><span aria-hidden="true">☰</span></button>
@@ -150,21 +157,44 @@
   </div>
   {% endif %}
 
-  <main class="workspace-main desktop-main flex-1 min-w-0 p-4 md:p-6 {% if user.is_authenticated %}mt-14 md:mt-0{% endif %}" data-route="{{ request.resolver_match.url_name|default:'' }}">
+  <main id="main-content" class="workspace-main desktop-main flex-1 min-w-0 p-4 md:p-6 {% if user.is_authenticated %}mt-14 md:mt-0{% endif %}" data-route="{{ request.resolver_match.url_name|default:'' }}">
     <div class="workspace-content">
     {% if user.is_authenticated %}
-      <div class="workspace-utility-bar mb-3 flex items-center justify-between gap-3">
-        <div>
-          {% if show_workspace_back %}
+      <div class="workspace-utility-bar mb-3 flex flex-wrap items-center justify-between gap-3{% if show_workspace_back %} has-workspace-back{% endif %}">
+        {% if show_workspace_back %}<div>
           <button type="button" class="workspace-back" onclick="if(history.length > 1){history.back()}else{location.href='{% url 'dashboard' %}'}" aria-label="Go back">
             <svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.8" aria-hidden="true"><path d="m15 18-6-6 6-6"/><path d="M9 12h10"/></svg>
             Back
           </button>
+        </div>{% endif %}
+        <div class="flex min-w-0 flex-wrap items-center justify-end gap-2">
+        {% if request.ledger_scope == 'backlog' %}
+          <div {% if can_manage_business %}data-ledger-status{% endif %} class="workspace-back ledger-status-card inline-flex max-w-full items-center px-2.5 py-1.5 text-[11px]">
+          {% if can_manage_business %}
+            <span class="ledger-period-marquee" aria-label="Backlog entry · dates before {{ request.ledger_cutover.cutover_date }}" title="Backlog entry · dates before {{ request.ledger_cutover.cutover_date }}"><span class="ledger-period-marquee-track" aria-hidden="true"><span class="ledger-period-marquee-item">Backlog entry · before {{ request.ledger_cutover.cutover_date }}</span><span class="ledger-period-marquee-item">Backlog entry · before {{ request.ledger_cutover.cutover_date }}</span></span></span>
           {% endif %}
-        </div>
-        <div class="relative" data-appearance-root>
-          <button type="button" class="workspace-icon-button" data-appearance-toggle aria-controls="workspace-appearance-panel" aria-expanded="false">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="#001f8557" stroke="#d13b00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-palette">
+          <form method="post" action="{% url 'ledger_mode' %}">{% csrf_token %}<input type="hidden" name="mode" value="live"><input type="hidden" name="next" value="{{ request.path }}"><button class="workspace-icon-button underline">Return to Live</button></form>
+          </div>
+        {% elif request.ledger_scope == 'all' and request.ledger_cutover and request.ledger_cutover.status != 'merged' and request.ledger_cutover.status != 'reverted' %}
+          <div {% if can_manage_business %}data-ledger-status{% endif %} class="workspace-back ledger-status-card inline-flex max-w-full items-center px-2.5 py-1.5 text-[11px]">
+          {% if can_manage_business %}
+            <span class="font-semibold">Combined view · Live + Backlog</span>
+          {% endif %}
+          <form method="post" action="{% url 'ledger_mode' %}">{% csrf_token %}<input type="hidden" name="mode" value="live"><input type="hidden" name="next" value="{{ request.path }}"><button class="workspace-icon-button underline">Return to Live</button></form>
+          </div>
+        {% elif request.ledger_cutover and request.ledger_cutover.status != 'merged' and request.ledger_cutover.status != 'archived' and request.ledger_cutover.status != 'reverted' and module_permissions.dashboard.view %}
+          {% if can_manage_business or backlog_entry_allowed %}
+          <div {% if can_manage_business %}data-ledger-status{% endif %} class="workspace-back ledger-status-card inline-flex max-w-full items-center px-2.5 py-1.5 text-[11px]">
+          {% if can_manage_business %}
+            <span class="ledger-period-marquee" aria-label="Live ledger · dates from {{ request.ledger_cutover.cutover_date }}" title="Live ledger · dates from {{ request.ledger_cutover.cutover_date }}"><span class="ledger-period-marquee-track" aria-hidden="true"><span class="ledger-period-marquee-item">Live ledger · from {{ request.ledger_cutover.cutover_date }}</span><span class="ledger-period-marquee-item">Live ledger · from {{ request.ledger_cutover.cutover_date }}</span></span></span>
+          {% endif %}
+          {% if backlog_entry_allowed %}<form method="post" action="{% url 'ledger_mode' %}">{% csrf_token %}<input type="hidden" name="mode" value="backlog"><input type="hidden" name="next" value="{{ request.path }}"><button class="workspace-icon-button underline">Enter backlog</button></form>{% endif %}
+          </div>
+          {% endif %}
+        {% endif %}
+        <div class="relative shrink-0" data-appearance-root>
+          <button type="button" class="workspace-icon-button" data-appearance-toggle aria-label="Appearance" aria-controls="workspace-appearance-panel" aria-expanded="false">
+            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="#001f8557" stroke="#d13b00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-palette">
               <path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M12 21a9 9 0 0 1 0 -18c4.97 0 9 3.582 9 8c0 1.06 -.474 2.078 -1.318 2.828c-.844 .75 -1.989 1.172 -3.182 1.172h-2.5a2 2 0 0 0 -1 3.75a1.3 1.3 0 0 1 -1 2.25" />
               <path d="M7.5 10.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /><path d="M11.5 7.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /><path d="M15.5 10.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
             </svg>
@@ -175,12 +205,13 @@
             {% if can_manage_business %}<a href="{% url 'business_settings' %}#workspace-appearance" class="mt-3 block text-xs font-semibold text-[#8f172d]">Open appearance settings</a>{% endif %}
           </div>
         </div>
+        </div>
       </div>
     {% endif %}
     {% if messages %}
       <div class="mb-4 space-y-2">
         {% for message in messages %}
-          <div class="text-sm px-3.5 py-2 rounded-md border {% if message.tags == 'error' %}bg-rose-50 text-rose-700 border-rose-200{% else %}bg-emerald-50 text-emerald-800 border-emerald-200{% endif %}">{{ message }}</div>
+          <div data-ui-message data-message-level="{{ message.tags }}" class="text-sm px-3.5 py-2 rounded-md border {% if message.tags == 'error' %}bg-rose-50 text-rose-700 border-rose-200{% else %}bg-emerald-50 text-emerald-800 border-emerald-200{% endif %}">{{ message }}</div>
         {% endfor %}
       </div>
     {% endif %}
@@ -188,12 +219,13 @@
     </div>
   </main>
 
-  {% if user.is_authenticated and module_permissions.commerce.view or user.is_authenticated and module_permissions.delivery.view or user.is_authenticated and module_permissions.delivery_rider.view or user.is_authenticated and module_permissions.inventory.view or user.is_authenticated and module_permissions.finance.view %}
+  {% if user.is_authenticated and module_permissions.commerce.view or user.is_authenticated and module_permissions.delivery.view or user.is_authenticated and module_permissions.delivery_rider.view or user.is_authenticated and module_permissions.inventory.view or user.is_authenticated and module_permissions.finance.view or user.is_authenticated and assistant_available %}
   <aside id="commerce-notification-dock"
          class="fixed bottom-3 z-[80] hidden overflow-hidden rounded-2xl border border-stone-200 bg-[#FFFDF8] shadow-[0_20px_55px_rgba(33,29,26,.32)]"
          style="right:.75rem;" data-expanded="false"
          data-has-commerce="{% if module_permissions.commerce.view or module_permissions.delivery.view or module_permissions.delivery_rider.view %}1{% else %}0{% endif %}"
          data-has-inventory="{% if module_permissions.inventory.view %}1{% else %}0{% endif %}"
+         data-has-assistant="{% if assistant_available %}1{% else %}0{% endif %}"
          data-has-finance="{% if module_permissions.finance.view %}1{% else %}0{% endif %}"
          data-finance-feed-url="{% url 'finance_alert_feed' %}"
          data-feed-url="{% url 'commerce_notification_feed' %}"
@@ -216,8 +248,9 @@
       </button>
     </div>
 
-    <div id="notification-tray-body" class="hidden min-h-0 flex-col" style="height:min(30rem,calc(100dvh - 7rem));" aria-hidden="true">
-      <div class="flex gap-2 border-b border-stone-200 bg-stone-50 p-2">
+    <div id="notification-tray-body" class="hidden min-h-0 flex-col" style="height:min(38rem,calc(100dvh - 7rem));" aria-hidden="true">
+      <div class="flex gap-1 overflow-x-auto border-b border-stone-200 bg-stone-50 p-2" role="group" aria-label="Activity panels">
+        {% if assistant_available %}<button type="button" data-alert-channel="assistant" aria-controls="notification-panel-assistant" class="shrink-0 rounded-xl px-3 py-2 text-xs font-semibold">Assistant</button>{% endif %}
         {% if module_permissions.commerce.view or module_permissions.delivery.view or module_permissions.delivery_rider.view %}
         <button type="button" id="notification-channel-commerce" data-alert-channel="commerce" class="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-stone-600 transition hover:bg-white">
           <span class="truncate">{% if module_permissions.delivery_rider.view and not module_permissions.delivery.view and not module_permissions.commerce.view %}My delivery{% elif module_permissions.delivery.view and not module_permissions.commerce.view %}Delivery{% else %}Commerce{% endif %}</span>
@@ -253,6 +286,11 @@
       {% endif %}
 
       {% if module_permissions.inventory.view %}
+      {% if assistant_available %}
+      <section id="notification-panel-assistant" data-alert-panel="assistant" class="hidden min-h-0 flex-1 flex-col" aria-label="Business assistant">
+        <iframe data-assistant-src="{% url 'assistant' %}?panel=1" title="Business assistant" class="min-h-0 w-full flex-1 border-0"></iframe>
+      </section>
+      {% endif %}
       <section id="notification-panel-inventory" data-alert-panel="inventory" class="hidden min-h-0 flex-1 flex-col">
         <div class="flex items-center justify-between border-b border-stone-200 px-3 py-2">
           <div class="flex min-w-0 flex-1 gap-1.5" role="tablist" aria-label="Inventory alert type">
@@ -283,7 +321,8 @@
     </div>
   </aside>
   <script>window.INPROFIC_SHELL=Object.assign(window.INPROFIC_SHELL||{},{assets:{"core/audio/alerts/chime1.mp3":"{% static 'core/audio/alerts/chime1.mp3' %}","core/audio/alerts/chime2.mp3":"{% static 'core/audio/alerts/chime2.mp3' %}","core/audio/alerts/chime3.mp3":"{% static 'core/audio/alerts/chime3.mp3' %}","core/audio/alerts/chime4.mp3":"{% static 'core/audio/alerts/chime4.mp3' %}","core/audio/alerts/chime5.mp3":"{% static 'core/audio/alerts/chime5.mp3' %}","core/audio/alerts/chime6.wav":"{% static 'core/audio/alerts/chime6.wav' %}","core/audio/alerts/chime7.wav":"{% static 'core/audio/alerts/chime7.wav' %}","core/audio/alerts/chime8.wav":"{% static 'core/audio/alerts/chime8.wav' %}","core/pwa/icon-mark-192.png":"{% static 'core/pwa/icon-mark-192.png' %}","core/pwa/icon-mark-monochrome-192.png":"{% static 'core/pwa/icon-mark-monochrome-192.png' %}"}});</script>
-  <script src="{% static 'core/js/shell-alerts.js' %}"></script>
+  <script src="{% static 'core/js/shell-alerts.js' %}?v={{ static_asset_version }}"></script>
+  <script defer src="{% static 'core/js/snapshot-share.js' %}?v={{ static_asset_version }}"></script>
   {% endif %}
 
 

@@ -1,0 +1,10 @@
+{% with current=request.resolver_match.url_name %}
+<nav class="workspace-tools-nav mb-5" aria-label="Finance tools">
+  <a href="{% url 'finance_dashboard' %}" class="workspace-action"{% if current == 'finance_dashboard' %} aria-current="page"{% endif %}>Finance overview</a>
+  <a href="{% url 'books_home' %}" class="workspace-action"{% if current|slice:':6' == 'books_' %} aria-current="page"{% endif %}>Books</a>
+  <a href="{% url 'tax_home' %}" class="workspace-action"{% if current == 'tax_home' or current == 'vat_return' or current == 'input_vat' or current == 'product_vat' %} aria-current="page"{% endif %}>Tax &amp; VAT</a>
+  <a href="{% url 'einvoices' %}" class="workspace-action"{% if current == 'einvoices' or current == 'einvoice_detail' %} aria-current="page"{% endif %}>E-invoices</a>
+  <a href="{% url 'reconcile_home' %}" class="workspace-action"{% if current == 'reconcile_home' or current == 'reconcile_detail' %} aria-current="page"{% endif %}>Bank reconciliation</a>
+  <a href="{% url 'finance_pack' %}" class="workspace-action"{% if current == 'finance_pack' or current == 'finance_pack_shares' %} aria-current="page"{% endif %}>Financial pack</a>
+</nav>
+{% endwith %}

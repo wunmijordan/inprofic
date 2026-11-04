@@ -98,6 +98,7 @@ class CommercePaymentTestBase(TestCase):
         self.intake, _ = create_intake(
             business=self.business,
             source=CommerceIntake.SOURCE_API,
+            sales_channel="online",
             ordering_mode=CommerceIntake.MODE_STOCK,
             customer={"name": "Sample Customer", "email": "customer@example.test"},
             items=[{"storefront_product": self.product, "quantity": "2"}],
@@ -519,7 +520,7 @@ class HeadlessPaymentApiTests(CommercePaymentTestBase):
         )
         quote_response = self.api_post(
             f"/api/v1/storefronts/{self.business.slug}/delivery/quote",
-            {"subtotal": "2500.00", "address": "12 Customer Street", "area_id": area.pk},
+            {"subtotal": "2500.00", "address": "12 Customer Street", "area_id": area.pk, "latitude": "6.4300000", "longitude": "3.4200000"},
         )
         self.assertEqual(quote_response.status_code, 201)
         quote_id = quote_response.json()["quote_id"]
@@ -579,6 +580,7 @@ class HeadlessPaymentApiTests(CommercePaymentTestBase):
         )
         self.assertEqual(reused.status_code, 400)
         self.assertIn("already attached", reused.json()["detail"])
+        methods = {row["code"] for row in eligible_payment_methods(self.business)}
         self.assertNotIn(CommercePayment.METHOD_POS_CARD, methods)
         self.assertIn(CommercePayment.METHOD_BANK_TRANSFER, methods)
 
@@ -603,7 +605,7 @@ class HeadlessPaymentApiTests(CommercePaymentTestBase):
             idem="below-trade-minimum",
         )
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["code"], "minimum_not_met")
+        self.assertIn("reserved for the in-premise POS", response.json()["detail"])
         self.assertEqual(CommerceCheckoutSession.raw_objects.count(), 0)
 
     def test_checkout_uses_channel_price_and_stays_pre_intake(self):
@@ -799,7 +801,7 @@ class ManualVerificationTests(CommercePaymentTestBase):
         self.good.refresh_from_db()
         sale = self.intake.accepted_sale
         self.assertIsNotNone(sale)
-        self.assertEqual(self.intake.status, CommerceIntake.STATUS_ACCEPTED)
+        self.assertEqual(self.intake.status, CommerceIntake.STATUS_FULFILLED)
         self.assertEqual(self.intake.fulfilment_state, CommerceIntake.FULFIL_COMPLETE)
         self.assertEqual(self.good.stock, Decimal("18"))
         self.assertEqual(sale.payments.count(), 1)
@@ -830,7 +832,7 @@ class ManualVerificationTests(CommercePaymentTestBase):
         intake.refresh_from_db()
         self.assertEqual(checkout.status, CommerceCheckoutSession.STATUS_MATERIALIZED)
         self.assertIsNotNone(checkout.reservation_released_at)
-        self.assertEqual(intake.status, CommerceIntake.STATUS_ACCEPTED)
+        self.assertEqual(intake.status, CommerceIntake.STATUS_FULFILLED)
         self.assertIsNotNone(intake.accepted_sale_id)
         self.assertEqual(self.good.stock, Decimal("19"))
 
@@ -1020,9 +1022,9 @@ class StorefrontPosGuardTests(CommercePaymentTestBase):
             business=self.business,
             method=CommercePayment.METHOD_TRANSFER,
         )
-        self.assertEqual(payment.gateway_metadata["manual_transfer_route"]["route_id"], second_route.pk)
+        self.assertEqual(payment.gateway_metadata["manual_transfer_route"]["id"], second_route.pk)
         self.assertEqual(payment.gateway_metadata["manual_transfer_route"]["cash_account_id"], second_account.pk)
-        self.assertNotEqual(payment.gateway_metadata["manual_transfer_route"]["route_id"], first_route.pk)
+        self.assertNotEqual(payment.gateway_metadata["manual_transfer_route"]["id"], first_route.pk)
 
     def test_cash_must_be_confirmed_before_checkout_reserves_stock(self):
         response = self.client.post("/commerce/storefront-pos/", {
@@ -1083,6 +1085,7 @@ class StorefrontPosGuardTests(CommercePaymentTestBase):
         quote = create_delivery_quote(
             business=self.business, subtotal="2500.00",
             destination_address="12 Walk-in Street", area_id=area.pk, actor=self.staff,
+            latitude="6.4300000", longitude="3.4200000",
         )
         response = self.client.post("/commerce/storefront-pos/", {
             "method": CommercePayment.METHOD_CASH,

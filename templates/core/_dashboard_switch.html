@@ -1,0 +1,6 @@
+{# Basic / Executive dashboard switch. Context: dashboard_mode ("simple"|"complete"). #}
+<div role="group" aria-label="Dashboard view" class="inline-flex shrink-0 rounded-xl border border-[#D9CFB4] bg-white p-0.5 text-xs font-semibold">
+  <a href="{% url 'dashboard' %}?view=simple" data-dashboard-mode="simple" {% if dashboard_mode == 'simple' %}aria-current="page" class="rounded-[10px] bg-[#8f172d] px-3 py-1.5 text-white"{% else %}class="px-3 py-1.5 text-stone-600 hover:bg-[#FAF6EA]"{% endif %}>Basic</a>
+  <a href="{% url 'complete_dashboard' %}" data-dashboard-mode="complete" {% if dashboard_mode == 'complete' %}aria-current="page" class="rounded-[10px] bg-[#8f172d] px-3 py-1.5 text-white"{% else %}class="px-3 py-1.5 text-stone-600 hover:bg-[#FAF6EA]"{% endif %}>Executive</a>
+</div>
+<script>document.querySelectorAll('[data-dashboard-mode]').forEach(link => link.addEventListener('click', () => { document.cookie = `dashboard_view_${document.documentElement.dataset.tenant}=${link.dataset.dashboardMode}; Max-Age=31536000; Path=/; SameSite=Lax`; }));</script>

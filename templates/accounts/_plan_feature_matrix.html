@@ -16,6 +16,7 @@
     <span class="pfm__toggle" aria-hidden="true">+</span>
   </summary>
   <div class="pfm__body">
+    <p class="pfm__share-note">Keep your team in the picture: share WhatsApp-ready summary images with QR codes and secure links back to the records. Compare dashboard summaries under Team, trust &amp; control, and request/stock sharing under Inventory &amp; purchasing.</p>
     {% for section in matrix_sections %}
     {% with feature_count=section.list|length|add:"-1" %}
     <details class="pfm__group" name="pfm-group" data-pfm-group{% if forloop.first %} open{% endif %}>
@@ -70,6 +71,7 @@
     {% endfor %}
   </div>
 </details>
+{% if not hide_workflow_comparison %}{% include "accounts/_workflow_comparison.html" %}{% endif %}
 
 <style>
   .pfm {
@@ -105,7 +107,7 @@
     --pfm-surface: rgba(255,255,255,.06);
     --pfm-surface-2: rgba(255,255,255,.07);
     --pfm-text: #ffffff;
-    --pfm-muted: rgba(255,255,255,.6);
+    --pfm-muted: rgba(255,255,255,.85);
     --pfm-border: rgba(255,255,255,.12);
     --pfm-accent: #e7bd65;
     --pfm-ok: #6ee7b7;
@@ -115,6 +117,7 @@
     --pfm-radius: 1rem;
   }
 
+  .pfm__share-note { margin: 0; padding: 1rem 1.25rem; color: var(--pfm-muted); font-size: .8rem; line-height: 1.6; border-top: 1px solid var(--pfm-border); }
   .pfm summary { list-style: none; cursor: pointer; }
   .pfm summary::-webkit-details-marker { display: none; }
   .pfm summary:focus-visible { outline: 2px solid var(--pfm-accent); outline-offset: -2px; }

@@ -2,7 +2,7 @@
 name: release-communications
 description: Keep INPROFIC feature marketing, launch/social calendar, website-facing integration docs, and release highlights synchronized whenever user-visible capabilities change.
 version: "1.0"
-updated: 2026-09-20
+updated: 2026-10-28
 ---
 
 # Release Communications
@@ -19,6 +19,13 @@ Apply this skill whenever a change adds, materially changes, renames, or retires
    - set `highlight` to `NEW` for a newly shipped capability and record `added_on` as `YYYY-MM-DD`;
    - do not silently delete an old capability. Mark it `superseded` with its replacement when appropriate.
 4. Ensure the marketing tooling is installed with `pip install -r requirements-marketing.txt`, then run `python scripts/generate_marketing_calendar.py` to refresh the CSV, Markdown summary, and `docs/INPROFIC_Q4_2026_Content_Calendar.xlsx` together.
+   If the environment cannot install `artifact_tool_v2`, use an available standard
+   spreadsheet library (such as `openpyxl`) to refresh the existing workbook while
+   using the generator's catalogue/row builders for CSV and Markdown. Preserve all
+   four workbook sheets, formatting, formulas, filters and execution guidance;
+   verify the workbook Calendar and Feature Catalog match the generated rows and
+   JSON catalogue before packaging. Do not leave one output stale or remove a
+   capability merely because the preferred export tool is unavailable.
 5. Make additions obvious in calendar copy with `✨ NEW` until the release-highlight window expires. Repeated posts must change angle (education, workflow/problem, proof/control, ROI/readiness) rather than duplicate the same copy.
 6. If an externally consumed Commerce/API feature changed, update both `docs/COMMERCE_INTEGRATION.md` and `docs/WEBSITE_COMMERCE_CHECKOUT_INTEGRATION.md` in the same change.
 
