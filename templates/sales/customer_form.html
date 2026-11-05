@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Customers & pricing</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit Customer{% else %}New Customer{% endif %}</h2><p class="mt-1 text-sm text-stone-500">Keep contact, credit and agreed-price details together.</p></div>
+<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Customers & pricing</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit Customer — {{ obj.name }}{% else %}New Customer{% endif %}</h2><p class="mt-1 text-sm text-stone-500">Keep contact, credit and agreed-price details together.</p></div>
 <div class="cf-form-shell max-w-5xl"><div class="cf-form-body">
 <form method="post" id="customer-form">{% csrf_token %}
 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">

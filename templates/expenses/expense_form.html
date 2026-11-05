@@ -2,7 +2,7 @@
 {% block content %}
 <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
   <div>
-    <h2 class="text-xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit Expense{% else %}Record Expenses{% endif %}</h2>
+    <h2 class="text-xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit Expense — {{ obj.description }}{% else %}Record Expenses{% endif %}</h2>
     <p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">Use this for business spending that is not a supplier purchase order, such as utilities, repairs, transport, labour, marketing and other overheads. Use Procurement for stock purchases so arrivals and costs remain linked to inventory.</p>
   </div>
 </div>

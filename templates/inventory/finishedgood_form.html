@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load core_extras %}
 {% block content %}
-<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Product setup</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit{% else %}Add{% endif %} {% if vertical_ui.uses_production %}Product{% else %}Stock Product{% endif %}</h2><p class="mt-1 max-w-3xl text-sm text-stone-500">{% if vertical_ui.uses_production %}Set the selling unit, pricing, stock behaviour and—when made in-house—the {{ vertical_ui.recipe_label|lower }} used for production.{% else %}Set the stock unit, selling prices, reorder point and customer-facing pack options. Supplier arrivals are received through Procurement; production-only setup is intentionally left out.{% endif %}</p></div>
+<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Product setup</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit{% else %}Add{% endif %} {% if vertical_ui.uses_production %}Product{% else %}Stock Product{% endif %}{% if obj %} — {{ obj.name }}{% endif %}</h2><p class="mt-1 max-w-3xl text-sm text-stone-500">{% if vertical_ui.uses_production %}Set the selling unit, pricing, stock behaviour and—when made in-house—the {{ vertical_ui.recipe_label|lower }} used for production.{% else %}Set the stock unit, selling prices, reorder point and customer-facing pack options. Supplier arrivals are received through Procurement; production-only setup is intentionally left out.{% endif %}</p></div>
 <div class="cf-form-shell">
 <div class="cf-form-body">
   <form method="post">

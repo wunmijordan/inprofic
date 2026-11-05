@@ -3,7 +3,7 @@
 {% block content %}
 <div class="max-w-5xl">
   <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
-    <div><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Production planning</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if run %}Edit{% else %}New{% endif %} Shared Production Run</h2><p class="mt-1 max-w-3xl text-sm text-stone-500">Bring several pending orders into one coordinated production session while each order keeps its own quantities and material requirements.</p></div>
+    <div><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Production planning</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if run %}Edit{% else %}New{% endif %} Shared Production Run{% if run %} — {{ run.run_number }}{% endif %}</h2><p class="mt-1 max-w-3xl text-sm text-stone-500">Bring several pending orders into one coordinated production session while each order keeps its own quantities and material requirements.</p></div>
     <a href="{% url 'production_runs' %}" class="rounded-xl px-3 py-2 text-sm text-stone-500 hover:bg-stone-100">Back to runs</a>
   </div>
 

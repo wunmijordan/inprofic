@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <header data-snapshot-heading class="mb-5 flex items-start justify-between gap-3">
-  <div class="min-w-0"><h2 class="text-2xl font-semibold font-display">{% if obj %}Edit purchase request{% else %}New purchase request{% endif %}</h2><p class="mt-1 max-w-2xl text-sm text-stone-500">Request items across vendors in one approval. Group items by where they were bought. Vendor names are optional; choose a saved vendor or type any name. Set payment details once per group, and record payments only when money has actually been paid.{% if obj %} Save changes before sharing the saved request.{% endif %}</p></div>
+  <div class="min-w-0"><h2 class="text-2xl font-semibold font-display">{% if obj %}Edit purchase request #{{ obj.pk }}{% else %}New purchase request{% endif %}</h2><p class="mt-1 max-w-2xl text-sm text-stone-500">Request items across vendors in one approval. Group items by where they were bought. Vendor names are optional; choose a saved vendor or type any name. Set payment details once per group, and record payments only when money has actually been paid.{% if obj %} Save changes before sharing the saved request.{% endif %}</p></div>
   {% include "partials/_snapshot_share.html" with snapshot_image_url=share_image_url snapshot_id="purchase-share" snapshot_text=share_text snapshot_filename="purchase-request" snapshot_dropdown=True snapshot_label="Share request" snapshot_save_form="purchase-request-form" %}
 </header>
 <div class="cf-form-shell max-w-4xl"><div class="cf-form-body">

@@ -4,7 +4,7 @@
   <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
     <div>
       <p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">{{ eyebrow }}</p>
-      <h1 class="mt-1 font-display text-2xl font-semibold">{{ title }}</h1>
+      <h1 class="mt-1 font-display text-2xl font-semibold">{{ title }}{% if topic %} — {{ topic.name }}{% endif %}</h1>
       <p class="mt-1 text-sm text-stone-500">Build a reusable, branded message for the project mailing workspace.</p>
     </div>
     <a data-button-surface href="{% url 'platform_mailing_workspace' %}" class="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-medium">Back to mailing</a>

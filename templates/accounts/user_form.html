@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">People & access</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit user{% else %}Add user{% endif %}</h2><p class="mt-1 text-sm text-stone-500">Set the person’s details, role and sign-in access.</p></div>
+<div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">People & access</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit user — {{ obj.fullname|default:obj.username }}{% else %}Add user{% endif %}</h2><p class="mt-1 text-sm text-stone-500">Set the person’s details, role and sign-in access.</p></div>
 <div class="cf-form-shell max-w-3xl">
   <div class="cf-form-header"><h3 class="font-display text-lg font-semibold">User details</h3><p class="mt-1 text-xs text-stone-500">Contact details and access choices can be updated later.</p></div>
   <form method="post" class="cf-form-body">{% csrf_token %}
