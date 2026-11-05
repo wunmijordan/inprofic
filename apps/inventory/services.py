@@ -330,20 +330,61 @@ def receive_market_production(batch, quantity, *, user):
     return lot
 
 
-@transaction.atomic
 def release_market_stock(*, business, good, customer, quantity, date, payment_status, payment_method, account, user, note=""):
-    """Allocate sellable Market Stock FEFO and create its Distribution sale."""
+    """Backward-compatible single-product release using the shared invoice flow."""
+    return release_market_stock_items(
+        business=business, items=[{"finished_good": good, "quantity": quantity}], customer=customer,
+        date=date, payment_status=payment_status, payment_method=payment_method,
+        account=account, user=user, note=note,
+    )
+
+
+@transaction.atomic
+def release_market_stock_items(*, business, items, customer, date, payment_status, payment_method, account, user, note=""):
+    """Release multiple products atomically into one customer invoice and payment."""
     from core.models import FinancialTransaction
-    from core.services import audit, record_cash
-    from sales.models import Sale, SaleItem
+    from core.services import record_cash
+    from sales.models import Sale
+
+    if not items:
+        raise ValidationError("Add at least one product to release.")
+    if customer.business_id != business.pk:
+        raise ValidationError("Customer must belong to the active business.")
+    if payment_status not in {"paid", "unpaid"}:
+        raise ValidationError("Choose a valid payment status.")
+    if payment_status == "paid" and (not account or account.business_id != business.pk or not account.active):
+        raise ValidationError("Select the active business account that received payment.")
+    # Lock products consistently across multi-product releases.
+    list(FinishedGood.raw_objects.select_for_update().filter(
+        business=business, pk__in=[item["finished_good"].pk for item in items]
+    ).order_by("pk"))
+    sale = Sale.raw_objects.create(
+        business=business, created_by=user, date=date, customer=customer.name, customer_master=customer,
+        transaction_type=payment_status,
+        unpaid_description="" if payment_status == "paid" else "Distribution Market Stock receivable — payment to be recorded through Finance.",
+        account=account if payment_status == "paid" else None,
+        payment_method=payment_method or "Transfer", source="distribution_order",
+    )
+    for item in items:
+        _allocate_market_stock_line(business=business, good=item["finished_good"], customer=customer,
+            quantity=item["quantity"], date=date, user=user, note=note, sale=sale)
+    if payment_status == "paid":
+        record_cash(business, user, date=date, amount=sale.total,
+            transaction_type=FinancialTransaction.INCOME, category="Distribution Market Stock sale",
+            description=f"Payment received for Market Stock sale #{sale.pk}",
+            payment_method=sale.payment_method, reference=f"SALE-{sale.pk}", account=account)
+    return sale
+
+
+def _allocate_market_stock_line(*, business, good, customer, quantity, date, user, note, sale):
+    from core.services import audit
+    from sales.models import SaleItem
 
     quantity = Decimal(quantity).quantize(Decimal("0.01"))
     if quantity <= 0:
         raise ValidationError("Release quantity must be greater than zero.")
     if good.business_id != business.pk or customer.business_id != business.pk:
         raise ValidationError("Product and customer must belong to the active business.")
-    if payment_status == "paid" and (not account or account.business_id != business.pk):
-        raise ValidationError("Select the active business account that received payment.")
 
     good = FinishedGood.raw_objects.select_for_update().get(pk=good.pk, business=business)
     from core.ledger import segment_for
@@ -359,27 +400,13 @@ def release_market_stock(*, business, good, customer, quantity, date, payment_st
             "Set a Distribution channel/customer price before releasing Distribution Market Stock; "
             "the standard selling price is not used for Distribution."
         )
-    sale = Sale.raw_objects.create(
-        business=business,
-        created_by=user,
-        date=date,
-        customer=customer.name,
-        customer_master=customer,
-        transaction_type="paid" if payment_status == "paid" else "unpaid",
-        unpaid_description="" if payment_status == "paid" else "Distribution Market Stock receivable — payment to be recorded through Finance.",
-        account=account if payment_status == "paid" else None,
-        payment_method=payment_method or "Transfer",
-        source="distribution_order",
-    )
     remaining = quantity
     for lot in lots:
         if remaining <= 0:
             break
         taken = min(remaining, Decimal(lot.quantity_available))
-        from core.ledger import segment_for
-        backlog = segment_for(business, date) == "backlog"
         lot.quantity_available = (Decimal(lot.quantity_available) - taken).quantize(Decimal("0.01"))
-        if not backlog:
+        if not is_backlog:
             if lot.quantity_available == 0:
                 lot.active = False
                 lot.closed_reason = "released"
@@ -419,22 +446,9 @@ def release_market_stock(*, business, good, customer, quantity, date, payment_st
         )
         remaining -= taken
 
-    if segment_for(business, date) != "backlog":
+    if not is_backlog:
         good.total_delivered_to_customers += quantity
         good.save(update_fields=["total_delivered_to_customers", "updated_at"])
-    if sale.transaction_type == "paid":
-        record_cash(
-            business,
-            user,
-            date=date,
-            amount=sale.total,
-            transaction_type=FinancialTransaction.INCOME,
-            category="Distribution Market Stock sale",
-            description=f"Payment received for Market Stock sale #{sale.pk}",
-            payment_method=sale.payment_method,
-            reference=f"SALE-{sale.pk}",
-            account=account,
-        )
     audit(
         business,
         user,
@@ -443,7 +457,6 @@ def release_market_stock(*, business, good, customer, quantity, date, payment_st
         f"{quantity:.2f} {good.unit} of {good.name} released to {customer.name}",
         {"sale_id": sale.pk, "product_id": good.pk, "quantity": str(quantity)},
     )
-    return sale
 
 
 @transaction.atomic
@@ -522,7 +535,7 @@ def record_distribution_return(*, business, sale_item, quantity, date, condition
     from sales.models import SaleItem
 
     quantity = Decimal(quantity).quantize(Decimal("0.01"))
-    item = SaleItem.objects.select_for_update().select_related(
+    item = SaleItem.objects.select_for_update(of=("self", "sale", "finished_good")).select_related(
         "sale", "finished_good", "production_batch"
     ).get(pk=sale_item.pk)
     if item.sale.business_id != business.pk or item.sale.source != "distribution_order":

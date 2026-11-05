@@ -10,6 +10,18 @@
     {% if form.non_field_errors %}<div class="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{{ form.non_field_errors }}</div>{% endif %}
     {% for field in form %}
       {% include "_field.html" with field=field %}
+      {% if field.name == "customer" and formset %}
+      <section data-formset>
+        <h3 class="mb-3 font-semibold">Products for this customer</h3>
+        {{ formset.management_form }}
+        {% if formset.non_form_errors %}<div role="alert" class="mb-3 text-sm text-rose-700">{{ formset.non_form_errors }}</div>{% endif %}
+        <div data-market-release-rows class="space-y-4">
+          {% for row in formset %}{% include "inventory/_market_release_row.html" %}{% endfor %}
+        </div>
+        <template id="market-release-empty-row">{% include "inventory/_market_release_row.html" with row=formset.empty_form %}</template>
+        <button type="button" data-add-release-row data-button-surface class="workspace-action mt-3">Add product</button>
+      </section>
+      {% endif %}
       {% if field.name == "quantity" %}<div id="market-stock-release-summary" class="hidden rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs leading-5 text-sky-900" aria-live="polite"></div>{% endif %}
     {% endfor %}
     <div class="flex gap-2 pt-2"><a href="{% url 'market_stock' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a><button data-button-surface class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white">{{ submit_label }}</button></div>
@@ -19,36 +31,52 @@
 <script>
 (() => {
   const products = JSON.parse(document.getElementById('market-stock-available')?.textContent || '{}');
-  const productSelect = document.getElementById('id_finished_good');
-  const quantityInput = document.getElementById('id_quantity');
-  const summary = document.getElementById('market-stock-release-summary');
-  if (!productSelect || !quantityInput || !summary) return;
   const format = value => new Intl.NumberFormat(undefined, {maximumFractionDigits: 2}).format(value);
   const action = '{{ market_stock_action }}';
-  const refresh = () => {
-    const stock = products[productSelect.value];
-    if (!stock) {
-      summary.classList.add('hidden');
-      summary.textContent = '';
-      return;
-    }
-    const available = Number(stock.available || 0);
-    const entered = Math.max(0, Number(quantityInput.value || 0));
-    const remaining = available - entered;
-    const exceeds = remaining < 0;
-    summary.classList.toggle('border-rose-200', exceeds);
-    summary.classList.toggle('bg-rose-50', exceeds);
-    summary.classList.toggle('text-rose-800', exceeds);
-    summary.classList.toggle('border-sky-200', !exceeds);
-    summary.classList.toggle('bg-sky-50', !exceeds);
-    summary.classList.toggle('text-sky-900', !exceeds);
-    const verb = action === 'transfer' ? 'to Physical Store' : 'to this customer';
-    summary.textContent = `Market Stock available: ${format(available)} ${stock.unit}. ${format(entered)} ${stock.unit} ${verb}; ${exceeds ? `${format(Math.abs(remaining))} ${stock.unit} over available` : `${format(remaining)} ${stock.unit} will remain`}.`;
-    summary.classList.remove('hidden');
-  };
-  productSelect.addEventListener('change', refresh);
-  quantityInput.addEventListener('input', refresh);
-  refresh();
+  function wireSummary(productSelect, quantityInput, summary) {
+    if (!productSelect || !quantityInput || !summary) return;
+    const refresh = () => {
+      const stock = products[productSelect.value];
+      summary.hidden = !stock;
+      summary.classList.toggle('hidden', !stock);
+      if (!stock) { summary.textContent = ''; return; }
+      const available = Number(stock.available || 0), entered = Math.max(0, Number(quantityInput.value || 0));
+      const remaining = available - entered;
+      ['border-rose-200','bg-rose-50','text-rose-800'].forEach(name => summary.classList.toggle(name, remaining < 0));
+      ['border-sky-200','bg-sky-50','text-sky-900'].forEach(name => summary.classList.toggle(name, remaining >= 0));
+      const verb = action === 'transfer' ? 'to Physical Store' : 'to this customer';
+      summary.textContent = `Market Stock available: ${format(available)} ${stock.unit}. ${format(entered)} ${stock.unit} ${verb}; ${remaining < 0 ? `${format(Math.abs(remaining))} ${stock.unit} over available` : `${format(remaining)} ${stock.unit} will remain`}.`;
+    };
+    productSelect.addEventListener('change', refresh);
+    quantityInput.addEventListener('input', refresh);
+    refresh();
+  }
+  function wireRow(row) {
+    wireSummary(row.querySelector('select[name$="-finished_good"]'), row.querySelector('input[name$="-quantity"]'), row.querySelector('[data-release-stock-summary]'));
+    const deleted = row.querySelector('input[name$="-DELETE"]');
+    const remove = () => {
+      if (deleted) deleted.checked = true;
+      row.hidden = true;
+      row.querySelectorAll('input,select,textarea').forEach(field => { if (field !== deleted) field.disabled = true; });
+    };
+    row.querySelector('[data-remove-release-row]')?.addEventListener('click', remove);
+    if (deleted?.checked) remove();
+  }
+  document.querySelectorAll('[data-market-release-row]').forEach(wireRow);
+  document.querySelector('[data-add-release-row]')?.addEventListener('click', () => {
+    const count = document.getElementById('id_items-TOTAL_FORMS');
+    const container = document.querySelector('[data-market-release-rows]');
+    if (!count || !container || Number(count.value) >= 100) return;
+    const template = document.getElementById('market-release-empty-row');
+    container.insertAdjacentHTML('beforeend', template.innerHTML.replaceAll('__prefix__', count.value));
+    count.value = String(Number(count.value) + 1);
+    const row = container.lastElementChild;
+    wireRow(row);
+    window.INPROFICEnhanceForms?.(row);
+    row.querySelector('select')?.focus();
+  });
+  wireSummary(document.getElementById('id_finished_good'), document.getElementById('id_quantity'), document.getElementById('market-stock-release-summary'));
+
 })();
 </script>
 {% endblock %}

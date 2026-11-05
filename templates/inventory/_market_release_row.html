@@ -1,0 +1,10 @@
+<div data-market-release-row class="rounded-lg border border-stone-200 p-3">
+  {{ row.non_field_errors }}
+  <div class="grid gap-3 sm:grid-cols-2">
+    {% include "_field.html" with field=row.finished_good %}
+    {% include "_field.html" with field=row.quantity %}
+  </div>
+  <div hidden>{{ row.DELETE }}</div>
+  <p data-release-stock-summary class="mt-2 rounded-lg border px-3 py-2 text-xs" aria-live="polite"></p>
+  <button type="button" data-remove-release-row class="mt-2 text-xs text-rose-700">Remove product</button>
+</div>

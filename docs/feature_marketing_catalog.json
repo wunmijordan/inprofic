@@ -94,7 +94,7 @@
     "name": "Weekday production colors and shelf life",
     "group": "production",
     "audience": "production teams, storekeepers and owners",
-    "proof": "Set recurring Monday–Sunday colors that automatically tag new orders by production date. Optional shelf-life days produce a date-specific batch expiry suggestion; existing saved order tags remain unchanged.",
+    "proof": "Set recurring Monday–Sunday colors that automatically tag new orders by production date, with weekday tooltips. Optional shelf-life days suggest batch expiry; saved order tags and actual expiry dates stay historical. Backlog batches are excluded from current expiry warnings.",
     "highlight": "NEW",
     "added_on": "2026-10-20"
   },
@@ -535,7 +535,7 @@
     "name": "Concise daily distribution snapshots with financial cards",
     "group": "operations",
     "audience": "owners and store teams",
-    "proof": "Share a concise product/customer table of made or received quantities, allocations and current stock, with customer region/group labels. Financial cards show expected value after returns, collections and balances when Finance access permits. Full text includes customer labels and payment methods; recorded returns remain separate.",
+    "proof": "Release several Market Stock products to one customer on one invoice, with atomic stock checks and one combined payment or receivable. Shared product/customer snapshots and detailed text reflect every released product, region/group, remaining stock and the combined invoice balance. Financial cards show expected value after returns, collections and balances when Finance access permits; recorded returns remain separate.",
     "highlight": "NEW",
     "added_on": "2026-11-04"
   }

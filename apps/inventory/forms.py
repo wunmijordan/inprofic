@@ -1,7 +1,7 @@
 from decimal import Decimal, InvalidOperation
 
 from django import forms
-from django.forms import inlineformset_factory
+from django.forms import BaseFormSet, formset_factory, inlineformset_factory
 from django.db.models import Q
 from django.utils import timezone
 from core.models import CashAccount
@@ -912,6 +912,49 @@ class MarketStockReleaseForm(StyledForm):
             cleaned["account"] = None
             cleaned["payment_method"] = "Transfer"
         return cleaned
+
+
+class MarketStockReleaseHeaderForm(MarketStockReleaseForm):
+    """Customer and payment details shared by every product in the release."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        del self.fields["finished_good"]
+        del self.fields["quantity"]
+
+
+class MarketStockReleaseItemForm(StyledForm):
+    finished_good = forms.ModelChoiceField(queryset=FinishedGood.objects.none(), label="Product")
+    quantity = forms.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.01"))
+
+    def __init__(self, *args, business=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["finished_good"].queryset = FinishedGood.objects.filter(
+            business=business, market_stock_lots__active=True,
+            market_stock_lots__quantity_available__gt=0,
+        ).filter(Q(market_stock_lots__expiry_date__isnull=True) |
+                 Q(market_stock_lots__expiry_date__gte=timezone.localdate())).distinct().order_by("name")
+
+
+class BaseMarketStockReleaseItemFormSet(BaseFormSet):
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        seen = set()
+        for form in self.forms:
+            data = form.cleaned_data
+            if not data or data.get("DELETE"):
+                continue
+            good = data["finished_good"]
+            if good.pk in seen:
+                raise forms.ValidationError("Use one row per product and enter its combined quantity.")
+            seen.add(good.pk)
+
+
+MarketStockReleaseItemFormSet = formset_factory(
+    MarketStockReleaseItemForm, formset=BaseMarketStockReleaseItemFormSet,
+    extra=0, min_num=1, validate_min=True, can_delete=True, max_num=100, validate_max=True,
+)
 
 
 class MarketStockTransferForm(StyledForm):

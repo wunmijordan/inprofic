@@ -238,17 +238,19 @@
     const parsed = date ? new Date(`${date}T12:00:00Z`) : null;
     const weekday = parsed && !Number.isNaN(parsed.getTime()) ? (parsed.getUTCDay() + 6) % 7 : null;
     const configured = weekday === null ? null : PRODUCTION_DAY_COLORS[String(weekday)];
+    const weekdayName = parsed && weekday !== null ? new Intl.DateTimeFormat('en', {weekday:'long',timeZone:'UTC'}).format(parsed) : '';
     const colorField = document.getElementById('id_color_tag');
     if (!wrap || !copy || !apply || !colorField) return;
     if (configured) {
-      copy.textContent = `This weekday has a production color${configured.expiry_days != null ? ` · suggested shelf life ${configured.expiry_days} days` : ''}.`;
+      copy.textContent = `${weekdayName} has a production color${configured.expiry_days != null ? ` · suggested shelf life ${configured.expiry_days} days` : ''}.`;
       copy.classList.remove('text-stone-500');
       copy.classList.add('text-stone-700');
       apply.classList.remove('hidden');
       apply.textContent = 'Apply to this order';
       apply.style.backgroundColor = configured.color;
       apply.style.color = readableColorText(configured.color);
-      apply.setAttribute('aria-label', `Apply scheduled production color ${configured.color} to this order`);
+      apply.title = `${weekdayName} production color`;
+      apply.setAttribute('aria-label', `Apply ${weekdayName} production color ${configured.color} to this order`);
       if (event || (!{{ obj|yesno:'true,false' }} && !colorField.value)) colorField.value = configured.color;
       apply.onclick = () => {
         colorField.value = configured.color;

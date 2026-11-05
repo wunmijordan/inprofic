@@ -51,9 +51,11 @@ what was borrowed and what was deliberately left out).
   while showing the combined finished weight and configured-yield comparison.
   Production Settings can assign a recurring color and optional shelf life to each
   weekday. New orders use the color matching their production date; staff can
-  apply the suggested expiry to each batch at completion. Market Stock release and Physical Store transfer
-  forms show live available, entered and remaining quantities for the selected
-  product.
+  apply the suggested expiry to each batch at completion. Color-tag tooltips show
+  the production weekday. Market Stock customer releases accept several products
+  on one invoice, with live available, entered and remaining quantities per line.
+  Historical backlog batches keep their recorded expiry without contributing to
+  current expiry alerts. Physical Store transfers retain their stock checks.
 - **Reports** — a date-range monthly operational PDF with revenue, channel-origin, procurement, production and inventory charts/tables; CSV/Excel exports and a full JSON backup.
 - **Daily brief** — open Daily brief below Dashboard in the desktop or mobile menu; read yesterday's summary, share an paper-style PNG snapshot or text with a sign-in link to the Executive dashboard, or configure morning email and approved-template WhatsApp delivery.
 - **Books and tax** — authorised Finance users can open Books, Tax & VAT and E-invoices from the shared Finance toolbar; review derived double-entry books, configure VAT-inclusive reporting, and prepare sale invoices for provider submission or manual clearance tracking. See [the setup guide](docs/BOOKS_TAX_AND_WHATSAPP.md).

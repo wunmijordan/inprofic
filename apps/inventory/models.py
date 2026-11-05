@@ -362,7 +362,7 @@ class FinishedGood(LedgerStockMixin, BusinessOwnedModel):
             (
                 Decimal(lot.quantity_available or 0)
                 for lot in self._market_lots()
-                if lot.active and lot.expiry_date is not None and lot.expiry_date < today
+                if lot.active and not lot.is_backlog_entry and lot.expiry_date is not None and lot.expiry_date < today
             ),
             Decimal("0"),
         )
@@ -375,7 +375,7 @@ class FinishedGood(LedgerStockMixin, BusinessOwnedModel):
             (
                 Decimal(lot.quantity_available or 0)
                 for lot in self._market_lots()
-                if lot.active and lot.expiry_date is not None and today <= lot.expiry_date <= deadline
+                if lot.active and not lot.is_backlog_entry and lot.expiry_date is not None and today <= lot.expiry_date <= deadline
             ),
             Decimal("0"),
         )
@@ -983,6 +983,14 @@ class MarketStockLot(BusinessOwnedModel):
     @property
     def is_expired(self):
         return bool(self.expiry_date and self.expiry_date < timezone.localdate())
+
+    @property
+    def current_expiry_alert(self):
+        return not self.is_backlog_entry and self.is_expired
+
+    @property
+    def current_expiring_alert(self):
+        return not self.is_backlog_entry and self.is_expiring_soon
 
     @property
     def is_expiring_soon(self):

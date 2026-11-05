@@ -48,6 +48,12 @@ with tempfile.TemporaryDirectory(prefix='inprofic-ui-') as directory:
                                        quantity_received=100, quantity_available=60)
     MarketStockMovement.objects.create(business=business, lot=lot, date=day,
         movement_type=MarketStockMovement.PRODUCTION_IN, quantity=100, balance_after=100)
+    if os.environ.get('INPROFIC_UI_RELEASE_FIXTURE') == '1':
+        from inventory.models import FinishedGoodChannelPrice
+        FinishedGoodChannelPrice.objects.create(finished_good=good,channel='distribution',price=250)
+        cake = FinishedGood.raw_objects.create(business=business,name='Fixture Cake',unit='piece',stock=None,reorder_level=None)
+        FinishedGoodChannelPrice.objects.create(finished_good=cake,channel='distribution',price=500)
+        MarketStockLot.objects.create(business=business,finished_good=cake,received_date=day,quantity_received=20,quantity_available=20)
     remaining = 100
     for index, quantity in enumerate([10, 15, 15]):
         sale = Sale.objects.create(business=business, date=day, customer=f'Customer {index:02}',

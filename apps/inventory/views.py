@@ -22,7 +22,8 @@ from .forms import (
     IndividualSaleOptionFormSet,
     ProductCompositionItemFormSet,
     ProductPortionProfileForm,
-    MarketStockReleaseForm,
+    MarketStockReleaseHeaderForm,
+    MarketStockReleaseItemFormSet,
     MarketStockTransferForm,
     ProductionMaterialFormSet,
     ProductCategoryForm,
@@ -63,7 +64,7 @@ from .services import (
     reconcile_expired_market_lot,
     record_distribution_return,
     record_raw_material_movement,
-    release_market_stock,
+    release_market_stock_items,
     transfer_market_stock_to_physical,
 )
 
@@ -212,10 +213,10 @@ def market_stock(request):
         (lot.quantity_available for lot in active_lots if not lot.is_expired), Decimal("0")
     )
     expired_units = sum(
-        (lot.quantity_available for lot in active_lots if lot.is_expired), Decimal("0")
+        (lot.quantity_available for lot in active_lots if lot.current_expiry_alert), Decimal("0")
     )
     expiring_units = sum(
-        (lot.quantity_available for lot in active_lots if lot.is_expiring_soon), Decimal("0")
+        (lot.quantity_available for lot in active_lots if lot.current_expiring_alert), Decimal("0")
     )
     damage_value = sum(
         (row.writeoff_value for row in DistributionReturn.objects.filter(condition=DistributionReturn.DAMAGED)),
@@ -244,7 +245,7 @@ def market_stock(request):
     })
 
 
-def _market_form_response(request, form, *, title, intro, submit_label):
+def _market_form_response(request, form, *, title, intro, submit_label, formset=None):
     available_by_product = {}
     lots = MarketStockLot.objects.filter(
         business=request.business,
@@ -262,6 +263,7 @@ def _market_form_response(request, form, *, title, intro, submit_label):
         }
     return render(request, "inventory/market_stock_form.html", {
         "form": form,
+        "formset": formset,
         "title": title,
         "intro": intro,
         "submit_label": submit_label,
@@ -272,18 +274,20 @@ def _market_form_response(request, form, *, title, intro, submit_label):
 
 @login_required
 def market_stock_release(request):
-    form = MarketStockReleaseForm(
+    form = MarketStockReleaseHeaderForm(
         request.POST or None,
         business=request.business,
         initial={"date": ledger.default_entry_date()},
     )
-    if request.method == "POST" and form.is_valid():
+    formset = MarketStockReleaseItemFormSet(
+        request.POST or None, prefix="items", form_kwargs={"business": request.business},
+    )
+    if request.method == "POST" and form.is_valid() and formset.is_valid():
         try:
-            sale = release_market_stock(
+            sale = release_market_stock_items(
                 business=request.business,
-                good=form.cleaned_data["finished_good"],
+                items=[row.cleaned_data for row in formset if row.cleaned_data and not row.cleaned_data.get("DELETE")],
                 customer=form.cleaned_data["customer"],
-                quantity=form.cleaned_data["quantity"],
                 date=form.cleaned_data["date"],
                 payment_status=form.cleaned_data["payment_status"],
                 payment_method=form.cleaned_data["payment_method"],
@@ -299,6 +303,7 @@ def market_stock_release(request):
     return _market_form_response(
         request,
         form,
+        formset=formset,
         title="Release Market Stock",
         intro="Assign sellable Distribution Market Stock to a customer. Oldest-expiring batches are released first and a Distribution sale/receivable is created.",
         submit_label="Release to customer",
