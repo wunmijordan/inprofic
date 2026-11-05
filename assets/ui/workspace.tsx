@@ -13,20 +13,20 @@ const FORM_PATH = /^\/(?:inventory\/(?:raw-material|product)\/(?:add|\d+\/edit)|
 const embedded = window.parent !== window && window.name === 'inprofic-form-dialog';
 const postParent = (type: string, extra = {}) => window.parent.postMessage({ source: 'inprofic-ui', type, ...extra }, location.origin);
 const notifyNative = (el: Element) => ['input','change'].forEach(type => el.dispatchEvent(new Event(type, { bubbles: true })));
-let confirmRequest: (message: string, destructive?: boolean) => Promise<boolean>;
+let confirmRequest: (message: string, destructive?: boolean, purpose?: string) => Promise<boolean>;
 let openForm: (url: string, label: string, trigger: HTMLElement) => void;
 let openLegacy: (dialog: HTMLDialogElement) => void;
 let closeLegacy: (dialog: HTMLDialogElement, value?: string) => void;
 
 function ConfirmHost() {
   const [request, setRequest] = useState<any>(null);
-  useEffect(() => { confirmRequest = (message, destructive = true) => new Promise(resolve => setRequest({ message, destructive, resolve })); }, []);
+  useEffect(() => { confirmRequest = (message, destructive = true, purpose) => new Promise(resolve => setRequest({ message, destructive, purpose, resolve })); }, []);
   const finish = (value: boolean) => { request?.resolve(value); setRequest(null); };
   return <AlertDialog open={!!request} onOpenChange={value => { if (!value) finish(false); }}>
     <AlertDialogContent className="ui-confirm" onEscapeKeyDown={() => finish(false)}>
-      <AlertDialogTitle>{request?.destructive ? 'Confirm this action' : 'Leave without saving?'}</AlertDialogTitle>
+      <AlertDialogTitle>{request?.purpose === 'edit-payment' ? 'Review recorded payments' : request?.destructive ? 'Confirm this action' : 'Leave without saving?'}</AlertDialogTitle>
       <AlertDialogDescription className="ui-dialog-description">{request?.message}</AlertDialogDescription>
-      <AlertDialogFooter><AlertDialogCancel data-button-surface onClick={() => finish(false)}>Keep working</AlertDialogCancel><AlertDialogAction data-button-surface className={request?.destructive ? 'ui-danger' : 'ui-button-primary'} onClick={() => finish(true)}>{request?.destructive ? 'Confirm' : 'Discard changes'}</AlertDialogAction></AlertDialogFooter>
+      <AlertDialogFooter><AlertDialogCancel data-button-surface onClick={() => finish(false)}>{request?.purpose === 'edit-payment' ? 'Cancel' : 'Keep working'}</AlertDialogCancel><AlertDialogAction data-button-surface className={request?.destructive ? 'ui-danger' : 'ui-button-primary'} onClick={() => finish(true)}>{request?.purpose === 'edit-payment' ? 'Continue editing' : request?.destructive ? 'Confirm' : 'Discard changes'}</AlertDialogAction></AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>;
 }
@@ -44,7 +44,10 @@ function SnapshotMenu({source}: {source: HTMLElement}) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild><button type="button" className="workspace-icon-button" aria-label={source.dataset.shareLabel || 'Share'}>Share <ChevronDown aria-hidden="true" size={14}/></button></DropdownMenuTrigger>
       <DropdownMenuContent className="ui-menu" align="end" sideOffset={6}>
-        {commands.map((command, index) => <DropdownMenuItem key={index} disabled={command.tagName === 'BUTTON' && (command as HTMLButtonElement).disabled} onSelect={() => command.click()}>{command.textContent}</DropdownMenuItem>)}
+        {commands.map((command, index) => <DropdownMenuItem key={index} disabled={command.tagName === 'BUTTON' && (command as HTMLButtonElement).disabled} onSelect={() => {
+          if (command.hasAttribute('data-snapshot-action')) document.dispatchEvent(new CustomEvent('inprofic:snapshot-action', {detail:{command}}));
+          else command.click();
+        }}>{command.textContent}</DropdownMenuItem>)}
       </DropdownMenuContent>
     </DropdownMenu>
     <span role="status" className="ui-snapshot-feedback">{status}</span>
@@ -56,10 +59,13 @@ function FormHost() {
   const [loaded, setLoaded] = useState(false);
   const [shareSource, setShareSource] = useState<HTMLElement | null>(null);
   const frame = useRef<HTMLIFrameElement>(null);
+  const sizing = useRef<ResizeObserver | null>(null);
+  useEffect(() => () => sizing.current?.disconnect(), []);
   const dirty = useRef(false), submitted = useRef(false), changed = useRef(false), stayOpen = useRef(false);
   const close = async (saved = false) => {
     if (!saved && dirty.current && !(await confirmRequest('Your changes have not been saved. Discard them and return to the list?', false))) return;
     const trigger = model?.trigger;
+    sizing.current?.disconnect();
     setModel(null); dirty.current = false;
     requestAnimationFrame(() => trigger?.isConnected && trigger.focus());
     if (saved || changed.current) window.location.reload();
@@ -67,8 +73,9 @@ function FormHost() {
   useEffect(() => {
     openForm = (url, title, trigger) => {
       dirty.current = false; submitted.current = false; changed.current = false;
-      const compact = /^\/(?:finance\/accounts|sales\/customers|procurement\/suppliers)\//.test(new URL(url).pathname);
-      setLoaded(false); setShareSource(null); setModel({ url, title, trigger, compact });
+      const compact = /^\/(?:finance\/accounts|procurement\/suppliers)\//.test(new URL(url).pathname);
+      sizing.current?.disconnect();
+      setLoaded(false); setShareSource(null); setModel({ url, title, trigger, compact, width: compact ? 42 : 56 });
     };
   }, []);
   useEffect(() => {
@@ -98,6 +105,26 @@ function FormHost() {
           panel = panel.parentElement;
         }
       }
+      sizing.current?.disconnect();
+      const content = doc.querySelector<HTMLElement>('.workspace-content');
+      const dialog = frame.current?.closest<HTMLElement>('.ui-form-dialog');
+      if (content && dialog) {
+        const heading = dialog.querySelector<HTMLElement>('.ui-dialog-heading');
+        const measure = () => {
+          const main = content.closest('main');
+          const style = main ? doc.defaultView!.getComputedStyle(main) : null;
+          const padding = style ? parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) : 32;
+          const height = Math.ceil(content.getBoundingClientRect().height + padding + (heading?.getBoundingClientRect().height || 64) + 2);
+          dialog.style.setProperty('--ui-form-height', `${height}px`);
+        };
+        // Tables and item grids need room; simple record forms stay compact.
+        const wide = !!content.querySelector('table,[data-formset]') || /^\/(?:orders|runs|procurement)\/(?:add|\d+\/(?:edit|approve))\//.test(new URL(model.url).pathname);
+        setModel((previous: any) => previous ? { ...previous, width: wide ? 76 : previous.compact ? 42 : 56 } : previous);
+        sizing.current = new ResizeObserver(measure);
+        sizing.current.observe(content);
+        if (heading) sizing.current.observe(heading);
+        measure();
+      }
       const url = new URL(frame.current!.contentWindow!.location.href);
       const hasError = !!doc.querySelector('[data-message-level~="error"],.errorlist,.field-has-error,[role="alert"][data-error]');
       const success = !!doc.querySelector('[data-message-level~="success"]');
@@ -115,7 +142,7 @@ function FormHost() {
     } catch (_) { /* Keep the dialog available so the user can close a redirected session. */ }
   };
   return <Dialog open={!!model} onOpenChange={value => { if (!value) void close(); }}>
-    <DialogContent className={`ui-form-dialog${model?.compact ? ' ui-form-dialog-compact' : ''}`} onOpenAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => frame.current?.focus()); }} onCloseAutoFocus={event => event.preventDefault()}>
+    <DialogContent style={{ "--ui-form-width": `${model?.width || 56}rem` } as React.CSSProperties} className="ui-form-dialog" onOpenAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => frame.current?.focus()); }} onCloseAutoFocus={event => event.preventDefault()}>
       <div className="ui-dialog-heading"><DialogTitle>{model?.title || 'Edit record'}</DialogTitle><DialogDescription className="sr-only">Complete the form. Validation and saving follow the same business rules as the full page.</DialogDescription>
       {loaded && shareSource && <SnapshotMenu source={shareSource}/>}
       </div>
@@ -265,7 +292,7 @@ function boot() {
     const message = match[2].replace(/\\(['"\\nrt])/g,(_,c) => ({n:'\n',r:'\r',t:'\t'}[c] || c));
     if (await confirmRequest(message)) { form.onsubmit = null; form.removeAttribute('onsubmit'); approved.add(form); form.requestSubmit((event as SubmitEvent).submitter as HTMLElement | null); }
   },true);
-  document.addEventListener('click', event => {
+  document.addEventListener('click', async event => {
     const mouse = event as MouseEvent, link = (event.target as Element).closest<HTMLAnchorElement>('a[href]');
     if (!link || event.defaultPrevented || mouse.button || mouse.metaKey || mouse.ctrlKey || mouse.shiftKey || mouse.altKey || link.target || link.hasAttribute('download') || link.hasAttribute('data-no-dialog')) return;
     const url = new URL(link.href,location.href);
@@ -274,7 +301,9 @@ function boot() {
       return;
     }
     if (url.origin !== location.origin || !FORM_PATH.test(url.pathname) || !openForm) return;
-    event.preventDefault(); openForm(url.href,link.getAttribute('aria-label') || link.textContent?.trim().replace(/^\+\s*/,'') || 'Record form',link);
+    event.preventDefault();
+    if (link.dataset.confirm && !(await confirmRequest(link.dataset.confirm, false, 'edit-payment'))) return;
+    openForm(url.href,link.getAttribute('aria-label') || link.textContent?.trim().replace(/^\+\s*/,'') || 'Record form',link);
   });
   if (embedded) {
     document.documentElement.dataset.uiEmbedded='true';

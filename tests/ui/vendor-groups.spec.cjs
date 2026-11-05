@@ -1,0 +1,106 @@
+const {test,expect} = require('@playwright/test');
+
+for (const mobile of [false,true]) {
+  test(`purchase groups keep optional vendors and independent payments ${mobile ? 'on mobile' : 'on desktop'}`, async ({page},testInfo) => {
+    await page.setViewportSize(mobile ? {width:390,height:844} : {width:1440,height:1000});
+    await page.addInitScript(() => localStorage.setItem('inprofic:essential-privacy-notice:v1','dismissed'));
+    const errors=[]; page.on('pageerror', error=>errors.push(error.message));
+    await page.goto('/accounts/login/ui-fixture/admin/');
+    await page.goto('/procurement/');
+    await page.locator('a[href="/procurement/add/"]').click();
+    const frame = page.frameLocator('iframe[name="inprofic-form-dialog"]');
+    await expect(frame.locator('[name="supplier"]')).toHaveCount(0);
+    await expect(frame.locator('[data-vendor-group="0"] [data-group-account]')).toBeHidden();
+    await expect(frame.locator('[name="vendors-0-supplier"]')).not.toHaveAttribute('required',/.*/);
+    await frame.locator('[name="vendors-0-supplier"]').fill('Grouped UI vendor');
+    const itemChoice = await frame.locator('[name="items-0-item"] option').evaluateAll(options=>options.find(option=>option.textContent.includes('Fixture Flour')).value);
+    async function fillItem(index, total) {
+      await frame.locator(`[name="items-${index}-item"]`).selectOption(itemChoice,{force:true});
+      await frame.locator(`[name="items-${index}-qty"]`).fill('2');
+      await frame.locator(`[name="items-${index}-unit_cost"]`).fill(total);
+    }
+    await fillItem(0,'100');
+    await frame.locator('[data-vendor-group="0"] [data-add-item]').click();
+    await fillItem(1,'100');
+    await frame.locator('[name="vendors-0-payment_status"]').selectOption('partial',{force:true});
+    await expect(frame.locator('[data-vendor-group="0"] [data-group-account]')).toBeVisible();
+    await frame.locator('[name="vendors-0-amount_paid"]').fill('25');
+    const account = await frame.locator('[name="vendors-0-account"] option').evaluateAll(options=>options.find(option=>option.value).value);
+    await frame.locator('[name="vendors-0-account"]').selectOption(account,{force:true});
+    await frame.locator('[data-add-vendor-group]').click();
+    await expect(frame.locator('[name="vendors-1-payment_status"]')).toHaveValue('unpaid');
+    await expect(frame.locator('[data-vendor-group="1"] [data-group-account]')).toBeHidden();
+    await fillItem(2,'200');
+    await frame.locator('[name="vendors-1-payment_status"]').selectOption('paid',{force:true});
+    await expect(frame.locator('[data-vendor-group="1"] [data-group-account]')).toBeVisible();
+    await frame.locator('[name="vendors-1-payment_method"]').selectOption('Cash',{force:true});
+    await frame.locator('[name="vendors-1-account"]').selectOption(account,{force:true});
+    await expect(frame.locator('[data-vendor-group="0"] [data-group-total]')).toHaveText('200.00');
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    await page.screenshot({path:testInfo.outputPath('grouped-form.png')});
+    await page.locator('.ui-dialog-heading').getByRole('button',{name:'Share request',exact:true}).click();
+    await page.getByRole('menuitem',{name:'Save and share',exact:true}).click();
+    await expect(frame.locator('[data-request-preview]')).toBeVisible();
+    await expect(frame.getByText('Grouped UI vendor',{exact:true}).first()).toBeVisible();
+    await expect(frame.getByText(/Partially Paid · Transfer/)).toBeVisible();
+    await expect(frame.getByText(/Paid · Cash/)).toBeVisible();
+    const download = page.waitForEvent('download');
+    await page.locator('.ui-dialog-heading').getByRole('button',{name:'Share request',exact:true}).click();
+    await page.getByRole('menuitem',{name:'Save image',exact:true}).click();
+    await (await download).saveAs(testInfo.outputPath('grouped-snapshot.png'));
+    expect(errors).toEqual([]);
+  });
+}
+
+test('paid drafts warn before edit/delete and modal sharing copies in the focused document', async ({page}) => {
+  await page.addInitScript(() => localStorage.setItem('inprofic:essential-privacy-notice:v1','dismissed'));
+  await page.goto('/accounts/login/ui-fixture/admin/');
+  await page.goto('/procurement/');
+  await page.locator('a[href="/procurement/add/"]').click();
+  const frame = page.frameLocator('iframe[name="inprofic-form-dialog"]');
+  await frame.locator('[name="vendors-0-supplier"]').fill('Warning copy vendor');
+  const choice = await frame.locator('[name="items-0-item"] option').evaluateAll(options=>options.find(option=>option.value).value);
+  await frame.locator('[name="items-0-item"]').selectOption(choice,{force:true});
+  await frame.locator('[name="items-0-qty"]').fill('2');
+  await frame.locator('[name="items-0-unit_cost"]').fill('100');
+  await frame.locator('[name="vendors-0-payment_status"]').selectOption('paid',{force:true});
+  const account = await frame.locator('[name="vendors-0-account"] option').evaluateAll(options=>options.find(option=>option.value).value);
+  await frame.locator('[name="vendors-0-account"]').selectOption(account,{force:true});
+  await page.locator('.ui-dialog-heading').getByRole('button',{name:'Share request',exact:true}).click();
+  await page.getByRole('menuitem',{name:'Save and share',exact:true}).click();
+  await expect(frame.locator('[data-request-preview]')).toBeVisible();
+  await page.evaluate(()=>{
+    window.__copied=[];
+    Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__copied.push({text,focused:document.hasFocus()});}}});
+  });
+  await frame.locator('[data-request-preview]').evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async()=>{throw new Error('Document is not focused');}}}));
+  await page.locator('.ui-dialog-heading').getByRole('button',{name:'Share request',exact:true}).click();
+  await page.getByRole('menuitem',{name:'Copy text',exact:true}).click();
+  await expect(page.locator('.ui-snapshot-feedback')).toHaveText('Text copied.');
+  const copied = await page.evaluate(()=>window.__copied);
+  expect(copied).toHaveLength(1);
+  expect(copied[0].focused).toBe(true);
+  expect(copied[0].text).toContain('Warning copy vendor');
+  await page.locator('.ui-form-dialog').getByRole('button',{name:'Close',exact:true}).click();
+  await page.goto('/procurement/');
+  const row = page.locator('.procurement-row').filter({hasText:'Warning copy vendor'});
+  await expect(row.getByRole('link',{name:'PDF',exact:true})).toBeVisible();
+  await row.getByRole('link',{name:'Edit request',exact:true}).click();
+  await expect(page.getByRole('alertdialog')).toContainText('Editing will preserve recorded payments');
+  await page.getByRole('button',{name:'Cancel',exact:true}).click();
+  await expect(page.locator('.ui-form-dialog')).not.toBeVisible();
+  await row.getByRole('link',{name:'Edit request',exact:true}).click();
+  await page.getByRole('button',{name:'Continue editing',exact:true}).click();
+  await expect(frame.getByText('This request has recorded payments.',{exact:false})).toBeVisible();
+  await frame.locator('[name="items-0-unit_cost"]').fill('150');
+  await frame.getByRole('button',{name:'Submit request',exact:true}).click();
+  await expect(page.locator('.ui-form-dialog')).not.toBeVisible();
+  const updated = page.locator('.procurement-row').filter({hasText:'Warning copy vendor'});
+  await updated.getByRole('button',{name:'Delete',exact:true}).click();
+  await expect(page.getByRole('alertdialog')).toContainText('does not issue a refund');
+  await page.getByRole('button',{name:'Keep working',exact:true}).click();
+  await expect(updated).toBeVisible();
+  await updated.getByRole('button',{name:'Delete',exact:true}).click();
+  await page.getByRole('button',{name:'Confirm',exact:true}).click();
+  await expect(page.locator('.procurement-row').filter({hasText:'Warning copy vendor'})).toHaveCount(0);
+});

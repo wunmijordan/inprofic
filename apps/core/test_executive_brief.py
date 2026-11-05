@@ -101,6 +101,7 @@ class ExecutiveReportTests(BriefBase):
             args = render.call_args.kwargs
             self.assertLessEqual(len(args['rows']), 8)
             self.assertEqual(args['max_rows'], 8)
+            self.assertEqual(args['scope'], '')
             import io
             from PIL import Image
             image = Image.open(io.BytesIO(response.content))
@@ -116,3 +117,25 @@ class ExecutiveReportTests(BriefBase):
             self.assertNotIn('Production · selected period', text)
             self.assertNotIn('Market Stock shelf life', text)
             self.assertNotIn('recipe this month', text)
+
+    def test_stock_badges_precede_items_and_unconfigured_thresholds_are_omitted(self):
+        for name, stock, reorder in [('OK material', 20, 10), ('Warning material', 12, 10),
+                                      ('Low material', 5, 10), ('Empty material', 0, 10),
+                                      ('No threshold', 30, 0)]:
+            RawMaterial.objects.create(business=self.business, name=name, stock=stock, reorder_level=reorder, usage_unit='kg')
+        text = self.report()['text']
+        for badge, name in [('🟢 OK', 'OK material'), ('🟡 WARNING', 'Warning material'),
+                            ('🔴 LOW', 'Low material'), ('⚪ OUT OF STOCK', 'Empty material')]:
+            self.assertIn(f'{badge} · {name}:', text)
+        self.assertIn('🟢 OK · No threshold: 30 kg', text)
+        self.assertNotIn('not configured', text)
+        self.assertNotIn('Ledger scope:', text)
+        self.assertNotIn('Ledger controls', text)
+
+    def test_configured_ledger_scope_remains_explicit_in_shared_reports(self):
+        from .models import LedgerCutover
+        from . import ledger
+        LedgerCutover.raw_objects.create(business=self.business, cutover_date=TODAY)
+        with patch.object(ledger, 'current_scope', return_value='all'):
+            text = self.report()['text']
+        self.assertIn('Combined ledger', text)

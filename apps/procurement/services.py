@@ -34,21 +34,84 @@ def request_orders(po, *, lock=False):
     return qs.order_by('pk')
 
 
-def request_editable(orders, *, posted_references=None):
-    from core.models import FinancialTransaction
+def request_editable(orders):
+    return all(po.status in {'draft', 'ordered'} for po in orders)
+
+
+def order_audit_state(po):
+    from decimal import Decimal
+    items = list(po.items.all())
+    return {'supplier': po.supplier, 'date': str(po.date), 'status': po.status,
+            'payment_status': po.payment_status, 'account_id': po.account_id,
+            'payment_method': po.payment_method,
+            'total': str(sum((item.qty * item.unit_cost for item in items), Decimal('0'))),
+            'items': [{'id': item.pk, 'raw_material_id': item.raw_material_id, 'finished_good_id': item.finished_good_id,
+                       'qty': str(item.qty), 'unit_cost': str(item.unit_cost)} for item in items]}
+
+
+def recorded_vendor_payments(orders):
+    """Actual settlement, across periods, independent of the request's label."""
+    from decimal import Decimal
+    from core.models import AuditLog, FinancialTransaction
     orders = list(orders)
-    if any(po.status not in {'draft', 'ordered'} or po.payment_status != 'unpaid' or po.payments.exists() for po in orders):
-        return False
-    references = [ref for po in orders for ref in (f'PO-{po.pk}', f'PO-{po.pk}-INITIAL')]
-    if posted_references is not None:
-        return not any(ref in posted_references for ref in references)
-    return not FinancialTransaction.raw_objects.filter(
-        business_id=orders[0].business_id,
-        reference__in=references,
-    ).exists()
+    if not orders:
+        return {}, []
+    cash = list(FinancialTransaction.raw_objects.filter(
+        business_id=orders[0].business_id, reference__in=[f'PO-{po.pk}' for po in orders],
+        category='Procurement', transaction_type=FinancialTransaction.OUTFLOW, reversed=False,
+    ))
+    paid = {po.pk: sum((payment.amount for payment in po.payments.all()), Decimal('0')) for po in orders}
+    lookup = {f'PO-{po.pk}': po.pk for po in orders}
+    payment_ids = [str(payment.pk) for po in orders for payment in po.payments.all()]
+    # User-entered references are not proof that a cash entry was linked.
+    links = AuditLog.raw_objects.filter(business_id=orders[0].business_id, model_name='SupplierPayment',
+        action='create', object_id__in=payment_ids, description='Linked existing procurement cash to vendor settlement')
+    represented = {(log.metadata.get('purchase_order_id'), log.metadata.get('cash_entry_id')) for log in links}
+    unmatched = [entry for entry in cash if (lookup[entry.reference], entry.pk) not in represented]
+    for entry in unmatched:
+        paid[lookup[entry.reference]] += entry.amount
+    return paid, unmatched
 
 
-def describe_request(orders, *, posted_references=None):
+def link_direct_vendor_payments(orders, user):
+    """Link existing cash to settlement without posting a second cash movement."""
+    from core import ledger
+    from core.services import audit
+    from .models import SupplierPayment
+    orders = list(orders)
+    _paid, cash = recorded_vendor_payments(orders)
+    lookup = {f'PO-{po.pk}': po for po in orders}
+    for entry in cash:
+        po = lookup[entry.reference]
+        with ledger.bypass():  # Metadata for an existing historical cash entry.
+            payment = SupplierPayment.raw_objects.create(
+                business_id=po.business_id, created_by=user, date=entry.date,
+                supplier=po.supplier or 'Unnamed supplier', supplier_master=po.supplier_master,
+                amount=entry.amount, payment_method=entry.payment_method,
+                reference=f'PO-{po.pk}-CASH-{entry.pk}', account=entry.account, purchase_order=po,
+                notes=f'Settlement link for existing cash entry #{entry.pk}; original reference {entry.reference}')
+            audit(po.business, user, 'create', payment, 'Linked existing procurement cash to vendor settlement',
+                  {'cash_entry_id': entry.pk, 'purchase_order_id': po.pk, 'amount': str(entry.amount), 'account_id': entry.account_id})
+
+
+def retain_deleted_request_payments(orders, user):
+    """Deleting an unapproved request never claims that paid cash was refunded."""
+    from core.services import audit
+    from .models import SupplierPayment
+    orders = list(orders)
+    link_direct_vendor_payments(orders, user)
+    for po in orders:
+        # Query again because materializing settlement links invalidates prefetches.
+        payments = SupplierPayment.raw_objects.filter(business_id=po.business_id, purchase_order=po)
+        for payment in payments:
+            audit(po.business, user, 'update', payment, 'Purchase request deleted; payment retained unallocated',
+                  {'purchase_order_id': po.pk, 'amount': str(payment.amount), 'reference': payment.reference})
+            payment.purchase_order = None
+            payment.notes = f'Unallocated after deleting PO #{po.pk}. {payment.notes}'[:255]
+            payment.save(update_fields=['purchase_order', 'notes', 'updated_at'])
+
+
+def describe_request(orders):
     """Attach presentation aggregates without changing vendor accounting records."""
     from decimal import Decimal
     orders = list(orders)
@@ -67,7 +130,9 @@ def describe_request(orders, *, posted_references=None):
     root.request_status_label = dict(root.STATUS_CHOICES).get(root.request_status, 'Partially received')
     payments = {po.payment_status for po in orders if po.total > 0} or {root.payment_status}
     root.request_payment = next(iter(payments)) if len(payments) == 1 else 'partial'
-    root.request_editable = request_editable(orders, posted_references=posted_references)
+    root.request_has_payments = any(po.payment_status in {'paid', 'partial'} or po.payments.exists() for po in orders)
+    root.request_editable = request_editable(orders)
+    root.request_lock_reason = 'Approved or received requests are locked.' if not root.request_editable else ''
     return root
 
 

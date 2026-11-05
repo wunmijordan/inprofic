@@ -14,6 +14,9 @@
     <div><dt class="text-xs text-stone-500">Payment</dt><dd class="mt-1">{{ summary.payment|default:"Unpaid" }}</dd></div>
     {% if obj.approved_at %}<div><dt class="text-xs text-stone-500">Approved by</dt><dd class="mt-1">{{ obj.approved_by|default:"A former user" }} · {{ obj.approved_at|date:"j M Y, H:i" }}</dd></div>{% endif %}
   </dl>
+  <div class="mb-5 grid gap-3 sm:grid-cols-2">
+    {% for group in summary.vendor_groups %}<section class="workspace-card p-3"><h3 class="font-semibold">{{ group.name }}</h3><p class="mt-1 text-sm">{{ group.payment }} · {{ group.method }}{% if group.account %} · {{ group.account }}{% endif %}</p><p class="mt-1 text-sm">Total {{ group.total|money:biz.currency_symbol }} · Paid {{ group.paid|money:biz.currency_symbol }} · Balance {{ group.balance|money:biz.currency_symbol }}</p></section>{% endfor %}
+  </div>
   <div class="overflow-x-auto rounded-xl border border-stone-200">
     <table class="w-full text-sm">
       <thead><tr><th class="p-3 text-left">Item</th><th class="p-3 text-right">Quantity</th><th class="p-3 text-right">Whole-unit cost</th><th class="p-3 text-right">Amount</th></tr></thead>

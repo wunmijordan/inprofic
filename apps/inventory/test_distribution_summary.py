@@ -128,7 +128,9 @@ class DistributionSummaryTests(ToolBase):
         totals = data['distribution_settlement']['totals']
         self.assertEqual(totals, dict(gross=100, returned=30, net=70, paid=50,
                                      outstanding=50, net_due=20, refund_review=0))
-        self.assertIn('Net distribution value: ', data['distribution_share_text'])
+        self.assertIn('Expected value after returns: ₦70.00', data['distribution_share_text'])
+        self.assertIn('Expected balance: ₦20.00', data['distribution_share_text'])
+        self.assertNotIn('ledger', data['distribution_share_text'].lower())
         self.assertIn('Ada', data['distribution_share_text'])
         sale.refresh_from_db()
         self.assertEqual(sale.total, 100)
@@ -243,3 +245,12 @@ class DistributionSummaryTests(ToolBase):
         self.assertIn('Payment methods:\n• Transfer: '+self.biz.currency_symbol+'10.00\n',text)
         self.assertTrue(text.splitlines()[-1].startswith('http://testserver/inventory/market-stock/?date='))
         self.assertTrue(text.endswith('#distribution-summary'))
+
+    def test_unused_ledger_labels_are_hidden_from_both_snapshot_types(self):
+        from unittest.mock import patch
+        self.client.force_login(self.admin)
+        for kind, renderer in [('stock', 'render_distribution_snapshot'), ('returns', 'render_report_snapshot')]:
+            with patch('inventory.distribution_summary.' + renderer, return_value=b'png') as render:
+                response = self.client.get(reverse('market_stock_snapshot', args=[kind]))
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(render.call_args.kwargs['scope'], '')

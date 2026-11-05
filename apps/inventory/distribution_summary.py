@@ -92,10 +92,10 @@ def distribution_text(*, business, title, day, intro, rows, allocations, settlem
         lines += ['*Money summary*',
                   f"• Distributed invoice value: {money(totals['gross'])}",
                   f"• Returned value: {money(totals['returned'])}",
-                  f"• Net distribution value: {money(totals['net'])}",
+                  f"• Expected value after returns: {money(totals['net'])}",
                   f"• Collected to date: {money(totals['paid'])}",
                   f"• Invoice outstanding: {money(totals['outstanding'])}",
-                  f"• Balance after return adjustment (estimate): {money(totals['net_due'])}",
+                  f"• Expected balance: {money(totals['net_due'])}",
                   f"• Overpayment / refund review: {money(totals['refund_review'])}", '']
     lines += ['*Stock by product*']
     for row in rows:
@@ -110,7 +110,7 @@ def distribution_text(*, business, title, day, intro, rows, allocations, settlem
                       f"• Expired / blocked: {quantity(row['expired'], unit)}"]
         lines.append('')
     if not rows:
-        lines += ['No stock in this ledger scope.', '']
+        lines += ['No stock recorded.', '']
     customers, physical = {}, []
     for allocation in allocations:
         if allocation['kind'] == 'store':
@@ -131,10 +131,10 @@ def distribution_text(*, business, title, day, intro, rows, allocations, settlem
             lines += ['', f"Invoice #{invoice['sale']} · {invoice['date']:%d %b %Y}",
                       f"• Distributed value: {money(invoice['gross'])}",
                       f"• Returned value: {money(invoice['returned'])}",
-                      f"• Net value: {money(invoice['net'])}",
+                      f"• Expected value after returns: {money(invoice['net'])}",
                       f"• Collected to date: {money(invoice['paid'])}",
                       f"• Outstanding: {money(invoice['outstanding'])}",
-                      f"• After return adjustment (estimate): {money(invoice['net_due'])}",
+                      f"• Expected balance: {money(invoice['net_due'])}",
                       f"• Overpayment / refund review: {money(invoice['refund_review'])}"]
             methods = invoice['payment_methods']
             if methods:
@@ -145,7 +145,7 @@ def distribution_text(*, business, title, day, intro, rows, allocations, settlem
                 lines.append('Payments: none recorded.')
         lines.append('')
     if not customers:
-        lines += ['No customer distributions recorded for this date in this ledger scope.', '']
+        lines += ['No customer distributions recorded for this date.', '']
     if physical:
         lines += ['*Physical Store transfers*']
         lines += [f"• {row['product']}: {quantity(row['quantity'], row['unit'])}" for row in physical]
@@ -172,7 +172,7 @@ def recorded_returns_text(*, business, day, intro, rows, url):
                   f"• Date: {row['date']:%d %b %Y}", f"• Condition: {row['condition']}",
                   f"• Reason: {row['reason'] or 'Not recorded'}", '']
     if not rows:
-        lines += ['No distribution returns recorded for this date in this ledger scope.', '']
+        lines += ['No distribution returns recorded for this date.', '']
     lines += ['*Open recorded returns*', 'Sign-in required.', url]
     return '\n'.join(lines)
 
@@ -182,7 +182,10 @@ def distribution_summaries(request, *, lots=None):
     ui = vertical_config(business)
     channel = ui['commerce_channels']['distribution'].replace(' Order', '')
     title = 'Market Stock Distribution' if business.uses_production else f'{channel} stock distribution'
-    intro = f"{business.name} · {timezone.localtime():%d %b %Y %H:%M %Z} · {str(ledger.current_scope() or 'live').capitalize()} ledger"
+    intro = f"{business.name} · {timezone.localtime():%d %b %Y %H:%M %Z}"
+    scope = ledger.report_scope_label(business)
+    if scope:
+        intro += f' · {scope}'
     day = report_date(request)
     products, destinations = {}, {}
 
@@ -288,15 +291,15 @@ def distribution_snapshot(request, kind):
                      for key, label, detail in [
                          ('gross', 'Distributed value', 'Original invoice selling value'),
                          ('returned', 'Returned value', 'Credit review; selling value'),
-                         ('net', 'Net distribution value', 'After returns, before costs'),
+                         ('net', 'Expected value', 'Distributed value less returns'),
                          ('paid', 'Collected to date', 'Payments across all methods'),
-                         ('outstanding', 'Invoice outstanding', f"After returns: {request.business.currency_symbol}{totals['net_due']:,.2f}"),
+                         ('net_due', 'Expected balance', 'Expected value less collections'),
                          ('refund_review', 'Refund review', 'Collected above net retained value'),
                      ]]
         image = render_distribution_snapshot(
             business=request.business, title=data['distribution_title'], day=day,
             products=products, cards=cards, url=url + '#distribution-summary',
-            scope=str(ledger.current_scope() or 'live').capitalize() + ' ledger')
+            scope=ledger.report_scope_label(request.business))
     else:
         rows = [{'label': r['product'], 'value': f"{r['quantity']:,.2f} {r['unit']}",
                  'detail': f"{r['date']:%d %b %Y} · Sale #{r['sale']} · {r['customer']} · {r['condition']}"}
@@ -306,6 +309,6 @@ def distribution_snapshot(request, kind):
             rows=rows, max_rows=14, total_label='Recorded returns', total=str(len(rows)),
             footer='Actual recorded returns only', url=url + '#distribution-returns',
             link_heading='Open INPROFIC for the complete summary',
-            scope=str(ledger.current_scope() or 'live').capitalize()+' ledger',
+            scope=ledger.report_scope_label(request.business),
             stamp='As of '+timezone.localtime().strftime('%d %b %H:%M'))
     return snapshot_response(image, 'distribution-'+kind)

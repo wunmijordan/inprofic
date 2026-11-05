@@ -122,6 +122,7 @@ def inventory_alert_feed(*, business, user, performance_request=None):
             "sound_enabled": False, "sound_repeat_minutes": 0, "sound_tune": settings.sound_tune,
             "alerts": [], "count": 0, "raw_count": 0, "finished_count": 0,
             "raw_total": 0, "finished_total": 0, "low_total": 0,
+            "condition_totals": {},
         }
 
     current = _condition_rows(business, performance_request=performance_request)
@@ -223,6 +224,10 @@ def inventory_alert_feed(*, business, user, performance_request=None):
         "raw_total": raw_total,
         "finished_total": finished_total,
         "low_total": low_total,
+        "condition_totals": {
+            alert_type: sum(1 for current_type, _ in enabled_current if current_type == alert_type)
+            for alert_type in ALERT_META
+        },
     }
 
 

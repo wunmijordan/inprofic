@@ -14,7 +14,10 @@ what was borrowed and what was deliberately left out).
   and an optional batch size.
 - **Procurement** — submit a purchase request, have a business administrator
   approve quantities, then receive approved goods. Reductions and removals
-  retain requested quantities and reasons. Receipt converts units and updates
+  retain requested quantities and reasons. Group items by optional saved or freely
+  typed vendor names, with independent payment status, method, account and
+  advances per group. Shared snapshots and text retain each group’s payment
+  breakdown. Receipt converts units and updates
   stock/cost once. Advance payments remain separate from stock receipt.
 - **Wholesale & retail** — stock-first workspaces procure sellable products
   directly, track every supplier arrival per product, and sell from warehouse

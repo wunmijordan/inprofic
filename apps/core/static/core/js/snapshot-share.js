@@ -6,11 +6,24 @@
     if (!response.ok || !response.headers.get('Content-Type')?.startsWith('image/png')) throw new Error('Could not load the snapshot. Refresh the page and try again.');
     return [new File([await response.blob()], (root.dataset.filename || 'summary') + '.png', {type:'image/png'})];
   }
-  document.addEventListener('click', async event => {
-    const button = event.target.closest('[data-snapshot-action]'); if (!button) return;
+  async function copyText(text) {
+    try {
+      if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return; }
+    } catch (_) { /* Use the focused document's legacy copy when the API is unavailable. */ }
+    const active = document.activeElement;
+    const input = document.createElement('textarea');
+    input.value = text; input.setAttribute('aria-label', 'Summary text');
+    input.style.cssText = 'position:fixed;left:-9999px;top:0';
+    (document.querySelector('[role="dialog"][data-state="open"]') || document.body).append(input);
+    try {
+      input.focus({preventScroll:true}); input.select();
+      if (!document.execCommand('copy')) throw new Error('Could not copy text. Try WhatsApp text instead.');
+    } finally { input.remove(); active?.focus?.({preventScroll:true}); }
+  }
+  async function runAction(button) {
     const root = button.closest('[data-snapshot-share]');
     const status = root.querySelector('[data-snapshot-status]');
-    const text = JSON.parse(document.getElementById(root.dataset.textId).textContent);
+    const text = JSON.parse(root.ownerDocument.getElementById(root.dataset.textId).textContent);
     const action = button.dataset.snapshotAction;
     const textUrl = 'https://wa.me/?text=' + encodeURIComponent(text);
     if (action === 'text') { window.open(textUrl, '_blank', 'noopener'); return; }
@@ -19,7 +32,7 @@
     // Reserve a window in the user gesture, before asynchronous image creation.
     if (action === 'view') { preview = window.open('about:blank', '_blank'); if (preview) preview.opener = null; }
     try {
-      if (action === 'copy') { await navigator.clipboard.writeText(text); status.textContent = 'Text copied.'; return; }
+      if (action === 'copy') { await copyText(text); status.textContent = 'Text copied.'; return; }
       status.textContent = 'Preparing snapshot…';
       const files = await snapshots(root);
       if (action === 'share' && navigator.canShare?.({files})) {
@@ -35,7 +48,7 @@
       }
       if (action === 'share') {
         try {
-          await navigator.clipboard.writeText(text);
+          await copyText(text);
           status.textContent = 'Image saved and full text copied. Attach the image and paste the report in WhatsApp.';
         } catch (_) {
           status.textContent = 'Image saved. Use Copy text for the full report, then attach the image in WhatsApp.';
@@ -45,5 +58,14 @@
       if (error.name === 'AbortError') status.textContent = '';
       else { preview?.close(); status.textContent = error.message || 'Unable to prepare the snapshot. Use WhatsApp text instead.'; }
     } finally { button.disabled = false; }
+  }
+  document.addEventListener('click', event => {
+    const button = event.target.closest('[data-snapshot-action]');
+    if (button) void runAction(button);
+  });
+  // Outer modal/menu gestures must use the focused document, even when the
+  // authorised snapshot data and source controls live inside an iframe.
+  document.addEventListener('inprofic:snapshot-action', event => {
+    if (event.detail?.command?.matches('[data-snapshot-action]')) void runAction(event.detail.command);
   });
 })();

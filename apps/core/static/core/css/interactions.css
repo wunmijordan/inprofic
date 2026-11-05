@@ -119,9 +119,9 @@ html body .ui-form-dialog {
   gap: 0!important;
   padding: 0!important;
   width: calc(100vw - 3rem)!important;
-  max-width: 76rem!important;
-  height: calc(100dvh - 3rem);
-  max-height: 58rem;
+  max-width: var(--ui-form-width,56rem)!important;
+  height: var(--ui-form-height,36rem);
+  max-height: min(58rem,calc(100dvh - 3rem));
   overflow: hidden
 }
 .ui-dialog-heading {
@@ -131,10 +131,6 @@ html body .ui-form-dialog {
   align-items: center;
   justify-content: space-between;
   gap: 1rem
-}
-html body .ui-form-dialog-compact {
-  max-width: 42rem!important;
-  max-height: 48rem
 }
 .ui-dialog-heading h2 {
   font-size: 1rem!important;

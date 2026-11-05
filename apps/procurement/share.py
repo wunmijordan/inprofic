@@ -44,7 +44,7 @@ def status_label(po):
 def summarize(po, business, url=""):
     """Plain data for one request: lines with requested and approved amounts, current stock, and totals."""
     from .services import describe_request, request_orders
-    vendors = list(request_orders(po).select_related('approved_by').prefetch_related('items__raw_material', 'items__finished_good', 'payments'))
+    vendors = list(request_orders(po).select_related('approved_by', 'account').prefetch_related('items__raw_material', 'items__finished_good', 'payments'))
     display = describe_request(vendors)
     po = display
     symbol = business.currency_symbol
@@ -54,15 +54,21 @@ def summarize(po, business, url=""):
         requested = item.requested_qty if item.requested_qty is not None else item.qty
         removed = item.qty == 0
         lines.append({
-            "vendor": vendor.supplier or "Supplier not named", "name": item.item_name, "unit": item.stock_unit, "requested": requested, "approved": item.qty,
+            "group_id": vendor.pk, "vendor": vendor.supplier or "Vendor unnamed", "name": item.item_name, "unit": item.stock_unit, "requested": requested, "approved": item.qty,
             "unit_cost": item.unit_cost, "total": item.qty * item.unit_cost, "removed": removed,
             "reduced": item.qty < requested, "reason": (item.approval_reason or "").strip(),
             "stock": stock_status(item.stock_item),
         })
         requested_total += requested * item.unit_cost
         approved_total += item.qty * item.unit_cost
+    vendor_groups = [{
+        'id': vendor.pk, 'name': vendor.supplier or f'Purchase group {index + 1} (vendor unnamed)',
+        'total': vendor.total, 'payment': vendor.get_payment_status_display(),
+        'method': vendor.get_payment_method_display(), 'account': str(vendor.account) if vendor.account_id else '',
+        'paid': vendor.total - vendor.payment_balance, 'balance': vendor.payment_balance,
+    } for index, vendor in enumerate(vendors)]
     return {
-        "po": po, "business": business, "symbol": symbol, "lines": lines, "number": po.pk,
+        "vendor_groups": vendor_groups, "po": po, "business": business, "symbol": symbol, "lines": lines, "number": po.pk,
         "supplier": display.request_supplier or "Supplier not named", "date": po.date,
         "status": 'pending' if display.request_status in {'draft', 'ordered'} else display.request_status,
         "status_label": 'Awaiting approval' if display.request_status in {'draft', 'ordered'} else display.request_status_label,
@@ -85,14 +91,22 @@ def share_text(summary, url=None):
     url = s.get("url", "") if url is None else url
     out = [f"*Purchase request #{s['number']}*", f"{s['business'].name} · {s['date']:%d %b %Y}",
            f"Supplier: {s['supplier']}", f"Status: {s['status_label']}", ""]
+    group_lookup = {group['id']: group for group in s['vendor_groups']}
+    current_group = None
     for line in s["lines"]:
+        if line['group_id'] != current_group:
+            current_group = line['group_id']
+            group = group_lookup[current_group]
+            out += ['', f"*{group['name']}*", f"Payment: {group['payment']} · {group['method']}"]
+            if group['account']:
+                out.append(f"Account: {group['account']}")
+            out += [f"Group total: {_money(group['total'], symbol)} · Paid: {_money(group['paid'], symbol)} · Balance: {_money(group['balance'], symbol)}"]
         if line["removed"]:
             out.append(f"• {line['name']}: removed (was {_qty(line['requested'])} {line['unit']})")
         else:
             note = f" (requested {_qty(line['requested'])})" if line["reduced"] else ""
             out.append(f"• {line['name']}: {_qty(line['approved'])} {line['unit']} × {_money(line['unit_cost'], symbol)} "
                        f"= {_money(line['total'], symbol)}{note}")
-        out.append(f"   Vendor: {line['vendor']}")
         out.append(f"   Stock now: {stock_line(line['stock'])}")
     out.append(f"_Stock as of {s['stock_time']}_")
     out.append("")
@@ -124,7 +138,9 @@ def render_snapshot(summary):
     row_h, header_h = 132, 250
     total_h = 150 + (36 if s["changed"] else 0)
     link_h = 230 if s["url"] else 70
-    height = header_h + max(len(shown), 1) * row_h + (56 if hidden else 0) + total_h + link_h + 80
+    group_count = len({line['group_id'] for line in shown})
+    group_h = 110
+    height = group_count * (group_h + 58) + header_h + max(len(shown), 1) * row_h + (56 if hidden else 0) + total_h + link_h + 80
     image = Image.new("RGB", (WIDTH, height), PAPER)
     d = ImageDraw.Draw(image)
     inner = WIDTH - 2 * PAD
@@ -140,7 +156,18 @@ def render_snapshot(summary):
     d.text((WIDTH - PAD, 192), "Amount", font=f_small, fill=MUTED, anchor="ra")
     d.line([PAD, 232, WIDTH - PAD, 232], fill=LINE, width=2)
     y = header_h
-    for line in shown:
+    group_lookup = {group['id']: group for group in s['vendor_groups']}
+    current_group = None
+    for index, line in enumerate(shown):
+        if line['group_id'] != current_group:
+            current_group = line['group_id']
+            group = group_lookup[current_group]
+            d.text((PAD, y + 10), _fit(d, group['name'], f_name, inner), font=f_name, fill=INK)
+            payment = f"{group['payment']} · {group['method']}" + (f" · {group['account']}" if group['account'] else '')
+            d.text((PAD, y + 46), _fit(d, payment, f_small, inner), font=f_small, fill=MUTED)
+            amounts = f"Total {_money(group['total'], symbol)} · Paid {_money(group['paid'], symbol)} · Balance {_money(group['balance'], symbol)}"
+            d.text((PAD, y + 78), _fit(d, amounts, f_tiny, inner), font=f_tiny, fill=MUTED)
+            y += group_h
         muted = line["removed"]
         d.text((WIDTH - PAD, y + 16), "Removed" if muted else _money(line["total"], symbol), font=f_name, fill=MUTED if muted else INK, anchor="ra")
         d.text((PAD, y + 16), _fit(d, line["name"], f_name, inner - 280), font=f_name, fill=MUTED if muted else INK)
@@ -150,7 +177,6 @@ def render_snapshot(summary):
             detail = f"{_qty(line['approved'])} {line['unit']} × {_money(line['unit_cost'], symbol)}"
             if line["reduced"]:
                 detail += f"  ·  requested {_qty(line['requested'])}"
-        detail += f" · {line['vendor']}"
         d.text((PAD, y + 56), _fit(d, detail, f_small, inner), font=f_small, fill=MUTED)
         stock = line["stock"]
         colour = STOCK_COLORS.get(stock["status"], MUTED)
@@ -159,6 +185,11 @@ def render_snapshot(summary):
         d.text((PAD + 26, y + 94), _fit(d, stock_text, f_small, inner - 26), font=f_small, fill=colour)
         d.line([PAD, y + row_h - 2, WIDTH - PAD, y + row_h - 2], fill=LINE, width=1)
         y += row_h
+        if index == len(shown) - 1 or shown[index + 1]['group_id'] != current_group:
+            group = group_lookup[current_group]
+            d.text((PAD, y + 10), 'Group total', font=f_small, fill=INK)
+            d.text((WIDTH - PAD, y + 8), _money(group['total'], symbol), font=f_name, fill=INK, anchor='ra')
+            y += 58
     if not shown:
         d.text((PAD, y + 24), "No items on this request.", font=f_body, fill=MUTED)
         y += row_h
@@ -171,7 +202,7 @@ def render_snapshot(summary):
     if s["changed"]:
         d.text((PAD + 32, ty), f"Requested total {_money(s['requested_total'], symbol)}", font=f_small, fill=MUTED)
         ty += 36
-    d.text((PAD + 32, ty + 6), "Total", font=f_body, fill=MUTED)
+    d.text((PAD + 32, ty + 6), "Grand total", font=f_body, fill=MUTED)
     d.text((WIDTH - PAD - 32, ty - 2), _money(s["total"], symbol), font=f_total, fill=ACCENT, anchor="ra")
     foot = s["status_label"] + (f" by {s['approved_by']}" if s["approved_by"] else "")
     if s["payment"]:

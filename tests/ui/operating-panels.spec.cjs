@@ -251,6 +251,7 @@ test('post-distribution review stays within the mobile page and shares financial
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({path:'/tmp/inprofic-session-captures/distribution-review-mobile.png',fullPage:true});
   const payload = await page.locator('#distribution-share').evaluate(el => JSON.parse(el.textContent));
-  expect(payload).toContain('Net distribution value');
+  expect(payload).toContain('Expected value after returns');
+  expect(payload).toContain('Expected balance');
   expect(payload).toContain('Invoice outstanding');
 });

@@ -345,6 +345,16 @@ class PurchaseApprovalTests(TestCase):
         self.assertEqual(po.status, "draft")
         self.assertFalse(StockMovement.raw_objects.filter(reference=f"PO-{po.pk}").exists())
 
+    def test_existing_request_details_do_not_take_write_locks(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        po, line = self.request_order()
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(reverse("po_approve", args=[po.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.product.name)
+        self.assertFalse(any("FOR UPDATE" in query["sql"] for query in queries))
+
     def test_reduction_requires_reason_and_cannot_increase(self):
         po, line = self.request_order()
         url = reverse("po_approve", args=[po.pk])

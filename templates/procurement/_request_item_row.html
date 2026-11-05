@@ -1,0 +1,8 @@
+<tr class="border-t border-stone-200" data-row>
+  <td class="px-2 py-2">{{ f.id }}{{ f.vendor_group }}<span hidden>{{ f.DELETE }}</span>{{ f.item }}{{ f.non_field_errors }}{{ f.item.errors }}<div class="po-stock" data-stock-note aria-live="polite"></div></td>
+  <td class="px-2 py-2">{{ f.qty }}{{ f.qty.errors }}</td>
+  <td class="px-2 py-2">{{ f.unit_cost }}{{ f.unit_cost.errors }}</td>
+  <td class="px-2 py-2 text-right text-xs font-mono derived-unit-cost-display">—</td>
+  <td class="px-2 py-2 text-right text-xs font-mono current-cost-display">—</td>
+  <td class="px-2 py-2"><button type="button" class="workspace-action text-xs" data-remove-item>Remove</button></td>
+</tr>

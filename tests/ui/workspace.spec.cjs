@@ -255,3 +255,26 @@ test('Live and Backlog actions stay inside the period card on mobile and desktop
     await page.request.post('/ledger/action/', {form:{csrfmiddlewaretoken:token,action:'revert_split'}});
   }
 });
+
+test('form dialogs fit simple content and give item tables more room', async ({page}) => {
+  await page.setViewportSize({width:1440,height:1000});
+  await admin(page);
+  const frame = await openAccount(page);
+  const dialog = page.locator('.ui-form-dialog');
+  await expect.poll(async () => (await dialog.boundingBox()).height).toBeLessThan(800);
+  const compact = await dialog.boundingBox();
+  expect(compact.width).toBeLessThanOrEqual(673);
+  // Validation, added rows and conditional fields can change the content size.
+  await frame.locator('.workspace-content').evaluate(content => {
+    const extra = document.createElement('div');
+    extra.style.height = '200px';
+    extra.dataset.testSizing = '';
+    content.append(extra);
+  });
+  await expect.poll(async () => (await dialog.boundingBox()).height).toBeGreaterThan(compact.height + 100);
+  await dialog.getByRole('button',{name:'Close',exact:true}).click();
+  await page.goto('/procurement/');
+  await page.locator('a[href="/procurement/add/"]').first().click();
+  await expect(page.frameLocator('iframe[name="inprofic-form-dialog"]').locator('table').first()).toBeVisible();
+  await expect.poll(async () => (await dialog.boundingBox()).width).toBeGreaterThan(compact.width + 200);
+});

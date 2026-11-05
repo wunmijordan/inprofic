@@ -65,7 +65,7 @@ class MultiVendorTests(DirectProductProcurementTests):
         self.assertContains(response, 'cannot be lower than payments')
         first.refresh_from_db(); second.refresh_from_db()
         self.assertEqual((first.status, second.status), ('draft', 'draft'))
-        self.assertEqual(self.client.get(reverse('po_edit', args=[first.pk])).status_code, 302)
+        self.assertEqual(self.client.get(reverse('po_edit', args=[first.pk])).status_code, 200)
 
     def test_paid_multi_vendor_request_records_exactly_one_outflow_per_vendor(self):
         account = CashAccount.raw_objects.create(business=self.business, name='Bank')

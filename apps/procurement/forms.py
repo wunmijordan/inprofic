@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from django import forms
-from django.forms import BaseModelFormSet, inlineformset_factory, modelformset_factory
+from django.forms import BaseModelFormSet, inlineformset_factory, modelformset_factory, formset_factory
 from core.forms import ExistingAwareInlineFormSet
 from .models import PurchaseOrder, PurchaseOrderItem, Supplier
 from inventory.models import FinishedGood, RawMaterial
@@ -36,8 +36,11 @@ class PurchaseOrderForm(StyledModelForm):
         fields = ["date", "supplier", "payment_status", "payment_method", "account"]
         widgets = {"date": forms.DateInput(attrs={"type": "date"})}
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, grouped=False, **kwargs):
         super().__init__(*args, **kwargs)
+        if grouped:
+            self.fields = {"date": self.fields["date"]}
+            return
         self.fields["account"].queryset = CashAccount.objects.filter(active=True).order_by("name")
         self.fields["account"].required = False
         self.fields["supplier"].label = "Default vendor (optional)"
@@ -61,6 +64,34 @@ class PurchaseOrderForm(StyledModelForm):
         return cleaned
 
 
+class VendorGroupForm(PurchaseOrderForm):
+    order_id = forms.IntegerField(required=False, widget=forms.HiddenInput)
+    """One optional vendor and one payment instruction for its set of items."""
+    class Meta(PurchaseOrderForm.Meta):
+        fields = ["supplier", "payment_status", "payment_method", "account"]
+
+    def __init__(self, *args, business, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields.pop('payment_supplier')
+        if not (kwargs.get('initial') or {}).get('payment_status'):
+            self.initial['payment_status'] = 'unpaid'
+        self.fields['supplier'].label = 'Vendor (optional)'
+        self.fields['supplier'].help_text = 'Choose a saved vendor, type any name, or leave blank.'
+        self.fields['supplier'].widget.attrs['placeholder'] = 'Name optional'
+        self.fields['account'].label = 'Payment account'
+        self.fields['account'].help_text = 'Required when recording a full or partial payment.'
+        self.fields['account'].queryset = CashAccount.objects.filter(business=business, active=True).order_by('name')
+
+    def has_changed(self):
+        # Posted group indexes identify intentional groups even without a name
+        # or payment. Do not discard them as empty extras in the formset.
+        return self.is_bound or super().has_changed()
+
+
+VendorGroupFormSet = formset_factory(VendorGroupForm, extra=0, can_delete=True,
+    min_num=1, validate_min=True, max_num=100, validate_max=True)
+
+
 class SupplierForm(StyledModelForm):
     class Meta:
         model = Supplier
@@ -70,8 +101,9 @@ class SupplierForm(StyledModelForm):
 
 class PurchaseOrderItemForm(StyledModelForm):
     item = forms.ChoiceField(label="Inventory item")
+    vendor_group = forms.CharField(required=False, widget=forms.HiddenInput)
     supplier = forms.CharField(required=False, max_length=120, label="Vendor",
-                               widget=forms.TextInput(attrs={"list": "supplier-name-options", "placeholder": "Use default vendor"}))
+                               widget=forms.TextInput(attrs={"list": "supplier-name-options", "placeholder": "Vendor optional"}))
 
     class Meta:
         model = PurchaseOrderItem

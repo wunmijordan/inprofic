@@ -102,6 +102,16 @@ def latest_cutover(business):
     )
 
 
+def report_scope_label(business):
+    """Only explain ledger scope on exports when this business uses cut-over."""
+    from .models import LedgerCutover
+    cutover = latest_cutover(business)
+    if not cutover or cutover.status == LedgerCutover.STATUS_REVERTED:
+        return ''
+    label = {'live': 'Live', 'backlog': 'Backlog', 'all': 'Combined'}.get(current_scope() or 'live', 'Live')
+    return f'{label} ledger'
+
+
 def active_cutover(business):
     """The cut-over that is still being worked (not archived / reverted)."""
     from .models import LedgerCutover

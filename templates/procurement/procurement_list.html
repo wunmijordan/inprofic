@@ -70,11 +70,14 @@
           <a href="{% url 'po_approve' p.pk %}" class="mr-2">{% if p.request_status == 'draft' or p.request_status == 'ordered' %}Review request{% else %}Approval details{% endif %}</a>
           {% if module_permissions.procurement.edit %}
             {% for vendor in p.request_orders %}{% if vendor.status == 'approved' and vendor.total > 0 %}<form action="{% url 'po_receive' vendor.pk %}" method="post" class="inline-block" onsubmit="return confirm('Receive this vendor’s approved items and add stock?');">{% csrf_token %}{% include "partials/_event_date.html" with label="On" min=vendor.date|date:"Y-m-d" %}<button class="mr-2">Receive{% if p.request_orders|length > 1 %} {{ vendor.supplier }}{% endif %}</button></form>{% endif %}{% endfor %}
-            {% if p.request_status == 'draft' or p.request_status == 'ordered' %}
-              {% if p.request_editable %}<a href="{% url 'po_edit' p.pk %}" class="mr-2">Edit request</a><form action="{% url 'po_delete' p.pk %}" method="post" class="inline" onsubmit="return confirm('Delete this unpaid request?');">{% csrf_token %}<button class="mr-2">Delete</button></form>{% endif %}
+            {% if p.request_editable %}
+              <a href="{% url 'po_edit' p.pk %}" class="mr-2" {% if p.request_has_payments %}data-confirm="This request has recorded or declared payments. Editing will preserve recorded payments and will not charge them again. Continue editing?"{% endif %}>Edit request</a><form action="{% url 'po_delete' p.pk %}" method="post" class="inline" onsubmit="return confirm('{% if p.request_has_payments %}This request has paid or partial payment. Deleting it keeps recorded payments in Finance as unallocated supplier payments and does not issue a refund. Delete the unapproved request?{% else %}Delete this unapproved request?{% endif %}');">{% csrf_token %}<button class="mr-2">Delete</button></form>
+            {% else %}
+              <button type="button" disabled class="mr-2 opacity-50" title="{{ p.request_lock_reason }}">Edit request</button><button type="button" disabled class="mr-2 opacity-50" title="{{ p.request_lock_reason }}">Delete</button>
+              <p class="mt-1 max-w-xs whitespace-normal text-xs text-stone-500">{{ p.request_lock_reason }}</p>
             {% endif %}
           {% endif %}
-          {% if p.request_orders|length == 1 %}<a href="{% url 'po_invoice' p.pk %}">PDF</a>{% endif %}
+          <a href="{% url 'po_invoice' p.pk %}?request=1">PDF</a>
         </td>
       </tr>
       {% endfor %}

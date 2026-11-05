@@ -108,7 +108,7 @@ def _sync_inventory_push_notices():
     is used only as the existing durable Web Push outbox carrier and is excluded
     from the Commerce tray/feed.
     """
-    from inventory.alert_services import inventory_alert_feed
+    from inventory.alert_services import ALERT_META, inventory_alert_feed
     from inventory.models import InventoryAlertState
 
     subscriptions = list(
@@ -137,17 +137,17 @@ def _sync_inventory_push_notices():
             alerts = feed.get("alerts") or []
             if not feed.get("enabled") or not alerts:
                 continue
-            raw_count = int(feed.get("raw_total", feed.get("raw_count")) or 0)
-            finished_count = int(feed.get("finished_total", feed.get("finished_count")) or 0)
+            totals = feed.get("condition_totals", {})
             parts = []
-            if raw_count:
-                parts.append(f"{raw_count} raw material{'s' if raw_count != 1 else ''}")
-            if finished_count:
-                parts.append(f"{finished_count} finished good{'s' if finished_count != 1 else ''}")
-            low_count = int(feed.get("low_total", 0) or sum(1 for row in alerts if row.get("severity") == "low"))
-            total_count = raw_count + finished_count
-            title = "Inventory stock needs attention"
-            message = f"{' and '.join(parts)} {'needs' if total_count == 1 else 'need'} attention" + (f" · {low_count} low-stock" if low_count else "") + "."
+            for alert_type, meta in ALERT_META.items():
+                count = int(totals.get(alert_type, 0))
+                if not count:
+                    continue
+                label = "raw material" if meta["resource"] == "raw_material" else "product"
+                condition = "low" if meta["severity"] == "low" else "getting low"
+                parts.append(f"{count} {label}{'s' if count != 1 else ''} {'is' if count == 1 else 'are'} {condition}")
+            title = "Inventory stock alert"
+            message = "; ".join(parts) + "."
             notice, created = CommerceNotification.raw_objects.get_or_create(
                 business=business, recipient_user=user, dedupe_key="inventory-alert-summary",
                 defaults={
@@ -174,7 +174,7 @@ def _sync_inventory_push_notices():
                     notification=notice, subscription_id__in=user_sub_ids, sent_at__isnull=False
                 ).order_by("-sent_at").values_list("sent_at", flat=True).first()
             )
-            force = bool(created or (latest_state_change and (last_sent is None or latest_state_change > last_sent)))
+            force = bool(created or changed or (latest_state_change and (last_sent is None or latest_state_change > last_sent)))
             visible[notice.pk] = {
                 "force": force,
                 "repeat": int(feed.get("sound_repeat_minutes") or 0) if feed.get("sound_enabled") else 0,

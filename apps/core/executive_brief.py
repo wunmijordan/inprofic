@@ -121,8 +121,9 @@ def enrich(brief, start, end, *, user=None, selected_sections=None):
                 unit = getattr(item, unit_field) or 'unit not set'
                 status = stock_status(item)
                 quantity = 'Not held in physical stock' if item.stock is None else f'{num(item.stock)} {unit}'
-                threshold = 'not configured' if not item.reorder_level else f'{num(item.reorder_level)} {unit}'
-                lines.append(f'{item.name}: {quantity} · reorder at {threshold} · {status}')
+                threshold = f' · reorder at {num(item.reorder_level)} {unit}' if item.reorder_level else ''
+                badge = {'OK': '🟢', 'WARNING': '🟡', 'LOW': '🔴', 'OUT OF STOCK': '⚪'}.get(status, '⚪')
+                lines.append(f'{badge} {status} · {item.name}: {quantity}{threshold}')
                 if status in {'OUT OF STOCK', 'LOW'}:
                     risks.append(f'{item.name} {num(item.stock)} {unit}')
             section(title + ' · current position', lines)
@@ -173,7 +174,7 @@ def enrich(brief, start, end, *, user=None, selected_sections=None):
             from commerce import models
             qs = getattr(models, model_name).objects.filter(business=business, created_at__date__range=(start, end))
             section(title + ' · selected period', [f"{pretty(r['status'])}: {r['count']}" for r in qs.values('status').annotate(count=Count('pk')).order_by('status')])
-    if allowed['ledger']:
+    if allowed['ledger'] and ledger.report_scope_label(business):
         cutover = ledger.latest_cutover(business)
         section('Ledger controls · current', [f'Ledger scope: {str(ledger.current_scope() or "all").capitalize()}',
                 f'Cut-over: {cutover.cutover_date} · {cutover.get_status_display()}' if cutover else 'No ledger split configured.'])
@@ -270,7 +271,10 @@ def _market(business, start, end, section, highlight, money):
 def full_text(brief):
     lines = [f"Period activity: {brief['report_start']:%d %b %Y} – {brief['report_through']:%d %b %Y}.",
              f"Current positions as of {brief['generated_at']:%d %b %Y %H:%M %Z}; these are not historical closing balances.",
-             f"Ledger scope: {str(ledger.current_scope() or 'all').capitalize()}. Sections follow the sender's access."]
+             "Sections follow the sender's access."]
+    scope = ledger.report_scope_label(brief['business'])
+    if scope:
+        lines.append(f'Ledger scope: {scope}.')
     for section in brief['executive_sections']:
         lines += ['', f"*{section['title']}*"]
         lines += ['• ' + line for line in section['lines']]

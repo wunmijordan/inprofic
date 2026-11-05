@@ -8,17 +8,17 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from .forms import PurchaseOrderForm, PurchaseRequestItemFormSet, SupplierForm, PurchaseApprovalLineForm
+from .forms import VendorGroupFormSet, PurchaseOrderForm, PurchaseRequestItemFormSet, SupplierForm, PurchaseApprovalLineForm
 from .models import PurchaseRequest, PurchaseOrder, PurchaseOrderItem, RawMaterialCostSnapshot, Supplier, SupplierPayment
 from inventory.models import ProductionMaterial, RawMaterial, RecipeItem
 from inventory.services import record_finished_good_movement, record_raw_material_movement
 from inventory.models import FinishedGood, StockMovement
-from core.invoice import purchase_order_pdf
+from core.invoice import purchase_order_pdf, purchase_request_pdf
 from core.services import record_cash, audit
 from core import ledger
 from core.models import FinancialTransaction
 from accounts.services import user_has_permission, is_business_admin
-from .services import describe_request, request_editable, request_orders, resolve_supplier
+from .services import describe_request, request_editable, request_orders, resolve_supplier, recorded_vendor_payments, retain_deleted_request_payments, link_direct_vendor_payments, order_audit_state
 from .share import render_snapshot, share_text, summarize
 from .stockview import stock_payload, stock_status
 
@@ -80,8 +80,7 @@ def procurement_list(request):
     grouped = {}
     for po in orders:
         grouped.setdefault(('request', po.request_id) if po.request_id else ('po', po.pk), []).append(po)
-    posted = set(FinancialTransaction.raw_objects.filter(business=request.business, reference__startswith='PO-').values_list('reference', flat=True))
-    orders = [describe_request(sorted(v, key=lambda po: po.pk), posted_references=posted) for v in grouped.values()]
+    orders = [describe_request(sorted(v, key=lambda po: po.pk)) for v in grouped.values()]
     return render(request, "procurement/procurement_list.html", {
         "orders": orders,
         "raw_material_categories": raw_material_categories,
@@ -143,7 +142,7 @@ def po_form(request, pk=None):
         })
     vendor_orders = list(request_orders(obj, lock=True).prefetch_related('payments')) if obj else []
     if obj and not request_editable(vendor_orders):
-        messages.error(request, "Requests with payment history cannot be edited. Review the approval or settle the supplier balance in Finance.")
+        messages.error(request, "Approved or received requests cannot be edited.")
         return redirect("procurement_list")
 
     # Build inventory choices once for the request-wide model formset.
@@ -181,13 +180,35 @@ def po_form(request, pk=None):
         return redirect("procurement_list")
     item_queryset = PurchaseOrderItem.objects.filter(purchase_order__in=vendor_orders).select_related(
         'purchase_order', 'raw_material', 'finished_good')
+    before_states = {po.pk: order_audit_state(po) for po in vendor_orders} if request.method == 'POST' else {}
+    recorded_paid, _direct_cash = recorded_vendor_payments(vendor_orders)
+    order_lookup = {po.pk: po for po in vendor_orders}
+    group_initial = [dict(order_id=po.pk, supplier=po.supplier, payment_status=po.payment_status,
+                          payment_method=po.payment_method, account=po.account_id) for po in vendor_orders] or [
+                              {'payment_status': 'unpaid', 'payment_method': 'Transfer'}]
+    grouped = request.method != 'POST' or 'vendors-TOTAL_FORMS' in request.POST
+    vendor_formset = VendorGroupFormSet(request.POST if request.method == 'POST' and grouped else None,
+        prefix='vendors', initial=group_initial, form_kwargs={'business': request.business})
+    for vendor_form in vendor_formset.forms:
+        identity = vendor_form.data.get(vendor_form.add_prefix('order_id')) if vendor_form.is_bound else vendor_form.initial.get('order_id')
+        original = order_lookup.get(int(identity)) if str(identity or '').isdigit() else None
+        vendor_form.recorded_paid = recorded_paid.get(original.pk, Decimal('0')) if original else Decimal('0')
+        if vendor_form.recorded_paid:
+            vendor_form.recorded_order = original
+            vendor_form.fields['supplier'].disabled = True
+            vendor_form.initial['supplier'] = original.supplier
+            for field in ['payment_status', 'payment_method', 'account', 'amount_paid']:
+                vendor_form.fields.pop(field)
     if request.method == "POST":
-        form = PurchaseOrderForm(request.POST, instance=obj)
+        form = PurchaseOrderForm(request.POST, instance=obj, grouped=grouped)
         formset = PurchaseRequestItemFormSet(
             request.POST, prefix='items', queryset=item_queryset,
             form_kwargs={"business": request.business, "inventory_catalog": inventory_catalog},
         )
-        if form.is_valid() and formset.is_valid():
+        validations = [form.is_valid(), formset.is_valid()]
+        if grouped:
+            validations.append(vendor_formset.is_valid())
+        if all(validations):
             active_items = [
                 f.cleaned_data for f in formset.forms
                 if f.cleaned_data and not f.cleaned_data.get("DELETE")
@@ -196,31 +217,73 @@ def po_form(request, pk=None):
                 form.add_error(None, "Add at least one item.")
             else:
                 groups = {}
+                if grouped:
+                    for index, vendor_form in enumerate(vendor_formset.forms):
+                        data = vendor_form.cleaned_data
+                        if data and not data.get('DELETE'):
+                            groups[str(index)] = {'name': data.get('supplier', '').strip(), 'forms': [],
+                                'total': Decimal('0'), 'payment': dict(data), 'form': vendor_form,
+                                'original': order_lookup.get(data.get('order_id'))}
+                            if data.get('order_id') and data['order_id'] not in order_lookup:
+                                vendor_form.add_error('order_id', 'Reload this request; the purchase group is invalid.')
                 default = (form.cleaned_data.get('supplier') or '').strip()
                 for item_form in formset.forms:
                     data = item_form.cleaned_data
                     if not data or data.get('DELETE'):
                         continue
-                    name = (data.get('supplier') or default).strip()
-                    group = groups.setdefault(name.casefold(), {'name': name, 'forms': [], 'total': Decimal('0')})
+                    if grouped:
+                        group = groups.get(data.get('vendor_group', ''))
+                        if group is None:
+                            item_form.add_error(None, 'Choose an active vendor group for this item.')
+                            form.add_error(None, 'Some items have an invalid purchase group. Reload the request and try again.')
+                            continue
+                    else:
+                        name = (data.get('supplier') or default).strip()
+                        group = groups.setdefault(name.casefold(), {'name': name, 'forms': [], 'total': Decimal('0'),
+                            'payment': dict(form.cleaned_data), 'form': form})
                     group['forms'].append(item_form)
                     group['total'] += data['qty'] * data['unit_cost']
-                po_total = sum((g['total'] for g in groups.values()), Decimal('0'))
-                amount_paid = form.cleaned_data.get('amount_paid') or Decimal('0')
-                payment_status = form.cleaned_data['payment_status']
-                paid_vendor = (form.cleaned_data.get('payment_supplier') or default).strip().casefold()
-                if len(groups) == 1:
-                    paid_vendor = next(iter(groups))
-                if len(groups) > 1 and '' in groups:
-                    form.add_error('supplier', 'Name a vendor for every item, or supply a default vendor.')
-                if payment_status == 'partial':
-                    if paid_vendor not in groups:
+                if not grouped and any(recorded_paid.values()):
+                    form.add_error(None, 'Reload this request to edit its recorded payment groups safely.')
+                if not grouped:
+                    paid_vendor = (form.cleaned_data.get('payment_supplier') or default).strip().casefold()
+                    if len(groups) == 1:
+                        paid_vendor = next(iter(groups))
+                    if form.cleaned_data['payment_status'] == 'partial' and (paid_vendor not in groups or (len(groups) > 1 and not paid_vendor)):
                         form.add_error('payment_supplier', 'Select a vendor on this request for the advance.')
-                    elif amount_paid > groups[paid_vendor]['total']:
-                        form.add_error('amount_paid', 'The advance cannot exceed this vendor’s total. Record each vendor payment separately.')
-                elif payment_status == 'paid' and amount_paid and amount_paid != po_total:
-                    form.add_error('amount_paid', 'For a Paid request, the amount must equal the entire request total.')
-                if not form.errors:
+                    amount = form.cleaned_data.get('amount_paid') or Decimal('0')
+                    if form.cleaned_data['payment_status'] == 'paid' and amount and amount != sum((g['total'] for g in groups.values()), Decimal('0')):
+                        form.add_error('amount_paid', 'For a Paid request, the amount must equal the entire request total.')
+                    for key, group in groups.items():
+                        if group['payment']['payment_status'] == 'partial' and key != paid_vendor:
+                            group['payment'].update(payment_status='unpaid', amount_paid=Decimal('0'))
+                if grouped:
+                    identities = [g['original'].pk for g in groups.values() if g['original']]
+                    if len(identities) != len(set(identities)):
+                        form.add_error(None, 'A purchase group was submitted more than once.')
+                    for previous in vendor_orders:
+                        if recorded_paid.get(previous.pk) and previous.pk not in identities:
+                            form.add_error(None, 'Keep groups with recorded payments. To remove the whole request, use Delete; payments remain in Finance.')
+                for group in groups.values():
+                    original = group.get('original')
+                    paid_before = recorded_paid.get(original.pk, Decimal('0')) if original else Decimal('0')
+                    group['recorded_paid'] = paid_before
+                    if paid_before:
+                        group['payment'].update(payment_status='paid' if paid_before >= group['total'] else 'partial',
+                            payment_method=original.payment_method, account=original.account, amount_paid=Decimal('0'))
+                        if group['total'] < paid_before:
+                            group['form'].add_error(None, 'Group total cannot be lower than payments already recorded. Handle refunds separately in Finance.')
+                    payment = group['payment']
+                    amount = payment.get('amount_paid') or Decimal('0')
+                    if not group['forms']:
+                        group['form'].add_error(None, 'Add at least one item to this group, or remove it.')
+                    if payment['payment_status'] == 'partial' and amount > group['total']:
+                        group['form'].add_error('amount_paid', 'The advance cannot exceed this vendor’s total.')
+                    if grouped and payment['payment_status'] == 'paid' and amount and amount != group['total']:
+                        group['form'].add_error('amount_paid', 'For a Paid group, the amount must equal its total.')
+                if not form.errors and not any(f.errors for f in formset.forms if not f.cleaned_data.get('DELETE')) and not any(g['form'].errors for g in groups.values()):
+                    if obj:
+                        link_direct_vendor_payments(vendor_orders, request.user)
                     envelope = obj.request if obj and obj.request_id else None
                     if len(groups) > 1 and envelope is None:
                         envelope = PurchaseRequest.objects.create(business=request.business, created_by=request.user)
@@ -229,20 +292,25 @@ def po_form(request, pk=None):
                     for index, (key, group) in enumerate(groups.items()):
                         # The first vendor order anchors existing shared request URLs.
                         # Keep it even when its original vendor is removed from a draft.
-                        po = obj if index == 0 and obj is not None else existing.get(key)
+                        po = group.get('original') if grouped else obj if index == 0 and obj is not None else existing.get(key)
+                        if grouped and index == 0 and obj is not None and not recorded_paid.get(obj.pk) and not group.get('recorded_paid') and obj.pk not in [g['original'].pk for g in groups.values() if g.get('original')]:
+                            po = obj
                         if po is None or po.pk in used:
                             po = PurchaseOrder(business=request.business, created_by=request.user)
                         po.request = envelope
                         po.date = form.cleaned_data['date']
                         po.supplier = group['name']
                         po.supplier_master = resolve_supplier(request.business, po.supplier, created_by=request.user)
-                        po.account = form.cleaned_data.get('account')
-                        po.payment_method = form.cleaned_data['payment_method']
-                        advance = amount_paid if payment_status == 'partial' and key == paid_vendor else Decimal('0')
-                        po.payment_status = ('paid' if payment_status == 'paid' or (advance and advance >= group['total'])
-                                             else 'partial' if advance else 'unpaid')
+                        payment = group['payment']
+                        po.account = payment.get('account')
+                        po.payment_method = payment['payment_method']
+                        advance = (payment.get('amount_paid') or Decimal('0')) if payment['payment_status'] == 'partial' else Decimal('0')
+                        po.payment_status = (payment['payment_status'] if group.get('recorded_paid') else
+                            'paid' if payment['payment_status'] == 'paid' or (advance and advance >= group['total'])
+                            else 'partial' if advance else 'unpaid')
                         po.save()
                         saved.append(po)
+                        group['saved_order'] = po
                         used.add(po.pk)
                         for item_form in group['forms']:
                             item = item_form.save(commit=False)
@@ -254,9 +322,15 @@ def po_form(request, pk=None):
                             item_form.instance.delete()
                     for previous in vendor_orders:
                         if previous.pk not in used:
-                            previous.delete()  # Unposted draft vendors only; checked above.
-                    for po in saved:
-                        advance = amount_paid if payment_status == 'partial' and po.supplier.casefold() == paid_vendor else Decimal('0')
+                            audit(request.business, request.user, 'delete', previous, 'Vendor group removed from unapproved request',
+                                  {'before': before_states.get(previous.pk), 'after': None, 'recorded_paid': '0'})
+                            previous.delete()  # Paid groups are retained by the validation above.
+                    for group in groups.values():
+                        po = group['saved_order']
+                        payment_data = group['payment']
+                        if group.get('recorded_paid'):
+                            continue  # Editing items must never repost a historical payment.
+                        advance = (payment_data.get('amount_paid') or Decimal('0')) if payment_data['payment_status'] == 'partial' else Decimal('0')
                         if po.payment_status == 'paid':
                             _ensure_po_payment_recorded(po, request.user)
                         elif advance:
@@ -271,19 +345,29 @@ def po_form(request, pk=None):
                                         payment_method=payment.payment_method, reference=payment.reference, account=payment.account)
                     for po in saved:
                         audit(request.business, request.user, 'update' if obj else 'create', po,
-                              'Purchase request saved', {'request_id': envelope.pk if envelope else None})
+                              'Purchase request saved', {'request_id': envelope.pk if envelope else None,
+                                  'before': before_states.get(po.pk), 'after': order_audit_state(po),
+                                  'recorded_paid': str(recorded_paid.get(po.pk, Decimal('0')))})
                     anchor = min(saved, key=lambda po: po.pk)
                     messages.success(request, 'Purchase request submitted for approval.')
                     if request.POST.get('after_save') == 'share':
                         return redirect(reverse('po_edit', args=[anchor.pk]) + '?share=1')
                     return redirect('procurement_list')
     else:
-        initial = None if obj else {'date': ledger.default_entry_date(), 'payment_status': 'unpaid'}
-        if obj and len(vendor_orders) > 1:
-            initial = {'supplier': ''}
-        form = PurchaseOrderForm(instance=obj, initial=initial)
+        form = PurchaseOrderForm(instance=obj, initial=None if obj else {'date': ledger.default_entry_date()}, grouped=True)
         formset = PurchaseRequestItemFormSet(prefix='items', queryset=item_queryset,
-            form_kwargs={'business': request.business, 'inventory_catalog': inventory_catalog})
+            form_kwargs={"business": request.business, "inventory_catalog": inventory_catalog})
+    # Keep flat item management/prefixes while presenting each vendor as a group.
+    group_blocks = []
+    order_indexes = {po.pk: str(index) for index, po in enumerate(vendor_orders)}
+    for index, vendor_form in enumerate(vendor_formset.forms):
+        rows = []
+        for item_form in formset.forms:
+            key = item_form.data.get(item_form.add_prefix('vendor_group')) if item_form.is_bound and grouped else order_indexes.get(item_form.instance.purchase_order_id, '0')
+            if key == str(index):
+                item_form.initial['vendor_group'] = str(index)
+                rows.append(item_form)
+        group_blocks.append({'form': vendor_form, 'rows': rows, 'index': index})
     current_costs = {
         **{f"raw:{m.pk}": f"{m.cost_per_purchase_unit:.2f}" for m in raw_materials},
         **{f"finished:{g.pk}": f"{g.est_cost:.2f}" for g in products},
@@ -293,7 +377,7 @@ def po_form(request, pk=None):
         **{f"finished:{g.pk}": stock_payload(stock_status(g)) for g in products},
     }
     return render(request, "procurement/po_form.html", {
-        "form": form, "formset": formset, "obj": obj, "current_costs": current_costs, "stock_levels": stock_levels,
+        "form": form, "formset": formset, "legacy_post": not grouped, "has_recorded_payments": any(recorded_paid.values()), "vendor_formset": vendor_formset, "group_blocks": group_blocks, "obj": obj, "current_costs": current_costs, "stock_levels": stock_levels,
         "share_text": share_text(summarize(_shareable_order(request, obj.pk), request.business, request.build_absolute_uri(reverse("po_approve", args=[obj.pk])))) if obj else "",
         "share_image_url": reverse("po_share_image", args=[obj.pk]) if obj else "",
         "stock_time": timezone.localtime().strftime("%d %b %H:%M"),
@@ -400,26 +484,37 @@ def po_receive(request, pk):
 @login_required
 @transaction.atomic
 def po_delete(request, pk):
-    obj = get_object_or_404(PurchaseOrder.objects.select_for_update(), pk=pk)
+    if not user_has_permission(request.user, request.business, 'procurement', 'edit'):
+        return render(request, '403.html', status=403)
+    obj = get_object_or_404(PurchaseOrder.objects.select_for_update(), pk=pk, business=request.business)
     if request.method == "POST":
         vendors = list(request_orders(obj, lock=True).prefetch_related('payments'))
         if not request_editable(vendors):
-            messages.error(request, 'Only an unpaid, unposted draft request can be deleted. Vendor receipt and payment history must be preserved.')
+            messages.error(request, 'Only unapproved requests can be deleted. Approved and received requests must be preserved.')
         else:
             envelope = obj.request if obj.request_id else None
+            deleted_states = {vendor.pk: order_audit_state(vendor) for vendor in vendors}
+            paid_before, _cash = recorded_vendor_payments(vendors)
+            retain_deleted_request_payments(vendors, request.user)
             for vendor in vendors:
-                audit(request.business, request.user, 'delete', vendor, f'Draft purchase order #{vendor.pk} removed')
+                audit(request.business, request.user, 'delete', vendor, f'Unapproved purchase order #{vendor.pk} removed',
+                      {'before': deleted_states[vendor.pk], 'retained_payment_amount': str(paid_before[vendor.pk])})
                 vendor.delete()
             if envelope:
                 envelope.delete()
-            messages.success(request, 'Removed.')
+            messages.success(request, 'Request removed. Recorded payments remain in Finance; no refund was recorded.' if any(paid_before.values()) else 'Request removed.')
     return redirect("procurement_list")
 
 @login_required
 def po_invoice(request, pk):
+    if not user_has_permission(request.user, request.business, 'procurement', 'view'):
+        return render(request, '403.html', status=403)
+    if request.GET.get('request') == '1':
+        po = _shareable_order(request, pk)
+        return purchase_request_pdf(summarize(po, request.business, ''))
     po = get_object_or_404(
         PurchaseOrder.objects.prefetch_related("items__raw_material", "items__finished_good"),
-        pk=pk,
+        pk=pk, business=request.business,
     )
     return purchase_order_pdf(po)
 
@@ -451,10 +546,16 @@ def po_share_image(request, pk):
 def po_approve(request, pk):
     if not user_has_permission(request.user, request.business, "procurement", "view"):
         return render(request, "403.html", status=403)
-    po = get_object_or_404(PurchaseOrder.objects.select_for_update(), pk=pk, business=request.business)
-    vendors = list(request_orders(po, lock=True).prefetch_related('payments'))
-    items = list(PurchaseOrderItem.objects.filter(purchase_order__in=vendors).select_for_update()
-                 .select_related('raw_material', 'finished_good', 'purchase_order').order_by('purchase_order_id', 'pk'))
+    lock = request.method == 'POST'
+    orders = PurchaseOrder.objects.select_for_update() if lock else PurchaseOrder.objects.all()
+    po = get_object_or_404(orders, pk=pk, business=request.business)
+    vendors = list(request_orders(po, lock=lock).prefetch_related('payments'))
+    items_query = PurchaseOrderItem.objects.filter(purchase_order__in=vendors)
+    if lock:
+        # Material/product joins are nullable: PostgreSQL can lock only the item rows.
+        items_query = items_query.select_for_update(of=('self',))
+    items = list(items_query.select_related('raw_material', 'finished_good', 'purchase_order')
+                 .order_by('purchase_order_id', 'pk'))
     can_approve = is_business_admin(request.user, request.business)
     pending = all(v.status in {"draft", "ordered"} for v in vendors)
     if request.method == "POST" and not can_approve:
@@ -472,14 +573,11 @@ def po_approve(request, pk):
         valid = all([form.is_valid() for form in line_forms])
         if valid:
             unsafe_payment = False
+            paid_totals, _cash = recorded_vendor_payments(vendors)
             for vendor in vendors:
                 vendor_total = sum((f.cleaned_data['qty'] * f.item.unit_cost for f in line_forms
                                     if f.item.purchase_order_id == vendor.pk), Decimal('0'))
-                paid = sum((p.amount for p in vendor.payments.all()), Decimal('0'))
-                direct_paid = sum(FinancialTransaction.raw_objects.filter(
-                    business=request.business, reference=f'PO-{vendor.pk}', category='Procurement',
-                    transaction_type=FinancialTransaction.OUTFLOW, reversed=False).values_list('amount', flat=True), Decimal('0'))
-                unsafe_payment = unsafe_payment or vendor_total < paid + direct_paid
+                unsafe_payment = unsafe_payment or vendor_total < paid_totals[vendor.pk]
             if not any(form.cleaned_data["qty"] > 0 for form in line_forms):
                 error = "Keep at least one approved item. Leave an entirely declined request unapproved."
             elif unsafe_payment:

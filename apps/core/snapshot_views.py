@@ -17,7 +17,7 @@ def brief_snapshot(request):
     report = _report(request.business, request.GET, user=request.user)
     brief, business = report['brief'], request.business
     money = lambda value: daily_brief._money(business, value)
-    scope = str(ledger.current_scope() or 'all').capitalize() + ' ledger'
+    scope = ledger.report_scope_label(business)
     # A single image has a fixed editorial budget. Complete details remain in
     # the identical text payload used for sharing and copying.
     rows = brief['snapshot_highlights']

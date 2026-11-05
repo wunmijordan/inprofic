@@ -43,12 +43,12 @@ class InventoryPushMessageTests(TestCase):
         _sync_inventory_push_notices()
         message = self._message()
         self.assertIn("3 raw materials", message)
-        self.assertIn("2 finished goods", message)
+        self.assertIn("2 products are low", message)
 
     def test_summary_updates_when_another_item_becomes_low(self):
         self._raw("Raw A")
         _sync_inventory_push_notices()
-        self.assertIn("1 raw material needs attention", self._message())
+        self.assertIn("1 raw material is low", self._message())
         self._raw("Raw B")
         _sync_inventory_push_notices()
         self.assertIn("2 raw materials", self._message())
@@ -72,3 +72,31 @@ class InventoryPushMessageTests(TestCase):
         delivery.refresh_from_db()
         self.assertEqual(delivery.status, CommercePushDelivery.STATUS_PENDING)
         self.assertIn("2 raw materials", __import__("json").loads(_payload(delivery))["body"])
+
+    def test_warning_and_low_counts_are_distinct_for_each_resource(self):
+        self._raw("Raw low")
+        self._raw("Raw warning", stock="12")
+        self._good("Product low")
+        self._good("Product warning A", stock="12")
+        self._good("Product warning B", stock="14")
+        _sync_inventory_push_notices()
+        message = self._message()
+        self.assertIn("1 raw material is low", message)
+        self.assertIn("1 raw material is getting low", message)
+        self.assertIn("1 product is low", message)
+        self.assertIn("2 products are getting low", message)
+
+    def test_updated_wording_rearms_an_existing_device_notification(self):
+        self._raw("Raw A")
+        _sync_inventory_push_notices()
+        notice = CommerceNotification.raw_objects.get(business=self.business, dedupe_key="inventory-alert-summary")
+        notice.message = "1 item needs attention."
+        notice.save(update_fields=["message"])
+        CommercePushDelivery.objects.create(
+            notification=notice, subscription=self.sub,
+            status=CommercePushDelivery.STATUS_SENT, sent_at=timezone.now(),
+        )
+        visible = _sync_inventory_push_notices()
+        self.assertTrue(visible[notice.pk]["force"])
+        self.assertEqual(self._message(), "1 raw material is low.")
+        self.assertFalse(_sync_inventory_push_notices()[notice.pk]["force"])

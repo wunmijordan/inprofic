@@ -126,6 +126,37 @@ def purchase_order_pdf(order):
     return _build(story, f"purchase-order-{order.pk}.pdf")
 
 
+def purchase_request_pdf(summary):
+    """One business-scoped document covering every vendor order in a request."""
+    business, symbol = summary['business'], summary['symbol']
+    story, styles = [], _styles()
+    _header(story, business, 'PURCHASE REQUEST', f"Request #{summary['number']}",
+            summary['date'], 'Vendors', escape(summary['supplier']))
+    story.append(Paragraph(escape(summary['status_label']), styles['body']))
+    for group in summary['vendor_groups']:
+        story.append(Spacer(1, 5 * mm))
+        story.append(Paragraph(escape(group['name']), styles['subtitle']))
+        payment = f"{group['payment']} · {group['method']}" + (f" · {group['account']}" if group['account'] else '')
+        story.append(Paragraph(escape(payment), styles['body']))
+        rows = []
+        for line in summary['lines']:
+            if line['group_id'] != group['id']:
+                continue
+            name = escape(line['name'])
+            if line['reduced'] or line['removed']:
+                name += f"<br/>Requested: {line['requested']} · Approved: {line['approved']}"
+            if line['reason']:
+                name += '<br/>' + escape(line['reason'])
+            rows.append([name, escape(f"{line['approved']:,.2f} {line['unit']}"),
+                         _money(line['unit_cost'], symbol), _money(line['total'], symbol)])
+        _table(story, ['Item', 'Quantity', 'Unit cost', 'Line total'], rows,
+               [75*mm, 35*mm, 35*mm, 35*mm], group['total'], symbol)
+        story.append(Paragraph(f"Paid: {_money(group['paid'], symbol)} · Balance: {_money(group['balance'], symbol)}", styles['body']))
+    story.append(Spacer(1, 6 * mm))
+    story.append(Paragraph(f"<b>Grand total: {_money(summary['total'], symbol)}</b>", styles['right']))
+    return _build(story, f"purchase-request-{summary['number']}.pdf")
+
+
 def production_order_pdf(order):
     from .verticals import vertical_config
 

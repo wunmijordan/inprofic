@@ -64,3 +64,25 @@ name on `/brief/` (business admin). Members add their number and consent, then s
 One attempt a day; on failure the email is sent instead. "Send me a test now" is capped at 3 a day.
 Text-only copy/tap-to-send and the morning email still work as before. Requires the
 `WHATSAPP_TOKEN_ENCRYPTION_KEY` server secret; Meta charges for business-started messages.
+
+### Purchase request and distribution summaries
+
+Purchase requests group items by optional vendor name. Staff can select a saved
+vendor, type an ad hoc name, or leave it blank. Each group has its own payment
+status, method, account and optional advance. The combined approval, preview,
+WhatsApp text and image retain these group boundaries; receipt and settlement
+remain attributable to each vendor order. Unapproved requests remain editable
+and deletable, with confirmation warnings for paid or partially paid requests.
+Recorded vendor/payment details are preserved while items can change; totals
+cannot fall below recorded payments. Deletion retains payments in Finance as
+unallocated supplier payments and never fabricates a refund. Before/after request
+audits and payment-link audits preserve the reconciliation trail. Settle later
+balances and refunds through Finance.
+
+Daily and weekly report text puts colored stock status markers before each
+material/product and mentions a reorder threshold only when one is configured.
+Ledger scope labels appear on shared summaries only for businesses that have
+configured ledger cut-over. Distribution summaries show expected selling value
+as distributed value less recorded returns, and expected balance as that value
+less collections. These read-only figures do not automatically credit invoices
+or post refunds.

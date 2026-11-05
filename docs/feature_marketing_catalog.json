@@ -49,7 +49,7 @@
     "name": "Multi-vendor purchase requests, approval and sharing",
     "group": "operations",
     "audience": "procurement and store teams",
-    "proof": "Enter vendor-specific items in one request, approve the full request once, then receive and settle each vendor independently. Share the combined preview and paper snapshot while preserving separate supplier invoices, advances and cost history.",
+    "proof": "Group items by optional saved or typed vendor names in one request, with separate payment status, method, account and advances for each group. Approve once, receive and settle each vendor independently, and share grouped items and payment breakdowns in the combined preview, PDF, paper snapshot and detailed text. Paid drafts require confirmation and preserve audited payment history through edits or deletion.",
     "highlight": "NEW",
     "added_on": "2026-11-04"
   },

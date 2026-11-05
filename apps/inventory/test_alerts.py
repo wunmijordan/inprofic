@@ -40,6 +40,9 @@ class PersistentInventoryAlertTests(TestCase):
             alert_ids=[f"{InventoryAlertState.RAW_WARNING}:{self.raw.pk}"],
         )
         refreshed = inventory_alert_feed(business=self.business, user=self.user)
+        self.assertEqual(refreshed["condition_totals"][InventoryAlertState.RAW_WARNING], 1)
+        self.assertEqual(refreshed["condition_totals"][InventoryAlertState.FINISHED_LOW], 1)
+        self.assertEqual(refreshed["condition_totals"][InventoryAlertState.RAW_LOW], 0)
         self.assertNotIn(InventoryAlertState.RAW_WARNING, {row["type"] for row in refreshed["alerts"]})
         self.assertIn(InventoryAlertState.FINISHED_LOW, {row["type"] for row in refreshed["alerts"]})
 
