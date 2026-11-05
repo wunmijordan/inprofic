@@ -91,3 +91,11 @@ Customer region and group labels on distribution pages, images and shared text
 come from the current business customer directory. Historical sale-name snapshots
 remain intact. Labels are omitted when unset; a customer link from another
 business is never used to resolve labels.
+
+Procurement receiving uses one request-row button to open the shared vendor
+receipt modal. Each vendor retains its own receipt date and stock transaction.
+Distribution page and sharing stock figures use selected-date opening and closing
+balances. The snapshot shows opening instead of new production; detailed text also
+shows new receipts, returns, transfers and write-offs. Closing includes blocked
+batches until their write-off is recorded. Later movements do not change an
+earlier closing balance; invoice settlement still includes later payments.

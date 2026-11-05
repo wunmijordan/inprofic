@@ -27,6 +27,27 @@ class MultiVendorTests(DirectProductProcurementTests):
         self.assertEqual(len(orders), 2)
         return orders
 
+    def test_list_keeps_vendor_receiving_forms_outside_request_table(self):
+        first, second = self.create_request()
+        PurchaseOrder.raw_objects.filter(pk__in=[first.pk,second.pk]).update(status='approved')
+        response = self.client.get(reverse('procurement_list'))
+        self.assertEqual(len(response.context['orders'][0].request_receivable_orders),2)
+        self.assertContains(response,f'data-items-dialog-open="po-receive-{first.pk}"',count=1)
+        self.assertContains(response,'Receive vendor items',count=2)
+        from html.parser import HTMLParser
+        class ReceiptParser(HTMLParser):
+            def __init__(self):
+                super().__init__(); self.in_table=0; self.table_dates=[]
+            def handle_starttag(self,tag,attrs):
+                attrs=dict(attrs)
+                if tag=='table': self.in_table+=1
+                if tag=='input' and attrs.get('name')=='event_date' and self.in_table:
+                    self.table_dates.append(attrs)
+            def handle_endtag(self,tag):
+                if tag=='table': self.in_table-=1
+        parser=ReceiptParser(); parser.feed(response.content.decode())
+        self.assertEqual(parser.table_dates,[])
+
     def test_one_request_approves_both_vendors_and_receives_them_independently(self):
         first, second = self.create_request()
         self.assertIsNotNone(first.request_id)

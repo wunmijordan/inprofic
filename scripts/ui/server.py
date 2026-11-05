@@ -64,6 +64,14 @@ with tempfile.TemporaryDirectory(prefix='inprofic-ui-') as directory:
         OrderItem.objects.create(order=order,finished_good=second,piece_qty=20)
         MarketStockLot.objects.create(business=business,finished_good=good,received_date=day,
             expiry_date=day+timedelta(days=3),quantity_received=6,quantity_available=6)
+    if os.environ.get('INPROFIC_UI_RECEIVE_FIXTURE') == '1':
+        from datetime import timedelta
+        from procurement.models import PurchaseRequest, PurchaseOrder, PurchaseOrderItem
+        envelope = PurchaseRequest.objects.create(business=business,created_by=admin)
+        for index, vendor in enumerate(['Receipt Vendor Alpha','Receipt Vendor Beta']):
+            po = PurchaseOrder.objects.create(business=business,created_by=admin,request=envelope,
+                date=day-timedelta(days=2),supplier=vendor,status='approved',payment_status='unpaid')
+            PurchaseOrderItem.objects.create(purchase_order=po,raw_material=flour,qty=index+1,unit_cost=100)
     remaining = 100
     for index, quantity in enumerate([10, 15, 15]):
         sale = Sale.objects.create(business=business, date=day, customer=f'Customer {index:02}',

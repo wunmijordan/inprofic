@@ -32,10 +32,12 @@ test('multi-vendor request edits, previews, approves and receives one vendor at 
   await expect(frame.locator('.pa-row')).toHaveCount(2);
   await frame.getByRole('button',{name:'Approve request',exact:true}).click();
   await expect(page.locator('.ui-form-dialog')).not.toBeVisible();
-  await page.getByRole('button',{name:'Receive UI Vendor Alpha',exact:true}).click();
-  await page.getByRole('alertdialog').getByRole('button',{name:'Confirm',exact:true}).click();
-  await expect(page.getByRole('button',{name:'Receive UI Vendor Alpha',exact:true})).toHaveCount(0);
-  await expect(page.getByRole('button',{name:'Receive UI Vendor Beta',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Receive',exact:true}).click();
+  const receive = page.locator('.ui-legacy-dialog');
+  await receive.locator('section').filter({has:page.getByRole('heading',{name:'UI Vendor Alpha',exact:true})}).getByRole('button',{name:'Receive vendor items',exact:true}).click();
+  await expect(receive).not.toBeVisible();
+  await page.getByRole('button',{name:'Receive',exact:true}).click();
+  await expect(receive.locator('section').filter({has:page.getByRole('heading',{name:'UI Vendor Beta',exact:true})}).getByRole('button',{name:'Receive vendor items',exact:true})).toBeVisible();
 });
 
 test('distribution snapshot groups customers and split receipts retain a later balance', async ({page}) => {

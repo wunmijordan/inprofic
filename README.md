@@ -314,8 +314,9 @@ Executive dashboard link and selected period. No text details are cut to fit the
 image. On devices without file sharing, sharing saves the image and attempts to
 copy the full accompanying text. Distribution summaries link to
 `#distribution-summary` and `#distribution-returns` on the distribution workspace.
-The umbrella distribution snapshot includes received stock, customer releases,
-Physical Store transfers, destinations and remaining quantities. Production
+The umbrella distribution snapshot shows selected-date opening stock, customer
+releases, Physical Store transfers, destinations and closing quantities. The page
+and full text also show new receipts, returns and other stock changes. Production
 profiles use Market Stock movement records; wholesale/retail profiles use their
 registered warehouse/shop balances and recorded distribution sales. Only actual
 recorded returns are shared separately; there is no possible-returns forecast.
@@ -342,18 +343,21 @@ measure of end-customer sell-through or profit; transfers to Physical Store are 
 Payments/returns span ledger periods for the selected distribution invoices.
 
 Multi-vendor procurement uses one request envelope with a separate PurchaseOrder for
-each vendor. Enter a vendor per item (or use a default); edit, approve and share the
-combined request, then receive and pay each vendor independently. An initial partial
+each vendor. Group items by optional vendor names; edit, approve and share the
+combined request, then receive and pay each vendor independently. One Receive
+button opens the shared modal with vendor items, separate arrival dates and
+receipt statuses. An initial partial
 payment names the vendor receiving that advance. Existing single-vendor orders remain
 valid. Vendor PDFs and Finance balances continue to represent individual invoices;
 request grouping does not merge debt, stock receipt or payment history.
 
 Distribution sharing now follows a chosen date. Its bounded paper image groups each
-product's made/received quantity, customer allocations and current stock remaining,
+product's opening quantity, customer allocations and selected-date closing stock,
 with up to six financial cards. It shows at most eight products and sixteen destination
 lines, explicitly linking to omitted detail. Full text retains all rows and payment
-method breakdowns. Remaining stock and invoice settlement are current positions, not
-historical closing balances for the chosen date.
+method breakdowns. Stock balances are reconstructed at the selected date; later movements do not
+rewrite its opening or closing. Closing includes blocked stock until written off.
+Invoice settlement still includes later collections and returns for those invoices.
 
 Customer payment entry accepts Cash, Card and Transfer parts in one receipt, each with
 its own account/reference. Partial receipts leave a Finance receivable; subsequent

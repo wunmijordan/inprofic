@@ -56,9 +56,11 @@
       {% for p in group.list %}
       <tr class="procurement-row border-t border-[#EFE8D7] align-middle hover:bg-[#FFFCF5]">
         <td class="px-3 py-2">
+          <div style="width:clamp(10rem,20vw,14rem);white-space:normal;overflow-wrap:anywhere">
           <div class="font-medium text-stone-700">{{ p.request_supplier|default:"Unnamed supplier" }}</div>
           <div class="text-[10px] font-mono text-stone-400">Request #{{ p.pk }}</div>
           {% if p.request_orders|length > 1 %}<details class="mt-1 text-xs"><summary>Vendor balances and receipts</summary>{% for vendor in p.request_orders %}<p class="mt-1">{{ vendor.supplier }} · PO #{{ vendor.pk }} · {{ vendor.total|money:biz.currency_symbol }} · {{ vendor.get_status_display }} · {{ vendor.get_payment_status_display }} · Balance {{ vendor.payment_balance|money:biz.currency_symbol }} <a href="{% url 'po_invoice' vendor.pk %}">Vendor PDF</a>{% if module_permissions.finance.edit and vendor.payment_balance > 0 %} · <a href="{% url 'supplier_payment_add' %}?purchase_order={{ vendor.pk }}">Record vendor payment</a>{% endif %}</p>{% endfor %}</details>{% endif %}
+          </div>
         </td>
         <td class="px-3 py-2 text-xs" style="min-width:15rem;max-width:23rem">{% include "partials/_items_summary.html" with items=p.request_items purchase=True dialog_prefix="po-items-" row_pk=p.pk %}</td>
         <td class="px-3 py-2 text-right font-mono font-medium">{{ p.request_total|money:biz.currency_symbol }}</td>
@@ -69,7 +71,7 @@
           <a href="{% url 'po_edit' p.pk %}?share=1" class="mr-2">Share request</a>
           <a href="{% url 'po_approve' p.pk %}" class="mr-2">{% if p.request_status == 'draft' or p.request_status == 'ordered' %}Review request{% else %}Approval details{% endif %}</a>
           {% if module_permissions.procurement.edit %}
-            {% for vendor in p.request_orders %}{% if vendor.status == 'approved' and vendor.total > 0 %}<form action="{% url 'po_receive' vendor.pk %}" method="post" class="inline-block" onsubmit="return confirm('Receive this vendor’s approved items and add stock?');">{% csrf_token %}{% include "partials/_event_date.html" with label="On" min=vendor.date|date:"Y-m-d" %}<button class="mr-2">Receive{% if p.request_orders|length > 1 %} {{ vendor.supplier }}{% endif %}</button></form>{% endif %}{% endfor %}
+            {% if p.request_receivable_orders %}<button type="button" class="mr-2" data-items-dialog-open="po-receive-{{ p.pk }}">Receive</button>{% endif %}
             {% if p.request_editable %}
               <a href="{% url 'po_edit' p.pk %}" class="mr-2" {% if p.request_has_payments %}data-confirm="This request has recorded or declared payments. Editing will preserve recorded payments and will not charge them again. Continue editing?"{% endif %}>Edit request</a><form action="{% url 'po_delete' p.pk %}" method="post" class="inline" onsubmit="return confirm('{% if p.request_has_payments %}This request has paid or partial payment. Deleting it keeps recorded payments in Finance as unallocated supplier payments and does not issue a refund. Delete the unapproved request?{% else %}Delete this unapproved request?{% endif %}');">{% csrf_token %}<button class="mr-2">Delete</button></form>
             {% else %}
@@ -87,6 +89,7 @@
 </div>
 
 {% for p in orders %}{% if p.request_items|length > 1 %}{% include "partials/_items_dialog.html" with items=p.request_items purchase=True currency=biz.currency_symbol width="44rem" dialog_prefix="po-items-" row_pk=p.pk title_prefix="Purchase order #" title_ref=p.pk subtitle=p.request_supplier|default:"Unnamed supplier" total_label="Order total" total_value=p.request_total|money:biz.currency_symbol %}{% endif %}{% endfor %}
+{% if module_permissions.procurement.edit %}{% for p in orders %}{% if p.request_receivable_orders %}{% include "procurement/_receive_dialog.html" %}{% endif %}{% endfor %}{% endif %}
 {% include "partials/_items_dialog_assets.html" %}
 {% endif %}
 {% endblock %}

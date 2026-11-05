@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from django.test import RequestFactory
 from django.urls import reverse
@@ -6,7 +6,7 @@ from django.utils import timezone
 from assistant.test_quick_facts import ToolBase
 from core.models import Business
 from inventory.distribution_summary import distribution_summaries
-from inventory.models import DistributionReturn, MarketStockLot, MarketStockMovement
+from inventory.models import DistributionReturn, MarketStockLot, MarketStockMovement, StockMovement
 from sales.models import Sale, SaleItem
 
 
@@ -15,6 +15,57 @@ class DistributionSummaryTests(ToolBase):
         request = RequestFactory().get(reverse('market_stock'))
         request.business, request.user = self.biz, self.admin
         return request
+
+    def test_selected_day_balances_ignore_later_receipts_and_releases(self):
+        day = date(2026, 11, 2)
+        lot = MarketStockLot.raw_objects.create(business=self.biz, finished_good=self.good,
+            received_date=day-timedelta(days=1), quantity_received=20, quantity_available=0, active=False)
+        for when, kind, quantity, balance in [
+            (day-timedelta(days=1), MarketStockMovement.PRODUCTION_IN, 20, 20),
+            (day, MarketStockMovement.RELEASE, -4, 16),
+            (day+timedelta(days=1), MarketStockMovement.RELEASE, -16, 0),
+        ]:
+            MarketStockMovement.raw_objects.create(business=self.biz,lot=lot,date=when,
+                movement_type=kind,quantity=quantity,balance_after=balance)
+        future = MarketStockLot.raw_objects.create(business=self.biz,finished_good=self.good,
+            received_date=day+timedelta(days=1),quantity_received=7,quantity_available=7)
+        MarketStockMovement.raw_objects.create(business=self.biz,lot=future,date=future.received_date,
+            movement_type=MarketStockMovement.PRODUCTION_IN,quantity=7,balance_after=7)
+        request = self.request()
+        request.GET = request.GET.copy()
+        request.GET['date'] = day.isoformat()
+        data = distribution_summaries(request)
+        row = next(row for row in data['distribution_rows'] if row['product_id']==self.good.pk)
+        self.assertEqual((row['opening'],row['received'],row['distributed'],row['closing']),
+                         (Decimal('20'),Decimal('0'),Decimal('4'),Decimal('16')))
+        self.assertIn('Opening balance: 20', data['distribution_share_text'])
+        self.assertIn('Closing balance: 16', data['distribution_share_text'])
+        self.assertNotIn('Remaining now', data['distribution_share_text'])
+        from unittest.mock import patch
+        with patch('inventory.distribution_summary.render_distribution_snapshot',return_value=b'png') as render:
+            self.client.get(reverse('market_stock_snapshot',args=['stock']),{'date':day.isoformat()})
+        shared = next(row for row in render.call_args.kwargs['products'] if row['product_id']==self.good.pk)
+        self.assertEqual((shared['opening'],shared['closing']), (Decimal('20'),Decimal('16')))
+
+    def test_purchased_stock_opening_and_closing_follow_all_dated_stock_movements(self):
+        day = date(2026, 11, 2)
+        self.biz.vertical = Business.VERTICAL_WHOLESALE
+        self.biz.save()
+        self.good.stock = Decimal('3')
+        self.good.save(update_fields=['stock'])
+        for when, kind, quantity in [
+            (day-timedelta(days=1), StockMovement.FG_PURCHASE, 10),
+            (day, StockMovement.FG_PURCHASE, 5), (day, StockMovement.FG_SALE, -4),
+            (day+timedelta(days=1), StockMovement.FG_SALE, -8),
+        ]:
+            StockMovement.raw_objects.create(business=self.biz,finished_good=self.good,business_date=when,
+                movement_type=kind,quantity=quantity,affects_stock=True)
+        request = self.request()
+        request.GET = request.GET.copy()
+        request.GET['date'] = day.isoformat()
+        row = next(row for row in distribution_summaries(request)['distribution_rows'] if row['product_id']==self.good.pk)
+        self.assertEqual((row['opening'],row['received'],row['closing']),
+                         (Decimal('10'),Decimal('5'),Decimal('11')))
 
     def test_only_recorded_returns_are_shared_and_other_tenants_are_excluded(self):
         sale = Sale.objects.create(business=self.biz, date=timezone.localdate(), source='distribution_order', customer='Ada')
@@ -215,7 +266,7 @@ class DistributionSummaryTests(ToolBase):
         import io
         from PIL import Image
         from core.snapshot_images import render_distribution_snapshot
-        products = [{'product':f'Product {i}', 'unit':'kg', 'made':Decimal('100'), 'distributed':Decimal('50'),
+        products = [{'product':f'Product {i}', 'unit':'kg', 'opening':Decimal('100'), 'made':Decimal('0'), 'closing':Decimal('50'), 'distributed':Decimal('50'),
                      'available':Decimal('50'), 'customers':[{'destination':f'Customer {j}','quantity':Decimal('1')} for j in range(30)]}
                     for i in range(30)]
         image = Image.open(io.BytesIO(render_distribution_snapshot(business=self.biz,title='Distribution',

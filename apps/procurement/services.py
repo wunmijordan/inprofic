@@ -120,6 +120,7 @@ def describe_request(orders):
         vendor.payment_balance = Decimal('0') if vendor.payment_status == 'paid' else max(
             vendor.total - sum((payment.amount for payment in vendor.payments.all()), Decimal('0')), Decimal('0'))
     root.request_orders = orders
+    root.request_receivable_orders = [po for po in orders if po.status == 'approved' and po.total > 0]
     root.request_items = [item for po in orders for item in po.items.all()]
     root.request_total = sum((po.total for po in orders), Decimal('0'))
     root.request_supplier = ' · '.join(po.supplier or 'Unnamed supplier' for po in orders)

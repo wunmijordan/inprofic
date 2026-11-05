@@ -136,18 +136,18 @@ def render_distribution_snapshot(*, business, title, day, products, cards, url, 
     draw.text((WIDTH-PAD, 46), scope, font=small, fill=MUTED, anchor='ra')
     draw.text((PAD, 87), _fit(draw, title, title_font, inner), font=title_font, fill=INK)
     draw.text((PAD, 142), day.strftime('%d %b %Y') + ' · customer allocations', font=body, fill=INK)
-    draw.text((PAD, 176), 'Made / taken: selected date. Remaining: stock now.', font=small, fill=MUTED)
-    x_made, x_taken, x_left = 550, 790, WIDTH-PAD
+    draw.text((PAD, 176), 'Selected-date balances. Closing includes blocked stock.', font=small, fill=MUTED)
+    x_opening, x_taken, x_left = 550, 790, WIDTH-PAD
     for label, x, anchor in [('Product / customer', PAD, 'la'),
-                             ('Made' if business.uses_production else 'Received', x_made, 'ra'),
-                             ('Taken', x_taken, 'ra'), ('Remaining now', x_left, 'ra')]:
+                             ('Opening', x_opening, 'ra'),
+                             ('Taken', x_taken, 'ra'), ('Closing', x_left, 'ra')]:
         draw.text((x, 216), label, font=small, fill=MUTED, anchor=anchor)
     draw.line((PAD, 245, WIDTH-PAD, 245), fill=LINE, width=2)
     y = 258
     quantity = lambda value, unit: f'{value:,.2f}'.rstrip('0').rstrip('.') + ' ' + unit
     for product, customers in table_rows:
         draw.text((PAD, y), _fit(draw, product['product'], bold, 270), font=bold, fill=INK)
-        for x, key in [(x_made, 'made'), (x_taken, 'distributed'), (x_left, 'available')]:
+        for x, key in [(x_opening, 'opening'), (x_taken, 'distributed'), (x_left, 'closing')]:
             amount = product[key] + product.get('physical', 0) if key == 'distributed' else product[key]
             value = quantity(amount, product['unit'])
             draw.text((x, y+3), _fit(draw, value, body, 215), font=body, fill=INK, anchor='ra')

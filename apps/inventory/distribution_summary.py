@@ -5,7 +5,8 @@ from urllib.parse import urlencode
 
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.db.models import Q, Sum
+from django.db.models import Count, Q, Sum
+from django.db.models.functions import Coalesce, TruncDate
 from django.http import Http404
 from django.urls import reverse
 from django.utils import timezone
@@ -116,13 +117,16 @@ def distribution_text(*, business, title, day, intro, rows, allocations, settlem
     for row in rows:
         unit = row['unit']
         lines += [f"*{row['product']}*",
-                  f"• {'Made' if business.uses_production else 'Received'}: {quantity(row['made'], unit)}",
+                  f"• Opening balance: {quantity(row['opening'], unit)}",
+                  f"• Received: {quantity(row['received'], unit)}",
                   f"• Taken by customers: {quantity(row['distributed'], unit)}",
-                  f"• Remaining now: {quantity(row['available'], unit)}"]
+                  f"• Closing balance: {quantity(row['closing'], unit)}"]
         if business.uses_production:
             lines += [f"• To Physical Store: {quantity(row['physical'], unit)}",
                       f"• Redistributable returns: {quantity(row['returned'], unit)}",
                       f"• Expired / blocked: {quantity(row['expired'], unit)}"]
+        if row['other_change']:
+            lines.append(f"• Other stock changes / write-offs: {quantity(row['other_change'], unit)}")
         lines.append('')
     if not rows:
         lines += ['No stock recorded.', '']
@@ -168,8 +172,9 @@ def distribution_text(*, business, title, day, intro, rows, allocations, settlem
         lines += [f"• {row['product']}: {quantity(row['quantity'], row['unit'])}" for row in physical]
         lines.append('')
     lines += ['*Reading this report*',
-              '• Made/received and taken quantities are for the selected date.',
-              '• Remaining stock is current, not a historical closing balance.']
+              '• Opening is the balance before the selected date; closing is its end-of-day balance.',
+              '• Received, returns and taken quantities are for the selected date.',
+              '• Closing stock includes blocked batches until their write-off is recorded.']
     if settlement is not None:
         lines += ['• Collections and balances include later payments and returns for these invoices.',
                   '• Returned value uses original selling prices, including discounts. Credits/refunds require review; invoices are unchanged.',
@@ -212,6 +217,7 @@ def distribution_summaries(request, *, lots=None, directory=None):
             'product_id': pk, 'product': name, 'unit': unit or 'unit not set', 'available': ZERO, 'made': ZERO, 'returned': ZERO,
             'expired': ZERO if business.uses_production else None,
             'received': ZERO, 'distributed': ZERO, 'physical': ZERO,
+            'opening': ZERO, 'closing': ZERO, 'other_change': ZERO,
         })
 
     def destination(pk, name, unit, target, quantity, kind='customer', customer_id=None):
@@ -222,14 +228,42 @@ def distribution_summaries(request, *, lots=None, directory=None):
         row['quantity'] += quantity
 
     if business.uses_production:
-        source_lots = lots if lots is not None else MarketStockLot.objects.filter(business=business).select_related('finished_good')
+        source_lots = list(lots) if lots is not None else list(MarketStockLot.objects.filter(business=business).select_related('finished_good'))
+        # Roll stored balances back through later movements. Exhausted/closed
+        # lots still contribute to a historical day before their release.
+        balances = {row['lot_id']: row for row in MarketStockMovement.objects.filter(
+            business=business, lot_id__in=[lot.pk for lot in source_lots],
+        ).values('lot_id').annotate(
+            after=Sum('quantity', filter=Q(date__gt=day)),
+            on_day=Sum('quantity', filter=Q(date=day)),
+            through=Sum('quantity', filter=Q(date__lte=day)),
+            receipts=Count('pk', filter=Q(movement_type__in=[MarketStockMovement.PRODUCTION_IN, MarketStockMovement.RETURN_IN])),
+        )}
+        historical = ledger.segment_for(business, day) == ledger.SEGMENT_BACKLOG
         for lot in source_lots:
             good = lot.finished_good
             row = product(good.pk, good.name, good.unit)
-            if lot.active and lot.quantity_available > 0:
-                row['expired' if lot.is_expired else 'available'] += lot.quantity_available
-        # Movement history supplies gross allocations, including exhausted lots.
-        # Current stock is a position; movement totals follow the selected ledger scope.
+            if lot.received_date > day:
+                continue
+            totals = balances.get(lot.pk, {})
+            if historical or lot.is_backlog_entry:
+                baseline = ZERO if totals.get('receipts') else lot.quantity_received
+                closing = baseline + (totals.get('through') or ZERO)
+            else:
+                closing = lot.quantity_available - (totals.get('after') or ZERO)
+            opening = closing - (totals.get('on_day') or ZERO) if lot.received_date < day else ZERO
+            row['opening'] += opening
+            row['closing'] += closing
+            row['available'] += closing
+            if lot.expiry_date and lot.expiry_date < day:
+                row['expired'] += closing
+            # Older/imported lots may predate receipt movement recording.
+            if lot.received_date == day and not totals.get('receipts'):
+                if lot.source == MarketStockLot.SOURCE_RETURN:
+                    row['returned'] += lot.quantity_received
+                else:
+                    row['made'] += lot.quantity_received
+                    row['received'] += lot.quantity_received
         movements = MarketStockMovement.objects.filter(business=business, date=day).values(
             'lot__finished_good_id', 'lot__finished_good__name', 'lot__finished_good__unit',
             'movement_type', 'sale__customer', 'customer__name', 'sale__customer_master_id', 'customer_id',
@@ -239,18 +273,31 @@ def distribution_summaries(request, *, lots=None, directory=None):
             row = product(pk, name, unit)
             kind, quantity = movement['movement_type'], movement['quantity'] or ZERO
             if kind in {MarketStockMovement.PRODUCTION_IN, MarketStockMovement.RETURN_IN}:
-                row['received'] += quantity
                 row['made' if kind == MarketStockMovement.PRODUCTION_IN else 'returned'] += quantity
+                if kind == MarketStockMovement.PRODUCTION_IN:
+                    row['received'] += quantity
             elif kind == MarketStockMovement.RELEASE:
                 row['distributed'] -= quantity
                 destination(pk, name, unit, movement['sale__customer'] or movement['customer__name'] or 'Customer (name unavailable)', -quantity, customer_id=movement['sale__customer_master_id'] or movement['customer_id'])
             elif kind == MarketStockMovement.TRANSFER_PHYSICAL:
                 row['physical'] -= quantity
                 destination(pk, name, unit, 'Physical Store', -quantity, 'store')
+            else:
+                row['other_change'] += quantity
     else:
-        # Purchased stock stays in its registered warehouse/shop, without a production pool.
+        # Reconstruct the selected day's balances from all shelf movements,
+        # including other channels, adjustments and purchases.
+        stock_moves = StockMovement.objects.filter(business=business, affects_stock=True,
+            finished_good__isnull=False).annotate(stock_date=Coalesce('business_date', TruncDate('occurred_at')))
+        balances = {entry['finished_good_id']: entry for entry in stock_moves.values('finished_good_id').annotate(
+            after=Sum('quantity', filter=Q(stock_date__gt=day)),
+            on_day=Sum('quantity', filter=Q(stock_date=day)),
+        )}
         for good in FinishedGood.objects.filter(business=business, stock__isnull=False):
-            product(good.pk, good.name, good.unit)['available'] = good.stock
+            row = product(good.pk, good.name, good.unit)
+            totals = balances.get(good.pk, {})
+            row['closing'] = row['available'] = good.stock - (totals.get('after') or ZERO)
+            row['opening'] = row['closing'] - (totals.get('on_day') or ZERO)
         items = SaleItem.objects.filter(sale__business=business, sale__source='distribution_order', sale__date=day).exclude(
             sale__linked_order__status='reversed').select_related('sale', 'finished_good')
         for item in items:
@@ -262,6 +309,9 @@ def distribution_summaries(request, *, lots=None, directory=None):
         for arrival in arrivals:
             if arrival['finished_good_id'] in products:
                 products[arrival['finished_good_id']]['made'] = arrival['quantity'] or ZERO
+                products[arrival['finished_good_id']]['received'] = arrival['quantity'] or ZERO
+        for row in products.values():
+            row['other_change'] = row['closing'] - row['opening'] - row['received'] + row['distributed']
     rows = sorted(products.values(), key=lambda row: (not (row['distributed'] or row['made'] or row['physical']), row['product'].casefold()))
     allocations = sorted(destinations.values(), key=lambda row: (row['product'].casefold(), row['destination'].casefold()))
     # Returns are actual records, not maximum return eligibility or a forecast.

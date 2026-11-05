@@ -49,7 +49,7 @@
     "name": "Multi-vendor purchase requests, approval and sharing",
     "group": "operations",
     "audience": "procurement and store teams",
-    "proof": "Group items by optional saved or typed vendor names in one request, with separate payment status, method, account and advances for each group. Approve once, receive and settle each vendor independently, and share grouped items and payment breakdowns in the combined preview, PDF, paper snapshot and detailed text. Paid drafts require confirmation and preserve audited payment history through edits or deletion.",
+    "proof": "Group items by optional saved or typed vendor names in one request, with separate payment status, method, account and advances for each group. Approve once, receive each vendor through a shared modal with separate arrival dates, settle each vendor independently, and share grouped items and payment breakdowns in the combined preview, PDF, paper snapshot and detailed text. Paid drafts require confirmation and preserve audited payment history through edits or deletion.",
     "highlight": "NEW",
     "added_on": "2026-11-04"
   },
@@ -535,7 +535,7 @@
     "name": "Concise daily distribution snapshots with financial cards",
     "group": "operations",
     "audience": "owners and store teams",
-    "proof": "Release several Market Stock products to one customer on one invoice, with batch-specific expiry and release-date availability checks, atomic stock checks and one combined payment or receivable. Shared product/customer snapshots and detailed text reflect every released product, region/group, remaining stock and the combined invoice balance. Financial cards show expected value after returns, collections and balances when Finance access permits; recorded returns remain separate.",
+    "proof": "Release several Market Stock products to one customer on one invoice, with batch-specific expiry and release-date availability checks, atomic stock checks and one combined payment or receivable. Snapshots use opening stock in place of new production; detailed text includes new receipts, returns and other stock changes. Shared product/customer snapshots and text reflect every released product, region/group, selected-date opening/closing stock and the combined invoice balance. Financial cards show expected value after returns, collections and balances when Finance access permits; recorded returns remain separate.",
     "highlight": "NEW",
     "added_on": "2026-11-04"
   }
