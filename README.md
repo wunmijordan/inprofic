@@ -53,7 +53,9 @@ what was borrowed and what was deliberately left out).
   weekday. New orders use the color matching their production date; staff can
   apply the suggested expiry to each batch at completion. Color-tag tooltips show
   the production weekday. Market Stock customer releases accept several products
-  on one invoice, with live available, entered and remaining quantities per line.
+  on one invoice, with available, entered and remaining quantities per line for the
+  selected release date. Batch expiry applies independently; undated batches stay
+  sellable. Completion product cards open one at a time and preserve entered values.
   Historical backlog batches keep their recorded expiry without contributing to
   current expiry alerts. Physical Store transfers retain their stock checks.
 - **Reports** — a date-range monthly operational PDF with revenue, channel-origin, procurement, production and inventory charts/tables; CSV/Excel exports and a full JSON backup.

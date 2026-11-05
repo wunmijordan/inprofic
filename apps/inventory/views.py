@@ -66,6 +66,7 @@ from .services import (
     record_raw_material_movement,
     release_market_stock_items,
     transfer_market_stock_to_physical,
+    market_stock_availability,
 )
 
 
@@ -245,22 +246,20 @@ def market_stock(request):
     })
 
 
+def _market_stock_request_date(request):
+    from datetime import date
+    raw = request.POST.get("date") if request.method == "POST" else request.GET.get("stock_date")
+    try:
+        return date.fromisoformat(raw) if raw else ledger.default_entry_date()
+    except (TypeError, ValueError):
+        return ledger.default_entry_date()
+
+
 def _market_form_response(request, form, *, title, intro, submit_label, formset=None):
-    available_by_product = {}
-    lots = MarketStockLot.objects.filter(
-        business=request.business,
-        active=True,
-        quantity_available__gt=0,
-    ).filter(
-        Q(expiry_date__isnull=True) | Q(expiry_date__gte=timezone.localdate())
-    ).values("finished_good_id", "finished_good__unit").annotate(
-        available=Sum("quantity_available")
-    )
-    for row in lots:
-        available_by_product[str(row["finished_good_id"])] = {
-            "available": str(row["available"] or 0),
-            "unit": row["finished_good__unit"],
-        }
+    on_date = _market_stock_request_date(request)
+    available_by_product = market_stock_availability(request.business, on_date)
+    if request.method == "GET" and request.GET.get("availability") == "1":
+        return JsonResponse({"products": available_by_product, "date": on_date.isoformat()})
     return render(request, "inventory/market_stock_form.html", {
         "form": form,
         "formset": formset,
@@ -268,6 +267,7 @@ def _market_form_response(request, form, *, title, intro, submit_label, formset=
         "intro": intro,
         "submit_label": submit_label,
         "available_by_product": available_by_product,
+        "stock_as_of": on_date.isoformat(),
         "market_stock_action": "transfer" if isinstance(form, MarketStockTransferForm) else "release",
     })
 
@@ -280,7 +280,7 @@ def market_stock_release(request):
         initial={"date": ledger.default_entry_date()},
     )
     formset = MarketStockReleaseItemFormSet(
-        request.POST or None, prefix="items", form_kwargs={"business": request.business},
+        request.POST or None, prefix="items", form_kwargs={"business": request.business, "on_date": _market_stock_request_date(request)},
     )
     if request.method == "POST" and form.is_valid() and formset.is_valid():
         try:

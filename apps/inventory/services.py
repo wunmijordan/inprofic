@@ -223,13 +223,23 @@ def record_finished_good_movement(good, quantity, movement_type, *, note="", aff
     return new_stock
 
 
-def _sellable_market_lots(good, on_date, *, lock=False):
+def sellable_market_lot_queryset(business, on_date):
+    """Eligibility belongs to each lot, including lots with no expiry limit."""
     queryset = MarketStockLot.objects.filter(
-        business=good.business,
-        finished_good=good,
+        business=business,
         received_date__lte=on_date,
     ).filter(
         models.Q(expiry_date__isnull=True) | models.Q(expiry_date__gte=on_date)
+    )
+    from core.ledger import segment_for
+    if segment_for(business, on_date) != "backlog":
+        queryset = queryset.filter(active=True, quantity_available__gt=0)
+    return queryset
+
+
+def _sellable_market_lots(good, on_date, *, lock=False):
+    queryset = sellable_market_lot_queryset(good.business, on_date).filter(
+        finished_good=good,
     ).order_by(models.F("expiry_date").asc(nulls_last=True), "received_date", "id")
     if lock:
         queryset = queryset.select_for_update()
@@ -264,6 +274,25 @@ def market_stock_available(good, on_date):
         (Decimal(lot.quantity_available) for lot in _sellable_market_lots(good, on_date)),
         Decimal("0"),
     )
+
+
+def market_stock_availability(business, on_date):
+    """Product availability for the form uses exactly the release lot rules."""
+    from core.ledger import segment_for
+    rows = sellable_market_lot_queryset(business, on_date).select_related("finished_good")
+    result = {}
+    backlog = segment_for(business, on_date) == "backlog"
+    for lot in rows:
+        quantity = _market_lot_balance(lot, on_date) if backlog else lot.quantity_available
+        if quantity <= 0:
+            continue
+        item = result.setdefault(str(lot.finished_good_id), {
+            "available": Decimal("0"), "unit": lot.finished_good.unit, "name": lot.finished_good.name,
+        })
+        item["available"] += quantity
+    for item in result.values():
+        item["available"] = str(item["available"])
+    return result
 
 
 def _record_market_movement(lot, *, date, movement_type, quantity, user, customer=None, sale=None, note=""):

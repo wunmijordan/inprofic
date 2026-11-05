@@ -871,6 +871,22 @@ ProductionMaterialFormSet = inlineformset_factory(
 )
 
 
+def _market_stock_form_date(form):
+    if form.is_bound:
+        try:
+            return form.fields["date"].clean(form.data.get("date"))
+        except forms.ValidationError:
+            pass
+    return form.initial.get("date") or timezone.localdate()
+
+
+def _market_stock_product_choices(business, on_date):
+    from .services import sellable_market_lot_queryset
+    return FinishedGood.objects.filter(business=business, pk__in=
+        sellable_market_lot_queryset(business, on_date).values("finished_good_id")
+    ).order_by("name")
+
+
 class MarketStockReleaseForm(StyledForm):
     PAYMENT_CHOICES = [("unpaid", "Receivable / pay later"), ("paid", "Payment received")]
 
@@ -892,14 +908,7 @@ class MarketStockReleaseForm(StyledForm):
         self.fields["customer"].queryset = Customer.objects.filter(
             business=business, active=True
         ).order_by("name")
-        self.fields["finished_good"].queryset = FinishedGood.objects.filter(
-            business=business,
-            market_stock_lots__quantity_available__gt=0,
-            market_stock_lots__active=True,
-        ).filter(
-            Q(market_stock_lots__expiry_date__isnull=True)
-            | Q(market_stock_lots__expiry_date__gte=timezone.localdate())
-        ).distinct().order_by("name")
+        self.fields["finished_good"].queryset = _market_stock_product_choices(business, _market_stock_form_date(self))
         self.fields["account"].queryset = CashAccount.objects.filter(
             business=business, active=True
         ).order_by("name")
@@ -926,13 +935,9 @@ class MarketStockReleaseItemForm(StyledForm):
     finished_good = forms.ModelChoiceField(queryset=FinishedGood.objects.none(), label="Product")
     quantity = forms.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.01"))
 
-    def __init__(self, *args, business=None, **kwargs):
+    def __init__(self, *args, business=None, on_date=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["finished_good"].queryset = FinishedGood.objects.filter(
-            business=business, market_stock_lots__active=True,
-            market_stock_lots__quantity_available__gt=0,
-        ).filter(Q(market_stock_lots__expiry_date__isnull=True) |
-                 Q(market_stock_lots__expiry_date__gte=timezone.localdate())).distinct().order_by("name")
+        self.fields["finished_good"].queryset = _market_stock_product_choices(business, on_date or timezone.localdate())
 
 
 class BaseMarketStockReleaseItemFormSet(BaseFormSet):
@@ -966,14 +971,7 @@ class MarketStockTransferForm(StyledForm):
     def __init__(self, *args, business=None, **kwargs):
         self.business = business
         super().__init__(*args, **kwargs)
-        self.fields["finished_good"].queryset = FinishedGood.objects.filter(
-            business=business,
-            market_stock_lots__quantity_available__gt=0,
-            market_stock_lots__active=True,
-        ).filter(
-            Q(market_stock_lots__expiry_date__isnull=True)
-            | Q(market_stock_lots__expiry_date__gte=timezone.localdate())
-        ).distinct().order_by("name")
+        self.fields["finished_good"].queryset = _market_stock_product_choices(business, _market_stock_form_date(self))
 
 
 class DistributionReturnForm(StyledModelForm):

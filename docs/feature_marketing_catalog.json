@@ -85,7 +85,7 @@
     "name": "Batch yield, wastage and output tracking",
     "group": "production",
     "audience": "production teams",
-    "proof": "Keep requested quantity, planned output, actual output and wastage distinct.",
+    "proof": "Keep requested quantity, planned output, actual output and wastage distinct. Product completion cards open one at a time, preserve inputs and reveal validation errors.",
     "highlight": "",
     "added_on": ""
   },
@@ -535,7 +535,7 @@
     "name": "Concise daily distribution snapshots with financial cards",
     "group": "operations",
     "audience": "owners and store teams",
-    "proof": "Release several Market Stock products to one customer on one invoice, with atomic stock checks and one combined payment or receivable. Shared product/customer snapshots and detailed text reflect every released product, region/group, remaining stock and the combined invoice balance. Financial cards show expected value after returns, collections and balances when Finance access permits; recorded returns remain separate.",
+    "proof": "Release several Market Stock products to one customer on one invoice, with batch-specific expiry and release-date availability checks, atomic stock checks and one combined payment or receivable. Shared product/customer snapshots and detailed text reflect every released product, region/group, remaining stock and the combined invoice balance. Financial cards show expected value after returns, collections and balances when Finance access permits; recorded returns remain separate.",
     "highlight": "NEW",
     "added_on": "2026-11-04"
   }

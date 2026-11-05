@@ -1,4 +1,5 @@
 const {test,expect}=require('@playwright/test');
+test.skip(process.env.INPROFIC_UI_RELEASE_FIXTURE !== '1', 'Requires the isolated multi-product release fixture.');
 test('customer market release adds multiple products in one form',async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('inprofic:essential-privacy-notice:v1','dismissed'));
  await page.goto('/accounts/login/ui-fixture/admin/');

@@ -32,6 +32,40 @@ class MultiProductReleaseTests(TestCase):
         ],customer=self.customer,date=date(2026,11,5),payment_status='paid' if paid else 'unpaid',
         payment_method='Transfer',account=self.account if paid else None,user=self.user)
 
+    def test_mixed_expiry_lots_release_no_expiry_stock_without_cross_batch_blocking(self):
+        from .services import market_stock_available, release_market_stock
+        good = self.goods[0]
+        dated = MarketStockLot.raw_objects.create(business=self.business, finished_good=good,
+            received_date=date(2026,11,1), expiry_date=date(2026,11,10),
+            quantity_received=6, quantity_available=6, unit_cost=10)
+        expired = MarketStockLot.raw_objects.create(business=self.business, finished_good=good,
+            received_date=date(2026,10,1), expiry_date=date(2026,11,1),
+            quantity_received=5, quantity_available=5, unit_cost=10)
+        self.assertEqual(market_stock_available(good, date(2026,11,5)), Decimal('16'))
+        self.client.force_login(self.user)
+        with patch('inventory.views.timezone.localdate', return_value=date(2026,11,5)):
+            response = self.client.get(reverse('market_stock_release'))
+        self.assertEqual(Decimal(response.context['available_by_product'][str(good.pk)]['available']), Decimal('16'))
+        sale = release_market_stock(business=self.business, good=good, customer=self.customer,
+            quantity=12, date=date(2026,11,5), payment_status='unpaid', payment_method='Transfer',
+            account=None, user=self.user)
+        self.assertEqual(sale.items.count(), 2)
+        dated.refresh_from_db()
+        expired.refresh_from_db()
+        self.assertEqual(dated.quantity_available, 0)
+        self.assertEqual(expired.quantity_available, 5)
+
+    def test_form_availability_uses_selected_release_date(self):
+        good = self.goods[0]
+        MarketStockLot.raw_objects.create(business=self.business, finished_good=good,
+            received_date=date(2026,11,6), quantity_received=7, quantity_available=7, unit_cost=10)
+        self.client.force_login(self.user)
+        for day, expected in [('2026-11-05', '10'), ('2026-11-06', '17')]:
+            response = self.client.get(reverse('market_stock_release'), {'availability':'1','stock_date':day})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()['date'], day)
+            self.assertEqual(Decimal(response.json()['products'][str(good.pk)]['available']), Decimal(expected))
+
     def test_multi_product_invoice_has_one_receivable_and_all_stock_movements(self):
         sale=self.release()
         self.assertEqual(Sale.raw_objects.filter(business=self.business).count(),1)

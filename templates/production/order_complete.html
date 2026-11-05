@@ -11,8 +11,9 @@
 <form method="post" class="space-y-5">{% csrf_token %}
 <div class="max-w-5xl rounded-xl border border-[#E7DFCC] bg-white px-4 py-3">{% include "partials/_event_date.html" with label="Production date" min=order.approved_date|default:order.date|date:"Y-m-d" value=request.POST.event_date %}<span class="ml-2 text-[11px] text-stone-400">Records the batch, stock and costs as of this day.</span></div>
 {% for item, form, offcut_formset in completion_forms %}
-<div class="cf-form-shell max-w-5xl" data-completion-card><div class="cf-form-body">
-  <div class="flex justify-between gap-3 mb-3"><div><h3 class="font-semibold text-stone-700">{{ item.finished_good.name }}</h3><p class="text-xs text-stone-400">{% if order.is_customer_order %}Customer requires: <span class="font-mono">{{ item.total_units|num }}</span> {{ item.finished_good.unit }} · {% endif %}Production target: <span class="font-mono">{{ item.production_total_units|num }}</span> {{ item.finished_good.unit }}{% if item.planned_overproduction_units > 0 %} · Planned offcut: <span class="font-mono text-emerald-700">{{ item.planned_overproduction_units|num }}</span> to allocate{% endif %}</p></div></div>
+<details class="cf-form-shell max-w-5xl group" data-completion-card name="completion-products" {% if forloop.first %}open{% endif %}>
+  <summary class="cf-form-header flex cursor-pointer list-none items-center justify-between gap-3"><div><h3 class="font-semibold text-stone-700">{{ item.finished_good.name }}</h3><p class="text-xs text-stone-400">{% if order.is_customer_order %}Customer requires: <span class="font-mono">{{ item.total_units|num }}</span> {{ item.finished_good.unit }} · {% endif %}Production target: <span class="font-mono">{{ item.production_total_units|num }}</span> {{ item.finished_good.unit }}{% if item.planned_overproduction_units > 0 %} · Planned offcut: <span class="font-mono text-emerald-700">{{ item.planned_overproduction_units|num }}</span> to allocate{% endif %}</p></div><svg aria-hidden="true" class="h-5 w-5 shrink-0 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></summary>
+<div class="cf-form-body">
   {% if form.non_field_errors %}<div class="text-sm bg-rose-50 text-rose-700 border border-rose-200 rounded-md px-3 py-2 mb-3">{{ form.non_field_errors }}</div>{% endif %}
   <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
     {% include "_field.html" with field=form.produced_units %}
@@ -93,11 +94,32 @@
   </div>
   {% include "_field.html" with field=form.qc_notes %}
   <p data-form-help-text data-form-help-for="{{ form.qc_notes.id_for_label }}" class="text-[11px] leading-5 text-stone-500">Saleable output = gross units produced − wastage/rejected units. Yield compares saleable output with the production target. Expiry date is the batch's final sellable date and drives Market Stock blocking/write-off alerts. {% if order.is_customer_order %}Uncommitted planned offcut is retained automatically as general stock; output above the target must still be fully allocated; customer shortage is measured only against the ordered quantity.{% elif order.is_market_stock_order %}Output up to the target enters Distribution Market Stock; output above the target must still be fully allocated.{% else %}Output above the target must be fully allocated.{% endif %}</p>
-</div></div>
+</div></details>
 {% endfor %}
 <div class="flex flex-wrap gap-2"><a href="{% url 'order_detail' order.pk %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a><button data-button-surface class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Complete Production</button></div>
 </form>
 <script>
+(() => {
+  const cards = [...document.querySelectorAll('details[data-completion-card]')];
+  cards.forEach(card => card.addEventListener('toggle', () => {
+    if (card.open) cards.forEach(other => { if (other !== card) other.open = false; });
+  }));
+  const firstError = cards.find(card => card.querySelector('.errorlist,.field-has-error'));
+  if (firstError) firstError.open = true;
+  let firstInvalidCard = null;
+  cards[0]?.closest('form')?.addEventListener('invalid', event => {
+    const card = event.target.closest('details[data-completion-card]');
+    if (!card) return;
+    if (!firstInvalidCard) {
+      firstInvalidCard = card;
+      card.open = true;
+      setTimeout(() => { firstInvalidCard = null; }, 0);
+    } else if (card !== firstInvalidCard) {
+      // Keep the first invalid field visible for the browser's focus step.
+      event.preventDefault();
+    }
+  }, true);
+})();
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('[data-apply-scheduled-expiry]').forEach((button) => {
     button.addEventListener('click', () => {

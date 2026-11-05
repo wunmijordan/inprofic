@@ -54,6 +54,16 @@ with tempfile.TemporaryDirectory(prefix='inprofic-ui-') as directory:
         cake = FinishedGood.raw_objects.create(business=business,name='Fixture Cake',unit='piece',stock=None,reorder_level=None)
         FinishedGoodChannelPrice.objects.create(finished_good=cake,channel='distribution',price=500)
         MarketStockLot.objects.create(business=business,finished_good=cake,received_date=day,quantity_received=20,quantity_available=20)
+    if os.environ.get('INPROFIC_UI_COMPLETION_FIXTURE') == '1':
+        from datetime import timedelta
+        from production.models import Order, OrderItem
+        order = Order.raw_objects.create(business=business,created_by=admin,date=day,
+            approved_date=day,status='approved',order_type='distribution',is_market_stock=True)
+        OrderItem.objects.create(order=order,finished_good=good,piece_qty=10)
+        second = FinishedGood.raw_objects.create(business=business,name='Completion Second Product',unit='piece')
+        OrderItem.objects.create(order=order,finished_good=second,piece_qty=20)
+        MarketStockLot.objects.create(business=business,finished_good=good,received_date=day,
+            expiry_date=day+timedelta(days=3),quantity_received=6,quantity_available=6)
     remaining = 100
     for index, quantity in enumerate([10, 15, 15]):
         sale = Sale.objects.create(business=business, date=day, customer=f'Customer {index:02}',
