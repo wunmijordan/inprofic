@@ -22,7 +22,7 @@
     "name": "Persistent stock alerts inside the shared operations tray",
     "group": "operations",
     "audience": "owners, storekeepers, managers",
-    "proof": "Raw-material and finished-good warning/low conditions open in separate Inventory tabs inside the movable tray, keep per-user snooze/re-alert timing, can use synthesized alerts or eight bundled audio chimes, and continue due reminders through Web Push when the app is backgrounded or closed.",
+    "proof": "Receive specific raw-material and product warning/low counts through Web Push after stock changes commit, with per-user snooze/re-alert timing, registration/delivery checks and retries. Newly enabled devices receive current summaries; the shared in-app tray retains eight audio chimes.",
     "highlight": "NEW",
     "added_on": "2026-09-20"
   },
@@ -256,7 +256,7 @@
     "name": "Shared realtime Commerce, Inventory and Finance alert tray",
     "group": "delivery",
     "audience": "dispatchers, managers and riders",
-    "proof": "Commerce, payment, Delivery, Inventory and Finance attention share one movable access-aware tray without merging their underlying record state; completed orders raise a persistent delivery-ready handoff for dispatch staff and can use durable Web Push even while INPROFIC is closed, while Finance surfaces unpaid invoices, receivables, payables and balancing anomalies from the same finance records.",
+    "proof": "Commerce, Delivery, Inventory and Finance attention share one permission-aware tray. Device push sends committed operational changes, retries durable deliveries and checks access again before transport; Finance summaries cover unpaid invoices, receivables, payables and balancing issues.",
     "highlight": "NEW",
     "added_on": "2026-09-24"
   },
@@ -535,7 +535,7 @@
     "name": "Concise daily distribution snapshots with financial cards",
     "group": "operations",
     "audience": "owners and store teams",
-    "proof": "Choose a distribution date and share a compact product/customer table of made or received quantities, customer allocations and stock remaining now. Financial cards show original value, returns, net value, collections and balances when Finance access permits. Full accompanying text carries every detail, including payment methods; recorded returns remain separate.",
+    "proof": "Share a concise product/customer table of made or received quantities, allocations and current stock, with customer region/group labels. Financial cards show expected value after returns, collections and balances when Finance access permits. Full text includes customer labels and payment methods; recorded returns remain separate.",
     "highlight": "NEW",
     "added_on": "2026-11-04"
   }

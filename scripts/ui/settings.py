@@ -19,3 +19,8 @@ PWA_BUILD_VERSION = 'ui-fixture'
 MIGRATION_MODULES = {name: None for name in ['admin','auth','contenttypes','sessions','accounts','core','inventory','procurement','production','sales','expenses','commerce','whatsapp_storefront','assistant']}
 
 ASSISTANT_ENABLED = True
+
+# Fixture servers must never start a real push dispatcher or call a live provider.
+WEB_PUSH_VAPID_PUBLIC_KEY = ''
+WEB_PUSH_VAPID_PRIVATE_KEY = ''
+WEB_PUSH_VAPID_SUBJECT = ''

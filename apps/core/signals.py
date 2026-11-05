@@ -5,12 +5,14 @@ from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
 from expenses.models import Expense, ExpensePayment
-from procurement.models import PurchaseOrder, SupplierPayment
-from sales.models import CustomerPayment, Sale
+from procurement.models import PurchaseOrder, PurchaseOrderItem, SupplierPayment
+from sales.models import CustomerPayment, Sale, SaleItem
 
 from .finance_cache import invalidate_finance_alert_cache
 from .models import CashAccount, FinancialTransaction
 
+@receiver([post_save, post_delete], sender=SaleItem, dispatch_uid='finance_alert_sale_item_cache')
+@receiver([post_save, post_delete], sender=PurchaseOrderItem, dispatch_uid='finance_alert_purchase_item_cache')
 @receiver(
     [post_save, post_delete],
     sender=Sale,
@@ -51,7 +53,9 @@ from .models import CashAccount, FinancialTransaction
     sender=CashAccount,
     dispatch_uid="finance_alert_cash_account_cache",
 )
-def _invalidate_finance_alerts(sender, instance, **kwargs):
+def _invalidate_finance_alerts(sender, instance, raw=False, **kwargs):
+    if raw:
+        return
     business_id = getattr(instance, "business_id", None)
     if business_id:
         # Do not let an in-flight transaction repopulate a snapshot between a
@@ -59,3 +63,5 @@ def _invalidate_finance_alerts(sender, instance, **kwargs):
         transaction.on_commit(
             lambda business_id=business_id: invalidate_finance_alert_cache(business_id)
         )
+        from commerce.webpush import schedule_push_dispatch
+        schedule_push_dispatch()

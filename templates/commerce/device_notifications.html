@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mx-auto max-w-3xl">
+  <header class="mb-5"><h1 class="text-2xl font-semibold font-display">Device notifications</h1><p class="mt-2 text-sm text-stone-500">Enable alerts and check delivery for this browser. You receive only the business alerts your role can view.</p></header>
+  {% include "commerce/_device_push_panel.html" %}
+  <p class="mt-4 text-sm text-stone-500">Stock warnings follow your Inventory acknowledgement and snooze settings. Finance alerts update as the underlying balances change. A successful send means the push provider accepted it; your browser and device settings control whether a popup is shown.</p>
+</div>
+{% endblock %}

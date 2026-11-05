@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory(prefix='inprofic-ui-') as directory:
     RawMaterial.raw_objects.create(business=business,name='Warning Sugar',stock=12,reorder_level=10,purchase_unit='kg',package_unit='kg',usage_unit='kg')
     good = FinishedGood.raw_objects.create(business=business,name='Fixture Loaf',unit='loaf',units_per_batch=110,selling_price=250)
     RecipeItem.objects.create(finished_good=good,raw_material=flour,qty_per_batch=20)
-    for index in range(12): Customer.raw_objects.create(business=business,name=f'Customer {index:02}')
+    for index in range(12): Customer.raw_objects.create(business=business,name=f'Customer {index:02}', region='Lagos' if index == 0 else '', customer_group='Distributors' if index == 0 else '')
     CashAccount.raw_objects.create(business=business,name='Fixture Till',opening_balance=1000)
     # Reproducible customer allocations and outstanding invoices for sharing/payment tests.
     from django.utils import timezone

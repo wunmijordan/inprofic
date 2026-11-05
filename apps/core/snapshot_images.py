@@ -72,6 +72,8 @@ def render_report_snapshot(*, business, title, subtitle, rows, total_label, tota
         d.text((WIDTH-PAD,y+16), _fit(d,amount,name,inner//2), font=name, fill=INK, anchor="ra")
         d.text((PAD,y+16), _fit(d,row["label"],name,inner-amount_width-35), font=name, fill=INK)
         d.text((PAD,y+58), _fit(d,row.get("detail", ""),small,inner), font=small, fill=MUTED)
+        if row.get("secondary_detail"):
+            d.text((PAD,y+86), _fit(d,row["secondary_detail"],tiny,inner), font=tiny, fill=MUTED)
         d.line((PAD,y+row_h-2,WIDTH-PAD,y+row_h-2), fill=LINE)
         y += row_h
     if not shown:
@@ -118,7 +120,7 @@ def render_distribution_snapshot(*, business, title, day, products, cards, url, 
         customer_budget -= len(customers)
         table_rows.append((product, customers))
     hidden_products = len(products) - len(shown)
-    table_height = sum(72 + max(len(customers), 1) * 31 for _, customers in table_rows) or 90
+    table_height = sum(72 + max(len(customers), 1) * 31 + sum(24 for customer in customers if customer.get('customer_labels')) for _, customers in table_rows) or 90
     note_height = 60 if hidden_products or hidden_customers else 0
     cards_height = 282 if cards else 0
     height = 248 + table_height + note_height + cards_height + 270
@@ -155,6 +157,13 @@ def render_distribution_snapshot(*, business, title, day, products, cards, url, 
                 draw.text((PAD+12, y), _fit(draw, customer['destination'], small, 480), font=small, fill=MUTED)
                 draw.text((x_taken, y), _fit(draw, quantity(customer['quantity'], product['unit']), small, 210),
                           font=small, fill=MUTED, anchor='ra')
+                if customer.get('customer_labels'):
+                    y += 24
+                    if customer.get('region') and customer.get('customer_group'):
+                        draw.text((PAD+12, y), _fit(draw, 'Region: ' + customer['region'], small, 230), font=small, fill=MUTED)
+                        draw.text((PAD+262, y), _fit(draw, 'Group: ' + customer['customer_group'], small, 230), font=small, fill=MUTED)
+                    else:
+                        draw.text((PAD+12, y), _fit(draw, customer['customer_labels'], small, 480), font=small, fill=MUTED)
                 y += 31
         else:
             draw.text((PAD+12, y), ('Allocations in the full text' if product['customers'] else 'No customer allocation on this date'), font=small, fill=MUTED)

@@ -13,6 +13,7 @@ import json
 import logging
 import threading
 from datetime import timedelta
+from decimal import Decimal
 
 from django.conf import settings
 from django.db import close_old_connections, connection, transaction
@@ -33,6 +34,7 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 _dispatch_lock = threading.Lock()
+_dispatch_requested = threading.Event()
 
 
 def endpoint_hash(endpoint: str) -> str:
@@ -56,7 +58,7 @@ def _eligible_subscription_ids(business, subscriptions, module):
     superuser_ids = {
         subscription.user_id
         for subscription in subscriptions
-        if getattr(subscription.user, "is_superuser", False)
+        if getattr(subscription.user, "is_superuser", False) and subscription.user.is_active
     }
     memberships = list(
         UserBusiness.objects.filter(
@@ -83,7 +85,7 @@ def _eligible_subscription_ids(business, subscriptions, module):
         override = user_access.get(membership.pk)
         if override is True or (override is None and role_access.get(membership.role_id, False)):
             allowed.add(user_id)
-    return {subscription.pk for subscription in subscriptions if subscription.user_id in allowed}
+    return {subscription.pk for subscription in subscriptions if subscription.user_id in allowed and subscription.user.is_active}
 
 
 def _access_sets(business, subscriptions):
@@ -91,14 +93,28 @@ def _access_sets(business, subscriptions):
     delivery_ids = _eligible_subscription_ids(business, subscriptions, "delivery")
     rider_ids = _eligible_subscription_ids(business, subscriptions, "delivery_rider")
     inventory_ids = _eligible_subscription_ids(business, subscriptions, "inventory")
+    finance_ids = _eligible_subscription_ids(business, subscriptions, "finance")
     return {
         "commerce": commerce_ids,
         "delivery": delivery_ids,
         "rider": rider_ids,
         "inventory": inventory_ids,
+        "finance": finance_ids,
         "delivery_staff": commerce_ids | delivery_ids,
         "activity": commerce_ids | delivery_ids | rider_ids,
     }
+
+
+def inventory_push_message(feed):
+    from inventory.alert_services import ALERT_META
+    totals, parts = feed.get('condition_totals', {}), []
+    for alert_type, meta in ALERT_META.items():
+        count = int(totals.get(alert_type, 0))
+        if count:
+            label = 'raw material' if meta['resource'] == 'raw_material' else 'product'
+            condition = 'low' if meta['severity'] == 'low' else 'getting low'
+            parts.append(f"{count} {label}{'s' if count != 1 else ''} {'is' if count == 1 else 'are'} {condition}")
+    return '; '.join(parts) + '.' if parts else ''
 
 
 def _sync_inventory_push_notices():
@@ -108,7 +124,7 @@ def _sync_inventory_push_notices():
     is used only as the existing durable Web Push outbox carrier and is excluded
     from the Commerce tray/feed.
     """
-    from inventory.alert_services import ALERT_META, inventory_alert_feed
+    from inventory.alert_services import inventory_alert_feed
     from inventory.models import InventoryAlertState
 
     subscriptions = list(
@@ -122,7 +138,6 @@ def _sync_inventory_push_notices():
         bucket["subscriptions"].append(subscription)
 
     visible = {}
-    now = timezone.now()
     for bucket in by_business.values():
         business = bucket["business"]
         subs = bucket["subscriptions"]
@@ -137,17 +152,8 @@ def _sync_inventory_push_notices():
             alerts = feed.get("alerts") or []
             if not feed.get("enabled") or not alerts:
                 continue
-            totals = feed.get("condition_totals", {})
-            parts = []
-            for alert_type, meta in ALERT_META.items():
-                count = int(totals.get(alert_type, 0))
-                if not count:
-                    continue
-                label = "raw material" if meta["resource"] == "raw_material" else "product"
-                condition = "low" if meta["severity"] == "low" else "getting low"
-                parts.append(f"{count} {label}{'s' if count != 1 else ''} {'is' if count == 1 else 'are'} {condition}")
-            title = "Inventory stock alert"
-            message = "; ".join(parts) + "."
+            title = 'Inventory stock alert'
+            message = inventory_push_message(feed)
             notice, created = CommerceNotification.raw_objects.get_or_create(
                 business=business, recipient_user=user, dedupe_key="inventory-alert-summary",
                 defaults={
@@ -177,10 +183,70 @@ def _sync_inventory_push_notices():
             force = bool(created or changed or (latest_state_change and (last_sent is None or latest_state_change > last_sent)))
             visible[notice.pk] = {
                 "force": force,
+                "changed_at": max(filter(None, [notice.updated_at, latest_state_change])),
                 "repeat": int(feed.get("sound_repeat_minutes") or 0) if feed.get("sound_enabled") else 0,
                 "subscription_ids": user_sub_ids,
             }
     return visible
+
+
+def _sync_finance_push_notices():
+    from core.finance_views import finance_alert_payload
+    subscriptions = CommercePushSubscription.objects.filter(active=True).select_related('business', 'user')
+    businesses = {}
+    for sub in subscriptions:
+        businesses.setdefault(sub.business_id, {'business': sub.business, 'subscriptions': []})['subscriptions'].append(sub)
+    visible = {}
+    for bucket in businesses.values():
+        business, subs = bucket['business'], bucket['subscriptions']
+        allowed = _eligible_subscription_ids(business, subs, 'finance')
+        if not allowed:
+            continue
+        feed = finance_alert_payload(business)
+        if not feed['count']:
+            continue
+        parts = [f"{feed[key]} {label}" for key, label in [
+            ('invoice_count', 'unpaid invoices'), ('receivable_count', 'customer balances'),
+            ('payable_count', 'supplier/expense balances'), ('balancing_count', 'balancing issues')] if feed[key]]
+        parts += [f"Owed to business: {business.currency_symbol}{Decimal(feed['receivables_total']):,.2f}",
+                  f"Business owes: {business.currency_symbol}{Decimal(feed['payables_total']):,.2f}"]
+        message = '; '.join(parts) + '.'
+        users = {}
+        for sub in subs:
+            if sub.pk in allowed:
+                users.setdefault(sub.user_id, set()).add(sub.pk)
+        for user_id, sub_ids in users.items():
+            notice, created = CommerceNotification.raw_objects.get_or_create(
+                business=business, recipient_user_id=user_id, dedupe_key='finance-alert-summary',
+                defaults={'event_type': CommerceNotification.EVENT_FINANCE_ALERT, 'title': 'Finance needs attention',
+                          'message': message, 'target_url': '/finance/'})
+            changed = notice.message != message
+            if changed:
+                notice.message = message
+                notice.save(update_fields=['message', 'updated_at'])
+            visible[notice.pk] = {'force': bool(created or changed), 'changed_at': notice.updated_at, 'repeat': 0, 'subscription_ids': sub_ids}
+    return visible
+
+
+def _reconcile_operational_deliveries(visible):
+    """Attach new devices to persistent summaries, even after their first send."""
+    created = 0
+    for notice_id, meta in visible.items():
+        for subscription_id in meta['subscription_ids']:
+            _delivery, was_created = CommercePushDelivery.objects.get_or_create(
+                notification_id=notice_id, subscription_id=subscription_id)
+            created += int(was_created)
+    # Do not send a queued snapshot after its stock/debt condition cleared.
+    deliveries = CommercePushDelivery.objects.filter(
+        notification__event_type__in=CommerceNotification.OPERATIONAL_EVENTS,
+        status=CommercePushDelivery.STATUS_PENDING)
+    for delivery in deliveries:
+        meta = visible.get(delivery.notification_id)
+        if not meta or delivery.subscription_id not in meta['subscription_ids']:
+            delivery.status = CommercePushDelivery.STATUS_SUPERSEDED
+            delivery.last_error = 'Alert is no longer current or accessible.'
+            delivery.save(update_fields=['status', 'last_error', 'updated_at'])
+    return created
 
 
 def _enqueue_notifications(limit=30):
@@ -221,8 +287,8 @@ def _enqueue_notifications(limit=30):
         access = _access_sets(business, subscriptions)
         rows = []
         for notice in bucket["notices"]:
-            if notice.event_type in CommerceNotification.INVENTORY_EVENTS:
-                category_ids = access["inventory"]
+            if notice.event_type in CommerceNotification.OPERATIONAL_EVENTS:
+                category_ids = access["inventory" if notice.event_type in CommerceNotification.INVENTORY_EVENTS else "finance"]
             else:
                 if commerce_settings and (
                     not commerce_settings.notifications_enabled
@@ -239,7 +305,7 @@ def _enqueue_notifications(limit=30):
                 allowed_ids = {
                     subscription.pk for subscription in subscriptions
                     if subscription.user_id == notice.recipient_user_id
-                    and subscription.pk in (access["inventory"] if notice.event_type in CommerceNotification.INVENTORY_EVENTS else access["activity"])
+                    and subscription.pk in (category_ids if notice.event_type in CommerceNotification.OPERATIONAL_EVENTS else access["activity"])
                 }
             else:
                 allowed_ids = category_ids
@@ -264,16 +330,18 @@ def _requeue_due_repeats(inventory_visible=None, *, limit=800):
     # Inventory summaries use the Inventory alert/snooze state supplied by the sync pass.
     if inventory_visible:
         deliveries = list(CommercePushDelivery.objects.filter(
-            status=CommercePushDelivery.STATUS_SENT,
+            status__in=[CommercePushDelivery.STATUS_SENT, CommercePushDelivery.STATUS_SUPERSEDED, CommercePushDelivery.STATUS_FAILED],
             notification_id__in=inventory_visible.keys(),
             subscription__active=True,
-        ).select_related("subscription")[:limit])
+        ).select_related("subscription").order_by("updated_at", "pk")[:limit])
         for delivery in deliveries:
             meta = inventory_visible.get(delivery.notification_id) or {}
             if delivery.subscription_id not in meta.get("subscription_ids", set()):
                 continue
             repeat = int(meta.get("repeat") or 0)
-            due = bool(meta.get("force")) or bool(repeat and delivery.sent_at and delivery.sent_at <= now - timedelta(minutes=repeat))
+            changed_at = meta.get("changed_at")
+            stale = bool(changed_at and delivery.sent_at and delivery.sent_at < changed_at)
+            due = delivery.status == CommercePushDelivery.STATUS_SUPERSEDED or stale or bool(meta.get("force")) or bool(repeat and delivery.sent_at and delivery.sent_at <= now - timedelta(minutes=repeat))
             if not due:
                 continue
             delivery.status = CommercePushDelivery.STATUS_PENDING
@@ -287,7 +355,7 @@ def _requeue_due_repeats(inventory_visible=None, *, limit=800):
     # Commerce and rider reminders repeat only while still unread. Keep one newest unread reminder per device.
     sent = list(CommercePushDelivery.objects.filter(
         status=CommercePushDelivery.STATUS_SENT, subscription__active=True,
-    ).exclude(notification__event_type__in=CommerceNotification.INVENTORY_EVENTS).select_related(
+    ).exclude(notification__event_type__in=CommerceNotification.OPERATIONAL_EVENTS).select_related(
         "notification__business", "subscription__user", "subscription__business"
     ).prefetch_related("notification__reads").order_by("subscription_id", "-notification__created_at", "-notification_id")[:limit])
     business_cache = {}
@@ -358,7 +426,7 @@ def _payload(delivery):
     return json.dumps(
         {
             "type": "commerce.notification",
-            "channel": "inventory" if notice.event_type in CommerceNotification.INVENTORY_EVENTS else ("delivery" if notice.event_type in CommerceNotification.DELIVERY_EVENTS else "commerce"),
+            "channel": "finance" if notice.event_type in CommerceNotification.FINANCE_EVENTS else "inventory" if notice.event_type in CommerceNotification.INVENTORY_EVENTS else ("delivery" if notice.event_type in CommerceNotification.DELIVERY_EVENTS else "commerce"),
             "id": str(notice.public_id),
             "title": redact_disabled_integrations(notice.title),
             "body": redact_disabled_integrations(notice.message),
@@ -390,12 +458,19 @@ def _send_pending(limit=40):
             next_attempt_at__lte=now,
             subscription__active=True,
         )
-        .select_related("notification__business", "subscription")
+        .select_related("notification__business", "subscription__user")
         .order_by("next_attempt_at", "pk")[:limit]
     )
     if not deliveries:
         return {"sent": 0, "failed": 0, "expired": 0}
 
+    audience = {}
+    for delivery in deliveries:
+        business = delivery.notification.business
+        audience.setdefault(business.pk, {'business': business, 'subscriptions': []})['subscriptions'].append(delivery.subscription)
+    for bucket in audience.values():
+        bucket['access'] = _access_sets(bucket['business'], bucket['subscriptions'])
+        bucket['settings'] = CommerceSettings.raw_objects.filter(business=bucket['business']).first()
     changed_deliveries = []
     changed_subscriptions = {}
     counts = {"sent": 0, "failed": 0, "expired": 0}
@@ -405,6 +480,31 @@ def _send_pending(limit=40):
 
     for delivery in deliveries:
         subscription = delivery.subscription
+        notice = delivery.notification
+        bucket = audience[notice.business_id]
+        access, commerce_settings = bucket['access'], bucket['settings']
+        operational = notice.event_type in CommerceNotification.OPERATIONAL_EVENTS
+        if operational:
+            allowed = access['inventory' if notice.event_type in CommerceNotification.INVENTORY_EVENTS else 'finance']
+        elif notice.recipient_user_id:
+            allowed = access['activity']
+        elif notice.event_type in CommerceNotification.DISPATCH_EVENTS:
+            allowed = access['delivery']
+        elif notice.event_type in CommerceNotification.DELIVERY_EVENTS:
+            allowed = access['delivery_staff']
+        else:
+            allowed = access['commerce']
+        permitted = subscription.pk in allowed and subscription.business_id == notice.business_id
+        if notice.recipient_user_id and notice.recipient_user_id != subscription.user_id:
+            permitted = False
+        if not operational and commerce_settings and (not commerce_settings.notifications_enabled or not commerce_settings.notification_desktop_enabled):
+            permitted = False
+        if not permitted:
+            delivery.status = CommercePushDelivery.STATUS_SUPERSEDED
+            delivery.last_error = 'Notification access or settings changed before delivery.'
+            delivery.updated_at = now
+            changed_deliveries.append(delivery)
+            continue
         delivery.attempts += 1
         try:
             webpush(
@@ -477,15 +577,20 @@ def dispatch_pending_pushes(*, notice_limit=30, delivery_limit=40):
     """Sync due operational alerts, enqueue new pushes, re-arm repeats, and drain the durable outbox."""
     if not configured():
         return {"configured": False, "queued": 0, "requeued": 0, "sent": 0, "failed": 0, "expired": 0}
-    close_old_connections()
+    owns_connection = not connection.in_atomic_block
+    if owns_connection:
+        close_old_connections()
     try:
         inventory_visible = _sync_inventory_push_notices()
+        inventory_visible.update(_sync_finance_push_notices())
         queued = _enqueue_notifications(limit=notice_limit)
+        queued += _reconcile_operational_deliveries(inventory_visible)
         requeued = _requeue_due_repeats(inventory_visible)
         counts = _send_pending(limit=delivery_limit)
         return {"configured": True, "queued": queued, "requeued": requeued, **counts}
     finally:
-        close_old_connections()
+        if owns_connection:
+            close_old_connections()
 
 
 def _run_push_dispatcher():
@@ -495,8 +600,9 @@ def _run_push_dispatcher():
         # Drain small bursts without spawning one thread per notification.
         # A hard loop cap preserves the free Render instance for web traffic.
         for _ in range(4):
+            _dispatch_requested.clear()
             dispatch_pending_pushes(notice_limit=50, delivery_limit=80)
-            if not CommerceNotification.raw_objects.filter(
+            if not _dispatch_requested.is_set() and not CommerceNotification.raw_objects.filter(
                 push_processed_at__isnull=True
             ).exists():
                 break
@@ -516,7 +622,10 @@ def kick_push_dispatcher():
     """
     # A worker must only see committed outbox rows. The durable maintenance
     # dispatcher handles work if this best-effort kick occurs inside a transaction.
-    if connection.in_atomic_block or not configured() or not _dispatch_lock.acquire(blocking=False):
+    if connection.in_atomic_block or not configured():
+        return
+    _dispatch_requested.set()
+    if not _dispatch_lock.acquire(blocking=False):
         return
 
     def runner():

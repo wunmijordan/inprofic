@@ -86,3 +86,8 @@ configured ledger cut-over. Distribution summaries show expected selling value
 as distributed value less recorded returns, and expected balance as that value
 less collections. These read-only figures do not automatically credit invoices
 or post refunds.
+
+Customer region and group labels on distribution pages, images and shared text
+come from the current business customer directory. Historical sale-name snapshots
+remain intact. Labels are omitted when unset; a customer link from another
+business is never used to resolve labels.

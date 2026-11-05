@@ -15,10 +15,23 @@ from accounts.services import user_has_permission
 from core import ledger
 from core.snapshot_images import render_distribution_snapshot, render_report_snapshot, snapshot_response
 from core.verticals import vertical_config
-from sales.models import CustomerPayment, Sale, SaleItem
+from sales.models import Customer, CustomerPayment, Sale, SaleItem
 from .models import DistributionReturn, FinishedGood, MarketStockLot, MarketStockMovement, StockMovement
 
 ZERO = Decimal('0')
+
+
+def customer_directory(business):
+    rows = list(Customer.raw_objects.filter(business=business).values('pk', 'name', 'region', 'customer_group'))
+    return {row['pk']: row for row in rows}, {row['name']: row for row in rows}
+
+
+def customer_labels(directory, customer_id=None, name=''):
+    by_id, by_name = directory
+    row = by_id.get(customer_id) if customer_id is not None else by_name.get(name)
+    region, group = (row['region'], row['customer_group']) if row else ('', '')
+    labels = ' · '.join(value for value in [f'Region: {region}' if region else '', f'Group: {group}' if group else ''] if value)
+    return {'customer_id': row['pk'] if row else None, 'region': region, 'customer_group': group, 'customer_labels': labels}
 
 
 def report_date(request):
@@ -28,7 +41,7 @@ def report_date(request):
         raise Http404('Choose a valid distribution date.')
 
 
-def distribution_settlement(request):
+def distribution_settlement(request, *, directory=None):
     """Read-only invoice review; returns estimate credits, never post them.
 
     Select invoices in the active ledger but include their lifetime payments and
@@ -37,6 +50,7 @@ def distribution_settlement(request):
     if not user_has_permission(request.user, request.business, 'finance', 'view'):
         return None
     business = request.business
+    directory = directory or customer_directory(business)
     sales = Sale.objects.filter(business=business, source='distribution_order', date=report_date(request)).exclude(
         linked_order__status='reversed')
     if business.uses_production:
@@ -75,6 +89,7 @@ def distribution_settlement(request):
                    gross=gross, returned=returned, net=net, paid=paid,
                    outstanding=max(gross - paid, ZERO), net_due=max(net - paid, ZERO),
                    refund_review=max(paid - net, ZERO))
+        row.update(customer_labels(directory, sale.customer_master_id, sale.customer))
         rows.append(row)
         for key in keys:
             totals[key] += row[key]
@@ -116,15 +131,17 @@ def distribution_text(*, business, title, day, intro, rows, allocations, settlem
         if allocation['kind'] == 'store':
             physical.append(allocation)
         else:
-            customers.setdefault(allocation['destination'], {'products': [], 'invoices': []})['products'].append(allocation)
+            customers.setdefault((allocation['destination'], allocation.get('customer_id')), {'products': [], 'invoices': [], 'labels': allocation.get('customer_labels', '')})['products'].append(allocation)
     if settlement is not None:
         for invoice in settlement['rows']:
             name = invoice['customer'] or 'Customer (name unavailable)'
-            customers.setdefault(name, {'products': [], 'invoices': []})['invoices'].append(invoice)
+            customers.setdefault((name, invoice.get('customer_id')), {'products': [], 'invoices': [], 'labels': invoice.get('customer_labels', '')})['invoices'].append(invoice)
     lines += ['*Customer breakdown*']
     method_order = {method: index for index, (method, _) in enumerate(Sale.PAYMENT_CHOICES)}
-    for name, customer in sorted(customers.items(), key=lambda pair: pair[0].casefold()):
+    for (name, _customer_id), customer in sorted(customers.items(), key=lambda pair: pair[0][0].casefold()):
         lines += [f'*{name}*']
+        if customer['labels']:
+            lines.append(customer['labels'])
         for product in customer['products']:
             lines.append(f"• {product['product']}: {quantity(product['quantity'], product['unit'])}")
         for invoice in sorted(customer['invoices'], key=lambda row: (row['date'], row['sale'])):
@@ -168,7 +185,7 @@ def recorded_returns_text(*, business, day, intro, rows, url):
              'As of: ' + intro.removeprefix(business.name + ' · '), '']
     for row in rows:
         lines += [f"*{row['customer'] or 'Customer (name unavailable)'} · Invoice #{row['sale']}*",
-                  f"• Product: {row['product']}", f"• Returned: {row['quantity']:,.2f} {row['unit']}",
+                  f"• Product: {row['product']}", *([f"• {row['customer_labels']}"] if row.get('customer_labels') else []), f"• Returned: {row['quantity']:,.2f} {row['unit']}",
                   f"• Date: {row['date']:%d %b %Y}", f"• Condition: {row['condition']}",
                   f"• Reason: {row['reason'] or 'Not recorded'}", '']
     if not rows:
@@ -177,7 +194,7 @@ def recorded_returns_text(*, business, day, intro, rows, url):
     return '\n'.join(lines)
 
 
-def distribution_summaries(request, *, lots=None):
+def distribution_summaries(request, *, lots=None, directory=None):
     business = request.business
     ui = vertical_config(business)
     channel = ui['commerce_channels']['distribution'].replace(' Order', '')
@@ -188,6 +205,7 @@ def distribution_summaries(request, *, lots=None):
         intro += f' · {scope}'
     day = report_date(request)
     products, destinations = {}, {}
+    directory = directory or customer_directory(business)
 
     def product(pk, name, unit):
         return products.setdefault(pk, {
@@ -196,9 +214,11 @@ def distribution_summaries(request, *, lots=None):
             'received': ZERO, 'distributed': ZERO, 'physical': ZERO,
         })
 
-    def destination(pk, name, unit, target, quantity, kind='customer'):
-        key = (pk, kind, target)
+    def destination(pk, name, unit, target, quantity, kind='customer', customer_id=None):
+        labels = customer_labels(directory, customer_id, target) if kind == 'customer' else {}
+        key = (pk, kind, target, labels.get('customer_id'))
         row = destinations.setdefault(key, {'product_id': pk, 'kind': kind, 'product': name, 'unit': unit or 'unit not set', 'destination': target, 'quantity': ZERO})
+        row.update(labels)
         row['quantity'] += quantity
 
     if business.uses_production:
@@ -212,7 +232,7 @@ def distribution_summaries(request, *, lots=None):
         # Current stock is a position; movement totals follow the selected ledger scope.
         movements = MarketStockMovement.objects.filter(business=business, date=day).values(
             'lot__finished_good_id', 'lot__finished_good__name', 'lot__finished_good__unit',
-            'movement_type', 'sale__customer', 'customer__name',
+            'movement_type', 'sale__customer', 'customer__name', 'sale__customer_master_id', 'customer_id',
         ).annotate(quantity=Sum('quantity'))
         for movement in movements:
             pk, name, unit = (movement['lot__finished_good_id'], movement['lot__finished_good__name'], movement['lot__finished_good__unit'])
@@ -223,7 +243,7 @@ def distribution_summaries(request, *, lots=None):
                 row['made' if kind == MarketStockMovement.PRODUCTION_IN else 'returned'] += quantity
             elif kind == MarketStockMovement.RELEASE:
                 row['distributed'] -= quantity
-                destination(pk, name, unit, movement['sale__customer'] or movement['customer__name'] or 'Customer (name unavailable)', -quantity)
+                destination(pk, name, unit, movement['sale__customer'] or movement['customer__name'] or 'Customer (name unavailable)', -quantity, customer_id=movement['sale__customer_master_id'] or movement['customer_id'])
             elif kind == MarketStockMovement.TRANSFER_PHYSICAL:
                 row['physical'] -= quantity
                 destination(pk, name, unit, 'Physical Store', -quantity, 'store')
@@ -236,7 +256,7 @@ def distribution_summaries(request, *, lots=None):
         for item in items:
             good = item.finished_good
             product(good.pk, good.name, good.unit)['distributed'] += item.total_units
-            destination(good.pk, good.name, good.unit, item.sale.customer or 'Customer (name unavailable)', item.total_units)
+            destination(good.pk, good.name, good.unit, item.sale.customer or 'Customer (name unavailable)', item.total_units, customer_id=item.sale.customer_master_id)
 
         arrivals = StockMovement.objects.filter(business=business, movement_type=StockMovement.FG_PURCHASE).filter(Q(business_date=day) | Q(business_date__isnull=True, occurred_at__date=day)).values('finished_good_id').annotate(quantity=Sum('quantity'))
         for arrival in arrivals:
@@ -251,8 +271,9 @@ def distribution_summaries(request, *, lots=None):
         'product': r.sale_item.finished_good.name, 'unit': r.sale_item.finished_good.unit,
         'quantity': r.quantity, 'condition': r.get_condition_display(),
         'reason': r.reason, 'writeoff_value': r.writeoff_value,
+        **customer_labels(directory, r.sale_item.sale.customer_master_id, r.sale_item.sale.customer),
     } for r in returns]
-    settlement = distribution_settlement(request)
+    settlement = distribution_settlement(request, directory=directory)
     page_url = request.build_absolute_uri(reverse('market_stock')) + '?' + urlencode({'date': day.isoformat()})
     stock_text = distribution_text(business=business, title=title, day=day, intro=intro,
         rows=rows, allocations=allocations, settlement=settlement, url=page_url + '#distribution-summary')
@@ -302,7 +323,8 @@ def distribution_snapshot(request, kind):
             scope=ledger.report_scope_label(request.business))
     else:
         rows = [{'label': r['product'], 'value': f"{r['quantity']:,.2f} {r['unit']}",
-                 'detail': f"{r['date']:%d %b %Y} · Sale #{r['sale']} · {r['customer']} · {r['condition']}"}
+                 'detail': f"{r['date']:%d %b %Y} · Sale #{r['sale']} · {r['customer']} · {r['condition']}",
+                 'secondary_detail': r['customer_labels']}
                 for r in data['recorded_return_rows']]
         image = render_report_snapshot(
             business=request.business, title='Recorded distribution returns', subtitle=day.strftime('%d %b %Y'),

@@ -1595,6 +1595,7 @@ class CommerceNotification(BusinessOwnedModel):
     EVENT_DELIVERY_ISSUE = "delivery_issue"
     EVENT_DELIVERY_PROVIDER = "delivery_provider"
     EVENT_INVENTORY_ALERT = "inventory_alert"
+    EVENT_FINANCE_ALERT = "finance_alert"
     EVENT_CHOICES = [
         (EVENT_CHECKOUT_RECEIVED, "Checkout received"),
         (EVENT_INTAKE_RECEIVED, "Order received"),
@@ -1610,6 +1611,7 @@ class CommerceNotification(BusinessOwnedModel):
         (EVENT_DELIVERY_ISSUE, "Delivery issue raised"),
         (EVENT_DELIVERY_PROVIDER, "Delivery provider update"),
         (EVENT_INVENTORY_ALERT, "Inventory stock alert"),
+        (EVENT_FINANCE_ALERT, "Finance attention summary"),
     ]
     ORDER_EVENTS = {EVENT_CHECKOUT_RECEIVED, EVENT_INTAKE_RECEIVED}
     PAYMENT_EVENTS = {
@@ -1624,6 +1626,8 @@ class CommerceNotification(BusinessOwnedModel):
     }
     DISPATCH_EVENTS = {EVENT_DELIVERY_READY}
     INVENTORY_EVENTS = {EVENT_INVENTORY_ALERT}
+    FINANCE_EVENTS = {EVENT_FINANCE_ALERT}
+    OPERATIONAL_EVENTS = INVENTORY_EVENTS | FINANCE_EVENTS
 
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     event_type = models.CharField(max_length=28, choices=EVENT_CHOICES)
@@ -1721,11 +1725,13 @@ class CommercePushDelivery(models.Model):
     STATUS_SENT = "sent"
     STATUS_FAILED = "failed"
     STATUS_EXPIRED = "expired"
+    STATUS_SUPERSEDED = "superseded"
     STATUS_CHOICES = [
         (STATUS_PENDING, "Pending"),
         (STATUS_SENT, "Sent"),
         (STATUS_FAILED, "Failed"),
         (STATUS_EXPIRED, "Subscription expired"),
+        (STATUS_SUPERSEDED, "Alert no longer current"),
     ]
 
     notification = models.ForeignKey(

@@ -254,3 +254,40 @@ class DistributionSummaryTests(ToolBase):
                 response = self.client.get(reverse('market_stock_snapshot', args=[kind]))
             self.assertEqual(response.status_code, 200)
             self.assertEqual(render.call_args.kwargs['scope'], '')
+
+    def test_customer_region_and_group_follow_the_linked_customer_everywhere(self):
+        from sales.models import Customer
+        customer = Customer.objects.create(business=self.biz, name='Regional buyer', region='North', customer_group='Retailers')
+        sale = Sale.objects.create(business=self.biz, date=timezone.localdate(), source='distribution_order',
+            customer='Old customer name', customer_master=customer, transaction_type='partial')
+        item = SaleItem.objects.create(sale=sale, finished_good=self.good, piece_qty=5, price=20)
+        DistributionReturn.raw_objects.create(business=self.biz, sale_item=item, date=timezone.localdate(), quantity=1,
+            condition=DistributionReturn.DAMAGED)
+        self.biz.vertical = Business.VERTICAL_WHOLESALE
+        self.biz.save()
+        data = distribution_summaries(self.request())
+        self.assertEqual(data['distribution_destinations'][0]['region'], 'North')
+        self.assertEqual(data['distribution_settlement']['rows'][0]['customer_group'], 'Retailers')
+        for key in ['distribution_share_text', 'returns_share_text']:
+            self.assertIn('Region: North', data[key])
+            self.assertIn('Group: Retailers', data[key])
+        self.client.force_login(self.admin)
+        page = self.client.get(reverse('market_stock'))
+        self.assertContains(page, 'Region: North')
+        self.assertContains(page, 'Group: Retailers')
+        from unittest.mock import patch
+        with patch('inventory.distribution_summary.render_distribution_snapshot', return_value=b'png') as render:
+            self.client.get(reverse('market_stock_snapshot', args=['stock']))
+        self.assertEqual(render.call_args.kwargs['products'][0]['customers'][0]['customer_group'], 'Retailers')
+
+    def test_customer_labels_never_resolve_through_another_business(self):
+        from sales.models import Customer
+        foreign = Customer.objects.create(business=self.other, name='Private buyer', region='PRIVATE REGION', customer_group='PRIVATE GROUP')
+        sale = Sale.objects.create(business=self.biz, date=timezone.localdate(), source='distribution_order',
+            customer='Private buyer', customer_master=foreign)
+        SaleItem.objects.create(sale=sale, finished_good=self.good, piece_qty=1, price=5)
+        self.biz.vertical = Business.VERTICAL_WHOLESALE
+        self.biz.save()
+        text = distribution_summaries(self.request())['distribution_share_text']
+        self.assertNotIn('PRIVATE REGION', text)
+        self.assertNotIn('PRIVATE GROUP', text)

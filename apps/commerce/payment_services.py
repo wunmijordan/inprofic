@@ -712,7 +712,7 @@ def record_verified_payment(
     *, payment, amount, actor, idempotency_key, external_reference="", note="",
     location="", claim=None, verified_at=None, staff_pos_confirmed=False,
 ):
-    payment = CommercePayment.raw_objects.select_for_update().select_related("intake", "checkout").get(
+    payment = CommercePayment.raw_objects.select_for_update(of=("self",)).select_related("intake", "checkout").get(
         pk=payment.pk, business=payment.business
     )
     checkout_before_payment = payment.checkout
@@ -836,7 +836,7 @@ def record_verified_payment(
 
 @transaction.atomic
 def reject_bank_claim(*, claim, actor, reason):
-    claim = CommercePaymentClaim.raw_objects.select_for_update().select_related("payment__intake", "payment__checkout").get(
+    claim = CommercePaymentClaim.raw_objects.select_for_update(of=("self", "payment")).select_related("payment__intake", "payment__checkout").get(
         pk=claim.pk, business=claim.business
     )
     if claim.status != CommercePaymentClaim.STATUS_SUBMITTED:
@@ -860,7 +860,7 @@ def reject_bank_claim(*, claim, actor, reason):
 
 @transaction.atomic
 def reverse_payment_receipt(*, receipt, actor, reason):
-    receipt = CommercePaymentReceipt.raw_objects.select_for_update().select_related("payment__intake", "payment__checkout", "account").get(
+    receipt = CommercePaymentReceipt.raw_objects.select_for_update(of=("self", "payment")).select_related("payment__intake", "payment__checkout", "account").get(
         pk=receipt.pk, business=receipt.business
     )
     if receipt.reversed_at:

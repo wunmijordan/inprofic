@@ -318,6 +318,9 @@
         <p class="border-t border-stone-200 px-4 py-2.5 text-[10px] leading-4 text-stone-400">Balances are live from Finance records; resolve the underlying payment, payable or ledger status in Finance.</p>
       </section>
       {% endif %}
+      {% if module_permissions.commerce.view or module_permissions.delivery.view or module_permissions.delivery_rider.view or module_permissions.inventory.view or module_permissions.finance.view %}
+      <div class="shrink-0 border-t border-stone-200 px-4 py-2"><a href="{% url 'device_alert_settings' %}" class="text-xs font-semibold">Device notification settings</a></div>
+      {% endif %}
     </div>
   </aside>
   <script>window.INPROFIC_SHELL=Object.assign(window.INPROFIC_SHELL||{},{assets:{"core/audio/alerts/chime1.mp3":"{% static 'core/audio/alerts/chime1.mp3' %}","core/audio/alerts/chime2.mp3":"{% static 'core/audio/alerts/chime2.mp3' %}","core/audio/alerts/chime3.mp3":"{% static 'core/audio/alerts/chime3.mp3' %}","core/audio/alerts/chime4.mp3":"{% static 'core/audio/alerts/chime4.mp3' %}","core/audio/alerts/chime5.mp3":"{% static 'core/audio/alerts/chime5.mp3' %}","core/audio/alerts/chime6.wav":"{% static 'core/audio/alerts/chime6.wav' %}","core/audio/alerts/chime7.wav":"{% static 'core/audio/alerts/chime7.wav' %}","core/audio/alerts/chime8.wav":"{% static 'core/audio/alerts/chime8.wav' %}","core/pwa/icon-mark-192.png":"{% static 'core/pwa/icon-mark-192.png' %}","core/pwa/icon-mark-monochrome-192.png":"{% static 'core/pwa/icon-mark-monochrome-192.png' %}"}});</script>

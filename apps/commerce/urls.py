@@ -38,6 +38,7 @@ urlpatterns = [
     path("commerce/settings/", views.commerce_settings, name="commerce_settings"),
     path("commerce/notifications/feed/", notification_views.notification_feed, name="commerce_notification_feed"),
     path("commerce/notifications/read/", notification_views.notification_read, name="commerce_notification_read"),
+    path("commerce/notifications/device/", notification_views.device_alert_settings, name="device_alert_settings"),
     path("commerce/notifications/push/config/", notification_views.push_config, name="commerce_push_config"),
     path("commerce/notifications/push/subscribe/", notification_views.push_subscribe, name="commerce_push_subscribe"),
     path("commerce/notifications/push/unsubscribe/", notification_views.push_unsubscribe, name="commerce_push_unsubscribe"),

@@ -272,13 +272,18 @@ def finance_alert_feed(request):
     if not user_has_permission(request.user, request.business, "finance", "view"):
         return JsonResponse({"detail": "Finance alert access is unavailable."}, status=403)
 
-    cache_key = finance_alert_cache_key(request.business.pk)
+    return JsonResponse(finance_alert_payload(request.business))
+
+
+def finance_alert_payload(business):
+    """Shared, tenant-scoped Finance alert data for the tray and device push."""
+    cache_key = finance_alert_cache_key(business.pk)
     payload = cache.get(cache_key)
     if payload is not None:
-        return JsonResponse(payload)
+        return payload
 
-    items = _finance_open_items(request.business)
-    currency = request.business.currency_symbol
+    items = _finance_open_items(business)
+    currency = business.currency_symbol
     alerts = []
     target_url = reverse("finance_dashboard")
 
@@ -343,7 +348,7 @@ def finance_alert_feed(request):
             "target_url": target_url,
             "sort_date": today().isoformat(),
         })
-    account_balances = _cash_account_balances(request.business, active_only=True)
+    account_balances = _cash_account_balances(business, active_only=True)
     for account in account_balances:
         if account.balance < 0:
             alerts.append({
@@ -381,7 +386,7 @@ def finance_alert_feed(request):
         "poll_seconds": 45,
     }
     cache.set(cache_key, payload, timeout=FINANCE_ALERT_CACHE_TIMEOUT)
-    return JsonResponse(payload)
+    return payload
 
 
 @login_required

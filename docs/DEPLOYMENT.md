@@ -273,12 +273,12 @@ Authorization: Bearer <CRON_SECRET>
 The endpoint processes a bounded batch so it cannot monopolize the web service.
 Run it at least as frequently as the shortest background reminder interval you
 intend to honor; the supported default is one minute. The existing daily
-`/ops/run-jobs/` maintenance schedule remains unchanged and does not run push
-delivery work.
+`/ops/run-jobs/` maintenance schedule also performs a push retry as a safety
+net; its daily cadence does not replace this minute-level retry job.
 
 Users enable/disable Web Push per device from the relevant operational surface:
-Commerce settings, Inventory alert settings, or the rider's My Deliveries
-workspace. Founder signup alerts are separately enabled per device in the
+Commerce settings, Inventory alert settings, Finance → Background alerts on this
+device, or the rider's My Deliveries workspace. Founder signup alerts are separately enabled per device in the
 Founder Console; new registrations are sent best-effort to each active Founder
 device subscription. On iPhone/iPad, add INPROFIC to the Home Screen and enable
 alerts from the installed app. Signing out deactivates Commerce push
@@ -417,3 +417,30 @@ For the fastest practical production path:
 7. monitor p95/p99 request latency, database latency and provider latency separately.
 
 The current `scripts/production.sh` intentionally starts one Daphne process. Horizontal/multi-process scaling remains a deliberate topology decision: configure the shared `REDIS_URL` first so realtime notifications cross process boundaries and application cache entries are shared rather than process-local.
+
+
+### Checking missing device alerts
+
+Inventory stock/settings changes and Finance record changes schedule operational
+push after commit. Commerce/Delivery retain their immediate dispatch path. The
+shared scheduled registry and the dedicated minute-level push endpoint recover
+pending work after transient errors or process restarts. Newly registered devices
+receive current stock/Finance summaries even if those summaries were sent before.
+Current permissions are checked again before transport; resolved or acknowledged
+conditions do not send stale pending alerts. In-app stock snooze/re-alert settings
+still apply. Finance summaries send on change, with no Commerce reminder loop.
+
+Authorized staff, including read-only Inventory viewers, can open their personal
+device panel from the alert tray's **Device notification settings** link.
+The device panel reports the last push accepted by the provider, pending/failed/
+expired deliveries and the current specific stock summary (materials/products,
+warning/low counts). It also identifies disabled or acknowledged/snoozed Inventory
+conditions. Acceptance is not proof that the operating system displayed a popup;
+notification permission, installed-app/browser support and OS notification settings
+still apply. Registration failures are displayed and can be retried instead of
+claiming the device is active. Founder signup notifications retain their separately
+documented best-effort path.
+
+Deploy the accompanying Commerce migration (`python manage.py migrate`) before
+using Finance push and the new superseded-delivery status. No subscription keys,
+customer records or financial records are changed by that migration.

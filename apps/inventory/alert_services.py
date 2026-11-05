@@ -167,7 +167,7 @@ def inventory_alert_feed(*, business, user, performance_request=None):
             InventoryAlertState.raw_objects.bulk_create(missing_states, ignore_conflicts=True)
         if reactivated_ids:
             InventoryAlertState.raw_objects.filter(pk__in=reactivated_ids).update(
-                is_active=True, acknowledged_at=None
+                is_active=True, acknowledged_at=None, updated_at=timezone.now()
             )
 
         stale_ids = [
@@ -177,7 +177,7 @@ def inventory_alert_feed(*, business, user, performance_request=None):
         ]
         if stale_ids:
             InventoryAlertState.raw_objects.filter(pk__in=stale_ids).update(
-                is_active=False, acknowledged_at=None
+                is_active=False, acknowledged_at=None, updated_at=timezone.now()
             )
             stale_id_set = set(stale_ids)
             for state in existing.values():

@@ -2,7 +2,9 @@ import json
 from uuid import UUID
 
 from django.http import JsonResponse
-from django.db.models import Count, Q, Window
+from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
+from django.db.models import Count, Max, Q, Window
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
@@ -19,7 +21,7 @@ def _access_profile(request):
     if cached is not None:
         return cached
     if not (request.user.is_authenticated and getattr(request, "business", None)):
-        profile = {"commerce": False, "delivery": False, "rider": False, "inventory": False}
+        profile = {"commerce": False, "delivery": False, "rider": False, "inventory": False, "finance": False}
         request._commerce_access_profile = profile
         return profile
     profile = {
@@ -27,6 +29,7 @@ def _access_profile(request):
         "delivery": user_has_permission(request.user, request.business, "delivery", "view"),
         "rider": user_has_permission(request.user, request.business, "delivery_rider", "view"),
         "inventory": user_has_permission(request.user, request.business, "inventory", "view"),
+        "finance": user_has_permission(request.user, request.business, "finance", "view"),
     }
     request._commerce_access_profile = profile
     return profile
@@ -63,7 +66,7 @@ def _unread(request):
     return CommerceNotification.raw_objects.filter(
         business=request.business
     ).filter(visible).exclude(
-        event_type__in=CommerceNotification.INVENTORY_EVENTS
+        event_type__in=CommerceNotification.OPERATIONAL_EVENTS
     ).exclude(reads__user=request.user)
 
 
@@ -162,6 +165,15 @@ def notification_read(request):
     publish_user_notifications_changed(request.business.pk, request.user.pk)
     return JsonResponse({"read": len(notices), "unread_count": _unread(request).count()})
 
+@login_required
+@never_cache
+@require_GET
+def device_alert_settings(request):
+    if not _push_authorized(request):
+        return render(request, '403.html', status=403)
+    return render(request, 'commerce/device_notifications.html')
+
+
 @never_cache
 @require_GET
 def push_config(request):
@@ -171,7 +183,35 @@ def push_config(request):
     from .models import CommercePushSubscription
     from .webpush import configured
 
+    from .models import CommercePushDelivery
+    subscriptions = CommercePushSubscription.objects.filter(business=request.business, user=request.user)
+    device = request.GET.get('device', '')
+    if device and len(device) == 64 and all(char in '0123456789abcdef' for char in device):
+        subscriptions = subscriptions.filter(endpoint_hash=device)
+    deliveries = CommercePushDelivery.objects.filter(subscription__in=subscriptions, notification__business=request.business)
+    statuses = {row['status']: row['count'] for row in deliveries.values('status').annotate(count=Count('pk'))}
+    last_sent = deliveries.aggregate(value=Max('sent_at'))['value']
+    inventory_state = None
+    if _access_profile(request)['inventory']:
+        from inventory.alert_services import inventory_alert_feed
+        from .webpush import inventory_push_message
+        feed = inventory_alert_feed(business=request.business, user=request.user)
+        active = feed['raw_total'] + feed['finished_total']
+        inventory_state = {'enabled': feed['enabled'], 'due': feed['count'],
+                           'snoozed': max(0, active - feed['count']), 'message': inventory_push_message(feed)}
+    allowed_summary_types = []
+    if _access_profile(request)['inventory']:
+        allowed_summary_types.extend(CommerceNotification.INVENTORY_EVENTS)
+    if _access_profile(request)['finance']:
+        allowed_summary_types.extend(CommerceNotification.FINANCE_EVENTS)
+    summaries = list(CommerceNotification.raw_objects.filter(business=request.business, recipient_user=request.user,
+        event_type__in=allowed_summary_types).values('event_type', 'message', 'updated_at'))
     return JsonResponse({
+        "inventory": inventory_state,
+        "channels": [key for key, allowed in _access_profile(request).items() if allowed],
+        "delivery": {'pending': statuses.get('pending', 0), 'failed': statuses.get('failed', 0),
+                     'expired': statuses.get('expired', 0), 'last_sent': last_sent,
+                     'summaries': summaries},
         "configured": configured(),
         "public_key": django_settings.WEB_PUSH_VAPID_PUBLIC_KEY if configured() else "",
         "active_devices": CommercePushSubscription.objects.filter(

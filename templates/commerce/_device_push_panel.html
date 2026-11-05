@@ -19,6 +19,7 @@
   const button = panel.querySelector('[data-push-toggle]');
   const status = panel.querySelector('[data-push-status]');
   let config = null;
+  let registrationFailed = false;
 
   function csrfToken() {
     const formToken = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value;
@@ -63,7 +64,13 @@
       return;
     }
     try {
-      const response = await fetch(panel.dataset.configUrl, {headers:{'Accept':'application/json'}, cache:'no-store'});
+      const existingDevice = await subscription().catch(() => null);
+      const configUrl = new URL(panel.dataset.configUrl, location.origin);
+      if (existingDevice && window.crypto?.subtle) {
+        const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(existingDevice.endpoint));
+        configUrl.searchParams.set('device', Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2,'0')).join(''));
+      }
+      const response = await fetch(configUrl, {headers:{'Accept':'application/json'}, cache:'no-store'});
       config = response.ok ? await response.json() : null;
     } catch (_) { config = null; }
     if (!config?.configured) {
@@ -79,19 +86,40 @@
     }
     const existing = await subscription().catch(() => null);
     if (Notification.permission === 'granted' && existing) {
-      try { await bind(existing); } catch (_) {}
+      try { await bind(existing); registrationFailed = false; } catch (_) {
+        registrationFailed = true; button.disabled = false; button.textContent = 'Retry device registration';
+        status.textContent = 'This browser has a subscription, but INPROFIC could not register it. Retry to receive alerts.';
+        return;
+      }
     }
     button.disabled = false;
     button.textContent = existing ? 'Disable on this device' : 'Enable background alerts';
     status.textContent = existing
       ? 'Background Web Push is active on this device. The operating system controls the sound used while the app is closed.'
       : 'Enable this device to keep receiving due operational reminders when INPROFIC is in the background or closed.';
+    if (existing && config.delivery) {
+      const delivery = config.delivery;
+      status.textContent += delivery.last_sent ? ' Last push accepted: ' + new Date(delivery.last_sent).toLocaleString() + '.' : ' No successful push delivery recorded yet.';
+      if (delivery.pending) status.textContent += ' Waiting to send: ' + delivery.pending + '.';
+      if (delivery.failed || delivery.expired) status.textContent += ' Failed or expired deliveries: ' + (delivery.failed + delivery.expired) + '. Re-enable alerts if this device subscription has expired.';
+      if (config.inventory) {
+        if (!config.inventory.enabled) status.textContent += ' Inventory alerts are disabled for this business.';
+        else if (config.inventory.message) status.textContent += ' Current stock summary: ' + config.inventory.message;
+        else status.textContent += ' No stock warnings or low-stock conditions are active.';
+        if (config.inventory.snoozed) status.textContent += ' Acknowledged or snoozed stock alerts: ' + config.inventory.snoozed + '.';
+      }
+      for (const summary of delivery.summaries || []) {
+        if (summary.event_type === 'inventory_alert' && config.inventory) continue;
+        status.textContent += ' Last prepared ' + (summary.event_type === 'inventory_alert' ? 'stock' : 'finance') + ' summary: ' + summary.message;
+      }
+    }
   }
   button?.addEventListener('click', async () => {
     button.disabled = true;
     try {
       if (iosHomeScreenAppRequired()) throw new Error('On iPhone or iPad, add INPROFIC to your Home Screen and open it there before enabling background alerts.');
       let existing = await subscription();
+      if (existing && registrationFailed) { await bind(existing); registrationFailed = false; await refresh(); return; }
       if (existing) {
         await fetch(panel.dataset.unsubscribeUrl, {
           method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken(),'Accept':'application/json'},

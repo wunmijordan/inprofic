@@ -198,7 +198,7 @@ def sample_setup(request):
 
 @login_required
 def market_stock(request):
-    from .distribution_summary import distribution_summaries
+    from .distribution_summary import distribution_summaries, customer_directory, customer_labels
     if not user_has_permission(request.user, request.business, "inventory", "view"):
         return render(request, "403.html", status=403)
     today = timezone.localdate()
@@ -225,12 +225,16 @@ def market_stock(request):
         (-movement.value for movement in MarketStockMovement.objects.filter(movement_type=MarketStockMovement.EXPIRY)),
         Decimal("0"),
     )
+    movements = list(MarketStockMovement.objects.select_related('lot__finished_good', 'customer', 'sale')[:50])
+    directory = customer_directory(request.business)
+    for movement in movements:
+        customer_id = (movement.sale.customer_master_id if movement.sale_id else None) or movement.customer_id
+        name = movement.sale.customer if movement.sale_id else movement.customer.name if movement.customer_id else ''
+        movement.customer_labels = customer_labels(directory, customer_id, name)['customer_labels']
     return render(request, "inventory/market_stock.html", {
-        **distribution_summaries(request, lots=lots),
+        **distribution_summaries(request, lots=lots, directory=directory),
         "lots": lots,
-        "movements": MarketStockMovement.objects.select_related(
-            "lot__finished_good", "customer", "sale"
-        )[:50],
+        "movements": movements,
         "sellable_units": sellable_units,
         "expired_units": expired_units,
         "expiring_units": expiring_units,

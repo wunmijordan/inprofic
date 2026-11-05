@@ -288,7 +288,7 @@ class LoginRequiredMiddleware:
                     if user_has_permission(request.user, business, "delivery", "view"):
                         return redirect("delivery_dashboard")
             if request.path.startswith('/commerce/notifications/'):
-                candidates = ('commerce', 'delivery', 'delivery_rider', 'inventory')
+                candidates = ('commerce', 'delivery', 'delivery_rider', 'inventory', 'finance')
                 if any(user_has_permission(request.user, request.business, candidate, 'view') for candidate in candidates):
                     # The notification view narrows event visibility and push
                     # permissions; access to this shared endpoint is not Commerce-only.

@@ -16,7 +16,7 @@ from django.utils import timezone
 from .models import ScheduledJobLease
 
 
-SCHEDULED_COMMANDS = ("sync_subscriptions", "dispatch_platform_mail", "process_whatsapp_queue", "send_daily_brief", "purge_assistant_history")
+SCHEDULED_COMMANDS = ("dispatch_web_push", "sync_subscriptions", "dispatch_platform_mail", "process_whatsapp_queue", "send_daily_brief", "purge_assistant_history")
 SCHEDULED_REGISTRY_LEASE = "scheduled-job-registry"
 
 
