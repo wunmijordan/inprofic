@@ -875,6 +875,44 @@ def founder_platform_business_reset_restore(request, pk, snapshot_pk):
 
 
 @login_required
+def founder_platform_business_reset_snapshot_delete(request, pk, snapshot_pk):
+    """Permanently discard one business's saved reset recovery copy."""
+    if not request.user.is_superuser:
+        return render(request, "403.html", status=403)
+    if request.method not in {"GET", "POST"}:
+        from django.http import HttpResponseNotAllowed
+        return HttpResponseNotAllowed(["GET", "POST"])
+    from accounts.models import BusinessResetSnapshot
+    from core.models import AuditLog
+
+    business = get_object_or_404(Business, pk=pk)
+    context = {"business": business, "confirmed": "", "error": ""}
+    with transaction.atomic():
+        snapshot = get_object_or_404(
+            BusinessResetSnapshot.raw_objects.select_for_update(),
+            pk=snapshot_pk, business_id=business.pk,
+        )
+        context["snapshot"] = snapshot
+        if request.method == "POST":
+            context["confirmed"] = request.POST.get("confirm_business", "").strip()
+            if context["confirmed"] != business.slug:
+                context["error"] = "Enter the exact business slug to permanently delete this restore copy."
+            else:
+                AuditLog.raw_objects.create(
+                    business=business, created_by=request.user, action="delete",
+                    model_name="BusinessResetSnapshot", object_id=str(snapshot.pk),
+                    description=f"Founder permanently deleted a reset restore copy for {business.name}.",
+                    metadata={"snapshot_id": snapshot.pk, "groups": snapshot.groups,
+                              "reset_at": snapshot.created_at.isoformat(),
+                              "was_restored": snapshot.restored_at is not None},
+                )
+                snapshot.delete()
+                messages.success(request, "The saved reset restore copy was permanently deleted. Current business records were unchanged.")
+                return redirect("founder_platform_business_reset", pk=business.pk)
+    return render(request, "accounts/founder_business_reset_snapshot_delete.html", context)
+
+
+@login_required
 def founder_platform_user_delete(request, pk):
     """Delete a global account with cascade preview and self-delete protection."""
     from django.db.models.deletion import ProtectedError, RestrictedError

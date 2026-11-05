@@ -46,6 +46,7 @@ urlpatterns = [
     path("founder/platform/business/<int:pk>/delete/", views.founder_platform_business_delete, name="founder_platform_business_delete"),
     path("founder/platform/business/<int:pk>/reset/", views.founder_platform_business_reset, name="founder_platform_business_reset"),
     path("founder/platform/business/<int:pk>/reset/<int:snapshot_pk>/restore/", views.founder_platform_business_reset_restore, name="founder_platform_business_reset_restore"),
+    path("founder/platform/business/<int:pk>/reset/<int:snapshot_pk>/delete/", views.founder_platform_business_reset_snapshot_delete, name="founder_platform_business_reset_snapshot_delete"),
     path("founder/platform/user/add/", views.founder_platform_user_add, name="founder_platform_user_add"),
     path("founder/platform/user/<int:pk>/", views.founder_platform_user, name="founder_platform_user"),
     path("founder/platform/user/<int:pk>/delete/", views.founder_platform_user_delete, name="founder_platform_user_delete"),

@@ -5,6 +5,11 @@ from django.db.models import ForeignKey, OneToOneField
 from django.db.models.deletion import PROTECT
 
 
+FINISHED_GOOD_COUNTERS = (
+    "total_produced", "total_delivered_to_customers", "transferred_market_stock",
+)
+
+
 def reset_groups():
     from accounts.models import (
         PayrollCalculationRule, PayrollRun, PayrollRunFunding, PayrollStaffProfile,
@@ -251,6 +256,12 @@ def _capture_reset_snapshot(*, business, selected, actor, counts):
                 business_id=business.pk, stock__isnull=False
             ).values_list("pk", "stock")
         },
+        "finished_good_counters": {
+            str(row["pk"]): {field: str(row[field]) for field in FINISHED_GOOD_COUNTERS}
+            for row in FinishedGood.raw_objects.filter(business_id=business.pk).values(
+                "pk", *FINISHED_GOOD_COUNTERS
+            )
+        },
     }
     now = timezone.now()
     BusinessResetSnapshot.raw_objects.filter(
@@ -314,6 +325,9 @@ def execute_business_reset(*, business, selected_groups, actor, preview_counts):
     # Reset opening inventory without changing any recipe or product setup.
     RawMaterial.raw_objects.filter(business_id=business.pk).update(stock=0)
     FinishedGood.raw_objects.filter(business_id=business.pk, stock__isnull=False).update(stock=0)
+    FinishedGood.raw_objects.filter(business_id=business.pk).update(
+        **dict.fromkeys(FINISHED_GOOD_COUNTERS, 0)
+    )
 
     AuditLog.raw_objects.create(
         business=business,
@@ -407,6 +421,11 @@ def restore_business_reset_snapshot(*, snapshot, actor):
     ):
         for pk, quantity in values.items():
             model.raw_objects.filter(business_id=snapshot.business_id, pk=pk).update(stock=quantity)
+    # Older snapshots predate counter capture; leave those missing values alone.
+    for pk, counters in stock.get("finished_good_counters", {}).items():
+        values = {field: counters[field] for field in FINISHED_GOOD_COUNTERS if field in counters}
+        if values:
+            FinishedGood.raw_objects.filter(business_id=snapshot.business_id, pk=pk).update(**values)
 
     snapshot.restored_at = now
     snapshot.restored_by = actor
