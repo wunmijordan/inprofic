@@ -49,9 +49,9 @@ what was borrowed and what was deliberately left out).
   recipe-derived comparison is informational and does not overwrite it.
   Product quantity orders continue to release the registered recipe quantities
   while showing the combined finished weight and configured-yield comparison.
-  Production Settings can schedule a color and optional expiry date by production
-  date; staff can apply the color to an order and its product rows, then apply
-  the expiry date to each batch at completion. Market Stock release and Physical Store transfer
+  Production Settings can assign a recurring color and optional shelf life to each
+  weekday. New orders use the color matching their production date; staff can
+  apply the suggested expiry to each batch at completion. Market Stock release and Physical Store transfer
   forms show live available, entered and remaining quantities for the selected
   product.
 - **Reports** — a date-range monthly operational PDF with revenue, channel-origin, procurement, production and inventory charts/tables; CSV/Excel exports and a full JSON backup.

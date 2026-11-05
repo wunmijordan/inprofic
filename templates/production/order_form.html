@@ -89,7 +89,7 @@
     </div>{# /kitchen-hide #}
     <div class="grid grid-cols-1 {% if production_enabled %}sm:grid-cols-2{% endif %} gap-3">
       {% include "_field.html" with field=form.date %}
-      {% if production_enabled %}<input type="hidden" id="id_color_tag" name="color_tag" value="{{ form.color_tag.value|default:'' }}">{% for error in form.color_tag.errors %}<span class="mb-1 block text-[11px] text-rose-600">{{ error }}</span>{% endfor %}<div class="cf-field mb-3 block"><div class="mb-1.5 flex items-center gap-1.5"><span class="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500">Production color</span></div><div id="daily-production-color-hint" class="flex min-h-[2.6rem] flex-wrap items-center justify-between gap-2 rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm" aria-live="polite"><span id="daily-production-color-copy" class="text-stone-500">Choose a date to check its scheduled color.</span><button data-button-surface id="apply-daily-production-color" type="button" class="hidden shrink-0 rounded-md border border-black/10 px-3 py-1.5 font-semibold shadow-sm transition hover:brightness-95">Apply to this order</button></div><p class="mt-1 text-[11px] text-stone-400">Colors are selected in Production Settings and applied here for the chosen date.</p></div>{% endif %}
+      {% if production_enabled %}<input type="hidden" id="id_color_tag" name="color_tag" value="{{ form.color_tag.value|default:'' }}">{% for error in form.color_tag.errors %}<span class="mb-1 block text-[11px] text-rose-600">{{ error }}</span>{% endfor %}<div class="cf-field mb-3 block"><div class="mb-1.5 flex items-center gap-1.5"><span class="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500">Production color</span></div><div id="daily-production-color-hint" class="flex min-h-[2.6rem] flex-wrap items-center justify-between gap-2 rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm" aria-live="polite"><span id="daily-production-color-copy" class="text-stone-500">Choose a date to check its scheduled color.</span><button data-button-surface id="apply-daily-production-color" type="button" class="hidden shrink-0 rounded-md border border-black/10 px-3 py-1.5 font-semibold shadow-sm transition hover:brightness-95">Apply to this order</button></div><p class="mt-1 text-[11px] text-stone-400">Weekday colors are set in Production Settings. New orders use the color matching their production date.</p></div>{% endif %}
     </div>
     <div {% if kitchen_mode %}hidden{% endif %}>{# kitchen-hide: market stock, customer, payment #}
     <div id="distribution-market-wrap" class="hidden mb-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
@@ -229,16 +229,19 @@
     return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 4 });
   }
 
-  function refreshDailyProductionColor() {
+  function refreshDailyProductionColor(event) {
     const wrap = document.getElementById('daily-production-color-hint');
     const copy = document.getElementById('daily-production-color-copy');
     const apply = document.getElementById('apply-daily-production-color');
     const date = document.querySelector('[name="date"]')?.value;
-    const configured = PRODUCTION_DAY_COLORS[date];
+    // Parse the calendar date in UTC so browser timezone cannot shift its weekday.
+    const parsed = date ? new Date(`${date}T12:00:00Z`) : null;
+    const weekday = parsed && !Number.isNaN(parsed.getTime()) ? (parsed.getUTCDay() + 6) % 7 : null;
+    const configured = weekday === null ? null : PRODUCTION_DAY_COLORS[String(weekday)];
     const colorField = document.getElementById('id_color_tag');
     if (!wrap || !copy || !apply || !colorField) return;
     if (configured) {
-      copy.textContent = `A production color is scheduled for this date${configured.expiry_date ? ` · suggested expiry ${configured.expiry_date}` : ''}.`;
+      copy.textContent = `This weekday has a production color${configured.expiry_days != null ? ` · suggested shelf life ${configured.expiry_days} days` : ''}.`;
       copy.classList.remove('text-stone-500');
       copy.classList.add('text-stone-700');
       apply.classList.remove('hidden');
@@ -246,6 +249,7 @@
       apply.style.backgroundColor = configured.color;
       apply.style.color = readableColorText(configured.color);
       apply.setAttribute('aria-label', `Apply scheduled production color ${configured.color} to this order`);
+      if (event || (!{{ obj|yesno:'true,false' }} && !colorField.value)) colorField.value = configured.color;
       apply.onclick = () => {
         colorField.value = configured.color;
         colorField.dispatchEvent(new Event('input', { bubbles: true }));
@@ -253,7 +257,8 @@
         apply.textContent = 'Color applied';
       };
     } else {
-      copy.textContent = date ? 'No production color is scheduled for this date.' : 'Choose a date to check its scheduled color.';
+      if (event) colorField.value = '';
+      copy.textContent = date ? 'No production color is set for this weekday.' : 'Choose a date to check its scheduled color.';
       copy.classList.remove('text-stone-700');
       copy.classList.add('text-stone-500');
       apply.classList.add('hidden');

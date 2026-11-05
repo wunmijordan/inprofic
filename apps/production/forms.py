@@ -24,28 +24,17 @@ class StyledModelForm(forms.ModelForm):
 class ProductionDaySettingForm(StyledModelForm):
     class Meta:
         model = ProductionDaySetting
-        fields = ["date", "color", "expiry_date"]
-        widgets = {
-            "date": forms.DateInput(attrs={"type": "date"}),
-            "color": forms.TextInput(attrs={"type": "color"}),
-            "expiry_date": forms.DateInput(attrs={"type": "date"}),
-        }
+        fields = ["weekday", "color", "expiry_days"]
+        widgets = {"color": forms.TextInput(attrs={"type": "color"})}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["date"].label = "Production date"
-        self.fields["color"].label = "Daily production color"
-        self.fields["color"].help_text = "Orders for this date can optionally use this color tag."
-        self.fields["expiry_date"].label = "Suggested expiry date (optional)"
-        self.fields["expiry_date"].help_text = "Can be applied to each product batch during order completion."
-
-    def clean(self):
-        cleaned = super().clean()
-        date = cleaned.get("date")
-        expiry_date = cleaned.get("expiry_date")
-        if date and expiry_date and expiry_date < date:
-            self.add_error("expiry_date", "Expiry date cannot be before the production date.")
-        return cleaned
+        self.fields["weekday"].required = True
+        self.fields["weekday"].label = "Production day"
+        self.fields["color"].label = "Production color"
+        self.fields["color"].help_text = "Used for production dates that fall on this weekday."
+        self.fields["expiry_days"].label = "Suggested shelf life in days (optional)"
+        self.fields["expiry_days"].help_text = "Suggested batch expiry is the production date plus this many days."
 
 
 class OrderForm(StyledModelForm):
@@ -154,6 +143,11 @@ class OrderForm(StyledModelForm):
 
     def clean(self):
         cleaned = super().clean()
+        production_date = cleaned.get("date")
+        if self.business and self.business.uses_production and production_date and not self.instance.pk and not cleaned.get("color_tag"):
+            setting = ProductionDaySetting.objects.filter(business=self.business, weekday=production_date.weekday()).first()
+            if setting:
+                cleaned["color_tag"] = setting.color
         order_type = cleaned.get("order_type")
         customer = cleaned.get("customer")
         market_stock = order_type == "distribution" and bool(cleaned.get("is_market_stock"))

@@ -299,20 +299,28 @@ class Order(BusinessOwnedModel):
 
 
 class ProductionDaySetting(BusinessOwnedModel):
-    """Optional color and expiry guidance for one business production date."""
+    """Recurring weekday color and expiry guidance; legacy dated rules are retained."""
 
-    date = models.DateField()
+    WEEKDAYS = [(0, "Monday"), (1, "Tuesday"), (2, "Wednesday"), (3, "Thursday"),
+                (4, "Friday"), (5, "Saturday"), (6, "Sunday")]
+    weekday = models.PositiveSmallIntegerField(choices=WEEKDAYS, null=True, blank=True)
     color = models.CharField(max_length=7, validators=[Order.COLOR_VALIDATOR])
+    expiry_days = models.PositiveSmallIntegerField(null=True, blank=True)
+    # Retain original date-based settings as migration evidence.
+    date = models.DateField(null=True, blank=True)
     expiry_date = models.DateField(null=True, blank=True)
 
     class Meta:
-        ordering = ["-date", "-id"]
+        ordering = ["weekday", "id"]
         constraints = [
-            models.UniqueConstraint(fields=["business", "date"], name="unique_production_day_setting_per_business"),
+            models.UniqueConstraint(fields=["business", "weekday"], name="unique_production_weekday_per_business"),
         ]
 
+    def suggested_expiry(self, production_date):
+        return production_date + timedelta(days=self.expiry_days) if self.expiry_days is not None else None
+
     def __str__(self):
-        return f"Production settings for {self.date}"
+        return f"Production settings for {self.get_weekday_display()}"
 
 
 class OrderFlexibleMaterialReport(BusinessOwnedModel):

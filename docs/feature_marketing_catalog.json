@@ -91,10 +91,10 @@
   },
   {
     "id": "production-day-settings",
-    "name": "Production day color and expiry settings",
+    "name": "Weekday production colors and shelf life",
     "group": "production",
     "audience": "production teams, storekeepers and owners",
-    "proof": "Schedule a color and optional expiry date by production date, then apply them to orders and completed batches when needed.",
+    "proof": "Set recurring Monday–Sunday colors that automatically tag new orders by production date. Optional shelf-life days produce a date-specific batch expiry suggestion; existing saved order tags remain unchanged.",
     "highlight": "NEW",
     "added_on": "2026-10-20"
   },

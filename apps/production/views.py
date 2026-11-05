@@ -289,11 +289,11 @@ def order_form(request, pk=None):
         )
     prices = _price_map()
     daily_colors = {
-        entry.date.isoformat(): {
+        str(entry.weekday): {
             "color": entry.color,
-            "expiry_date": entry.expiry_date.isoformat() if entry.expiry_date else "",
+            "expiry_days": entry.expiry_days,
         }
-        for entry in ProductionDaySetting.objects.filter(business=request.business)
+        for entry in ProductionDaySetting.objects.filter(business=request.business, weekday__isnull=False)
     } if request.business.uses_production else {}
     return render(request, "production/order_form.html", {
         "form": form, "formset": formset, "prices": prices, "obj": obj,
@@ -311,7 +311,7 @@ def production_settings(request):
     if not _can_reset_order_numbering(request):
         return render(request, "403.html", status=403)
 
-    settings_qs = ProductionDaySetting.objects.filter(business=request.business)
+    settings_qs = ProductionDaySetting.objects.filter(business=request.business, weekday__isnull=False)
     editing = get_object_or_404(settings_qs, pk=request.GET.get("edit")) if request.GET.get("edit") else None
     if request.method == "POST":
         delete_id = request.POST.get("delete_id")
@@ -319,21 +319,23 @@ def production_settings(request):
             day_setting = get_object_or_404(settings_qs, pk=delete_id)
             with transaction.atomic():
                 audit(request.business, request.user, "delete", day_setting, "Production day setting removed", {
-                    "date": day_setting.date.isoformat(), "color": day_setting.color,
-                    "expiry_date": day_setting.expiry_date.isoformat() if day_setting.expiry_date else None,
+                    "weekday": day_setting.weekday, "color": day_setting.color,
+                    "expiry_days": day_setting.expiry_days,
                 })
                 day_setting.delete()
             messages.success(request, "Production day color removed.")
             return redirect("production_settings")
 
-        posted_date = None
         try:
-            posted_date = date.fromisoformat(request.POST.get("date", ""))
+            posted_weekday = int(request.POST.get("weekday", ""))
         except (TypeError, ValueError):
-            pass
-        existing_for_date = settings_qs.filter(date=posted_date).first() if posted_date else None
-        instance = editing or existing_for_date
+            posted_weekday = None
+        existing_for_day = settings_qs.filter(weekday=posted_weekday).first() if posted_weekday in range(7) else None
+        instance = editing or existing_for_day
         form = ProductionDaySettingForm(request.POST, instance=instance)
+        if editing and existing_for_day and editing.pk != existing_for_day.pk:
+            form.is_valid()
+            form.add_error("weekday", "This weekday already has a color. Edit its existing setting instead.")
         if form.is_valid():
             day_setting = form.save(commit=False)
             is_new = day_setting.pk is None
@@ -344,13 +346,13 @@ def production_settings(request):
                 day_setting.save()
                 audit(request.business, request.user, "create" if is_new else "update", day_setting,
                       "Production day setting saved", {
-                          "date": day_setting.date.isoformat(), "color": day_setting.color,
-                          "expiry_date": day_setting.expiry_date.isoformat() if day_setting.expiry_date else None,
+                          "weekday": day_setting.weekday, "color": day_setting.color,
+                          "expiry_days": day_setting.expiry_days,
                       })
             messages.success(request, "Production day color saved.")
             return redirect("production_settings")
     else:
-        form = ProductionDaySettingForm(instance=editing, initial={"date": today()})
+        form = ProductionDaySettingForm(instance=editing, initial=None if editing else {"weekday": today().weekday()})
 
     return render(request, "production/settings.html", {
         "form": form,
@@ -1313,8 +1315,11 @@ def order_complete(request, pk):
     # Optional "event_date" lets staff record production on the day it happened.
     completed_on = ledger.resolve_event_date(request, order.approved_date or order.date)
     scheduled_day_color = ProductionDaySetting.objects.filter(
-        business=order.business, date=order.date
+        business=order.business, weekday=order.date.weekday()
     ).first()
+
+    if scheduled_day_color:
+        scheduled_day_color.expiry_date = scheduled_day_color.suggested_expiry(order.date)
 
     items = list(order.items.select_related("finished_good").prefetch_related(
         Prefetch("material_usages", queryset=OrderMaterialUsage.objects.select_related("raw_material"))
