@@ -1,5 +1,5 @@
-{# Optional business date for a workflow event. Blank = today (or the document date in Backlog mode). #}
+{# Business date for a workflow event. Required callers must select a date; other callers retain their default-date behavior. #}
 <label class="inline-flex items-center gap-1.5 text-[11px] font-medium text-stone-600">
-  <span>{{ label|default:"Date" }}</span>
-  <input type="date" name="event_date" value="{{ value|default:'' }}" {% if min %}min="{{ min }}"{% endif %} max="{% now 'Y-m-d' %}" class="rounded-md border border-[#D9CFB4] bg-white px-2 py-1 text-xs text-stone-700" title="{% if request.ledger_scope == 'backlog' %}Leave blank to use the document date{% else %}Leave blank for today. Choose an earlier day to record it as of then.{% endif %}">
+  <span>{{ label|default:"Date" }}{% if required %} <span class="text-rose-700">* Required</span>{% endif %}</span>
+  <input type="date" name="event_date" {% if required %}required aria-required="true" autocomplete="off"{% endif %} value="{{ value|default:'' }}" {% if min %}min="{{ min }}"{% endif %} max="{% now 'Y-m-d' %}" class="rounded-md border border-[#D9CFB4] bg-white px-2 py-1 text-xs text-stone-700" title="{% if required %}Select the date this event happened.{% elif request.ledger_scope == 'backlog' %}Leave blank to use the document date{% else %}Leave blank for today. Choose an earlier day to record it as of then.{% endif %}">
 </label>

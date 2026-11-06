@@ -219,11 +219,11 @@ class KitchenFlexibleAndAssignmentTests(KitchenBase):
         row = next(r for r in page.context["flexible_usages"] if not r["central"])
         self.assertEqual(row["actual_per_batch"], Decimal("2.5000"))  # not the recipe's planned 2
         self.assertContains(page, "Choose channel")
-        self.client.post(reverse("order_approve", args=[self.order.pk]))
+        self.client.post(reverse("order_approve", args=[self.order.pk]), {"event_date": date.today().isoformat()})
         self.order.refresh_from_db()
         self.assertEqual(self.order.status, "pending")
         Order.objects.filter(pk=self.order.pk).update(order_type="physical_store")
-        self.client.post(reverse("order_approve", args=[self.order.pk]), {self.flex_name: "2.5"})
+        self.client.post(reverse("order_approve", args=[self.order.pk]), {"event_date": date.today().isoformat(), self.flex_name: "2.5"})
         self.order.refresh_from_db()
         self.assertEqual(self.order.status, "approved")
 
@@ -270,7 +270,7 @@ class ChannelAllocationTests(KitchenBase):
         ])
 
     def _approve(self, order):
-        self.client.post(reverse("order_approve", args=[order.pk]), {"force": "1"})
+        self.client.post(reverse("order_approve", args=[order.pk]), {"event_date": date.today().isoformat(), "force": "1"})
         order.refresh_from_db()
         self.assertEqual(order.status, "approved")
 
@@ -281,6 +281,7 @@ class ChannelAllocationTests(KitchenBase):
                 prefix + "qc_notes": "", prefix + "shortage_reason": "", prefix + "excess_to_stock": "0",
                 prefix + "excess_to_market_stock": "0", prefix + "excess_to_non_stock": "0", prefix + "excess_non_stock_purpose": ""}
         data.update({prefix + key: str(value) for key, value in extra.items()})
+        data["event_date"] = date.today().isoformat()
         response = self.client.post(reverse("order_complete", args=[order.pk]), data)
         order.refresh_from_db()
         self.assertEqual(order.status, "completed", response.context and [str(f.errors) for _i, f, _o in response.context["completion_forms"]])
@@ -526,7 +527,7 @@ class ChannelAllocationTests(KitchenBase):
         OrderItem.objects.create(order=other, finished_good=self.cake, batch_qty=1, price=Decimal("500"))
         run = ProductionRun.objects.create(business=self.business, created_by=self.manager, date=date.today(), run_number="RUN-T1")
         run.orders.add(self.order, other)
-        response = self.client.post(reverse("production_run_approve", args=[run.pk]))
+        response = self.client.post(reverse("production_run_approve", args=[run.pk]), {"event_date": date.today().isoformat()})
         self.order.refresh_from_db()
         self.assertEqual(self.order.status, "approved", response.status_code)
 

@@ -11,7 +11,7 @@
         <div><h3 class="font-semibold">{{ vendor.supplier|default:"Supplier not named" }}</h3><p class="text-xs text-stone-500">PO #{{ vendor.pk }} · {{ vendor.get_status_display }}</p></div>
         <span class="font-mono text-sm">{{ vendor.total|money:biz.currency_symbol }}</span>
       </div>
-      <ul class="mt-3 space-y-1 text-sm">{% for item in vendor.items.all %}{% if item.qty > 0 %}<li>{{ item.item_name }} · <span class="font-mono">{{ item.qty|num }} {{ item.stock_unit }}</span></li>{% endif %}{% endfor %}</ul>
+      <ul class="mt-3 space-y-1 text-sm">{% for item in vendor.items.all %}{% if item.qty > 0 %}<li>{{ item.item_name }} · <span class="font-mono">{{ item.qty|num }} {{ item.stock_unit|unit_plural:item.qty }}</span></li>{% endif %}{% endfor %}</ul>
       {% if vendor.status == 'approved' and vendor.total > 0 %}
       <form action="{% url 'po_receive' vendor.pk %}" method="post" class="mt-4 flex flex-wrap items-end justify-between gap-3">
         {% csrf_token %}

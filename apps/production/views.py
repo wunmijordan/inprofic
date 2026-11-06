@@ -992,7 +992,7 @@ def production_run_approve(request, pk):
         return redirect("production_run_detail", pk=pk)
     # Backlog entry records history, so live shortage checks do not apply.
     force = request.POST.get("force") == "1" or ledger.is_backlog_scope()
-    approved_on = ledger.resolve_event_date(request, run.date)
+    approved_on = ledger.resolve_event_date(request, run.date, required=True)
     orders = list(run.orders.all())
     if len(orders) < 2:
         messages.error(request, "A shared production run needs at least two pending orders. Add another existing or new customer/store order before approval.")
@@ -1169,7 +1169,7 @@ def order_approve(request, pk):
         messages.error(request, "Decide where this order goes before approving it: choose its channel, or assign it across channels.")
         return redirect("order_detail", pk=pk)
     force = request.POST.get("force") == "1" or ledger.is_backlog_scope()
-    approved_on = ledger.resolve_event_date(request, order.date)
+    approved_on = ledger.resolve_event_date(request, order.date, required=True)
     flexible_usages, usage_entries, aggregated, errors = _material_release_plan(order, request.POST)
     if errors:
         for error in errors:
@@ -1312,8 +1312,8 @@ def order_complete(request, pk):
     order = get_object_or_404(Order.objects.select_related("customer"), pk=pk)
     if order.status != "approved":
         return redirect("orders_list")
-    # Optional "event_date" lets staff record production on the day it happened.
-    completed_on = ledger.resolve_event_date(request, order.approved_date or order.date)
+    # Production requires an explicitly selected event date.
+    completed_on = ledger.resolve_event_date(request, order.approved_date or order.date, required=True)
     scheduled_day_color = ProductionDaySetting.objects.filter(
         business=order.business, weekday=order.date.weekday()
     ).first()

@@ -420,7 +420,8 @@ class FinishedGood(LedgerStockMixin, BusinessOwnedModel):
         :meth:`selling_price_for`.
         """
         if customer is not None and channel in ("distribution", "online"):
-            override = self.customer_prices.filter(customer=customer, channel=channel).first()
+            override = self.customer_prices.filter(business_id=self.business_id, customer=customer,
+                                                   customer__business_id=self.business_id, channel=channel).first()
             if override is not None:
                 return override.price
 

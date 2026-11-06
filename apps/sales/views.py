@@ -6,6 +6,7 @@ from django.db import transaction
 from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.views.decorators.http import require_GET
 
 from .forms import SaleForm, SaleItemFormSet, CustomerForm, CustomerProductPriceFormSet
 from .models import Customer, CustomerProductPrice, Sale, SaleItem
@@ -105,10 +106,13 @@ def customer_toggle_active(request, pk):
 @login_required
 def sales_list(request):
     sales = list(
-        Sale.objects.select_related("business", "created_by", "linked_order").prefetch_related(
+        Sale.objects.select_related("business", "created_by", "linked_order", "customer_master").prefetch_related(
             Prefetch("items", queryset=SaleItem.objects.select_related("finished_good"))
         )
     )
+    customer_ids = dict(Customer.objects.filter(business=request.business).values_list('name','pk'))
+    for sale in sales:
+        sale.activity_customer_id = sale.customer_master_id or customer_ids.get(sale.customer)
     total_revenue = sum((s.total for s in sales if s.transaction_type == "paid"), Decimal("0"))
     unpaid_value = sum((s.total for s in sales if s.transaction_type == "unpaid"), Decimal("0"))
     return render(request, "sales/sales_list.html", {"sales": sales, "total_revenue": total_revenue, "unpaid_value": unpaid_value})
@@ -284,3 +288,14 @@ def sale_delete(request, pk):
 def sale_invoice(request, pk):
     sale = get_object_or_404(Sale.objects.prefetch_related("items__finished_good"), pk=pk)
     return sale_invoice_pdf(sale)
+
+
+@login_required
+@require_GET
+def customer_activity(request, pk):
+    from accounts.services import user_has_permission
+    from .customer_activity import customer_activity_context
+    if not user_has_permission(request.user,request.business,'sales','view'):
+        return render(request,'403.html',status=403)
+    customer = get_object_or_404(Customer.objects.filter(business=request.business),pk=pk)
+    return render(request,'sales/customer_activity.html',customer_activity_context(request,customer))

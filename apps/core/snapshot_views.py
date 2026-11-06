@@ -22,13 +22,13 @@ def brief_snapshot(request):
     # the identical text payload used for sharing and copying.
     rows = brief['snapshot_highlights']
     pl = brief.get('executive_pl')
-    if pl is not None:
+    if pl is not None and pl['net_profit']:
         total_label = 'Net loss' if pl['net_profit'] < 0 else 'Net profit'
         total = money(pl['net_profit'])
-    elif 'executive_sales_total' in brief:
+    elif brief.get('executive_sales_total'):
         total_label, total = 'Recorded sales', money(brief['executive_sales_total'])
     else:
-        total_label, total = 'Report areas', str(len(brief['executive_sections']))
+        total_label, total = '', None
     footer = 'Period activity; balances and stock are current · Full details in text'
     content = render_report_snapshot(
         business=business, title='Weekly Summary' if report['view']=='weekly' else 'Daily Brief',

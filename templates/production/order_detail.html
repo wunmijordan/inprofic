@@ -23,8 +23,8 @@
 <p class="text-sm text-stone-500 mb-4">
   {% if order.is_multi_channel %}One order, {{ allocations|length }} channels — it is approved and produced once, and each channel below receives its share when production is completed.
   {% elif order.is_market_stock_order %}Unassigned {{ order.display_order_type }} — completed saleable units enter separate Distribution Market Stock for later assignment. Distributor releases, returns, expiry and Physical Store transfers are managed from the Market Stock page.
-  {% elif order.order_type == 'distribution' %}For {{ order.customer_name }} — Distribution sale will be recorded once completed.
-  {% elif order.order_type == 'online' %}{% if order.customer_name %}For {{ order.customer_name }} — {% endif %}Online sale will be recorded once completed.
+  {% elif order.order_type == 'distribution' %}For {% include "sales/_customer_link.html" with customer_id=order.customer_id customer_name=order.customer_name %} — Distribution sale will be recorded once completed.
+  {% elif order.order_type == 'online' %}{% if order.customer_name %}For {% include "sales/_customer_link.html" with customer_id=order.customer_id customer_name=order.customer_name %} — {% endif %}Online sale will be recorded once completed.
   {% else %}{{ vertical_ui.stock_location }} production — <b>{{ order.get_production_destination_display }}</b>. {% if order.production_destination == "store" %}Completed production adds to available stock.{% else %}Completed production does not enter stock. Purpose: <b>{{ order.non_stock_purpose }}</b>.{% endif %} Direct sales and all payment details are handled in the Sales form.{% endif %}
 </p>
 
@@ -57,7 +57,7 @@
 <div class="mb-4 max-w-4xl rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
   <div class="font-semibold">Production basis · {{ vertical_ui.base_pool_label }}</div>
   {% if base %}
-  <div class="mt-1 text-xs">{{ base.name }}: {{ order.base_material_used_quantity|num }} {{ base.usage_unit }} allocated and released by {{ vertical_ui.finished_output_label }} weight from the {{ order.base_material_quantity|num }} {{ base.usage_unit }} pool.</div>
+  <div class="mt-1 text-xs">{{ base.name }}: {{ order.base_material_used_quantity|num }} {{ base.usage_unit|unit_plural:order.base_material_used_quantity }} allocated and released by {{ vertical_ui.finished_output_label }} weight from the {{ order.base_material_quantity|num }} {{ base.usage_unit|unit_plural:order.base_material_quantity }} pool.</div>
   {% else %}
   <div class="mt-1 text-xs">This order uses the shared {{ vertical_ui.base_pool_label|lower }} basis. Its product rows retain the material-use snapshots used for production and costing.</div>
   {% endif %}
@@ -74,7 +74,7 @@
       {% for i in order.items.all %}
       <tr class="border-t border-[#E7DFCC]"{% if order.color_tag %} style="border-left:4px solid {{ order.color_tag }}"{% endif %}>
         <td class="px-2 py-1.5">{% if order.color_tag %}<span class="mr-1 inline-block h-2.5 w-2.5 rounded-full border border-black/10 align-middle" style="background-color:{{ order.color_tag }}" title="{{ order.date|date:'l' }} production color"></span>{% endif %}{% if i.commerce_addon_name %}<span class="text-[10px] font-bold uppercase tracking-wide text-stone-500">Add-on · </span>{% endif %}{{ i.finished_good.name }}{% if i.commerce_addon_name %}<div class="text-xs text-stone-500">{{ i.commerce_addon_name }}</div>{% endif %}{% if i.product_option_value %}<div class="text-xs text-stone-500">{{ i.product_option_label }}: {{ i.product_option_value }}</div>{% endif %}</td>
-        <td class="px-2 py-1.5 text-xs">{% if order.production_basis == 'base_material' and i.finished_good.base_material %}<span class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 font-semibold text-emerald-800">Shared base pool</span><div class="mt-1 text-[10px] text-stone-500">{{ i.base_material_quantity|num }} {{ i.finished_good.base_material.usage_unit }} {{ i.finished_good.base_material.name }} allocated and released to this row by output weight.</div>{% elif i.production_basis == 'base_material' and i.finished_good.base_material %}<span class="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 font-semibold text-amber-800">Legacy base sizing</span><div class="mt-1 text-[10px] text-stone-500">{{ i.base_material_quantity|num }} {{ i.finished_good.base_material.usage_unit }} {{ i.finished_good.base_material.name }}</div>{% else %}<span class="rounded-full border border-stone-200 bg-stone-50 px-2 py-1 text-stone-600">Product quantity</span>{% endif %}</td>
+        <td class="px-2 py-1.5 text-xs">{% if order.production_basis == 'base_material' and i.finished_good.base_material %}<span class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 font-semibold text-emerald-800">Shared base pool</span><div class="mt-1 text-[10px] text-stone-500">{{ i.base_material_quantity|num }} {{ i.finished_good.base_material.usage_unit|unit_plural:i.base_material_quantity }} {{ i.finished_good.base_material.name }} allocated and released to this row by output weight.</div>{% elif i.production_basis == 'base_material' and i.finished_good.base_material %}<span class="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 font-semibold text-amber-800">Legacy base sizing</span><div class="mt-1 text-[10px] text-stone-500">{{ i.base_material_quantity|num }} {{ i.finished_good.base_material.usage_unit|unit_plural:i.base_material_quantity }} {{ i.finished_good.base_material.name }}</div>{% else %}<span class="rounded-full border border-stone-200 bg-stone-50 px-2 py-1 text-stone-600">Product quantity</span>{% endif %}</td>
         <td class="px-2 py-1.5 text-right font-mono">{{ i.batch_qty|num }}</td>
         <td class="px-2 py-1.5 text-right font-mono">{{ i.piece_qty|num }}</td>
         <td class="px-2 py-1.5 text-right font-mono font-medium">{{ i.total_units|num }}</td>
@@ -122,7 +122,7 @@
     {% if row.central %}
     <div class="border-t border-amber-200 pt-2" data-flex-central>
       <div class="grid grid-cols-1 sm:grid-cols-[1fr_9rem_auto] gap-2 items-end">
-        <div class="text-xs"><b>{{ row.material.name }}</b> · all products<div class="text-[10px] text-amber-600">Planned total: {{ row.planned_total|num }} {{ row.usage_unit }}</div></div>
+        <div class="text-xs"><b>{{ row.material.name }}</b> · all products<div class="text-[10px] text-amber-600">Planned total: {{ row.planned_total|num }} {{ row.usage_unit|unit_plural:row.planned_total }}</div></div>
         <label class="text-[10px] text-amber-700">Total used for this order<input form="{% if kitchen_view %}flexible-save-form{% else %}approve-order-form{% endif %}" type="number" min="0" step="0.0001" name="{{ row.input_name }}" value="{{ row.input_value }}" data-flex-total class="mt-1 w-full rounded-md border border-amber-300 bg-white px-2 py-1.5 text-sm font-mono"></label>
         <span class="text-[10px] text-amber-600 pb-2">{{ row.usage_unit }}</span>
       </div>
@@ -132,7 +132,7 @@
     </div>
     {% else %}
     <div class="grid grid-cols-1 sm:grid-cols-[1fr_9rem_auto] gap-2 items-end border-t border-amber-200 pt-2">
-      <div class="text-xs"><b>{{ row.good.name }}</b> · {{ row.material.name }}<div class="text-[10px] text-amber-600">{{ vertical_ui.recipe_label }}: {{ row.planned_per_batch|num }} {{ row.usage_unit }} / batch · production equivalent {{ row.multiplier|num }} batch(es)</div></div>
+      <div class="text-xs"><b>{{ row.good.name }}</b> · {{ row.material.name }}<div class="text-[10px] text-amber-600">{{ vertical_ui.recipe_label }}: {{ row.planned_per_batch|num }} {{ row.usage_unit|unit_plural:row.planned_per_batch }} / batch · production equivalent {{ row.multiplier|num }} batch(es)</div></div>
       <label class="text-[10px] text-amber-700">Actual qty / batch<input form="{% if kitchen_view %}flexible-save-form{% else %}approve-order-form{% endif %}" type="number" min="0" step="any" name="{{ row.input_name }}" value="{{ row.input_value }}" class="mt-1 w-full rounded-md border border-amber-300 bg-white px-2 py-1.5 text-sm font-mono"></label>
       <span class="text-[10px] text-amber-600 pb-2">{{ row.usage_unit }}</span>
     </div>
@@ -168,7 +168,7 @@ document.querySelectorAll('[data-flex-central]').forEach(function (box) {
 {% for w in pool_ratio_warnings %}
 <div class="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-md p-3 mb-4 max-w-2xl">
   <div class="font-semibold mb-1">Ingredient ratio check: {{ w.product }}</div>
-  <p class="text-xs leading-5">{{ w.pool }} {{ w.unit }} of {{ w.base }} is allocated, but the ordered quantity needs {{ w.recipe_need }} {{ w.unit }} by the recipe. The whole allocation is released; other ingredients are released for the ordered quantity only, so they are {{ w.direction }} than the recipe ratio to {{ w.base }}:</p>
+  <p class="text-xs leading-5">{{ w.pool }} {{ w.unit|unit_plural:w.pool }} of {{ w.base }} is allocated, but the ordered quantity needs {{ w.recipe_need }} {{ w.unit|unit_plural:w.recipe_need }} by the recipe. The whole allocation is released; other ingredients are released for the ordered quantity only, so they are {{ w.direction }} than the recipe ratio to {{ w.base }}:</p>
   <ul class="mt-1.5 text-xs space-y-0.5">{% for o in w.others %}<li>{{ o.name }}: releasing <strong>{{ o.released }}</strong>; at the recipe ratio for the full allocation it would be <strong>{{ o.at_ratio }}</strong></li>{% endfor %}</ul>
 </div>
 {% endfor %}
@@ -185,7 +185,7 @@ document.querySelectorAll('[data-flex-central]').forEach(function (box) {
     Not enough inventory material to approve:
   </div>
   <ul class="list-disc list-inside">
-    {% for s in shortages %}<li>{{ s.name }} <span class="text-[10px] text-rose-500">({{ s.category }})</span> — needs {{ s.needed|num }} {{ s.usage_unit }}, has {{ s.have|num }} {{ s.usage_unit }}, short by {{ s.short|num }} {{ s.usage_unit }}</li>{% endfor %}
+    {% for s in shortages %}<li>{{ s.name }} <span class="text-[10px] text-rose-500">({{ s.category }})</span> — needs {{ s.needed|num }} {{ s.usage_unit|unit_plural:s.needed }}, has {{ s.have|num }} {{ s.usage_unit|unit_plural:s.have }}, short by {{ s.short|num }} {{ s.usage_unit|unit_plural:s.short }}</li>{% endfor %}
   </ul>
   {% if confirm_approve %}
   <form method="post" action="{% url 'order_approve' order.pk %}" class="mt-2">
@@ -210,7 +210,7 @@ document.querySelectorAll('[data-flex-central]').forEach(function (box) {
   <a data-button-surface href="{% url 'production_run_detail' production_run.pk %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-sky-50 text-sky-800 border border-sky-200">Approve via Shared Run</a>
   {% elif not kitchen_view %}
   <form id="approve-order-form" method="post" action="{% url 'order_approve' order.pk %}" class="flex flex-wrap items-center gap-2">{% csrf_token %}
-    {% include "partials/_event_date.html" with label="Approve on" min=order.date|date:"Y-m-d" value=request.POST.event_date %}
+    {% include "partials/_event_date.html" with label="Approve on" min=order.date|date:"Y-m-d" value=request.POST.event_date required=True %}
     <button data-button-surface type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Approve — release Raw Materials</button>
   </form>
   <form method="post" action="{% url 'order_reject' order.pk %}" onsubmit="return confirm('Reject this order?');">{% csrf_token %}

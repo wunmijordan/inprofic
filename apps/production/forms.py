@@ -108,7 +108,7 @@ class OrderForm(StyledModelForm):
         self.fields["customer_region"].required = False
         self.fields["customer_region"].label = "Region (optional)"
         self.fields["customer_group"].required = False
-        self.fields["customer_group"].label = "Group (optional)"
+        self.fields["customer_group"].label = "Area (optional)"
         self.fields["production_basis"].required = False
         self.fields["production_basis"].label = "Production basis"
         self.fields["base_material_quantity"].required = False

@@ -32,11 +32,11 @@ class ExecutiveReportTests(BriefBase):
             report = self.report(weekly)
             text = report['text']
             self.assertIn('Material 23: 2 kg', text)
-            self.assertIn('Bread: 5 loaf', text)
-            self.assertIn('reorder at 5 kg', text)
+            self.assertIn('Bread: 5 loaves', text)
+            self.assertNotIn('reorder at', text)
             self.assertNotIn('PRIVATE PRODUCT', text)
-            self.assertIn('Current positions as of', text)
-            self.assertIn('not historical closing balances', text)
+            self.assertIn('Stock and outstanding balances as of', text)
+            self.assertIn('current position', text)
             self.assertLessEqual(len(report['brief']['snapshot_highlights']), 8)
 
     def test_daily_and_weekly_profit_matches_finance_and_separates_sales_from_paid_revenue(self):
@@ -48,7 +48,7 @@ class ExecutiveReportTests(BriefBase):
             expected = profit_and_loss(self.business, brief['report_start'], brief['report_through'])
             self.assertEqual(brief['executive_pl'], expected)
             self.assertIn('Sales: ' + self.business.currency_symbol + '70.00', report['text'])
-            self.assertIn('Revenue (fully paid sales): ' + self.business.currency_symbol + '50.00', report['text'])
+            self.assertIn('Paid-sales revenue: ' + self.business.currency_symbol + '50.00', report['text'])
             self.assertIn('Credit customer', report['text'])
             self.assertIn('Cost of goods:', report['text'])
             self.assertIn('Net profit / loss:', report['text'])
@@ -91,7 +91,7 @@ class ExecutiveReportTests(BriefBase):
             page = self.client.get(reverse('daily_brief'), params)
             self.assertEqual(page.status_code, 200)
             text = page.context['share_text']
-            for marker in ['Product stock', 'Profit and loss', 'Cash movement', 'Purchasing', 'Production']:
+            for marker in ['Product stock']:
                 self.assertIn(marker, text)
             self.assertIn('Open Executive dashboard', text)
             from .snapshot_images import render_report_snapshot

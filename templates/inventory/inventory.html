@@ -70,7 +70,7 @@
                 {% else %}
                   inventory-stock-chip--healthy bg-emerald-700 text-white ring-1 ring-inset ring-green-600/10
                 {% endif %}">
-                {{ m.stock|num }} {{ m.usage_unit }} total
+                {{ m.stock|num }} {{ m.usage_unit|unit_plural:m.stock }} total
               </span>
             </div>
           {% else %}
@@ -82,7 +82,7 @@
               {% else %}
                 inventory-stock-chip--healthy bg-emerald-700 text-white ring-1 ring-inset ring-green-600/10
               {% endif %}">
-              {{ m.stock|num }} {{ m.usage_unit }}
+              {{ m.stock|num }} {{ m.usage_unit|unit_plural:m.stock }}
             </span>
           {% endif %}
         </td>

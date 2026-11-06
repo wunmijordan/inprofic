@@ -805,7 +805,7 @@ def _sales_by_channel(start=None, end=None, sales=None):
     return result
 
 def _channel_breakdown(channel, start, end, sales=None):
-    """Sales breakdown for a customer channel by region and customer group."""
+    """Sales breakdown for a customer channel by region and area."""
     source = {"distribution": "distribution_order", "online": "online_order"}.get(channel)
     if not source:
         return []
@@ -823,7 +823,7 @@ def _channel_breakdown(channel, start, end, sales=None):
             continue
         order = sale.linked_order
         region = (order.customer_region if order and order.customer_region else "Unassigned region").strip()
-        group = (order.customer_group if order and order.customer_group else "Unassigned group").strip()
+        group = (order.customer_group if order and order.customer_group else "Unassigned area").strip()
         key = (region, group)
         buckets[key] = buckets.get(key, Decimal("0")) + sale.total
     return [{"region": k[0], "group": k[1], "sales": v} for k, v in sorted(buckets.items(), key=lambda item: (-item[1], item[0][0], item[0][1]))]
@@ -1117,7 +1117,7 @@ def _search_results(q, request=None):
             "channel": order_type,
             "label": name.strip(),
             "identifier": channel,
-            "meta": "Orders, sales, region and group",
+            "meta": "Orders, sales, region and area",
         })
 
     # Regions and groups are useful search objects in their own right.
@@ -1141,7 +1141,7 @@ def _search_results(q, request=None):
             "key": f"group:{group}",
             "type": "group",
             "label": group,
-            "identifier": "Customer group",
+            "identifier": "Customer area",
             "meta": "Distribution and online activity",
         })
 
@@ -1389,7 +1389,7 @@ def _product_profitability_payload(good):
     return product_profit_windows(good.business, good, today())
 
 
-def _finished_good_search_detail(good):
+def _finished_good_search_detail(good, *, show_customer_prices=True):
     vocabulary = vertical_config(good.business)
     periods = _search_periods()
     recipe_lines = list(good.recipe_items.select_related("raw_material"))
@@ -1551,7 +1551,29 @@ def _finished_good_search_detail(good):
             "revenue": _money(revenue),
         })
 
+    # These are current agreements, separate from frozen prices on past sales.
+    pricing = [{"customer": "All customers", "channel": "Default", "price": _money(good.selling_price)}]
+    pricing += [{"customer": "All customers", "channel": row.get_channel_display(), "price": _money(row.price)}
+                for row in good.channel_prices.all()]
+    if show_customer_prices:
+        pricing += [{"customer": row.customer.name, "channel": row.get_channel_display(), "price": _money(row.price)}
+                    for row in good.customer_prices.filter(business=good.business, customer__business=good.business).select_related("customer")]
+    customer_sales = {}
+    if show_customer_prices:
+        for sale in sales:
+            for item in sale.items.all():
+                if item.finished_good_id != good.pk:
+                    continue
+                key = (sale.customer or "Walk-in", sale.display_source, item.price, item.discount)
+                row = customer_sales.setdefault(key, {"customer": key[0], "channel": key[1],
+                    "price": _money(item.price or 0), "discount": _money(item.discount or 0),
+                    "quantity": Decimal("0"), "value": Decimal("0")})
+                row["quantity"] += item.total_units
+                row["value"] += item.line_total
     return {
+        "customer_sales": [{**row, "quantity": _decimal(row["quantity"]), "value": _money(row["value"])}
+                           for row in customer_sales.values()],
+        "pricing": pricing,
         "title": good.name,
         "type": "Finished good",
         "identifier": vocabulary["product_label"],
@@ -1711,6 +1733,8 @@ def _supplier_search_detail(supplier):
 
 
 def _customer_search_detail(name, channel):
+    from sales.models import Customer
+    customer = Customer.objects.filter(name=name).only("pk").first()
     order_qs = Order.objects.filter(
         customer_name__iexact=name,
         order_type=channel,
@@ -1747,6 +1771,7 @@ def _customer_search_detail(name, channel):
     groups = sorted({o.customer_group.strip() for o in order_qs if o.customer_group.strip()})
 
     return {
+        "activity_url": reverse("customer_activity", args=[customer.pk]) if customer else "",
         "title": name,
         "type": "Customer",
         "identifier": "Distribution customer" if channel == "distribution" else "Online customer",
@@ -1799,7 +1824,7 @@ def _segment_search_detail(kind, value):
     customers = sorted({o.customer_name for o in orders if o.customer_name})
     return {
         "title": value,
-        "type": "Customer region" if kind == "region" else "Customer group",
+        "type": "Customer region" if kind == "region" else "Customer area",
         "identifier": "Distribution / Online analytics",
         "summary": {
             "orders": orders.count(),
@@ -1860,7 +1885,7 @@ def dashboard_search_detail(request):
     elif kind == "fg" and pk.isdigit():
         good = FinishedGood.objects.filter(pk=int(pk)).first()
         if good:
-            detail = _finished_good_search_detail(good)
+            detail = _finished_good_search_detail(good, show_customer_prices=user_has_permission(request.user, request.business, "sales", "view"))
     elif kind == "supplier" and value:
         detail = _supplier_search_detail(value)
     elif kind == "customer" and value and channel in ("distribution", "online"):

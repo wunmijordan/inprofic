@@ -157,6 +157,7 @@ class MarketStockDistributionTests(TestCase):
         response = self.client.post(
             reverse("order_complete", args=[order.pk]),
             {
+                "event_date": date.today().isoformat(),
                 f"item-{item.pk}-produced_units": "12",
                 f"item-{item.pk}-wastage_units": "0",
                 f"item-{item.pk}-batch_number": "D260902-MARKET-1",
@@ -602,7 +603,7 @@ class CentralFlexibleMaterialTests(TestCase):
         self.assertContains(page, f'name="flex_total_{order.pk}_{self.sugar.pk}"')
         self.assertNotContains(page, "Actual qty / batch")
 
-        response = self.client.post(reverse("order_approve", args=[order.pk]), {f"flex_total_{order.pk}_{self.sugar.pk}": "9"})
+        response = self.client.post(reverse("order_approve", args=[order.pk]), {"event_date": date.today().isoformat(), f"flex_total_{order.pk}_{self.sugar.pk}": "9"})
         self.assertRedirects(response, reverse("order_detail", args=[order.pk]))
         from .models import OrderMaterialUsage
 
@@ -690,11 +691,11 @@ class SharedRunBaseMaterialPoolTests(TestCase):
         user = CustomUser.objects.create_superuser(username="run-admin", password="safe-password-123", fullname="Admin")
         self.client.force_login(user)
         over = self.make_run("20")
-        self.client.post(reverse("production_run_approve", args=[over.pk]))
+        self.client.post(reverse("production_run_approve", args=[over.pk]), {"event_date": date.today().isoformat()})
         over.refresh_from_db()
         self.assertEqual(over.status, "draft")
         fits = self.make_run("40")
-        self.client.post(reverse("production_run_approve", args=[fits.pk]))
+        self.client.post(reverse("production_run_approve", args=[fits.pk]), {"event_date": date.today().isoformat()})
         fits.refresh_from_db()
         self.assertEqual(fits.status, "approved")
 
@@ -819,7 +820,7 @@ class SharedRunBaseMaterialMergeTests(SharedRunBaseMaterialPoolTests.__bases__[0
         from .models import OrderMaterialUsage
         self.login()
         run = self.make_run("100")
-        self.client.post(reverse("production_run_approve", args=[run.pk]), {f"flex_total_run{run.pk}_{self.sugar.pk}": "18"})
+        self.client.post(reverse("production_run_approve", args=[run.pk]), {"event_date": date.today().isoformat(), f"flex_total_run{run.pk}_{self.sugar.pk}": "18"})
         run.refresh_from_db()
         self.assertEqual(run.status, "approved")
         used = sum(u.actual_quantity for u in OrderMaterialUsage.objects.filter(order__production_runs=run, raw_material=self.sugar))
@@ -829,7 +830,7 @@ class SharedRunBaseMaterialMergeTests(SharedRunBaseMaterialPoolTests.__bases__[0
         bad = self.make_run("100")
         from .models import ProductionRunOrder
         ProductionRunOrder.objects.create(production_run=bad, order=self.foreign_base_order())
-        self.client.post(reverse("production_run_approve", args=[bad.pk]))
+        self.client.post(reverse("production_run_approve", args=[bad.pk]), {"event_date": date.today().isoformat()})
         bad.refresh_from_db()
         self.assertEqual(bad.status, "draft")
 
@@ -930,20 +931,20 @@ class RunPoolAdjustmentTests(TestCase):
         run = self.make_run("20")  # 60 kg of output needs 40 kg of rice at 1,500 g/kg
         page = self.client.get(reverse("production_run_detail", args=[run.pk]))
         self.assertContains(page, "Raise pool to 40")
-        self.client.post(reverse("production_run_approve", args=[run.pk]))
+        self.client.post(reverse("production_run_approve", args=[run.pk]), {"event_date": date.today().isoformat()})
         run.refresh_from_db()
         self.assertEqual(run.status, "draft")
         self.client.post(reverse("production_run_adjust_pool", args=[run.pk]), {"use_needed": "1"})
         run.refresh_from_db()
         self.assertEqual(run.base_material_quantity, Decimal("40.0000"))
-        self.client.post(reverse("production_run_approve", args=[run.pk]))
+        self.client.post(reverse("production_run_approve", args=[run.pk]), {"event_date": date.today().isoformat()})
         run.refresh_from_db()
         self.assertEqual(run.status, "approved")
 
     def test_approved_runs_and_get_requests_cannot_change_the_pool(self):
         self.login()
         run = self.make_run("40")
-        self.client.post(reverse("production_run_approve", args=[run.pk]))
+        self.client.post(reverse("production_run_approve", args=[run.pk]), {"event_date": date.today().isoformat()})
         run.refresh_from_db()
         self.assertEqual(run.status, "approved")
         self.client.post(reverse("production_run_adjust_pool", args=[run.pk]), {"base_material_quantity": "99"})
@@ -991,7 +992,7 @@ class RunPoolWithMisfitOrdersTests(TestCase):
         page = self.client.get(reverse("production_run_detail", args=[run.pk]))
         self.assertContains(page, "not mapped to the pool")
         self.assertContains(page, "no single base material")
-        self.client.post(reverse("production_run_approve", args=[run.pk]))
+        self.client.post(reverse("production_run_approve", args=[run.pk]), {"event_date": date.today().isoformat()})
         run.refresh_from_db()
         self.assertEqual(run.status, "draft")
 

@@ -10,6 +10,7 @@ import { Command, CommandInput, CommandList, CommandEmpty, CommandItem } from '.
 // The server remains the authorization and save boundary. Only contained edits
 // belong here. Procurement approval retains its full review inside the dialog.
 const FORM_PATH = /^\/(?:inventory\/(?:raw-material|product)\/(?:add|\d+\/edit)|procurement\/(?:suppliers\/)?(?:add|\d+\/(?:edit|approve))|sales\/(?:customers\/)?(?:add|\d+\/edit)|expenses\/(?:add|\d+\/edit|payments\/add)|finance\/(?:accounts\/(?:add|\d+\/edit)|(?:supplier-payment|customer-payment|expense-payment|stock-adjustment)\/add)|(?:orders|runs)\/(?:add|\d+\/edit))\/$/;
+const CUSTOMER_ACTIVITY_PATH = /^\/sales\/customers\/\d+\/activity\/$/;
 const embedded = window.parent !== window && window.name === 'inprofic-form-dialog';
 const postParent = (type: string, extra = {}) => window.parent.postMessage({ source: 'inprofic-ui', type, ...extra }, location.origin);
 const notifyNative = (el: Element) => ['input','change'].forEach(type => el.dispatchEvent(new Event(type, { bubbles: true })));
@@ -143,7 +144,7 @@ function FormHost() {
   };
   return <Dialog open={!!model} onOpenChange={value => { if (!value) void close(); }}>
     <DialogContent style={{ "--ui-form-width": `${model?.width || 56}rem` } as React.CSSProperties} className="ui-form-dialog" onOpenAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => frame.current?.focus()); }} onCloseAutoFocus={event => event.preventDefault()}>
-      <div className="ui-dialog-heading"><DialogTitle>{model?.title || 'Edit record'}</DialogTitle><DialogDescription className="sr-only">Complete the form. Validation and saving follow the same business rules as the full page.</DialogDescription>
+      <div className="ui-dialog-heading"><DialogTitle>{model?.title || 'Edit record'}</DialogTitle><DialogDescription className="sr-only">{model?.url && CUSTOMER_ACTIVITY_PATH.test(new URL(model.url).pathname) ? "Review customer activity and special prices. Date filters do not change records." : "Complete the form. Validation and saving follow the same business rules as the full page."}</DialogDescription>
       {loaded && shareSource && <SnapshotMenu source={shareSource}/>}
       </div>
       {!loaded && <p role="status" className="ui-form-loading">Loading form…</p>}
@@ -300,7 +301,7 @@ function boot() {
       if (/^(cancel|back|return)\b/i.test(link.textContent?.trim() || '')) { event.preventDefault(); postParent('cancel'); }
       return;
     }
-    if (url.origin !== location.origin || !FORM_PATH.test(url.pathname) || !openForm) return;
+    if (url.origin !== location.origin || !(FORM_PATH.test(url.pathname) || CUSTOMER_ACTIVITY_PATH.test(url.pathname)) || !openForm) return;
     event.preventDefault();
     if (link.dataset.confirm && !(await confirmRequest(link.dataset.confirm, false, 'edit-payment'))) return;
     openForm(url.href,link.getAttribute('aria-label') || link.textContent?.trim().replace(/^\+\s*/,'') || 'Record form',link);
@@ -322,7 +323,10 @@ function boot() {
     document.addEventListener('keydown',event => {
       if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('dialog[open],[role=dialog][data-state=open],[role=alertdialog]')) { event.preventDefault(); postParent('cancel'); }
     });
-    document.addEventListener('input',()=>postParent('dirty')); document.addEventListener('change',()=>postParent('dirty'));
+    const markDirty = (event: Event) => {
+      if (!(event.target as HTMLElement)?.closest('form[method="get"],[data-readonly-detail]')) postParent('dirty');
+    };
+    document.addEventListener('input',markDirty); document.addEventListener('change',markDirty);
     document.addEventListener('submit',event => { queueMicrotask(() => { if (!event.defaultPrevented) postParent('submit', {stayOpen: ((event as SubmitEvent).submitter?.getAttribute('name') === 'save_add_new' || (event as SubmitEvent).submitter?.hasAttribute('data-stay-open'))}); }); });
   }
   bridgeDialogs(); document.documentElement.dataset.uiReady='true';

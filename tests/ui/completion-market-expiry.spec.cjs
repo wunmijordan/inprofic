@@ -6,6 +6,10 @@ test.beforeEach(async({page})=>{
 });
 test('completion cards alternate, preserve inputs and reveal invalid fields',async({page})=>{
  await page.goto('/orders/1/complete/');
+ const eventDate=page.locator('input[name="event_date"]');
+ await expect(eventDate).toHaveValue('');
+ await expect(eventDate).toHaveAttribute('required','');
+ await eventDate.fill(await eventDate.getAttribute('max'));
  const cards=page.locator('details[data-completion-card]');
  await expect(cards).toHaveCount(2);
  await expect(cards.nth(0)).toHaveAttribute('open','');
@@ -34,8 +38,8 @@ test('release combines soon-expiring and no-expiry batches beyond either batch l
  const value=await product.locator('option').evaluateAll(options=>options.find(o=>o.textContent==='Fixture Loaf').value);
  await product.selectOption(value,{force:true});
  await page.locator('input[name="items-0-quantity"]').fill('64');
- await expect(page.locator('[data-release-stock-summary]')).toContainText('66 loaf');
- await expect(page.locator('[data-release-stock-summary]')).toContainText('2 loaf will remain');
+ await expect(page.locator('[data-release-stock-summary]')).toContainText('66 loaves');
+ await expect(page.locator('[data-release-stock-summary]')).toContainText('2 loaves will remain');
  const dateField=page.locator('input[name="date"]');
  const today=await dateField.inputValue();
  const previous=new Date(`${today}T12:00:00Z`);
@@ -46,7 +50,7 @@ test('release combines soon-expiring and no-expiry batches beyond either batch l
  await expect(product.locator('option:checked')).toContainText('unavailable');
  await dateField.fill(today);await dateField.dispatchEvent('change');
  await expect(page.locator('[data-stock-date-status]')).toContainText(`Stock availability as of ${today}`);
- await expect(page.locator('[data-release-stock-summary]')).toContainText('2 loaf will remain');
+ await expect(page.locator('[data-release-stock-summary]')).toContainText('2 loaves will remain');
  const customer=page.locator('select[name="customer"]');
  const customerValue=await customer.locator('option').evaluateAll(options=>options.find(o=>o.textContent==='Customer 00').value);
  await customer.selectOption(customerValue,{force:true});

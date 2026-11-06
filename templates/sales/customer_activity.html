@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% load core_extras %}
+{% block content %}
+<div data-readonly-detail class="space-y-4">
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div class="min-w-0"><h2 class="text-xl font-display font-semibold break-words">{{ customer.name }}</h2><p class="mt-1 text-sm">{{ customer.region }}{% if customer.region and customer.customer_group %} · {% endif %}{{ customer.customer_group }}{% if customer.phone %} · {{ customer.phone }}{% endif %}</p></div>
+    <a href="{% url 'customer_list' %}" class="workspace-action">Back to customers</a>
+  </div>
+  <form method="get" class="workspace-card p-4" aria-label="Customer activity dates">
+    <div class="flex flex-wrap items-end gap-3">{% for field in date_form %}<div class="min-w-0"><label class="block text-xs mb-1" for="{{ field.id_for_label }}">{{ field.label }} <span class="text-rose-700">*</span></label>{{ field }}{{ field.errors }}</div>{% endfor %}<button class="workspace-action workspace-action-primary">Show activity</button></div>
+    {% if date_form.non_field_errors %}<div role="alert" class="mt-2 text-sm text-rose-700">{{ date_form.non_field_errors }}</div>{% endif %}
+    <div class="mt-3 flex flex-wrap gap-3 text-xs">{% for label,from,to in period_links %}<a class="underline underline-offset-4" href="?start={{ from }}&amp;end={{ to }}">{{ label }}</a>{% endfor %}</div>
+  </form>
+  {% if start %}
+  <dl class="workspace-card flex flex-wrap gap-6 p-4">
+    <div><dt class="text-xs">Sales in period</dt><dd class="font-mono font-semibold">{{ sale_count }}</dd></div>
+    <div><dt class="text-xs">Invoice value</dt><dd class="font-mono font-semibold">{{ invoiced|money:biz.currency_symbol }}</dd></div>
+    <div><dt class="text-xs">Payments recorded {% include "_help_tip.html" with label="Recorded payments" help_text="Finance payment entries dated within this period. Payments taken directly when an order or sale was created are represented on that document instead. Invoice value uses the saved selling price, not today's price agreement." portal_bubble=True %}</dt><dd class="font-mono font-semibold">{{ recorded_payments|money:biz.currency_symbol }}</dd></div>
+    <div><dt class="text-xs">Current outstanding {% include "_help_tip.html" with label="Current outstanding" help_text="The unsettled balance across this customer's open invoices in the active ledger, including invoices outside the selected dates." portal_bubble=True %}</dt><dd class="font-mono font-semibold">{{ outstanding|money:biz.currency_symbol }}</dd></div>
+  </dl>
+  <section id="customer-sales" class="workspace-card p-4"><h3 class="font-semibold">Sales and distribution</h3>
+    <div class="mt-3 overflow-x-auto"><table class="w-full text-sm"><thead><tr><th class="p-2 text-left">Date / sale</th><th class="p-2 text-left">Channel / payment</th><th class="p-2 text-left">Products</th><th class="p-2 text-right">Value</th></tr></thead><tbody>
+    {% for sale in sales %}<tr><td class="p-2 whitespace-nowrap">{{ sale.date|date:"j M Y" }} · #{{ sale.pk }}</td><td class="p-2">{{ sale.display_source }}<div class="text-xs">{{ sale.get_transaction_type_display }}</div></td><td class="p-2">{% for item in sale.items.all %}<div>{{ item.finished_good.name }} · {{ item.total_units|num }} {{ item.finished_good.unit|unit_plural:item.total_units }}</div>{% endfor %}</td><td class="p-2 text-right font-mono">{{ sale.total|money:biz.currency_symbol }}</td></tr>{% empty %}<tr><td colspan="4" class="p-3">No sales in this period.</td></tr>{% endfor %}
+    </tbody></table></div>
+    {% include "sales/_activity_pagination.html" with page=sales parameter="sales_page" label="Sales" anchor="customer-sales" %}
+    {% if product_totals %}<details class="mt-3"><summary class="cursor-pointer text-sm font-semibold">Products in this period</summary><ul class="mt-2 space-y-2 text-sm">{% for row in product_totals %}<li>{{ row.finished_good__name }} · {{ row.quantity|num }} {{ row.finished_good__unit|unit_plural:row.quantity }} · {{ row.value|money:biz.currency_symbol }}</li>{% endfor %}</ul></details>{% endif %}
+  </section>
+  {% if orders %}<section id="customer-orders" class="workspace-card p-4"><h3 class="font-semibold">Production orders</h3><ul class="mt-3 space-y-2 text-sm">{% for order in orders %}<li><a class="underline underline-offset-4" href="{% url 'order_detail' order.pk %}" target="_top">Order #{{ order.display_number }}</a> · {{ order.date|date:"j M Y" }} · {{ order.get_status_display }}</li>{% endfor %}</ul>{% include "sales/_activity_pagination.html" with page=orders parameter="orders_page" label="Orders" anchor="customer-orders" %}</section>{% endif %}
+  {% if payments %}<section id="customer-payments" class="workspace-card p-4"><h3 class="font-semibold">Recorded payments</h3><ul class="mt-3 space-y-2 text-sm">{% for payment in payments %}<li>{{ payment.date|date:"j M Y" }} · {{ payment.payment_method }}{% if payment.sale_id %} · Sale #{{ payment.sale_id }}{% endif %} · <span class="font-mono">{{ payment.amount|money:biz.currency_symbol }}</span></li>{% endfor %}</ul>{% include "sales/_activity_pagination.html" with page=payments parameter="payments_page" label="Payments" anchor="customer-payments" %}</section>{% endif %}
+  {% if returns %}<section id="customer-returns" class="workspace-card p-4"><h3 class="font-semibold">Recorded returns {% include "_help_tip.html" with label="Customer returns" help_text="Returns recorded in this period, including returns against earlier invoices. A return does not itself change an invoice or post a refund; credits and refunds need separate review." portal_bubble=True %}</h3><ul class="mt-3 space-y-2 text-sm">{% for item in returns %}<li>{{ item.date|date:"j M Y" }} · {{ item.sale_item.finished_good.name }} · {{ item.quantity|num }} {{ item.sale_item.finished_good.unit|unit_plural:item.quantity }} · {{ item.get_condition_display }}</li>{% endfor %}</ul>{% include "sales/_activity_pagination.html" with page=returns parameter="returns_page" label="Returns" anchor="customer-returns" %}</section>{% endif %}
+  {% endif %}
+  <section class="workspace-card p-4"><h3 class="font-semibold">Special product prices {% include "_help_tip.html" with label="Special product prices" help_text="These are the current customer-specific agreements. They take priority over channel prices; previous invoices retain their original prices. If there is no agreement, the selling flow uses its configured channel/default rules." portal_bubble=True %}</h3>
+    <div class="mt-3 overflow-x-auto"><table class="w-full text-sm"><thead><tr><th class="p-2 text-left">Product</th><th class="p-2 text-left">Channel</th><th class="p-2 text-right">Price per unit</th></tr></thead><tbody>{% for price in prices %}<tr><td class="p-2">{{ price.finished_good.name }}</td><td class="p-2">{{ price.get_channel_display }}</td><td class="p-2 text-right font-mono">{{ price.price|money:biz.currency_symbol }} / {{ price.finished_good.unit }}</td></tr>{% empty %}<tr><td class="p-3" colspan="3">No customer-specific prices configured.</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+</div>
+{% endblock %}

@@ -106,7 +106,7 @@ assuming that planned quantity was perfectly achieved.
 - name
 - phone and email
 - address
-- region and customer group
+- region and customer area
 - credit limit
 - payment terms in days
 - active/archive state
@@ -489,7 +489,7 @@ batch used to fulfil them.
 
 ### Who bought it?
 **Customer master data + sales/orders** provide reusable customer identity,
-region/group, credit terms, order history and downstream sales records.
+region/area, credit terms, order history and downstream sales records.
 
 ### Who owes us?
 **Customer receivables** are tracked through Sales and Finance. Partial payments

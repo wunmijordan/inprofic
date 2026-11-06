@@ -9,6 +9,7 @@ import io
 from decimal import Decimal
 
 from django.utils import timezone
+from core.quantities import format_quantity
 from PIL import Image, ImageDraw
 
 from .stockview import stock_line, stock_status
@@ -41,7 +42,7 @@ def status_label(po):
     return po.get_status_display()
 
 
-def summarize(po, business, url=""):
+def summarize(po, business, url="", *, user=None):
     """Plain data for one request: lines with requested and approved amounts, current stock, and totals."""
     from .services import describe_request, request_orders
     vendors = list(request_orders(po).select_related('approved_by', 'account').prefetch_related('items__raw_material', 'items__finished_good', 'payments'))
@@ -67,7 +68,14 @@ def summarize(po, business, url=""):
         'method': vendor.get_payment_method_display(), 'account': str(vendor.account) if vendor.account_id else '',
         'paid': vendor.total - vendor.payment_balance, 'balance': vendor.payment_balance,
     } for index, vendor in enumerate(vendors)]
+    from accounts.services import user_has_permission
+    miscellaneous = []
+    if user is None or any(user_has_permission(user,business,module,'view') for module in ('expenses','finance')):
+        from expenses.models import Expense
+        miscellaneous = list(Expense.objects.filter(business=business,date=po.date,amount__gt=0).order_by('description','pk'))
+    expense_rows = [{'description':e.description,'amount':e.amount,'vendor':e.vendor} for e in miscellaneous]
     return {
+        "miscellaneous": expense_rows, "miscellaneous_total": sum((e.amount for e in miscellaneous),Decimal('0')),
         "vendor_groups": vendor_groups, "po": po, "business": business, "symbol": symbol, "lines": lines, "number": po.pk,
         "supplier": display.request_supplier or "Supplier not named", "date": po.date,
         "status": 'pending' if display.request_status in {'draft', 'ordered'} else display.request_status,
@@ -97,15 +105,16 @@ def share_text(summary, url=None):
         if line['group_id'] != current_group:
             current_group = line['group_id']
             group = group_lookup[current_group]
-            out += ['', f"*{group['name']}*", f"Payment: {group['payment']} · {group['method']}"]
-            if group['account']:
+            out += ['', f"*{group['name']}*", f"Payment: {group['payment']}" + (f" · {group['method']}" if group['paid'] else "")]
+            if group['paid'] and group['account']:
                 out.append(f"Account: {group['account']}")
-            out += [f"Group total: {_money(group['total'], symbol)} · Paid: {_money(group['paid'], symbol)} · Balance: {_money(group['balance'], symbol)}"]
+            amounts = [f"{label}: {_money(group[key],symbol)}" for key,label in [('total','Group total'),('paid','Paid'),('balance','Balance')] if group[key]]
+            if amounts: out.append(' · '.join(amounts))
         if line["removed"]:
-            out.append(f"• {line['name']}: removed (was {_qty(line['requested'])} {line['unit']})")
+            out.append(f"• {line['name']}: removed (was {format_quantity(line['requested'],line['unit'])})")
         else:
             note = f" (requested {_qty(line['requested'])})" if line["reduced"] else ""
-            out.append(f"• {line['name']}: {_qty(line['approved'])} {line['unit']} × {_money(line['unit_cost'], symbol)} "
+            out.append(f"• {line['name']}: {format_quantity(line['approved'],line['unit'])} × {_money(line['unit_cost'], symbol)} "
                        f"= {_money(line['total'], symbol)}{note}")
         out.append(f"   Stock now: {stock_line(line['stock'])}")
     out.append(f"_Stock as of {s['stock_time']}_")
@@ -117,6 +126,10 @@ def share_text(summary, url=None):
         out.append(f"Payment: {s['payment']}")
     if s["approved_by"]:
         out.append(f"Approved by {s['approved_by']}")
+    if s.get('miscellaneous'):
+        out += ['',f"*Miscellaneous expenses · {s['date']:%d %b %Y}*"]
+        out += [f"• {expense['description']}: {_money(expense['amount'],symbol)}" + (f" · {expense['vendor']}" if expense['vendor'] else '') for expense in s['miscellaneous']]
+        out.append(f"Expenses total: {_money(s['miscellaneous_total'],symbol)}")
     if url:
         out += ["", f"{link_prompt(s)}:", url]
     return "\n".join(out)
@@ -140,7 +153,9 @@ def render_snapshot(summary):
     link_h = 230 if s["url"] else 70
     group_count = len({line['group_id'] for line in shown})
     group_h = 110
-    height = group_count * (group_h + 58) + header_h + max(len(shown), 1) * row_h + (56 if hidden else 0) + total_h + link_h + 80
+    expense_rows = s.get('miscellaneous',[])[:3]
+    expense_h = 110 + len(expense_rows)*38 if expense_rows else 0
+    height = expense_h + group_count * (group_h + 58) + header_h + max(len(shown), 1) * row_h + (56 if hidden else 0) + total_h + link_h + 80
     image = Image.new("RGB", (WIDTH, height), PAPER)
     d = ImageDraw.Draw(image)
     inner = WIDTH - 2 * PAD
@@ -163,18 +178,18 @@ def render_snapshot(summary):
             current_group = line['group_id']
             group = group_lookup[current_group]
             d.text((PAD, y + 10), _fit(d, group['name'], f_name, inner), font=f_name, fill=INK)
-            payment = f"{group['payment']} · {group['method']}" + (f" · {group['account']}" if group['account'] else '')
+            payment = group['payment'] + (f" · {group['method']}" if group['paid'] else '') + (f" · {group['account']}" if group['paid'] and group['account'] else '')
             d.text((PAD, y + 46), _fit(d, payment, f_small, inner), font=f_small, fill=MUTED)
-            amounts = f"Total {_money(group['total'], symbol)} · Paid {_money(group['paid'], symbol)} · Balance {_money(group['balance'], symbol)}"
+            amounts = ' · '.join(f"{label} {_money(group[key],symbol)}" for key,label in [('total','Total'),('paid','Paid'),('balance','Balance')] if group[key])
             d.text((PAD, y + 78), _fit(d, amounts, f_tiny, inner), font=f_tiny, fill=MUTED)
             y += group_h
         muted = line["removed"]
         d.text((WIDTH - PAD, y + 16), "Removed" if muted else _money(line["total"], symbol), font=f_name, fill=MUTED if muted else INK, anchor="ra")
         d.text((PAD, y + 16), _fit(d, line["name"], f_name, inner - 280), font=f_name, fill=MUTED if muted else INK)
         if muted:
-            detail = f"Removed · was {_qty(line['requested'])} {line['unit']}"
+            detail = f"Removed · was {format_quantity(line['requested'],line['unit'])}"
         else:
-            detail = f"{_qty(line['approved'])} {line['unit']} × {_money(line['unit_cost'], symbol)}"
+            detail = f"{format_quantity(line['approved'],line['unit'])} × {_money(line['unit_cost'], symbol)}"
             if line["reduced"]:
                 detail += f"  ·  requested {_qty(line['requested'])}"
         d.text((PAD, y + 56), _fit(d, detail, f_small, inner), font=f_small, fill=MUTED)
@@ -202,13 +217,25 @@ def render_snapshot(summary):
     if s["changed"]:
         d.text((PAD + 32, ty), f"Requested total {_money(s['requested_total'], symbol)}", font=f_small, fill=MUTED)
         ty += 36
-    d.text((PAD + 32, ty + 6), "Grand total", font=f_body, fill=MUTED)
+    d.text((PAD + 32, ty + 6), "Request total", font=f_body, fill=MUTED)
     d.text((WIDTH - PAD - 32, ty - 2), _money(s["total"], symbol), font=f_total, fill=ACCENT, anchor="ra")
     foot = s["status_label"] + (f" by {s['approved_by']}" if s["approved_by"] else "")
     if s["payment"]:
         foot += f"  ·  Payment: {s['payment']}"
     d.text((PAD + 32, ty + 70), _fit(d, foot, f_small, inner - 64), font=f_small, fill=MUTED)
-    ly = y + 30 + total_h + 34
+    if expense_rows:
+        ey = y + 30 + total_h + 22
+        d.text((PAD,ey),f"Miscellaneous expenses · {s['date']:%d %b %Y}",font=f_small,fill=INK)
+        for expense in expense_rows:
+            ey += 38
+            d.text((PAD,ey),_fit(d,expense['description'],f_small,inner-260),font=f_small,fill=MUTED)
+            d.text((WIDTH-PAD,ey),_money(expense['amount'],symbol),font=f_small,fill=INK,anchor='ra')
+        ey += 38
+        d.text((PAD,ey),'Expenses total',font=f_small,fill=INK)
+        d.text((WIDTH-PAD,ey),_money(s['miscellaneous_total'],symbol),font=f_small,fill=INK,anchor='ra')
+        if len(s['miscellaneous']) > len(expense_rows):
+            d.text((PAD,ey+32),f"+{len(s['miscellaneous'])-len(expense_rows)} more in shared text",font=f_tiny,fill=MUTED)
+    ly = y + 30 + total_h + 34 + expense_h
     if s["url"]:
         qr_size = 170
         qr = _qr(s["url"], qr_size)

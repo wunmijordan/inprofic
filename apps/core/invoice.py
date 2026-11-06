@@ -211,7 +211,7 @@ def production_order_pdf(order):
     if order.customer_region:
         story.append(Paragraph(f"Region: {order.customer_region}", styles["body"]))
     if order.customer_group:
-        story.append(Paragraph(f"Customer group: {order.customer_group}", styles["body"]))
+        story.append(Paragraph(f"Customer area: {order.customer_group}", styles["body"]))
     if is_customer_order:
         payment_label = "Received" if order.customer_payment_status == "paid" else "Receivable"
         story.append(Paragraph(f"Payment status: <b>{payment_label}</b>", styles["body"]))

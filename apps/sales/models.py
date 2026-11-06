@@ -16,7 +16,7 @@ class Customer(BusinessOwnedModel):
     email = models.EmailField(blank=True, default="")
     address = models.TextField(blank=True, default="")
     region = models.CharField(max_length=100, blank=True, default="")
-    customer_group = models.CharField(max_length=100, blank=True, default="")
+    customer_group = models.CharField("area", max_length=100, blank=True, default="")
     credit_limit = models.DecimalField(max_digits=16, decimal_places=2, default=0)
     payment_terms_days = models.PositiveIntegerField(default=0, help_text="Expected payment period in days for credit sales.")
     active = models.BooleanField(default=True)

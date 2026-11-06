@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load core_extras %}
 {% block content %}
 <div class="mb-5"><p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Sales</p><h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">New Sale</h2><p class="mt-1 max-w-2xl text-sm text-stone-500">{{ vertical_ui.sale_intro }}{% if vertical_ui.uses_production %} For production or replenishment, use <a href="{% url 'order_add' %}" class="text-[#8f172d] underline">New {{ vertical_ui.orders|slice:":-1" }}</a>.{% endif %}</p></div>
 <div class="cf-form-shell max-w-4xl"><div class="cf-form-body">
@@ -91,7 +92,7 @@
         Not enough Stock:
       </div>
       <ul class="list-disc list-inside">
-        {% for s in shortages %}<li>{{ s.name }} — short by {{ s.short }} {{ s.unit }}</li>{% endfor %}
+        {% for s in shortages %}<li>{{ s.name }} — short by {{ s.short }} {{ s.unit|unit_plural:s.short }}</li>{% endfor %}
       </ul>
       {% if force_allowed %}
       <p class="mt-1">Saving anyway will take Stock negative.</p>

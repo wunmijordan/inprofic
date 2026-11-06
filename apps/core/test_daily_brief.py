@@ -322,12 +322,12 @@ class DateSelectionTests(BriefBase):
         page = self.client.get(reverse("daily_brief"), {"date": older.isoformat()})
         self.assertContains(page, f"{older:%a %d %b %Y}")
         self.assertContains(page, "1 sale")
-        self.assertContains(page, "cash, owed, owing and stock are current")
+        self.assertContains(page, "Stock and outstanding balances as of")
         self.assertContains(page, "wa.me/2348012345678?text=")
         self.assertContains(page, f'max="{TODAY.isoformat()}"')
         default = self.client.get(reverse("daily_brief"))
         self.assertContains(default, f"{daily_brief.time_greeting()}, Brief Bakery")
-        self.assertNotContains(default, "cash, owed, owing and stock are current")
+        self.assertContains(default, "Stock and outstanding balances as of")
 
     def test_bad_and_future_dates_fall_back_with_a_note(self):
         page = self.client.get(reverse("daily_brief"), {"date": "garbage"})

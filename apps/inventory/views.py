@@ -23,6 +23,7 @@ from .forms import (
     ProductCompositionItemFormSet,
     ProductPortionProfileForm,
     MarketStockReleaseHeaderForm,
+    MarketStockPhysicalSaleForm,
     MarketStockReleaseItemFormSet,
     MarketStockTransferForm,
     ProductionMaterialFormSet,
@@ -65,6 +66,7 @@ from .services import (
     record_distribution_return,
     record_raw_material_movement,
     release_market_stock_items,
+    sell_market_stock_items,
     transfer_market_stock_to_physical,
     market_stock_availability,
 )
@@ -238,6 +240,9 @@ def market_stock(request):
         "lots": lots,
         "movements": movements,
         "sellable_units": sellable_units,
+        "live_product_count": len({lot.finished_good_id for lot in active_lots if not lot.is_expired}),
+        "expiring_lot_count": sum(1 for lot in active_lots if lot.current_expiring_alert),
+        "expired_lot_count": sum(1 for lot in active_lots if lot.current_expiry_alert),
         "expired_units": expired_units,
         "expiring_units": expiring_units,
         "damage_value": damage_value,
@@ -258,6 +263,17 @@ def _market_stock_request_date(request):
 def _market_form_response(request, form, *, title, intro, submit_label, formset=None):
     on_date = _market_stock_request_date(request)
     available_by_product = market_stock_availability(request.business, on_date)
+    if not isinstance(form, MarketStockTransferForm):
+        from sales.models import CustomerProductPrice
+        for good in FinishedGood.objects.filter(business=request.business, pk__in=available_by_product).prefetch_related('channel_prices'):
+            stock = available_by_product[str(good.pk)]
+            price = good.selling_price_for('physical_store') if isinstance(form, MarketStockPhysicalSaleForm) else good.explicit_selling_price_for('distribution')
+            stock['price'] = str(price) if price is not None else None
+            stock['customer_prices'] = {}
+        if not isinstance(form, MarketStockPhysicalSaleForm):
+            for price in CustomerProductPrice.objects.filter(business=request.business, customer__business=request.business,
+                    finished_good_id__in=available_by_product, channel='distribution'):
+                available_by_product[str(price.finished_good_id)]['customer_prices'][str(price.customer_id)] = str(price.price)
     if request.method == "GET" and request.GET.get("availability") == "1":
         return JsonResponse({"products": available_by_product, "date": on_date.isoformat()})
     return render(request, "inventory/market_stock_form.html", {
@@ -268,7 +284,7 @@ def _market_form_response(request, form, *, title, intro, submit_label, formset=
         "submit_label": submit_label,
         "available_by_product": available_by_product,
         "stock_as_of": on_date.isoformat(),
-        "market_stock_action": "transfer" if isinstance(form, MarketStockTransferForm) else "release",
+        "market_stock_action": "sale" if isinstance(form, MarketStockPhysicalSaleForm) else "transfer" if isinstance(form, MarketStockTransferForm) else "release",
     })
 
 
@@ -308,6 +324,31 @@ def market_stock_release(request):
         intro="Assign sellable Distribution Market Stock to a customer. Oldest-expiring batches are released first and a Distribution sale/receivable is created.",
         submit_label="Release to customer",
     )
+
+
+@login_required
+def market_stock_sell(request):
+    if not request.business.uses_production or not all(user_has_permission(request.user, request.business, module, "edit") for module in ("inventory", "sales")):
+        return render(request, "403.html", status=403)
+    form = MarketStockPhysicalSaleForm(request.POST or None, business=request.business,
+        initial={"date": ledger.default_entry_date(), "payment_method": "Cash"})
+    formset = MarketStockReleaseItemFormSet(request.POST or None, prefix="items",
+        form_kwargs={"business": request.business, "on_date": _market_stock_request_date(request)})
+    if request.method == "POST" and form.is_valid() and formset.is_valid():
+        try:
+            sale = sell_market_stock_items(business=request.business,
+                items=[row.cleaned_data for row in formset if row.cleaned_data and not row.cleaned_data.get("DELETE")],
+                date=form.cleaned_data["date"], payment_method=form.cleaned_data["payment_method"],
+                account=form.cleaned_data["account"], user=request.user,
+                customer_name=form.cleaned_data["customer"], note=form.cleaned_data["note"])
+        except ValidationError as exc:
+            form.add_error(None, exc)
+        else:
+            messages.success(request, f"Physical Store sale #{sale.pk} recorded from Market Stock.")
+            return redirect("market_stock")
+    return _market_form_response(request, form, formset=formset, title="Sell from Market Stock",
+        intro="Record a paid Physical Store sale directly from Market Stock. Earliest-expiring sellable batches are used first; shelf stock is unchanged.",
+        submit_label="Record Physical Store sale")
 
 
 @login_required

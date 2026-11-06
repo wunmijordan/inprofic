@@ -1,6 +1,7 @@
 """Shared paper-style snapshots. Export colors stay stable across workspace themes."""
 import io
 from pathlib import Path
+from core.quantities import format_quantity
 from PIL import Image, ImageDraw, ImageFont
 
 _FONT_DIR = Path(__file__).resolve().parent / "static" / "core" / "fonts"
@@ -48,8 +49,9 @@ def render_report_snapshot(*, business, title, subtitle, rows, total_label, tota
                            footer, url, link_heading, scope="", stamp="", max_rows=MAX_IMAGE_ROWS):
     """Use the procurement reference's typography, rows, total card and QR footer."""
     shown, hidden = rows[:max_rows], max(0, len(rows) - max_rows)
+    show_total = total is not None and total != ""
     row_h, header_h = 116, 250
-    height = header_h + max(1, len(shown)) * row_h + (56 if hidden else 0) + 150 + 230 + 110
+    height = header_h + max(1, len(shown)) * row_h + (56 if hidden else 0) + (150 if show_total else 0) + 230 + 110
     image = Image.new("RGB", (WIDTH, height), PAPER)
     d = ImageDraw.Draw(image)
     name, body, small, tiny = _font(FONT_BOLD, 28), _font(FONT_REGULAR, 26), _font(FONT_REGULAR, 22), _font(FONT_REGULAR, 19)
@@ -84,11 +86,12 @@ def render_report_snapshot(*, business, title, subtitle, rows, total_label, tota
         y += 56
     if stamp:
         d.text((WIDTH-PAD,y+4), stamp, font=tiny, fill=MUTED, anchor="ra")
-    d.rounded_rectangle((PAD,y+30,WIDTH-PAD,y+180),radius=24,fill=WHITE,outline=LINE,width=2)
-    d.text((PAD+32,y+60), total_label,font=body,fill=MUTED)
-    d.text((WIDTH-PAD-32,y+54),_fit(d,str(total),_font(FONT_BOLD,48),inner-240),font=_font(FONT_BOLD,48),fill=ACCENT,anchor="ra")
-    d.text((PAD+32,y+128),_fit(d,footer,small,inner-64),font=small,fill=MUTED)
-    ly=y+214
+    if show_total:
+        d.rounded_rectangle((PAD,y+30,WIDTH-PAD,y+180),radius=24,fill=WHITE,outline=LINE,width=2)
+        d.text((PAD+32,y+60), total_label,font=body,fill=MUTED)
+        d.text((WIDTH-PAD-32,y+54),_fit(d,str(total),_font(FONT_BOLD,48),inner-240),font=_font(FONT_BOLD,48),fill=ACCENT,anchor="ra")
+        d.text((PAD+32,y+128),_fit(d,footer,small,inner-64),font=small,fill=MUTED)
+    ly=y+214 if show_total else y+40
     qr=_qr(url,170) if url else None
     text_w=inner-(198 if qr else 0)
     d.text((PAD,ly),_fit(d,link_heading,name,text_w),font=name,fill=ACCENT)
@@ -144,12 +147,12 @@ def render_distribution_snapshot(*, business, title, day, products, cards, url, 
         draw.text((x, 216), label, font=small, fill=MUTED, anchor=anchor)
     draw.line((PAD, 245, WIDTH-PAD, 245), fill=LINE, width=2)
     y = 258
-    quantity = lambda value, unit: f'{value:,.2f}'.rstrip('0').rstrip('.') + ' ' + unit
+    quantity = format_quantity
     for product, customers in table_rows:
         draw.text((PAD, y), _fit(draw, product['product'], bold, 270), font=bold, fill=INK)
         for x, key in [(x_opening, 'opening'), (x_taken, 'distributed'), (x_left, 'closing')]:
-            amount = product[key] + product.get('physical', 0) if key == 'distributed' else product[key]
-            value = quantity(amount, product['unit'])
+            amount = product[key] + product.get('physical', 0) + product.get('physical_sold',0) if key == 'distributed' else product[key]
+            value = quantity(amount, product['unit']) if amount else '—'
             draw.text((x, y+3), _fit(draw, value, body, 215), font=body, fill=INK, anchor='ra')
         y += 44
         if customers:
@@ -161,7 +164,7 @@ def render_distribution_snapshot(*, business, title, day, products, cards, url, 
                     y += 24
                     if customer.get('region') and customer.get('customer_group'):
                         draw.text((PAD+12, y), _fit(draw, 'Region: ' + customer['region'], small, 230), font=small, fill=MUTED)
-                        draw.text((PAD+262, y), _fit(draw, 'Group: ' + customer['customer_group'], small, 230), font=small, fill=MUTED)
+                        draw.text((PAD+262, y), _fit(draw, 'Area: ' + customer['customer_group'], small, 230), font=small, fill=MUTED)
                     else:
                         draw.text((PAD+12, y), _fit(draw, customer['customer_labels'], small, 480), font=small, fill=MUTED)
                 y += 31

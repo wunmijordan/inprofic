@@ -38,6 +38,8 @@ function dashboardSearch() {
         if (d.uses_production) blocks.push(list('links', `${d.recipe_label} / production links`, (d.linked_goods || []).map(r => ({ title: r.name, detail: `${n(r.qty_per_batch)} ${r.usage_unit || ''} / batch${r.is_base ? ' · Base material' : (r.relation ? ' · ' + r.relation + (r.percent_text ? ' (' + r.percent_text + ')' : '') : '')}` })), 'Not used in any product yet.'));
         if (d.uses_production && (d.base_for || []).length) blocks.push(list('baseFor', 'Base material for', d.base_for.map(name => ({ title: name, detail: 'Other ingredients in this recipe are sized relative to this material.' })), ''));
       } else if (d.type === 'Finished good') {
+        blocks.push(list('pricing', 'Current product prices', (d.pricing || []).map(r => ({title: `${r.customer} · ${r.channel}`, detail: `${this.money(r.price)} / ${d.summary?.unit || 'unit'}`})), 'No prices configured.', 'Customer price takes priority over channel price, then the default. Historical sales retain the price applied when recorded.'));
+        blocks.push(list('customerPrices', 'Recorded customer sales by applied price', (d.customer_sales || []).map(r => ({title: `${r.customer} · ${r.channel}`, detail: `${n(r.quantity)} × ${this.money(r.price)}${r.discount ? ' less ' + this.money(r.discount) + ' per unit' : ''} = ${this.money(r.value)}`})), 'No recorded customer sales.'));
         if (d.uses_production) blocks.push(list('recipe', `${d.recipe_label} / production cost`, (d.recipe || []).map(r => ({ title: r.name, detail: `${n(r.qty_per_batch)} ${r.unit || ''} / batch${r.is_base ? ' · Base material' : (r.relation ? ' · ' + r.relation + (r.percent_text ? ' (' + r.percent_text + ')' : '') : '')} · ${this.money(r.current_cost)} each` })), 'No recipe set up.', d.note));
         if (d.uses_production && d.base_material) blocks.unshift(list('baseMaterial', 'Base material', [{ title: d.base_material.name, detail: `${d.base_material.text}. Other ingredients are shown relative to this quantity.` }], ''));
         (d.recipe_warnings || []).forEach((warning, i) => blocks.push(list('recipeWarn' + i, 'Recipe note', [{ title: warning, detail: '' }], '')));
@@ -134,6 +136,7 @@ function dashboardSearch() {
         market_stock: 'Distribution Market Stock', expired_market_stock: 'Expired Market Stock', market_transfer_shelf_allowance: 'Market-origin shelf allowance',
         estimated_recipe_cost_per_unit: this.detail?.uses_production ? `Current ${this.detail.recipe_label.toLowerCase()} cost / unit` : 'Latest purchase cost / unit', estimated_margin_per_unit: 'Current est. margin / unit', margin_pct: 'Current est. margin %', units_per_batch: 'Units / batch',
         total_purchase: 'Total purchased', purchase_orders: 'Purchase orders', materials_bought: 'Materials bought', average_purchase: 'Average purchase',
+        customer_group: 'Area', customer_region: 'Region', group: 'Area',
         channel: 'Channel', orders: 'Orders', completed_orders: 'Completed', sales: 'Sales', revenue: 'Revenue', units: 'Units', last_order: 'Last order', last_sale: 'Last sale',
         latest_historical_unit_cost: 'Latest historical cost / unit', unpaid_product_value: 'Unpaid product value', unpaid_product_retail_value: 'Unpaid product value', unpaid_product_cost_value: 'Unpaid product cost', gross_profit: 'Gross profit',
       };

@@ -15,6 +15,7 @@ from django.views.decorators.http import require_http_methods
 
 from . import daily_brief, ledger
 from .models import DailyBriefPreference
+from .quantities import has_value
 
 TEST_SENDS_PER_DAY = 3
 EMAIL_SENDS_PER_DAY = 5
@@ -99,6 +100,7 @@ def _report(business, params, today=None, *, user=None):
             "is_default": start == daily_brief.default_week_start(today),
             "label": daily_brief.week_label(brief["start"], brief["end"]),
             "rows": daily_brief.weekly_rows(brief),
+            "visible_rows": [row for row in daily_brief.weekly_rows(brief) if has_value(row["value"])],
             "revenue_trend": daily_brief.trend(business, brief["revenue_change"], True),
             "net_trend": daily_brief.trend(business, brief["net_change"], False),
             "against": "the same days last week" if brief["partial"] else "last week",

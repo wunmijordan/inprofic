@@ -147,6 +147,7 @@
     const trigger = tip.querySelector('[data-form-help-trigger]');
     const bubble = helpBubbleFor(tip);
     tip.classList.remove('is-open');
+    delete tip.dataset.formHelpPinned;
     if (trigger) trigger.setAttribute('aria-expanded', 'false');
     if (bubble) bubble.hidden = true;
     restorePortalHelpBubble(tip, bubble);
@@ -231,8 +232,10 @@
     trigger.addEventListener('click', event => {
       event.preventDefault();
       event.stopPropagation();
-      if (tip.classList.contains('is-open')) closeHelpTip(tip);
-      else openHelpTip(tip);
+      // Hover/focus can reveal the portal before click fires. The first
+      // click pins that preview instead of immediately closing it.
+      if (tip.dataset.formHelpPinned === 'true') closeHelpTip(tip);
+      else { openHelpTip(tip); tip.dataset.formHelpPinned = 'true'; }
     });
     trigger.addEventListener('keydown', event => {
       if (event.key === 'Escape') {

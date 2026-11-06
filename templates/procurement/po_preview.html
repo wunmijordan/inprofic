@@ -24,7 +24,7 @@
         {% for line in summary.lines %}
         <tr>
           <td class="p-3"><div class="font-semibold">{{ line.name }}</div><div class="text-xs">Vendor: {{ line.vendor }}</div><div class="mt-1 text-xs text-stone-500">Stock now: {{ line.stock.text }}</div>{% if line.reason %}<p class="mt-1 text-xs">Reason: {{ line.reason }}</p>{% endif %}</td>
-          <td class="p-3 text-right">{% if line.removed %}Removed{% else %}{{ line.approved|num }} {{ line.unit }}{% endif %}{% if line.reduced or line.removed %}<div class="mt-1 text-xs text-stone-500">Requested {{ line.requested|num }} {{ line.unit }}</div>{% endif %}</td>
+          <td class="p-3 text-right">{% if line.removed %}Removed{% else %}{{ line.approved|num }} {{ line.unit|unit_plural:line.approved }}{% endif %}{% if line.reduced or line.removed %}<div class="mt-1 text-xs text-stone-500">Requested {{ line.requested|num }} {{ line.unit|unit_plural:line.requested }}</div>{% endif %}</td>
           <td class="p-3 text-right">{{ line.unit_cost|money:biz.currency_symbol }}</td>
           <td class="p-3 text-right font-semibold">{{ line.total|money:biz.currency_symbol }}</td>
         </tr>

@@ -4,9 +4,9 @@
     "name": "Inventory with purchase-to-usage units",
     "group": "operations",
     "audience": "owners, storekeepers, production teams",
-    "proof": "Buy in packs or bags while stock and recipes stay accurate in the unit actually consumed.",
-    "highlight": "",
-    "added_on": ""
+    "proof": "Buy in packs or bags while stock and recipes stay accurate in the unit consumed. Shared quantity labels pluralize product units across operations and summaries; material stock summaries show whole purchase packs plus the remaining usage quantity.",
+    "highlight": "NEW",
+    "added_on": "2026-11-06"
   },
   {
     "id": "dashboard-insights",
@@ -49,7 +49,7 @@
     "name": "Multi-vendor purchase requests, approval and sharing",
     "group": "operations",
     "audience": "procurement and store teams",
-    "proof": "Group items by optional saved or typed vendor names in one request, with separate payment status, method, account and advances for each group. Approve once, receive each vendor through a shared modal with separate arrival dates, settle each vendor independently, and share grouped items and payment breakdowns in the combined preview, PDF, paper snapshot and detailed text. Paid drafts require confirmation and preserve audited payment history through edits or deletion.",
+    "proof": "Group items by optional saved or typed vendor names in one request, with separate payment status, method, account and advances for each group. Approve once, receive each vendor through a shared modal with separate arrival dates, settle each vendor independently, and share grouped items and payment breakdowns in the combined preview, PDF, paper snapshot and detailed text. Paid drafts require confirmation and preserve audited payment history through edits or deletion. Snapshot and text show request-date miscellaneous expenses separately from the request total, subject to Expenses/Finance access.",
     "highlight": "NEW",
     "added_on": "2026-11-04"
   },
@@ -67,9 +67,9 @@
     "name": "Production requests and orders",
     "group": "production",
     "audience": "production-led businesses",
-    "proof": "Plan output, release recipe materials transactionally and add completed output to finished stock.",
-    "highlight": "",
-    "added_on": ""
+    "proof": "Plan output, release recipe materials transactionally and add completed output to finished stock. Approval, Shared Run approval and completion start with blank, visibly required event dates; missing dates are rejected before stock or workflow changes.",
+    "highlight": "NEW",
+    "added_on": "2026-11-06"
   },
   {
     "id": "shared-runs",
@@ -130,9 +130,9 @@
     "name": "Customer and channel pricing",
     "group": "sales",
     "audience": "wholesale and distribution businesses",
-    "proof": "Resolve customer-specific pricing before channel pricing, then fall back to the product default.",
-    "highlight": "",
-    "added_on": ""
+    "proof": "Resolve customer agreements before channel/default prices, show current agreements and recorded sales by applied price in product analysis, and preview prices on Market Stock releases. Accounting and settlement use frozen invoice prices, so later price changes do not rewrite revenue, cost or receivable history. Open customer names across sales, distribution, production and receivables in a shared read-only modal with date-filtered, paginated customer activity and current special prices; linked records retain identity after renaming and permitted legacy name-only sales remain visible. Customer geography is labelled Region and Area across forms, dashboards, PDFs and shared summaries, with existing records preserved.",
+    "highlight": "NEW",
+    "added_on": "2026-11-06"
   },
   {
     "id": "credit",
@@ -490,7 +490,7 @@
     "name": "Holistic Daily Brief and Weekly Summary with executive snapshots",
     "group": "insights",
     "audience": "business owners and dashboard users",
-    "proof": "Choose daily and weekly report sections independently. Review stock risks, sales, canonical P&L, cash and named supplier/vendor balances plus vertical-aware operations. Share selected text with a bounded paper-style executive image and authenticated dashboard link, respecting sender permissions.",
+    "proof": "Choose daily and weekly sections independently. Read product-grouped production with production costs, material package breakdowns, sales with customer distribution details, canonical P&L and named balances. Purchasing includes period miscellaneous expenses. Compact images and complete selected text omit zero-value fields and retain stock warnings, respecting sender permissions.",
     "highlight": "NEW",
     "added_on": "2026-11-04"
   },
@@ -535,7 +535,7 @@
     "name": "Concise daily distribution snapshots with financial cards",
     "group": "operations",
     "audience": "owners and store teams",
-    "proof": "Release several Market Stock products to one customer on one invoice, with batch-specific expiry and release-date availability checks, atomic stock checks and one combined payment or receivable. Snapshots use opening stock in place of new production; detailed text includes new receipts, returns and other stock changes. Shared product/customer snapshots and text reflect every released product, region/group, selected-date opening/closing stock and the combined invoice balance. Financial cards show expected value after returns, collections and balances when Finance access permits; recorded returns remain separate.",
+    "proof": "Release several Market Stock products per customer or record paid Physical Store sales directly from sellable market lots without a shelf transfer. Preview customer/channel prices, retain frozen costs and record payments and audit history. Compact date-based stock summaries separate customer releases, store sales and transfers; images carry financial cards and detailed text retains applied invoice prices, customer regions/areas, opening/closing stock and balances. Named write-offs replace opaque negative changes; recorded returns remain separate. Customer links open period activity in the shared modal, and accessible help tips keep the movement workspace compact.",
     "highlight": "NEW",
     "added_on": "2026-11-04"
   }

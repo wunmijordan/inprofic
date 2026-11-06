@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load core_extras %}
 {% block content %}
 <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
   <div>
@@ -29,7 +30,7 @@
     <tbody class="divide-y divide-[#E7DFCC]">
     {% for r in report.ingredients %}<tr class="{% if r.status == 'review' %}bg-rose-50{% elif r.status == 'watch' %}bg-amber-50{% endif %}">
       <td class="px-4 py-2 font-medium text-stone-800">{{ r.name }}</td>
-      <td class="px-2 py-2 text-right font-mono">{{ r.planned|floatformat:"-3" }} {{ r.unit }}</td>
+      <td class="px-2 py-2 text-right font-mono">{{ r.planned|floatformat:"-3" }} {{ r.unit|unit_plural:r.planned }}</td>
       <td class="px-2 py-2 text-right font-mono">{{ r.actual|floatformat:"-3" }}</td>
       <td class="px-2 py-2 text-right font-mono">{{ r.variance|floatformat:"-3" }}{% if r.variance_pct is not None %} <span class="text-stone-400">({{ r.variance_pct|floatformat:1 }}%)</span>{% endif %}</td>
       <td class="px-2 py-2 text-right font-mono">{{ r.variance_value|floatformat:2 }}</td>

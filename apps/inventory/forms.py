@@ -931,6 +931,18 @@ class MarketStockReleaseHeaderForm(MarketStockReleaseForm):
         del self.fields["quantity"]
 
 
+class MarketStockPhysicalSaleForm(StyledForm):
+    date = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}))
+    customer = forms.CharField(max_length=120, required=False, label="Customer name (optional)")
+    payment_method = forms.ChoiceField(choices=[("Cash", "Cash"), ("Card", "Card"), ("Transfer", "Transfer")])
+    account = forms.ModelChoiceField(queryset=CashAccount.objects.none(), label="Receiving account")
+    note = forms.CharField(max_length=255, required=False, widget=forms.Textarea(attrs={"rows": 2}))
+
+    def __init__(self, *args, business=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["account"].queryset = CashAccount.objects.filter(business=business, active=True).order_by("name")
+
+
 class MarketStockReleaseItemForm(StyledForm):
     finished_good = forms.ModelChoiceField(queryset=FinishedGood.objects.none(), label="Product")
     quantity = forms.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.01"))

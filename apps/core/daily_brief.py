@@ -180,15 +180,8 @@ def render_text(brief, today=None, *, now=None):
     is_yesterday = brief['day'] == today - timedelta(days=1)
     greeting = f"*{time_greeting(now)}, {b.name}*" if is_yesterday else f"*{b.name}: daily brief*"
     if 'executive_sections' in brief:
-        permissions = brief['report_permissions']
-        required = ['sales', 'finance', 'expenses', 'inventory'] + (['production'] if b.uses_production else [])
         from .executive_brief import full_text
-        # Keep the familiar overview only when all its contributing areas are visible.
-        if brief.get('selected_sections') is not None or not all(permissions[module] for module in required):
-            return f"{greeting}\n{brief['day']:%a %d %b %Y}\n\n" + full_text(brief)
-        original = dict(brief)
-        original.pop('executive_sections')
-        return render_text(original, today, now=now) + '\n\n*Full business report*\n' + full_text(brief)
+        return f"{greeting}\n{brief['day']:%a %d %b %Y}\n\n" + full_text(brief)
     label = day_label(brief["day"], today)
     heading = f"{label}, {brief['day']:%a %d %b}" if label in {"Yesterday", "Today so far"} else f"{brief['day']:%a %d %b %Y}"
     lines = [greeting, heading, ""]
@@ -257,11 +250,7 @@ def render_weekly_text(brief):
     b, pl = brief["business"], brief["pl"]
     if 'executive_sections' in brief:
         from .executive_brief import full_text
-        if brief.get('selected_sections') is not None or not brief['report_permissions']['finance']:
-            return f"*{b.name}: weekly summary*\n{week_label(brief['start'], brief['end'])}\n\n" + full_text(brief)
-        original = dict(brief)
-        original.pop('executive_sections')
-        return render_weekly_text(original) + '\n\n*Full business report*\n' + full_text(brief)
+        return f"*{b.name}: weekly summary*\n{week_label(brief['start'], brief['end'])}\n\n" + full_text(brief)
     money = lambda value: _money(b, value)
     title = "weekly summary, so far" if brief["partial"] else "weekly summary"
     net_label = "Net loss" if pl["net_profit"] < 0 else "Net profit"

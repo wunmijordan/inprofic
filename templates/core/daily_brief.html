@@ -63,25 +63,25 @@
     </form>
   </details>
 
-  {% if view == "weekly" and brief.executive_pl %}
+  {% if view == "weekly" and brief.executive_pl and visible_rows %}
   <div class="brief-kpis">
-    <div class="workspace-card brief-kpi">
+    {% if brief.pl.revenue %}<div class="workspace-card brief-kpi">
       <div class="brief-kpi-label">Revenue</div>
       <div class="brief-kpi-value">{{ rows.0.value }}</div>
       <div class="brief-kpi-trend {% if brief.revenue_change.direction == 'up' %}text-emerald-700{% elif brief.revenue_change.direction == 'down' %}text-red-700{% else %}text-stone-500{% endif %}">{{ revenue_trend }} <span class="font-normal text-stone-500">vs {{ against }}</span></div>
-    </div>
-    <div class="workspace-card brief-kpi">
+    </div>{% endif %}
+    {% if brief.pl.net_profit %}<div class="workspace-card brief-kpi">
       <div class="brief-kpi-label">{% if brief.pl.net_profit < 0 %}Net loss{% else %}Net profit{% endif %}</div>
       <div class="brief-kpi-value">{{ net_value }}</div>
       <div class="brief-kpi-trend {% if brief.net_change.direction == 'up' %}text-emerald-700{% elif brief.net_change.direction == 'down' %}text-red-700{% else %}text-stone-500{% endif %}">{{ net_trend }} <span class="font-normal text-stone-500">vs {{ against }}</span></div>
-    </div>
+    </div>{% endif %}
   </div>
 
   <section class="workspace-card mt-3 p-4" aria-label="Profit and loss for {{ label }}">
     <table class="brief-table">
       <caption class="sr-only">Profit and loss, {{ label }}</caption>
       <tbody>
-        {% for row in rows %}<tr class="is-{{ row.kind }}"><th scope="row">{{ row.label }}{% if row.note %}<span class="brief-note">{{ row.note }}</span>{% endif %}</th><td>{{ row.value }}</td></tr>{% endfor %}
+        {% for row in visible_rows %}<tr class="is-{{ row.kind }}"><th scope="row">{{ row.label }}{% if row.note %}<span class="brief-note">{{ row.note }}</span>{% endif %}</th><td>{{ row.value }}</td></tr>{% endfor %}
       </tbody>
     </table>
     <ul class="brief-facts text-stone-600">

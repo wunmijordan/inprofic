@@ -459,7 +459,7 @@ class PurchaseShareTests(TestCase):
         self.assertIn(f"*Purchase request #{po.pk}*", text)
         self.assertIn("Supplier: Main Distributor", text)
         self.assertIn("Status: Awaiting approval", text)
-        self.assertIn(f"{self.product.name}: 50 {self.product.unit} × {self.business.currency_symbol}5.00 = {self.business.currency_symbol}250.00", text)
+        self.assertIn(f"{self.product.name}: 50 cartons × {self.business.currency_symbol}5.00 = {self.business.currency_symbol}250.00", text)
         self.assertIn(f"*Total: {self.business.currency_symbol}300.00*", text)
         self.assertIn("Open INPROFIC to approve this purchase request (sign-in required):\nhttps://app.example/procurement/1/approve/", text)
         self.assertNotIn("Requested total", text)
@@ -609,14 +609,14 @@ class ProcurementStockVisibilityTests(TestCase):
         from .stockview import stock_line, stock_status
         flour = self.raw()
         status = stock_status(flour)
-        self.assertEqual((status["status"], status["text"], status["packs"]), ("ok", "130 kg", "2 bag + 30 kg"))
+        self.assertEqual((status["status"], status["text"], status["packs"]), ("ok", "130 kg", "2 bags + 30 kg"))
         for stock, expected in (("0", "out"), ("40", "low"), ("55", "warning"), ("500", "ok")):
             flour.stock = Decimal(stock)
             self.assertEqual(stock_status(flour)["status"], expected, stock)
         flour.reorder_level = Decimal("0")
         flour.stock = Decimal("5")
         self.assertEqual(stock_status(flour)["status"], "ok")
-        self.assertIn("no reorder level set", stock_line(stock_status(flour)))
+        self.assertNotIn("no reorder level set", stock_line(stock_status(flour)))
         self.assertEqual(stock_status(self.product)["unit"], self.product.unit)
 
     def test_untracked_resale_products_say_so(self):
@@ -631,7 +631,7 @@ class ProcurementStockVisibilityTests(TestCase):
         po, line, extra = self.make_request()
         url = "https://app.example/procurement/9/approve/"
         text = share_text(summarize(po, self.business, url))
-        self.assertIn("Stock now: 3 " + self.product.unit + " (Low, reorder at 10", text)
+        self.assertIn("Stock now: 3 cartons (Low, reorder at 10", text)
         self.assertIn("Stock as of", text)
         self.assertIn("(sign-in required)", text)
         self.assertTrue(text.rstrip().endswith(url))
@@ -681,7 +681,7 @@ class ProcurementStockVisibilityTests(TestCase):
         self.assertContains(page, "data-stock-note")
         levels = page.context["stock_levels"]
         self.assertIn(f"finished:{self.product.pk}", levels)
-        self.assertEqual(levels[f"raw:{flour.pk}"]["packs"], "2 bag + 30 kg")
+        self.assertEqual(levels[f"raw:{flour.pk}"]["packs"], "2 bags + 30 kg")
         self.assertEqual(levels[f"finished:{self.product.pk}"]["status"], "low")
         self.assertContains(page, "Stock now: ")
 

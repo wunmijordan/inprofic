@@ -80,6 +80,10 @@ with tempfile.TemporaryDirectory(prefix='inprofic-ui-') as directory:
         remaining -= quantity
         MarketStockMovement.objects.create(business=business, lot=lot, date=day, sale=sale,
             movement_type=MarketStockMovement.RELEASE, quantity=-quantity, balance_after=remaining)
+    if os.environ.get('INPROFIC_UI_CUSTOMER_ACTIVITY_FIXTURE') == '1':
+        from sales.models import CustomerProductPrice
+        CustomerProductPrice.raw_objects.create(business=business,customer=Customer.objects.get(business=business,name='Customer 00'),
+            finished_good=good,channel='distribution',price=200)
     outsider = Business.objects.create(name='Other UI Tenant',slug='other-ui')
     CashAccount.raw_objects.create(business=outsider,name='PRIVATE OTHER TENANT',opening_balance=500)
     ensure_default_plans()

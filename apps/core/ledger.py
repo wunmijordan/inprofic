@@ -271,15 +271,18 @@ def default_entry_date():
     return today()
 
 
-def resolve_event_date(request, document_date=None):
+def resolve_event_date(request, document_date=None, *, required=False):
     """Date for a workflow event (approve / complete / receive).
 
-    Staff may pass an optional ``event_date`` so work can be recorded on the day
+    Callers can require an explicit date for production approval/completion.
+    Other workflows may pass an optional ``event_date`` to record the day
     it really happened. Without it the date is today, or the document date in
     Backlog mode where today is not a valid date. The date may not be in the
     future nor earlier than the document, and it must be valid for the scope.
     """
     raw = (request.POST.get("event_date") or "").strip() if request.method == "POST" else ""
+    if required and request.method == "POST" and not raw:
+        raise LedgerDateError(message="Select the event date before saving.")
     if raw:
         try:
             chosen = date_cls.fromisoformat(raw)

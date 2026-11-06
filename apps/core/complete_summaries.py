@@ -537,7 +537,7 @@ def customer_summary(ctx):
             table("Top customers by sales", ["Customer", "Sales", "Value"], [[r["sale__customer"] or "Walk-in", r["n"], money(ctx, r["total"])] for r in top]),
             table("Largest balances owed", ["Customer", "Owes"], [[name, money(ctx, value)] for name, value in debtors]),
             table("By region", ["Region", "Customers"], [[r["region"] or "Unspecified", r["n"]] for r in by_region]),
-            table("By customer group", ["Group", "Customers"], [[pretty(r["customer_group"]), r["n"]] for r in by_group]),
+            table("By customer area", ["Area", "Customers"], [[pretty(r["customer_group"]), r["n"]] for r in by_group]),
         ],
     }
 

@@ -5,6 +5,7 @@ snapshot image all report the same numbers. Stock is read through the model, so 
 already respects an active ledger cut-over (the live segment balance).
 """
 from decimal import Decimal
+from core.quantities import format_quantity
 
 from inventory.models import RawMaterial
 
@@ -38,12 +39,12 @@ def stock_status(item):
     packs = ""
     if is_raw and item.has_unit_conversion and factor > 0:
         whole, remainder = item.stock_breakdown
-        packs = " + ".join(part for part in (f"{whole:,} {item.purchase_unit}" if whole else "",
-                                             f"{_fmt(remainder)} {unit}" if remainder else "") if part) or f"0 {item.purchase_unit}"
+        packs = " + ".join(part for part in (format_quantity(whole,item.purchase_unit) if whole else "",
+                                             format_quantity(remainder,unit) if remainder else "") if part) or format_quantity(0,item.purchase_unit)
     return {
         "tracked": True, "status": status, "label": STATUS_LABELS[status], "stock": stock, "unit": unit, "request_unit": request_unit,
-        "text": f"{_fmt(stock)} {unit}".strip(), "packs": packs, "factor": str(factor), "reorder": str(reorder),
-        "reorder_text": f"reorder at {_fmt(reorder)} {unit}".strip() if reorder > 0 else "no reorder level set",
+        "text": format_quantity(stock,unit), "packs": packs, "factor": str(factor), "reorder": str(reorder),
+        "reorder_text": f"reorder at {format_quantity(reorder,unit)}" if reorder > 0 else "",
     }
 
 

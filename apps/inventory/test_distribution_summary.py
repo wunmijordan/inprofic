@@ -137,9 +137,9 @@ class DistributionSummaryTests(ToolBase):
             response = self.client.get(reverse('market_stock'))
             self.assertEqual(response.status_code, 200)
             self.assertContains(response, 'id="distribution-summary"')
-            self.assertContains(response, 'id="distribution-returns"')
+            self.assertNotContains(response, 'id="distribution-returns"')
             self.assertNotContains(response, 'Possible returns')
-            self.assertContains(response, 'data-ui-snapshot-menu', count=2)
+            self.assertContains(response, 'data-ui-snapshot-menu', count=1)
 
     def test_market_stock_page_enforces_inventory_permission(self):
         from accounts.models import UserBusiness, UserModulePermission
@@ -180,7 +180,7 @@ class DistributionSummaryTests(ToolBase):
         self.assertEqual(totals, dict(gross=100, returned=30, net=70, paid=50,
                                      outstanding=50, net_due=20, refund_review=0))
         self.assertIn('Expected value after returns: ₦70.00', data['distribution_share_text'])
-        self.assertIn('Expected balance: ₦20.00', data['distribution_share_text'])
+        self.assertIn('Balance due: ₦20.00', data['distribution_share_text'])
         self.assertNotIn('ledger', data['distribution_share_text'].lower())
         self.assertIn('Ada', data['distribution_share_text'])
         sale.refresh_from_db()
@@ -285,13 +285,13 @@ class DistributionSummaryTests(ToolBase):
             CustomerPayment.raw_objects.create(business=self.biz,sale=sale,date=today,customer=customer,
                                                amount=10,payment_method='Transfer')
         text = distribution_summaries(self.request())['distribution_share_text']
-        sections = ['*Money summary*','*Stock by product*','*Customer breakdown*','*Reading this report*','*Open complete distribution summary*']
+        sections = ['*Money summary*','*Stock by product*','*Customer breakdown*','Full summary:']
         offsets = [text.index(section) for section in sections]
         self.assertEqual(offsets,sorted(offsets))
-        self.assertIn('• Distributed invoice value: '+self.biz.currency_symbol+'150.00\n',text)
-        self.assertIn('• Invoice outstanding: '+self.biz.currency_symbol+'130.00\n',text)
-        self.assertIn('*Ada*\n• Bread: 10 loaf\n\nInvoice #',text)
-        self.assertIn('*Bola*\n• Bread: 5 loaf\n\nInvoice #',text)
+        self.assertIn('• Customer distributions: '+self.biz.currency_symbol+'150.00\n',text)
+        self.assertIn('• Balance due: '+self.biz.currency_symbol+'130.00\n',text)
+        self.assertIn('*Ada*\n• Bread: 10 loaves\n\nInvoice #',text)
+        self.assertIn('*Bola*\n• Bread: 5 loaves\n\nInvoice #',text)
         self.assertEqual(text.count('*Ada*'),1)
         self.assertIn('Payment methods:\n• Transfer: '+self.biz.currency_symbol+'10.00\n',text)
         self.assertTrue(text.splitlines()[-1].startswith('http://testserver/inventory/market-stock/?date='))
@@ -321,11 +321,11 @@ class DistributionSummaryTests(ToolBase):
         self.assertEqual(data['distribution_settlement']['rows'][0]['customer_group'], 'Retailers')
         for key in ['distribution_share_text', 'returns_share_text']:
             self.assertIn('Region: North', data[key])
-            self.assertIn('Group: Retailers', data[key])
+            self.assertIn('Area: Retailers', data[key])
         self.client.force_login(self.admin)
         page = self.client.get(reverse('market_stock'))
         self.assertContains(page, 'Region: North')
-        self.assertContains(page, 'Group: Retailers')
+        self.assertContains(page, 'Area: Retailers')
         from unittest.mock import patch
         with patch('inventory.distribution_summary.render_distribution_snapshot', return_value=b'png') as render:
             self.client.get(reverse('market_stock_snapshot', args=['stock']))

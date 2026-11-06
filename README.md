@@ -59,7 +59,7 @@ what was borrowed and what was deliberately left out).
   Historical backlog batches keep their recorded expiry without contributing to
   current expiry alerts. Physical Store transfers retain their stock checks.
 - **Reports** — a date-range monthly operational PDF with revenue, channel-origin, procurement, production and inventory charts/tables; CSV/Excel exports and a full JSON backup.
-- **Daily brief** — open Daily brief below Dashboard in the desktop or mobile menu; read yesterday's summary, share an paper-style PNG snapshot or text with a sign-in link to the Executive dashboard, or configure morning email and approved-template WhatsApp delivery.
+- **Daily brief** — open Daily brief below Dashboard in the desktop or mobile menu; read yesterday's summary, share a paper-style PNG snapshot or text with a sign-in link to the Executive dashboard, or configure morning email and approved-template WhatsApp delivery.
 - **Books and tax** — authorised Finance users can open Books, Tax & VAT and E-invoices from the shared Finance toolbar; review derived double-entry books, configure VAT-inclusive reporting, and prepare sale invoices for provider submission or manual clearance tracking. See [the setup guide](docs/BOOKS_TAX_AND_WHATSAPP.md).
 - **Ledger cut-over and Executive Dashboard** — business admins can set a live start date, review opening stock and cash positions, enter older records in a permission-controlled backlog, and preview/merge/archive that backlog with an undo path. The dashboard offers a lazy, permission-filtered Executive view alongside the Basic view; both follow the active Live/Backlog/Combined scope.
 - **Founder mailing workspace** — platform-level mailing staff can use reusable INPROFIC-branded topics, business/service/plan targeting, immediate delivery with retry-safe queued fallback, and campaign send analytics without receiving tenant access or Founder subscription controls.
@@ -302,10 +302,10 @@ Share actions sit in the heading dropdown on procurement forms/previews and dist
 opens the complete quantity/reason review in the shared dialog.
 
 Daily Brief and Weekly Summary now provide a holistic executive report: all
-material/product stock positions with registered units and reorder status, sales
+material/product stock positions with pluralized units, material package breakdowns and stock status, sales
 by channel/product/customer, canonical Finance P&L, cash movements and account
 balances, outstanding customer/supplier/expense balances, purchasing, and relevant
-production/distribution, commerce and delivery activity. Both separate selected-period
+production, commerce and delivery activity. Distribution details sit within Sales activity; Purchasing includes miscellaneous expenses for the selected period. Production is grouped by product with explicit production costs. Zero-value fields and empty sections are omitted while out-of-stock warnings remain visible. Both separate selected-period
 activity from current positions, respect the sender's module permissions, and keep
 production-only sections out of purchased-stock businesses. The paper-style image
 has at most 8 headline rows plus the net-profit card; the full report text is passed
@@ -315,12 +315,12 @@ image. On devices without file sharing, sharing saves the image and attempts to
 copy the full accompanying text. Distribution summaries link to
 `#distribution-summary` and `#distribution-returns` on the distribution workspace.
 The umbrella distribution snapshot shows selected-date opening stock, customer
-releases, Physical Store transfers, destinations and closing quantities. The page
-and full text also show new receipts, returns and other stock changes. Production
+releases, direct Physical Store sales, transfers, destinations and closing quantities. Direct store sales allocate sellable market lots, retain batch costs and create one paid sale/payment without first transferring to shelf stock. The page
+and full text also show new receipts, returns, named write-offs and production reversals. Negative residual adjustments mean stock removed outside those named movements. Batch lots and movement history are collapsed to keep daily operations compact. Production
 profiles use Market Stock movement records; wholesale/retail profiles use their
 registered warehouse/shop balances and recorded distribution sales. Only actual
 recorded returns are shared separately; there is no possible-returns forecast.
-Product stock units remain separate.
+Product stock units remain separate and use the global quantity-label helper. Customer agreements take priority over channel/default prices; invoices, payments and profit use saved sale prices. Product search analysis shows current agreements and recorded sales by applied price, while distribution invoices and release previews expose their product prices. Procurement snapshots and text include miscellaneous expenses for the request date as a separate total, respecting Expenses/Finance access; these expenses never inflate the request invoice total.
 
 The **Assistant** tab lives in the shared activity tray, including on mobile.
 Business admins can add up to 30 questions mapped to existing record-backed
@@ -363,3 +363,24 @@ Customer payment entry accepts Cash, Card and Transfer parts in one receipt, eac
 its own account/reference. Partial receipts leave a Finance receivable; subsequent
 receipts clear it only when cumulative collections cover the invoice. Each positive
 part creates one CustomerPayment and one auditable cash movement in one transaction.
+
+Customer names in Customers, Sales, Dashboard search, production orders, receivables and distribution
+summaries open a shared, read-only activity modal for users with Sales view access.
+Filter by date or choose this week/month/year; review paginated sales, recorded
+payments, permitted production orders and returns, current outstanding balances,
+and customer-specific product prices. Historical name-only sales are included
+only when they match an unlinked customer record in the active business. Period
+filters do not edit records or trigger unsaved-change prompts.
+
+Production approval, Shared Run approval and completion require an explicitly
+selected event date. The initial field is blank and marked required; the server
+rejects missing dates before any stock or workflow change. Previously selected
+dates remain available through validation and shortage confirmation. Other
+workflows retain their existing date defaults. Distribution and production-date
+guidance uses shared keyboard/touch help tips; the first click pins a revealed
+help tip, with a second click or Escape to dismiss it.
+
+Customer geography uses **Region** and **Area** throughout forms, customer lists,
+dashboard analysis, PDFs and shared distribution summaries. Existing values remain
+in the legacy `customer_group` field for backup/API compatibility; the new
+migrations update field labels only.

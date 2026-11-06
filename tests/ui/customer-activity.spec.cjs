@@ -1,0 +1,44 @@
+const {test,expect}=require('@playwright/test');
+test.skip(process.env.INPROFIC_UI_CUSTOMER_ACTIVITY_FIXTURE!=='1','Requires the isolated customer pricing fixture.');
+test.beforeEach(async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('inprofic:essential-privacy-notice:v1','dismissed'));
+ await page.goto('/accounts/login/ui-fixture/admin/');
+});
+test('customer activity opens in the global modal and date filters stay read-only',async({page})=>{
+ await page.goto('/sales/customers/');
+ await page.getByRole('link',{name:'View activity for Customer 00',exact:true}).click();
+ const modal=page.locator('.ui-form-dialog');
+ await expect(modal).toBeVisible();
+ const frame=page.frameLocator('iframe[name="inprofic-form-dialog"]');
+ await expect(frame.getByRole('heading',{name:'Sales and distribution',exact:true})).toBeVisible();
+ await expect(frame.getByRole('heading',{name:'Special product prices',exact:false})).toBeVisible();
+ await expect(frame.locator('table').last()).toContainText('200.00 / loaf');
+ const end=await frame.locator('input[name="end"]').inputValue();
+ await frame.locator('input[name="start"]').fill(end);
+ await frame.getByRole('button',{name:'Show activity',exact:true}).click();
+ await expect(frame.locator('input[name="start"]')).toHaveValue(end);
+ await expect(modal).toBeVisible();
+ await page.setViewportSize({width:390,height:844});
+ expect(await modal.evaluate(el=>el.getBoundingClientRect().width<=innerWidth+1)).toBe(true);
+ await modal.getByRole('button',{name:'Close',exact:true}).click();
+ await expect(modal).not.toBeVisible();
+ await expect(page.getByRole('alertdialog')).toHaveCount(0);
+});
+test('distribution links preserve the selected day and help text stays in a help tip',async({page})=>{
+ await page.goto('/inventory/market-stock/');
+ const date=await page.locator('input[name="date"]').inputValue();
+ const link=page.getByRole('link',{name:'View activity for Customer 00',exact:true}).first();
+ await expect(link).toHaveAttribute('href',new RegExp(`start=${date}.*end=${date}`));
+ await page.getByRole('button',{name:'Help for Sales and collections',exact:true}).click();
+ await expect(page.getByRole('tooltip').filter({hasText:'credits or refunds still require review'})).toBeVisible();
+ await page.getByRole('button',{name:'Help for Sales and collections',exact:true}).click();
+ await expect(page.getByRole('tooltip').filter({hasText:'credits or refunds still require review'})).toHaveCount(0);
+ await page.getByRole('button',{name:'Help for Sales and collections',exact:true}).focus();
+ await page.keyboard.press('Enter');
+ await expect(page.getByRole('tooltip').filter({hasText:'credits or refunds still require review'})).toBeVisible();
+ await page.keyboard.press('Escape');
+ await link.click();
+ const frame=page.frameLocator('iframe[name="inprofic-form-dialog"]');
+ await expect(frame.locator('input[name="start"]')).toHaveValue(date);
+ await expect(frame.locator('input[name="end"]')).toHaveValue(date);
+});

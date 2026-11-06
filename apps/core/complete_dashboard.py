@@ -293,7 +293,7 @@ def complete_dashboard_section(request, group, section):
     payload = {
         "group": group, "section": section, "title": label,
         "kpis": [{"label": "Records shown", "value": len(objects)}, {"label": "Total records", "value": queryset.count()}],
-        "tables": [{"title": label, "columns": [field.replace("__", " · ").replace("_", " ").title() for field in fields], "rows": rows}],
+        "tables": [{"title": label, "columns": [field.replace("customer_group", "customer_area").replace("__", " · ").replace("_", " ").title() for field in fields], "rows": rows}],
         "scope": getattr(request, "ledger_scope", "all"),
         "charts": charts,
     }

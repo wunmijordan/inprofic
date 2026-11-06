@@ -58,7 +58,7 @@ def _finance_open_items(business, *, detail_limit=30):
             source__in=("distribution_order", "online_order", "walkin"),
             transaction_type__in=("unpaid", "partial"),
         ).only(
-            "id", "source", "customer", "date", "transaction_type"
+            "id", "source", "customer", "customer_master_id", "date", "transaction_type"
         ).annotate(
             _invoice_total=Coalesce(Subquery(sale_total_sq, output_field=money_field), Value(Decimal("0"), output_field=money_field)),
             _paid_total=Coalesce(Subquery(sale_paid_sq, output_field=money_field), Value(Decimal("0"), output_field=money_field)),

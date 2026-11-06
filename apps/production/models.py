@@ -100,8 +100,8 @@ class Order(BusinessOwnedModel):
         help_text="Required for distribution and online orders; leave blank for a physical store restock.")
     customer_region = models.CharField(max_length=100, blank=True,
         help_text="Optional reporting region/territory for distribution or online customer analytics.")
-    customer_group = models.CharField(max_length=100, blank=True,
-        help_text="Optional customer group/segment for distribution or online customer analytics.")
+    customer_group = models.CharField("customer area", max_length=100, blank=True,
+        help_text="Optional customer area within a region for distribution or online customer analytics.")
     # Existing payment fields are retained for historical rows and database
     # compatibility. They are deliberately not exposed for Physical Store
     # Orders: those are production/restock requests, not direct sales.

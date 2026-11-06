@@ -87,7 +87,7 @@ as distributed value less recorded returns, and expected balance as that value
 less collections. These read-only figures do not automatically credit invoices
 or post refunds.
 
-Customer region and group labels on distribution pages, images and shared text
+Customer region and area labels on distribution pages, images and shared text
 come from the current business customer directory. Historical sale-name snapshots
 remain intact. Labels are omitted when unset; a customer link from another
 business is never used to resolve labels.
@@ -99,3 +99,30 @@ balances. The snapshot shows opening instead of new production; detailed text al
 shows new receipts, returns, transfers and write-offs. Closing includes blocked
 batches until their write-off is recorded. Later movements do not change an
 earlier closing balance; invoice settlement still includes later payments.
+
+## Operational summaries and direct Market Stock sales
+
+Daily and weekly reports group production by product, label production costs,
+show material stock as purchase packages plus usage-unit remainder, and include
+distribution detail within Sales activity. Purchasing includes miscellaneous
+expenses for the period. Empty and zero-value financial fields are omitted;
+zero stock remains visible when it indicates an out-of-stock item.
+
+Market Stock supports paid Physical Store sales without a shelf transfer. One
+sale records the applied Physical Store price, frozen lot costs, payment account,
+stock movement and audit trail. The distribution summary separates these sales
+from customer releases and Physical Store transfers. Write-offs and reversals
+are named explicitly; residual stock out is displayed as a positive quantity
+under its own label, rather than an unexplained negative change.
+
+Customer/product agreements override channel prices, followed by the product
+default where that selling flow permits a default. Market Stock distribution
+requires an explicit Distribution or customer price. Release forms preview the
+applied price; product search lists current agreements and historical applied
+prices. Existing invoices and profitability retain saved selling prices after
+an agreement changes. Finance still recognises paid-sales revenue only once an
+invoice is fully settled, consistent with its existing Profit & Loss definition.
+
+Procurement snapshots and full sharing text include miscellaneous expenses for
+the request date when Expenses or Finance view access permits. This is a separate
+expenses total, never an addition to the purchase request's payable amount.

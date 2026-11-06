@@ -62,6 +62,7 @@
             <span class="text-[10px] font-semibold uppercase tracking-wider text-stone-500 bg-stone-100 px-2 py-1 rounded-full" x-text="detail?.identifier"></span>
           </div>
           <h3 class="text-xl font-semibold font-display text-[#8f172d] truncate" x-text="detail?.title"></h3>
+          <a x-show="detail?.activity_url" :href="detail?.activity_url || '#'" @click="closeDetail()" class="workspace-action mt-2">Customer activity and special prices</a>
         </div>
         <button @click="closeDetail()" type="button" class="shrink-0 grid h-9 w-9 place-items-center rounded-full bg-stone-100 text-stone-500 hover:bg-stone-200 hover:text-stone-800 text-xl leading-none" aria-label="Close search detail">&times;</button>
       </div>
@@ -241,8 +242,8 @@
           </div>
         </template>
 
-        <!-- Region / group -->
-        <template x-if="detail?.type === 'Customer region' || detail?.type === 'Customer group'">
+        <!-- Region / area -->
+        <template x-if="detail?.type === 'Customer region' || detail?.type === 'Customer area'">
 
         </template>
         </div>

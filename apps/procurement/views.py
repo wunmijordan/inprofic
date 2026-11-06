@@ -135,7 +135,7 @@ def po_form(request, pk=None):
         obj = request_orders(obj, lock=True).first()
     if share_only:
         summary = summarize(_shareable_order(request, obj.pk), request.business,
-                            request.build_absolute_uri(reverse("po_approve", args=[obj.pk])))
+                            request.build_absolute_uri(reverse("po_approve", args=[obj.pk])), user=request.user)
         return render(request, "procurement/po_preview.html", {
             "obj": obj, "summary": summary, "share_text": share_text(summary),
             "share_image_url": reverse("po_share_image", args=[obj.pk]),
@@ -378,7 +378,7 @@ def po_form(request, pk=None):
     }
     return render(request, "procurement/po_form.html", {
         "form": form, "formset": formset, "legacy_post": not grouped, "has_recorded_payments": any(recorded_paid.values()), "vendor_formset": vendor_formset, "group_blocks": group_blocks, "obj": obj, "current_costs": current_costs, "stock_levels": stock_levels,
-        "share_text": share_text(summarize(_shareable_order(request, obj.pk), request.business, request.build_absolute_uri(reverse("po_approve", args=[obj.pk])))) if obj else "",
+        "share_text": share_text(summarize(_shareable_order(request, obj.pk), request.business, request.build_absolute_uri(reverse("po_approve", args=[obj.pk])), user=request.user)) if obj else "",
         "share_image_url": reverse("po_share_image", args=[obj.pk]) if obj else "",
         "stock_time": timezone.localtime().strftime("%d %b %H:%M"),
         "suppliers": Supplier.objects.filter(business=request.business, active=True).order_by("name"),
@@ -511,7 +511,7 @@ def po_invoice(request, pk):
         return render(request, '403.html', status=403)
     if request.GET.get('request') == '1':
         po = _shareable_order(request, pk)
-        return purchase_request_pdf(summarize(po, request.business, ''))
+        return purchase_request_pdf(summarize(po, request.business, '', user=request.user))
     po = get_object_or_404(
         PurchaseOrder.objects.prefetch_related("items__raw_material", "items__finished_good"),
         pk=pk, business=request.business,
@@ -533,7 +533,7 @@ def po_share_image(request, pk):
         return render(request, "403.html", status=403)
     po = _shareable_order(request, pk)
     url = request.build_absolute_uri(reverse("po_approve", args=[po.pk]))
-    response = HttpResponse(render_snapshot(summarize(po, request.business, url)), content_type="image/png")
+    response = HttpResponse(render_snapshot(summarize(po, request.business, url, user=request.user)), content_type="image/png")
     response["Cache-Control"] = "private, no-store"
     # Inline opens the full-size image in the browser's viewer; ?download=1 saves it to the device.
     disposition = "attachment" if request.GET.get("download") == "1" else "inline"
@@ -601,7 +601,7 @@ def po_approve(request, pk):
                 messages.success(request, "Request approved. Receive the approved items when they arrive.")
                 return redirect("procurement_list")
     approval_url = request.build_absolute_uri(reverse("po_approve", args=[po.pk]))
-    summary = summarize(_shareable_order(request, pk), request.business, approval_url)
+    summary = summarize(_shareable_order(request, pk), request.business, approval_url, user=request.user)
     for line in line_forms:
         line.stock = stock_status(line.item.stock_item)
     return render(request, "procurement/po_approve.html", {
