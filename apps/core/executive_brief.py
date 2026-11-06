@@ -36,7 +36,7 @@ HIGHLIGHT_KEYS = {
     'Operating costs': 'profit', 'Cash / account balances': 'position', 'Receivables': 'position',
     'Payables': 'position', 'Material stock alerts': 'materials', 'Product stock alerts': 'products',
     'Production attention': 'production',
-    'Open purchase requests': 'purchasing', 'Expenses': 'expenses',
+    'Open purchase requests': 'purchasing', 'Purchases & expenses': 'purchasing', 'Expenses': 'expenses',
 }
 
 
@@ -204,6 +204,15 @@ def enrich(brief, start, end, *, user=None, selected_sections=None):
             if miscellaneous:
                 lines += [f"Miscellaneous expenses: {money(sum((e.amount for e in miscellaneous),ZERO))}"]
                 lines += [f"  {e.description}: {money(e.amount)}" for e in miscellaneous]
+        from procurement.spending import period_totals
+        spending = period_totals(business, start, end, expenses=allowed['expenses'] or allowed['finance'])
+        if spending['purchases']:
+            lines.append(f"Purchases entered in period: {money(spending['purchases'])} (includes pending requests)")
+        if spending['grand_total']:
+            lines.append(f"Purchases & expenses grand total: {money(spending['grand_total'])}")
+        if spending['money_out']:
+            lines.append(f"Actual money paid out in period: {money(spending['money_out'])}")
+        highlight('Purchases & expenses', money(spending['grand_total']), f"Actual paid out: {money(spending['money_out'])}")
         section('Purchasing · selected period and current queue', lines)
         highlight('Open purchase requests', str(request_count(current)), f'Received in period: {money(received_value)}')
 
@@ -339,6 +348,8 @@ def select_highlights(highlights):
     for label in ['Material stock alerts', 'Product stock alerts']:
         if label in by_label:
             selected.append(by_label[label])
+    if 'Purchases & expenses' in by_label and len(selected) < 8:
+        selected.append(by_label['Purchases & expenses'])
     operations = [by_label[label] for label in ['Market Stock shelf life', 'Production attention', 'Open purchase requests'] if label in by_label]
     # Show actual exceptions first; a quiet shelf-life indicator should not
     # displace an outstanding approval or purchasing queue.

@@ -1,7 +1,11 @@
 from django.urls import path
 from . import views
+from . import spending_views
 
 urlpatterns = [
+    path("summary.png", spending_views.spending_snapshot, name="spending_snapshot"),
+    path("spending.csv", spending_views.spending_export, {'file_format': 'csv'}, name="spending_csv"),
+    path("spending.xlsx", spending_views.spending_export, {'file_format': 'xlsx'}, name="spending_xlsx"),
     path("", views.procurement_list, name="procurement_list"),
     path("suppliers/add/", views.supplier_add, name="supplier_add"),
     path("suppliers/<int:pk>/edit/", views.supplier_edit, name="supplier_edit"),

@@ -13,6 +13,7 @@ from core.services import record_cash, audit
 from core import ledger
 from core.models import FinancialTransaction
 from django.http import HttpResponse
+from django.urls import reverse
 from django.core.exceptions import ValidationError
 from .services import save_correction, outstanding_amount
 
@@ -23,9 +24,10 @@ def today():
 
 @login_required
 def expenses_list(request):
-    expenses = Expense.objects.select_related("created_by").prefetch_related("payments")
-    total = sum((e.amount for e in expenses), Decimal("0"))
-    return render(request, "expenses/expenses_list.html", {"expenses": expenses, "total_expenses": total})
+    target = reverse("procurement_list")
+    if request.GET:
+        target += '?' + request.GET.urlencode()
+    return redirect(target)
 
 
 @login_required
@@ -121,7 +123,7 @@ def expense_invoice(request, pk):
 @transaction.atomic
 def expense_payment_form(request):
     from .forms import ExpensePaymentForm
-    form = ExpensePaymentForm(request.POST or None, initial={"date": ledger.default_entry_date()})
+    form = ExpensePaymentForm(request.POST or None, initial={"date": ledger.default_entry_date(), "expense": request.GET.get("expense")})
     if request.method == "POST" and form.is_valid():
         from django.db import transaction
         with transaction.atomic():
@@ -146,6 +148,9 @@ def expense_payment_form(request):
             audit(request.business, request.user, "create", x, "Expense payment recorded",
                   {"amount": str(x.amount), "expense": expense.pk})
         messages.success(request, "Expense payment recorded and payable updated.")
+        from accounts.services import user_has_permission
+        if request.GET.get('return_to') == 'procurement' or not user_has_permission(request.user, request.business, 'finance', 'view'):
+            return redirect('procurement_list')
         return redirect("finance_dashboard")
     return render(request, "core/payment_form.html", {"form": form, "title": "Expense Payment",
         "help_text": "Settle an unpaid expense. The expense was already recorded; this payment only moves actual money out of the selected cash/bank account."})

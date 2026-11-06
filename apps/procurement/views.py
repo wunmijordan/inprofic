@@ -56,36 +56,21 @@ def _ensure_po_payment_recorded(po, user):
 
 @login_required
 def procurement_list(request):
-    # Material categories are a small fixed set. Load this tenant's materials
-    # once and group them in Python instead of issuing one query per category.
-    raw_materials = list(RawMaterial.objects.all())
+    from .spending import workspace_records
+    context = workspace_records(request)
+    raw_materials = list(RawMaterial.objects.filter(business=request.business)) if context['spending_access']['procurement'] else []
     grouped_materials = {value: [] for value, _ in RawMaterial.CATEGORY_CHOICES}
     for material in raw_materials:
         grouped_materials.setdefault(material.category, []).append(material)
-    raw_material_categories = [
-        {"value": value, "label": label, "items": grouped_materials.get(value, [])}
-        for value, label in RawMaterial.CATEGORY_CHOICES
-    ]
-
-    # The list renders creator plus each PO line's material/product repeatedly.
-    # Join the creator and fold line-item foreign keys into the item prefetch so
-    # query count stays constant as the number of purchase orders grows.
-    orders = PurchaseOrder.objects.filter(business=request.business).select_related("created_by").prefetch_related(
-        Prefetch("payments", queryset=SupplierPayment.raw_objects.filter(business=request.business)),
-        Prefetch(
-            "items",
-            queryset=PurchaseOrderItem.objects.select_related("raw_material", "finished_good"),
-        )
+    context.update(
+        raw_material_categories=[{'value': value, 'label': label, 'items': grouped_materials.get(value, [])}
+                                 for value, label in RawMaterial.CATEGORY_CHOICES],
+        suppliers=Supplier.objects.filter(business=request.business).order_by('name') if context['spending_access']['procurement'] else [],
     )
-    grouped = {}
-    for po in orders:
-        grouped.setdefault(('request', po.request_id) if po.request_id else ('po', po.pk), []).append(po)
-    orders = [describe_request(sorted(v, key=lambda po: po.pk)) for v in grouped.values()]
-    return render(request, "procurement/procurement_list.html", {
-        "orders": orders,
-        "raw_material_categories": raw_material_categories,
-        "suppliers": Supplier.objects.filter(business=request.business).order_by("name"),
-    })
+    if context['period_valid']:
+        from .spending_views import share_context
+        context.update(share_context(request, context))
+    return render(request, "procurement/procurement_list.html", context)
 
 
 @login_required

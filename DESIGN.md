@@ -412,3 +412,14 @@ by six financial cards. They keep cream paper, Inter and maroon ink accents, bou
 rows and a QR footer. Detailed accompanying text carries overflow. Shared workspace
 content reserves bottom scrolling space for actions to clear the collapsed alert tray;
 embedded form dialogs do not receive that extra space.
+
+
+### Operational table scrolling
+
+`form-experience.js` automatically enhances workspace tables with a keyboard
+focusable scroll region. Use standard `thead`/`tbody` markup in an overflow wrapper.
+The first column remains sticky on both desktop and mobile. All mobile tables,
+including read-only reports, share the form width limit of
+`clamp(6.1rem, 38vw, 10.8rem)`. Child controls/text wrappers must fit that width;
+full-width `colspan` date/group/footer cells do not pin horizontally. Headers
+remain vertically sticky. Reuse these shared assets rather than per-page widths.

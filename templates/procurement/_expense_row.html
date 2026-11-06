@@ -1,0 +1,10 @@
+{% load core_extras %}
+<tr class="procurement-row border-t align-middle">
+  <td class="px-3 py-2"><div class="font-medium break-words">{{ e.vendor|default:'Vendor not named' }}</div><div class="text-[10px] font-mono">Expense #{{ e.pk }}</div></td>
+  <td class="px-3 py-2 text-xs"><span class="block font-medium">{{ e.description }}</span><span class="block mt-1">General use · {{ e.get_category_display }}</span></td>
+  <td class="px-3 py-2 text-right font-mono">{{ e.amount|money:biz.currency_symbol }}</td>
+  <td class="px-3 py-2 text-center text-xs">General-use expense</td>
+  <td class="px-3 py-2 text-center text-xs">{{ e.settlement_label }}{% if e.remaining_balance %}<span class="block">Balance {{ e.remaining_balance|money:biz.currency_symbol }}</span>{% endif %}</td>
+  <td class="px-3 py-2 text-xs">{{ e.created_by.username|default:'—' }}</td>
+  <td class="px-3 py-2 text-right whitespace-nowrap"><a href="{% url 'expense_invoice' e.pk %}" class="mr-2">PDF</a>{% if module_permissions.expenses.edit %}<a href="{% url 'expense_edit' e.pk %}" class="mr-2">Edit expense</a>{% if e.remaining_balance %}<a href="{% url 'expense_payment_add' %}?expense={{ e.pk }}&amp;return_to=procurement" class="mr-2">Record payment</a>{% endif %}{% if e.payment_status == 'unpaid' and not e.payments.exists %}<form method="post" action="{% url 'expense_delete' e.pk %}" class="inline" onsubmit="return confirm('Delete this unpaid expense?');">{% csrf_token %}<button>Delete</button></form>{% endif %}{% endif %}</td>
+</tr>

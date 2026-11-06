@@ -1393,6 +1393,9 @@ input.num-ghost::placeholder {
   max-height: calc(100vh - 8.5rem);
   max-height: calc(100dvh - 8.5rem);
   overflow: auto;
+  max-width: 100%;
+  min-width: 0;
+  overscroll-behavior-x: contain;
 }
 
 main .sticky-table thead th {
@@ -1403,8 +1406,8 @@ main .sticky-table thead th {
   background-image: linear-gradient(var(--ui-surface-muted), var(--ui-surface-muted)) !important;
 }
 
-main .sticky-table tbody tr> :first-child,
-main .sticky-table tfoot tr> :first-child {
+main .sticky-table tbody tr> :first-child:not([colspan]),
+main .sticky-table tfoot tr> :first-child:not([colspan]) {
   position: sticky;
   left: 0;
   z-index: 3;
@@ -1419,13 +1422,13 @@ main .sticky-table thead th:first-child {
   box-shadow: inset -1px 0 0 var(--ui-border);
 }
 
-/* Keep the first input column pinned on narrow screens, but constrain its
-   width so at least part of the next field remains visible beside it. */
+/* One mobile contract for forms and read-only operational tables: keep the
+   first column pinned, with room to read and scroll the remaining columns. */
 @media (max-width: 767px) {
 
-  main form table.sticky-table tbody tr> :first-child,
-  main form table.sticky-table tfoot tr> :first-child,
-  main form table.sticky-table thead th:first-child {
+  main table.sticky-table tbody tr> :first-child:not([colspan]),
+  main table.sticky-table tfoot tr> :first-child:not([colspan]),
+  main table.sticky-table thead th:first-child {
     box-sizing: border-box;
     width: clamp(6.1rem, 38vw, 10.8rem) !important;
     min-width: clamp(6.1rem, 38vw, 10.8rem) !important;
@@ -1434,8 +1437,14 @@ main .sticky-table thead th:first-child {
     overflow-y: hidden;
   }
 
-  main form table.sticky-table tbody tr> :first-child :is(input, select, textarea, .inprofic-control-wrap),
-  main form table.sticky-table tfoot tr> :first-child :is(input, select, textarea, .inprofic-control-wrap) {
+  main table.sticky-table :is(thead, tbody, tfoot) tr > :first-child:not([colspan]) > * {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow-wrap: anywhere;
+  }
+
+  main table.sticky-table tbody tr> :first-child:not([colspan]) :is(input, select, textarea, .inprofic-control-wrap),
+  main table.sticky-table tfoot tr> :first-child:not([colspan]) :is(input, select, textarea, .inprofic-control-wrap) {
     box-sizing: border-box;
     width: 100% !important;
     min-width: 0 !important;
@@ -1444,8 +1453,8 @@ main .sticky-table thead th:first-child {
     text-overflow: clip;
   }
 
-  main form table.sticky-table tbody tr> :first-child :is(input, select),
-  main form table.sticky-table tfoot tr> :first-child :is(input, select) {
+  main table.sticky-table tbody tr> :first-child:not([colspan]) :is(input, select),
+  main table.sticky-table tfoot tr> :first-child:not([colspan]) :is(input, select) {
     white-space: nowrap;
   }
 }
@@ -1457,8 +1466,8 @@ main .sticky-table thead th:first-child {
   }
 
   main .sticky-table thead th,
-  main .sticky-table tbody tr> :first-child,
-  main .sticky-table tfoot tr> :first-child {
+  main .sticky-table tbody tr> :first-child:not([colspan]),
+  main .sticky-table tfoot tr> :first-child:not([colspan]) {
     position: static;
   }
 }

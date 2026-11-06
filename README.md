@@ -320,7 +320,7 @@ and full text also show new receipts, returns, named write-offs and production r
 profiles use Market Stock movement records; wholesale/retail profiles use their
 registered warehouse/shop balances and recorded distribution sales. Only actual
 recorded returns are shared separately; there is no possible-returns forecast.
-Product stock units remain separate and use the global quantity-label helper. Customer agreements take priority over channel/default prices; invoices, payments and profit use saved sale prices. Product search analysis shows current agreements and recorded sales by applied price, while distribution invoices and release previews expose their product prices. Procurement snapshots and text include miscellaneous expenses for the request date as a separate total, respecting Expenses/Finance access; these expenses never inflate the request invoice total.
+Product stock units remain separate and use the global quantity-label helper. Customer agreements take priority over channel/default prices; invoices, payments and profit use saved sale prices. Product search analysis shows current agreements and recorded sales by applied price, while distribution invoices and release previews expose their product prices. Procurement snapshots and text include miscellaneous expenses for the request date with a separate expense subtotal and a combined grand total, respecting Expenses/Finance access; the purchase approval and vendor payable remain purchase-only.
 
 The **Assistant** tab lives in the shared activity tray, including on mobile.
 Business admins can add up to 30 questions mapped to existing record-backed
@@ -403,3 +403,21 @@ search and operational item lists. It combines current customer/channel prices,
 estimated unit margins, fully settled sales revenue/cost/gross margin, sales,
 production, supplier arrivals and stock history/workflow, according to permissions.
 Selected-period figures and lifetime stock counters are labelled separately.
+
+
+Purchases and general-use expenses share the **Purchases & expenses** workspace.
+Record a general-use expense from its operational button, alongside purchase
+requests and vendor receiving. Date filters, the activity list, CSV/Excel exports
+and the WhatsApp period snapshot/text combine permitted purchase and expense
+records. Grand total includes paid/unpaid purchase and expense values. Actual
+money paid out is the net cash ledger movement dated in the period, including
+later supplier/expense settlements; payment rows are not added a second time.
+Existing expense URLs return to this workspace. Procurement/Expense permissions
+and entitlements still scope each record type independently.
+
+Tables inside the workspace automatically use the shared scroll/pinning behavior
+in `form-experience.js` and `workspace.css`. Use a normal `thead`/`tbody` table
+inside an `overflow-x-auto` wrapper. The first column stays pinned on mobile at
+`clamp(6.1rem, 38vw, 10.8rem)`, including read-only tables; full-width `colspan`
+rows do not pin horizontally. Keep this global rule instead of giving new list
+templates their own sticky widths. Scroll frames also support keyboard focus.

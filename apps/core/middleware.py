@@ -293,6 +293,10 @@ class LoginRequiredMiddleware:
                     # The notification view narrows event visibility and push
                     # permissions; access to this shared endpoint is not Commerce-only.
                     return self.get_response(request)
+            if request.path in {'/procurement/', '/procurement/summary.png', '/procurement/spending.csv', '/procurement/spending.xlsx'}:
+                if request.method in {'GET', 'HEAD'} and any(user_has_permission(request.user, request.business, name, 'view') for name in ('procurement', 'expenses')):
+                    # The shared hub/export scopes each domain independently.
+                    return self.get_response(request)
             module = _module_for_path(request.path)
             action = _action_for_request(request)
             if module == "production" and _KITCHEN_FLOOR_PATH.match(request.path):

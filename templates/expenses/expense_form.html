@@ -2,8 +2,8 @@
 {% block content %}
 <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
   <div>
-    <h2 class="text-xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit Expense — {{ obj.description }}{% else %}Record Expenses{% endif %}</h2>
-    <p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">Use this for business spending that is not a supplier purchase order, such as utilities, repairs, transport, labour, marketing and other overheads. Use Procurement for stock purchases so arrivals and costs remain linked to inventory.</p>
+    <h2 class="text-xl font-semibold font-display text-[#8f172d]">{% if obj %}Edit Expense — {{ obj.description }}{% else %}Record general-use expenses{% endif %} {% include "_help_tip.html" with label="General-use spending" help_text="These entries record general-use spending without changing stock. Use a purchase request for inventory materials or products so receiving updates stock and cost." portal_bubble=True %}</h2>
+    <p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">Record utilities, repairs, transport and other general-use spending. These entries join materials and stock purchases in the purchasing workspace and its shared period total.</p>
   </div>
 </div>
 
@@ -96,7 +96,7 @@
 
   <div class="max-w-full flex flex-wrap items-center justify-between gap-3">
     <button data-button-surface type="button" id="add-expense-row" class="rounded-md border border-[#D9CFB4] bg-white px-3.5 py-2 text-sm font-medium text-[#8f172d] hover:bg-[#F0EAD9]">+ Add expense</button>
-    <div class="flex flex-wrap justify-end gap-2"><a href="{% url 'expenses_list' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a><button data-button-surface type="submit" name="save_add_new" value="1" class="px-3.5 py-2 text-sm rounded-md font-medium border border-[#8f172d] text-[#8f172d] bg-white hover:bg-[#FFF5F4]">Save &amp; add more</button><button data-button-surface type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save expenses</button></div>
+    <div class="flex flex-wrap justify-end gap-2"><a href="{% url 'expenses_list' %}" class="px-3.5 py-2 text-sm rounded-md text-stone-500 hover:bg-stone-100">Cancel</a><button data-button-surface type="submit" name="save_add_new" value="1" data-stay-open class="px-3.5 py-2 text-sm rounded-md font-medium border border-[#8f172d] text-[#8f172d] bg-white hover:bg-[#FFF5F4]">Save &amp; add more</button><button data-button-surface type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Save expenses</button></div>
   </div>
 </form>
 <script>

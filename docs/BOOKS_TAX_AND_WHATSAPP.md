@@ -124,5 +124,4 @@ an agreement changes unless an authorized editor explicitly previews and confirm
 invoice is fully settled, consistent with its existing Profit & Loss definition.
 
 Procurement snapshots and full sharing text include miscellaneous expenses for
-the request date when Expenses or Finance view access permits. This is a separate
-expenses total, never an addition to the purchase request's payable amount.
+the request date when Expenses or Finance view access permits. The expense subtotal and purchase value combine into the shared grand total; purchase approval and the vendor payable retain their purchase-only value. The Purchases & expenses workspace also shares a combined selected-period snapshot/text and exports. Actual money paid out uses dated cash records, including later settlements and compensating entries, rather than adding invoice statuses and payment rows together. Unpaid entries contribute to recorded value but not to cash-out.

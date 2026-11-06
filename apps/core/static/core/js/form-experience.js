@@ -464,6 +464,11 @@
         frame.appendChild(table);
       }
       frame.classList.add('sticky-table-frame');
+      if (!frame.hasAttribute('tabindex')) frame.tabIndex = 0;
+      if (!frame.hasAttribute('role')) frame.setAttribute('role', 'region');
+      if (!frame.hasAttribute('aria-label') && !frame.hasAttribute('aria-labelledby')) {
+        frame.setAttribute('aria-label', table.caption?.textContent?.trim() || 'Scrollable records table');
+      }
     }
   }
   function stickyTables(root) {

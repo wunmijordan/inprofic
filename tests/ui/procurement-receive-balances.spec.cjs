@@ -28,8 +28,13 @@ test('one Receive button opens vendor dates in the shared modal',async({page})=>
 });
 test('distribution report and snapshot use date opening and closing balances',async({page})=>{
  await page.goto('/inventory/market-stock/');
+ // The seed arrives today. Select tomorrow so the shared text includes
+ // non-zero opening/closing balances rather than omitting zero text lines.
+ const date=await page.locator('input[name="date"]').inputValue();
+ const next=new Date(`${date}T12:00:00Z`);next.setUTCDate(next.getUTCDate()+1);
+ await page.goto(`/inventory/market-stock/?date=${next.toISOString().slice(0,10)}`);
  const summary=page.locator('#distribution-summary');
- await expect(summary.getByRole('columnheader',{name:'Opening',exact:true})).toBeVisible();
+ await expect(summary.getByRole('columnheader',{name:'Opening balance',exact:true})).toBeVisible();
  await expect(summary.getByRole('columnheader',{name:'Closing',exact:true})).toBeVisible();
  const payload=await page.locator('#distribution-share').evaluate(el=>JSON.parse(el.textContent));
  expect(payload).toContain('Opening balance:');expect(payload).toContain('Closing balance:');

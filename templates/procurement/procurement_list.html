@@ -3,42 +3,59 @@
 {% block content %}
 <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
   <div>
-    <h2 class="text-xl font-semibold font-display text-[#8f172d]">Procurement</h2>
-    <p class="text-sm text-stone-500 mt-0.5">Request supplies, approve quantities, then receive stock.</p>
+    <h2 class="text-xl font-semibold font-display text-[#8f172d]">Purchases &amp; expenses</h2>
+    <p class="text-sm text-stone-500 mt-0.5">Manage materials, stock purchases and general-use spending in one place.</p>
   </div>
-  <div class="flex gap-2">
-    <a data-button-surface href="{% url 'export_procurement_xlsx' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export Excel</a>
-    <a data-button-surface href="{% url 'export_procurement_csv' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export CSV</a>
+  <div class="flex flex-wrap items-center gap-2">
+    {% if period_valid %}<a data-button-surface href="{% url 'spending_xlsx' %}{% if spending_query %}?{{ spending_query }}{% endif %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export Excel</a>
+    <a data-button-surface href="{% url 'spending_csv' %}{% if spending_query %}?{{ spending_query }}{% endif %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export CSV</a>{% endif %}
+    {% if module_permissions.expenses.edit %}<a href="{% url 'expense_add' %}" class="workspace-action">+ General-use expense</a>{% endif %}
+    {% if period_valid %}{% include "partials/_snapshot_share.html" with snapshot_dropdown=True snapshot_id="spending-share" snapshot_text=spending_share_text snapshot_image_url=spending_image_url snapshot_filename="purchases-and-expenses" snapshot_label="Share period" %}{% endif %}
     {% if module_permissions.procurement.edit %}<a data-button-surface href="{% url 'supplier_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-white text-[#8f172d] hover:bg-[#FFFCF5] border border-[#D9CFB4]">+ Add supplier</a>{% endif %}
     {% if module_permissions.procurement.edit %}<a data-button-surface href="{% url 'po_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ Purchase request</a>{% endif %}
   </div>
 </div>
 
-<section class="mb-6 rounded-lg border border-[#E7DFCC] bg-[#FFFDF8] p-4">
-  <div class="mb-3"><h3 class="font-semibold text-[#8f172d]">Supplier directory</h3><p class="text-xs text-stone-500">Names typed on purchase orders are added here automatically.</p></div>
+<form method="get" class="workspace-card p-4 mb-4 flex flex-wrap items-end gap-3" aria-label="Purchases and expenses period">
+  {% for field in spending_dates %}<div><label class="block text-xs mb-1" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endfor %}
+  <button class="workspace-action workspace-action-primary">Show period</button><a href="?start={{ month_start|date:'Y-m-d' }}&amp;end={{ today|date:'Y-m-d' }}" class="workspace-action">This month</a><a href="{% url 'procurement_list' %}" class="workspace-action">All dates</a>
+  {% if spending_dates.non_field_errors %}<div role="alert" class="w-full">{{ spending_dates.non_field_errors }}</div>{% endif %}
+</form>
+{% if period_valid %}<section class="workspace-card p-4 mb-4" aria-label="Combined purchases and expenses totals"><h3 class="text-sm font-semibold">{{ spending_period_label }} {% include "_help_tip.html" with label="Combined spending" help_text="Grand total combines purchase requests and general-use expenses dated in this period, including unpaid entries. Actual money paid out counts cash payments dated in the period, including payments for earlier purchases, net of recorded corrections. Each expense appears once in this period summary." portal_bubble=True %}</h3><dl class="flex flex-wrap gap-6 mt-3 text-sm">
+  {% if spending_totals.purchases %}<div><dt>Materials / stock purchases</dt><dd class="font-mono">{{ spending_totals.purchases|money:biz.currency_symbol }}</dd></div>{% endif %}
+  {% if spending_totals.expenses %}<div><dt>General-use expenses</dt><dd class="font-mono">{{ spending_totals.expenses|money:biz.currency_symbol }}</dd></div>{% endif %}
+  <div><dt>Grand total</dt><dd class="font-mono font-semibold">{{ spending_totals.grand_total|money:biz.currency_symbol }}</dd></div>
+  {% if spending_totals.money_out %}<div><dt>Actual money paid out</dt><dd class="font-mono font-semibold">{{ spending_totals.money_out|money:biz.currency_symbol }}</dd></div>{% endif %}
+</dl></section>{% endif %}
+{% if spending_access.procurement %}
+
+<details class="workspace-card mb-4 p-4">
+  <summary class="cursor-pointer font-semibold">Supplier directory</summary>
+  <p class="mt-2 mb-3 text-xs">Names typed on purchase orders are added here automatically.</p>
   <div class="max-h-[30rem] overflow-auto rounded-md border border-[#E7DFCC]">
     <table class="min-w-[76rem] w-full text-xs">
       <thead class="sticky top-0 z-20 bg-[#F0EAD9] text-stone-600"><tr>
-        <th class="sticky left-0 z-30 min-w-48 border-b border-[#D9CFB4] bg-[#F0EAD9] px-3 py-2 text-left">Supplier</th><th class="min-w-40 border-b border-[#D9CFB4] px-3 py-2 text-left">Contact name</th><th class="min-w-36 border-b border-[#D9CFB4] px-3 py-2 text-left">Phone</th><th class="min-w-48 border-b border-[#D9CFB4] px-3 py-2 text-left">Email</th><th class="min-w-48 border-b border-[#D9CFB4] px-3 py-2 text-left">Address</th><th class="min-w-56 border-b border-[#D9CFB4] px-3 py-2 text-left">Notes</th><th class="border-b border-[#D9CFB4] px-3 py-2 text-left">Status</th><th class="border-b border-[#D9CFB4] px-3 py-2"></th>
+        <th class="sticky left-0 z-30 min-w-48 border-b border-[#D9CFB4] bg-[#F0EAD9] px-3 py-2 text-left">Vendor</th><th class="min-w-40 border-b border-[#D9CFB4] px-3 py-2 text-left">Contact name</th><th class="min-w-36 border-b border-[#D9CFB4] px-3 py-2 text-left">Phone</th><th class="min-w-48 border-b border-[#D9CFB4] px-3 py-2 text-left">Email</th><th class="min-w-48 border-b border-[#D9CFB4] px-3 py-2 text-left">Address</th><th class="min-w-56 border-b border-[#D9CFB4] px-3 py-2 text-left">Notes</th><th class="border-b border-[#D9CFB4] px-3 py-2 text-left">Status</th><th class="border-b border-[#D9CFB4] px-3 py-2"></th>
       </tr></thead>
       <tbody>{% for supplier in suppliers %}<tr class="border-t border-[#EFE8D7] align-middle">
         <td class="sticky left-0 z-10 border-t border-[#EFE8D7] bg-[#FFFDF8] px-3 py-2 font-semibold text-stone-800">{{ supplier.name }}</td><td class="px-3 py-2">{{ supplier.contact_name|default:"—" }}</td><td class="px-3 py-2">{{ supplier.phone|default:"—" }}</td><td class="px-3 py-2">{{ supplier.email|default:"—" }}</td><td class="px-3 py-2">{{ supplier.address|default:"—" }}</td><td class="max-w-64 px-3 py-2"><span class="line-clamp-2" title="{{ supplier.notes }}">{{ supplier.notes|default:"—" }}</span></td><td class="px-3 py-2">{% if supplier.active %}<span class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-medium text-emerald-800">Active</span>{% else %}<span class="rounded-full border border-stone-200 bg-stone-100 px-2 py-0.5 text-stone-500">Inactive</span>{% endif %}</td><td class="px-3 py-2 text-right">{% if module_permissions.procurement.edit %}<a href="{% url 'supplier_edit' supplier.pk %}" class="font-semibold text-[#8f172d] hover:underline">Edit</a>{% endif %}</td>
       </tr>{% empty %}<tr><td colspan="8" class="px-3 py-8 text-center text-stone-400">No suppliers saved yet. Add a supplier or enter a new name on a purchase order.</td></tr>{% endfor %}</tbody>
     </table>
   </div>
-</section>
+</details>
+{% endif %}
 
-{% if not orders %}
-  <div class="text-center py-10 text-sm text-stone-400 italic">No Purchase Orders yet.</div>
+{% if not spending_activity %}
+  <div class="text-center py-10 text-sm text-stone-400 italic">No purchases or expenses in this period.</div>
 {% else %}
-{% regroup orders by date as order_groups %}
+{% regroup spending_activity by date as order_groups %}
 <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg shadow-[0_2px_8px_#000000d2] mb-8 overflow-x-auto overflow-y-auto max-h-[32rem]">
   <table class="min-w-max w-full text-sm">
     <thead class="bg-[#F0EAD9] text-stone-600 text-md text-middle sticky top-0 z-10"><tr>
-      <th class="px-3 py-2 text-left">Supplier</th>
-      <th class="px-3 py-2 text-left">Items</th>
+      <th class="px-3 py-2 text-left">Vendor</th>
+      <th class="px-3 py-2 text-left">Purchase / expense</th>
       <th class="px-3 py-2 text-right">Total</th>
-      <th class="px-3 py-2">Order</th>
+      <th class="px-3 py-2">Type / status</th>
       <th class="px-3 py-2">Payment</th>
       <th class="px-3 py-2 text-left">Logged by</th>
       <th class="w-32"></th>
@@ -49,11 +66,12 @@
         <td colspan="7" class="px-3 py-2">
           <div class="flex flex-wrap items-center gap-2">
             <span class="font-semibold text-[#8f172d]">{{ group.grouper|date:"D, j M Y" }}</span>
-            <span class="rounded-full border border-[#D9CFB4] bg-white px-2 py-0.5 text-[11px] text-stone-500">{{ group.list|length }} purchase order{{ group.list|length|pluralize }}</span>
+            <span class="rounded-full border border-[#D9CFB4] bg-white px-2 py-0.5 text-[11px] text-stone-500">{{ group.list|length }} entr{{ group.list|length|pluralize:"y,ies" }}</span>
           </div>
         </td>
       </tr>
-      {% for p in group.list %}
+      {% for row in group.list %}
+      {% if row.kind == "purchase" %}{% with p=row.order %}
       <tr class="procurement-row border-t border-[#EFE8D7] align-middle hover:bg-[#FFFCF5]">
         <td class="px-3 py-2">
           <div style="width:clamp(10rem,20vw,14rem);white-space:normal;overflow-wrap:anywhere">
@@ -62,7 +80,7 @@
           {% if p.request_orders|length > 1 %}<details class="mt-1 text-xs"><summary>Vendor balances and receipts</summary>{% for vendor in p.request_orders %}<p class="mt-1">{{ vendor.supplier }} · PO #{{ vendor.pk }} · {{ vendor.total|money:biz.currency_symbol }} · {{ vendor.get_status_display }} · {{ vendor.get_payment_status_display }} · Balance {{ vendor.payment_balance|money:biz.currency_symbol }} <a href="{% url 'po_invoice' vendor.pk %}">Vendor PDF</a>{% if module_permissions.finance.edit and vendor.payment_balance > 0 %} · <a href="{% url 'supplier_payment_add' %}?purchase_order={{ vendor.pk }}">Record vendor payment</a>{% endif %}</p>{% endfor %}</details>{% endif %}
           </div>
         </td>
-        <td class="px-3 py-2 text-xs" style="min-width:15rem;max-width:23rem">{% include "partials/_items_summary.html" with items=p.request_items purchase=True dialog_prefix="po-items-" row_pk=p.pk %}</td>
+        <td class="px-3 py-2 text-xs" style="min-width:15rem;max-width:23rem">{% include "partials/_items_summary.html" with items=p.request_items purchase=True dialog_prefix="po-items-" row_pk=p.pk %}<span class="mt-1 block text-[10px]">{{ row.usage }}</span></td>
         <td class="px-3 py-2 text-right font-mono font-medium">{{ p.request_total|money:biz.currency_symbol }}</td>
         <td class="px-3 py-2 text-center"><span class="inline-block px-2 py-0.5 rounded-full text-[11px] font-medium border capitalize {% if p.request_status == 'received' %}bg-emerald-50 text-emerald-800 border-emerald-300{% else %}bg-amber-50 text-amber-800 border-amber-300{% endif %}">{{ p.request_status_label }}</span></td>
         <td class="px-3 py-2 text-xs text-center">{% if p.request_payment == 'paid' %}<span class="text-emerald-700">Paid</span>{% elif p.request_payment == 'partial' %}<span class="text-amber-700">Partially Paid</span>{% else %}<span class="text-rose-700">Unpaid</span>{% endif %}</td>
@@ -82,6 +100,7 @@
           <a href="{% url 'po_invoice' p.pk %}?request=1">PDF</a>
         </td>
       </tr>
+      {% endwith %}{% else %}{% include "procurement/_expense_row.html" with e=row.expense %}{% endif %}
       {% endfor %}
     </tbody>
     {% endfor %}

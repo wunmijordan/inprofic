@@ -49,9 +49,9 @@
     "name": "Multi-vendor purchase requests, approval and sharing",
     "group": "operations",
     "audience": "procurement and store teams",
-    "proof": "Group items by optional saved or typed vendor names in one request, with separate payment status, method, account and advances for each group. Approve once, receive each vendor through a shared modal with separate arrival dates, settle each vendor independently, and share grouped items and payment breakdowns in the combined preview, PDF, paper snapshot and detailed text. Paid drafts require confirmation and preserve audited payment history through edits or deletion. Snapshot and text show request-date miscellaneous expenses separately from the request total, subject to Expenses/Finance access.",
+    "proof": "Group items by optional saved or typed vendor names in one request, with separate payment status, method, account and advances for each group. Approve once, receive each vendor through a shared modal with separate arrival dates, settle each vendor independently, and share grouped items and payment breakdowns in the combined preview, PDF, paper snapshot and detailed text. Paid drafts require confirmation and preserve audited payment history through edits or deletion. Share request-date general-use expenses with their own subtotal and a combined grand total, while approval and vendor payables retain purchase-only values. The dated purchasing workspace combines purchases and general-use expenses, CSV/Excel exports and a period snapshot/text; actual cash-out counts ledger payments once, including later settlements and corrections, subject to each module’s access.",
     "highlight": "NEW",
-    "added_on": "2026-11-04"
+    "added_on": "2026-11-06"
   },
   {
     "id": "wholesale-retail",
@@ -154,12 +154,12 @@
   },
   {
     "id": "expenses",
-    "name": "Expenses and expense settlement",
+    "name": "General-use expenses inside purchasing",
     "group": "finance",
     "audience": "owners and finance teams",
-    "proof": "Track remaining obligations, prevent overpayment, and correct paid expenses through linked compensating cash entries.",
-    "highlight": "",
-    "added_on": ""
+    "proof": "Record and settle general-use spending from the Purchases & expenses workspace, alongside material/stock requests. Share combined period totals while keeping actual cash-out separate from unpaid values. Track remaining obligations, prevent overpayment, and correct paid expenses through linked compensating cash entries. Existing permissions and entitlements still scope each record type.",
+    "highlight": "NEW",
+    "added_on": "2026-11-06"
   },
   {
     "id": "payroll-addon",
@@ -517,7 +517,7 @@
     "name": "Theme-aware workspace dialogs and searchable selections",
     "group": "experience",
     "audience": "owners, managers and operational staff",
-    "proof": "Edit routine records in contained dialogs, keep Django validation and formset behavior, search selection options, confirm destructive actions, and keep logos and visual buttons readable across themes and tenant palettes.",
+    "proof": "Edit routine records in contained dialogs, keep Django validation and formset behavior, search selection options, confirm destructive actions, and keep logos and visual buttons readable across themes and tenant palettes. Operational tables keep a bounded sticky first column on mobile and desktop, with horizontal scrolling and keyboard-focusable frames shared across forms and read-only lists.",
     "highlight": "NEW",
     "added_on": "2026-10-28"
   },

@@ -73,9 +73,11 @@ def summarize(po, business, url="", *, user=None):
     if user is None or any(user_has_permission(user,business,module,'view') for module in ('expenses','finance')):
         from expenses.models import Expense
         miscellaneous = list(Expense.objects.filter(business=business,date=po.date,amount__gt=0).order_by('description','pk'))
-    expense_rows = [{'description':e.description,'amount':e.amount,'vendor':e.vendor} for e in miscellaneous]
+    expense_rows = [{'description':e.description,'amount':e.amount,'vendor':e.vendor,'payment':e.get_payment_status_display()} for e in miscellaneous]
+    miscellaneous_total = sum((e.amount for e in miscellaneous), Decimal("0"))
     return {
-        "miscellaneous": expense_rows, "miscellaneous_total": sum((e.amount for e in miscellaneous),Decimal('0')),
+        "grand_total": approved_total + miscellaneous_total,
+        "miscellaneous": expense_rows, "miscellaneous_total": miscellaneous_total,
         "vendor_groups": vendor_groups, "po": po, "business": business, "symbol": symbol, "lines": lines, "number": po.pk,
         "supplier": display.request_supplier or "Supplier not named", "date": po.date,
         "status": 'pending' if display.request_status in {'draft', 'ordered'} else display.request_status,
@@ -128,8 +130,10 @@ def share_text(summary, url=None):
         out.append(f"Approved by {s['approved_by']}")
     if s.get('miscellaneous'):
         out += ['',f"*Miscellaneous expenses · {s['date']:%d %b %Y}*"]
-        out += [f"• {expense['description']}: {_money(expense['amount'],symbol)}" + (f" · {expense['vendor']}" if expense['vendor'] else '') for expense in s['miscellaneous']]
+        out += [f"• {expense['description']}: {_money(expense['amount'],symbol)}" + (f" · {expense['vendor']}" if expense['vendor'] else '') + f" · {expense['payment']}" for expense in s['miscellaneous']]
         out.append(f"Expenses total: {_money(s['miscellaneous_total'],symbol)}")
+        out.append(f"*Grand total: {_money(s['grand_total'],symbol)}*")
+        out.append("Date expenses do not change the purchase invoice or approval amount. Use the period summary when combining several requests so date expenses are counted once.")
     if url:
         out += ["", f"{link_prompt(s)}:", url]
     return "\n".join(out)
@@ -217,11 +221,11 @@ def render_snapshot(summary):
     if s["changed"]:
         d.text((PAD + 32, ty), f"Requested total {_money(s['requested_total'], symbol)}", font=f_small, fill=MUTED)
         ty += 36
-    d.text((PAD + 32, ty + 6), "Request total", font=f_body, fill=MUTED)
-    d.text((WIDTH - PAD - 32, ty - 2), _money(s["total"], symbol), font=f_total, fill=ACCENT, anchor="ra")
+    d.text((PAD + 32, ty + 6), "Grand total" if s.get("miscellaneous_total") else "Request total", font=f_body, fill=MUTED)
+    d.text((WIDTH - PAD - 32, ty - 2), _money(s.get("grand_total",s["total"]), symbol), font=f_total, fill=ACCENT, anchor="ra")
     foot = s["status_label"] + (f" by {s['approved_by']}" if s["approved_by"] else "")
     if s["payment"]:
-        foot += f"  ·  Payment: {s['payment']}"
+        foot += f"  ·  Request payment: {s['payment']}"
     d.text((PAD + 32, ty + 70), _fit(d, foot, f_small, inner - 64), font=f_small, fill=MUTED)
     if expense_rows:
         ey = y + 30 + total_h + 22
