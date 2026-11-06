@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% load core_extras l10n %}
+{% block content %}
+<div class="space-y-4" data-ui-review-step>
+  <h2 class="font-display text-xl font-semibold">Correct distribution prices — {{ customer.name }}</h2>
+  <p class="text-sm">Apply this customer’s current special product prices to earlier distributions. Choose whether to keep actual recorded receipts or correct mistaken receipt amounts. Stock quantities, payment methods and account assignments stay unchanged. Invoice corrections can leave a balance due or a credit to review.</p>
+  <form method="get" class="workspace-card p-4 flex flex-wrap items-end gap-3">
+    {% for field in date_form %}<div><label class="block text-xs mb-1" for="{{ field.id_for_label }}">{{ field.label }} *</label>{{ field }}{{ field.errors }}</div>{% endfor %}
+    <label class="text-sm"><input type="checkbox" name="receipts" value="correct" {% if correct_receipts %}checked{% endif %}> Also correct mistaken payment records</label>
+    <button class="workspace-action workspace-action-primary">Review period</button>
+    <a class="workspace-action" href="?start={{ first_date|date:'Y-m-d' }}&amp;end={{ all_end|date:'Y-m-d' }}{% if correct_receipts %}&amp;receipts=correct{% endif %}">All existing distributions</a>
+  </form>
+  {% if date_form.non_field_errors %}<div role="alert">{{ date_form.non_field_errors }}</div>{% endif %}
+  {% if review %}
+  <section class="workspace-card p-4 space-y-3" aria-label="Price correction preview">
+    <h3 class="font-semibold">{{ review.count }} invoice{{ review.count|pluralize }} to correct</h3>
+    <dl class="flex flex-wrap gap-6 text-sm">
+      <div><dt>Previous value</dt><dd class="font-mono">{{ review.old_total|money:biz.currency_symbol }}</dd></div>
+      <div><dt>Corrected value</dt><dd class="font-mono">{{ review.new_total|money:biz.currency_symbol }}</dd></div>
+      {% if review.due_total %}<div><dt>Balance due</dt><dd class="font-mono">{{ review.due_total|money:biz.currency_symbol }}</dd></div>{% endif %}
+      {% if review.credit_total %}<div><dt>Credit to review {% include "_help_tip.html" with label="Credit to review" help_text="Recorded payments exceed the corrected invoice value. This correction does not issue a refund or move the credit to another invoice. Review that settlement in Finance." portal_bubble=True %}</dt><dd class="font-mono">{{ review.credit_total|money:biz.currency_symbol }}</dd></div>{% endif %}
+    </dl>
+    {% if review.errors %}<div role="alert"><ul class="space-y-2">{% for error in review.errors %}<li>{{ error }}</li>{% endfor %}</ul></div>{% endif %}
+    {% if review_rows %}<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th class="p-2 text-left">Invoice / product</th><th class="p-2 text-right">Previous</th><th class="p-2 text-right">Corrected</th><th class="p-2 text-right">{% if correct_receipts %}Corrected payments{% else %}Payments kept{% endif %}</th><th class="p-2 text-right">Due / credit</th></tr></thead><tbody>
+      {% for row in review_rows %}<tr><td class="p-2">#{{ row.sale.pk }} · {{ row.sale.date|date:'j M Y' }}{% for change in row.changes %}<div class="text-xs mt-1">{{ change.item.finished_good.name }}: {{ change.old_price|money:biz.currency_symbol }} → {{ change.new_price|money:biz.currency_symbol }} / {{ change.item.finished_good.unit }}</div>{% endfor %}</td><td class="p-2 text-right font-mono">{{ row.old|money:biz.currency_symbol }}</td><td class="p-2 text-right font-mono">{{ row.new|money:biz.currency_symbol }}</td><td class="p-2 text-right font-mono">{% if correct_receipts %}{{ row.corrected_paid|money:biz.currency_symbol }}{% else %}{{ row.paid|money:biz.currency_symbol }}{% endif %}</td><td class="p-2 text-right font-mono">{% if correct_receipts %}{% if row.corrected_due %}Due {{ row.corrected_due|money:biz.currency_symbol }}{% elif row.corrected_credit %}Credit {{ row.corrected_credit|money:biz.currency_symbol }}{% else %}Settled{% endif %}{% elif row.due %}Due {{ row.due|money:biz.currency_symbol }}{% elif row.credit %}Credit {{ row.credit|money:biz.currency_symbol }}{% else %}Settled{% endif %}</td></tr>{% endfor %}
+    </tbody></table></div>{% endif %}
+    {% if review_page.has_other_pages %}<p class="text-sm">Showing invoices {{ review_page.start_index }}–{{ review_page.end_index }} of {{ review.count }}. Confirmation applies to all {{ review.count }} invoices in this period.</p>{% endif %}
+    {% if review_page.has_other_pages and not correct_receipts %}<nav class="flex gap-3 text-sm" aria-label="Invoice review pages">{% if review_page.has_previous %}<a class="workspace-action" href="?start={{ date_form.start.value }}&amp;end={{ date_form.end.value }}&amp;page={{ review_page.previous_page_number }}">Previous invoices</a>{% endif %}{% if review_page.has_next %}<a class="workspace-action" href="?start={{ date_form.start.value }}&amp;end={{ date_form.end.value }}&amp;page={{ review_page.next_page_number }}">Next invoices</a>{% endif %}</nav>{% endif %}
+    {% if correct_receipts and review_rows %}
+    <form method="post" class="space-y-3" data-receipt-review>{% csrf_token %}<input type="hidden" name="start" value="{{ date_form.start.value }}"><input type="hidden" name="end" value="{{ date_form.end.value }}"><input type="hidden" name="action" value="preview_receipts"><input type="hidden" name="review_token" value="{{ review_token }}"><input type="hidden" name="page" value="{{ review_page.number }}"><input type="hidden" name="receipt_mode" value="correct">
+      <h4 class="font-semibold text-sm">Actual receipts to record</h4>
+      <p class="text-xs">Fully paid invoices propose the corrected invoice total, split proportionally across their recorded receipts. Partial payments stay as recorded until you enter the actual amount. Review every account and amount before applying. Original cash entries are retained and offset by audited corrections.</p>
+      {% for row in review_rows %}<fieldset class="workspace-card p-3 space-y-2"><legend class="text-sm">Invoice #{{ row.sale.pk }}</legend>{% for receipt in row.receipts %}<label class="flex flex-wrap items-center justify-between gap-2 text-sm"><span>{{ receipt.date|date:'j M Y' }} · {{ receipt.method }} · {{ receipt.account_name }} · Recorded {{ receipt.old|money:biz.currency_symbol }}</span><input class="workspace-input w-36" type="number" min="0" step="0.01" required aria-label="Actual receipt for invoice {{ row.sale.pk }} {{ receipt.key }}" name="receipt_{{ receipt.key }}" value="{{ receipt.new|unlocalize }}"></label>{% empty %}<p class="text-sm">No recorded receipt to correct.</p>{% endfor %}<p class="text-sm">Corrected payments: {{ row.corrected_paid|money:biz.currency_symbol }}{% if row.corrected_due %} · Due {{ row.corrected_due|money:biz.currency_symbol }}{% endif %}{% if row.corrected_credit %} · Credit {{ row.corrected_credit|money:biz.currency_symbol }}{% endif %}</p></fieldset>{% endfor %}
+      <div class="flex flex-wrap gap-3"><button class="workspace-action">Update receipt review</button>{% if review_page.has_previous %}<button class="workspace-action" name="page" value="{{ review_page.previous_page_number }}">Previous invoices</button>{% endif %}{% if review_page.has_next %}<button class="workspace-action" name="page" value="{{ review_page.next_page_number }}">Next invoices</button>{% endif %}</div>
+    </form>
+    {% endif %}
+    {% if review.count and not review.errors and not date_form.errors %}<form method="post" class="space-y-3">{% csrf_token %}<input type="hidden" name="start" value="{{ date_form.start.value }}"><input type="hidden" name="end" value="{{ date_form.end.value }}"><input type="hidden" name="review_token" value="{{ review_token }}"><input type="hidden" name="action" value="apply"><input type="hidden" name="receipt_mode" value="{% if correct_receipts %}correct{% else %}keep{% endif %}"><label class="flex items-start gap-2 text-sm"><input type="checkbox" name="confirm" value="yes" required><span>I have reviewed this period and approve the invoice corrections. {% if correct_receipts %}The reviewed receipt amounts and their cash-account effects will be corrected together.{% else %}Recorded payments will remain unchanged.{% endif %}</span></label><button data-apply-price-review class="workspace-action workspace-action-primary">Apply reviewed correction</button></form>{% endif %}
+    <p class="text-xs">Each correction records its previous and new values in the audit trail. Derived Books need rebuilding for the corrected period. Submitted e-invoices require their own adjustment.</p>
+  </section>
+  {% endif %}
+  <a class="workspace-action" href="{% url 'customer_activity' customer.pk %}">Back to customer</a>
+</div>
+<script>
+document.querySelector('[data-receipt-review]')?.addEventListener('input', () => {
+  const apply = document.querySelector('[data-apply-price-review]');
+  if (apply) { apply.disabled = true; apply.textContent = 'Update receipt review before applying'; }
+});
+</script>
+{% endblock %}

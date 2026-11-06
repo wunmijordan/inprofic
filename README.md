@@ -384,3 +384,22 @@ Customer geography uses **Region** and **Area** throughout forms, customer lists
 dashboard analysis, PDFs and shared distribution summaries. Existing values remain
 in the legacy `customer_group` field for backup/API compatibility; the new
 migrations update field labels only.
+
+
+Customer price corrections are explicit: in a customer's edit or activity screen,
+choose **Review earlier distribution prices**, select a period or **All existing
+distributions**, then review and confirm. Sales and Finance edit access is required.
+Saved invoice prices otherwise remain unchanged. **Also correct mistaken payment
+records** reviews actual receipts separately: fully paid invoices propose the
+corrected total across their receipt parts; partial receipts retain their saved
+amount until edited. Confirm the actual amount for each payment/account. Original
+cash entries are retained and offset, replacement receipts use the same accounts,
+and invoice/payment changes are audited together. Ambiguous cash matches,
+commercial portion prices and submitted e-invoices require separate review. This
+flow never changes stock or saved unit costs; rebuild derived Books afterwards.
+
+Product names open one shared, period-filtered workspace from Inventory, dashboard
+search and operational item lists. It combines current customer/channel prices,
+estimated unit margins, fully settled sales revenue/cost/gross margin, sales,
+production, supplier arrivals and stock history/workflow, according to permissions.
+Selected-period figures and lifetime stock counters are labelled separately.

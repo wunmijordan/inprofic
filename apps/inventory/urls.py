@@ -15,6 +15,7 @@ urlpatterns = [
     path("product-categories/", views.product_category_list, name="product_categories"),
     path("product-categories/<int:pk>/edit/", views.product_category_edit, name="product_category_edit"),
     path("product-categories/<int:pk>/toggle/", views.product_category_toggle, name="product_category_toggle"),
+    path("product/<int:pk>/detail/", views.product_detail, name="product_detail"),
     path("product/add/", views.finished_good_form, name="finished_good_add"),
     path("product/<int:pk>/edit/", views.finished_good_form, name="finished_good_edit"),
     path("product/<int:pk>/delete/", views.finished_good_delete, name="finished_good_delete"),

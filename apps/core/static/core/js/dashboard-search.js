@@ -85,6 +85,18 @@ function dashboardSearch() {
 
     async open(result) {
       this.showResults = false;
+      if (result.type === 'fg') {
+        const id = result.key.split(':')[1];
+        if (/^\d+$/.test(id)) {
+          const link = document.createElement('a');
+          link.href = `/inventory/product/${id}/detail/`;
+          link.setAttribute('aria-label', `View product ${result.label}`);
+          document.body.append(link);
+          link.click();
+          link.remove();
+          return;
+        }
+      }
       this.loading = true;
       this.detailTab = 'overview';
       this.profitWindow = 0;

@@ -1,0 +1,673 @@
+<div
+  id="stock-history-modal"
+  class="{% if history_inline %}workspace-card{% else %}fixed inset-0 z-50 hidden items-end sm:items-center justify-center p-0 sm:p-4 bg-stone-950/55 backdrop-blur-sm{% endif %}"
+  data-history-inline="{% if history_inline %}true{% else %}false{% endif %}"
+  aria-hidden="{% if history_inline %}false{% else %}true{% endif %}"
+>
+  <div
+    class="st-modal-surface w-full max-w-5xl {% if not history_inline %}max-h-[94dvh]{% endif %} overflow-hidden bg-[#FAF6EF] border border-[#E7DFCC] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col"
+    {% if not history_inline %}role="dialog"{% endif %}
+    {% if not history_inline %}aria-modal="true"{% endif %}
+    aria-labelledby="stock-history-title"
+  >
+    <div class="flex items-start justify-between gap-4 px-4 sm:px-5 py-4 border-b border-[#E7DFCC] bg-white">
+      <div>
+        <h3 id="stock-history-title" class="text-lg font-bold text-[#8f172d]">Stock History</h3>
+        <p id="stock-history-subtitle" class="text-xs text-stone-500 mt-0.5">Production and Daily Stock Flow</p>
+      </div>
+      <button
+        type="button"
+        id="stock-history-close" {% if history_inline %}hidden{% endif %}
+        class="shrink-0 grid h-9 w-9 place-items-center text-xl leading-none text-stone-500 hover:text-stone-800 rounded-full bg-stone-100 hover:bg-stone-200"
+        aria-label="Close stock history"
+      >&times;</button>
+    </div>
+
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-5 py-3 border-b border-stone-100 bg-white">
+      <div id="stock-history-summary" class="grid w-full grid-cols-2 gap-2 text-xs text-stone-600 sm:flex sm:flex-wrap sm:gap-2">
+        <span>Loading…</span>
+      </div>
+      <div class="flex shrink-0 items-center gap-1 rounded-xl bg-stone-50 border border-stone-200 p-1" role="group" aria-label="Chart period">
+        <button type="button" class="stock-period-btn px-2.5 py-1 text-xs rounded-md bg-[#8f172d] text-white" data-days="7" aria-pressed="true">7 Days</button>
+        <button type="button" class="stock-period-btn px-2.5 py-1 text-xs rounded-md text-stone-600 hover:bg-stone-100" data-days="30" aria-pressed="false">30 Days</button>
+        <button type="button" class="stock-period-btn px-2.5 py-1 text-xs rounded-md text-stone-600 hover:bg-stone-100" data-days="90" aria-pressed="false">90 Days</button>
+      </div>
+    </div>
+
+    <nav class="shrink-0 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-[#E7DFCC] bg-white px-3 sm:px-5" role="tablist" aria-label="Inventory item sections">
+      <button type="button" role="tab" aria-selected="true" data-history-tab="overview" class="history-tab whitespace-nowrap border-b-2 border-transparent px-3 py-3 text-xs font-semibold">Overview</button>
+      <button type="button" role="tab" aria-selected="false" data-history-tab="workflow" id="stock-history-workflow-tab" class="history-tab whitespace-nowrap border-b-2 border-transparent px-3 py-3 text-xs font-semibold">Workflow</button>
+      <button type="button" role="tab" aria-selected="false" data-history-tab="arrivals" class="history-tab whitespace-nowrap border-b-2 border-transparent px-3 py-3 text-xs font-semibold">Arrivals</button>
+      <button type="button" role="tab" aria-selected="false" data-history-tab="ledger" class="history-tab whitespace-nowrap border-b-2 border-transparent px-3 py-3 text-xs font-semibold">Daily ledger</button>
+    </nav>
+
+    <div class="flex-1 min-h-0 overflow-y-auto">
+      <div id="stock-history-loading" class="px-5 py-12 text-center text-sm text-stone-400">Loading Stock history…</div>
+      <div id="stock-history-error" class="hidden px-5 py-12 text-center text-sm text-rose-600"></div>
+      <div id="stock-history-empty" class="hidden px-5 py-12 text-center text-sm text-stone-400">No Stock movement history is available for this item yet.</div>
+
+      <div id="stock-history-content" class="hidden p-3 sm:p-5">
+        <div data-history-panel="workflow" class="hidden space-y-4">
+        <div id="stock-history-flow-card" class="hidden rounded-xl border border-[#D9CFB4] bg-gradient-to-br from-[#FFFDF8] via-white to-[#F5EFE0] p-4 overflow-hidden">
+          <div class="flex flex-wrap items-start justify-between gap-2 mb-4"><div><div id="stock-history-flow-title" class="text-xs font-bold uppercase tracking-wider text-[#8f172d]">Operational Flow</div><div class="text-[10px] text-stone-500 mt-0.5">Select any stage to animate the workflow from that point, or replay the full journey.</div></div><div class="flex items-center gap-2"><span class="rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold text-stone-500 ring-1 ring-[#D9CFB4]">Workflow</span><button data-button-surface id="stock-history-flow-replay" type="button" class="rounded-full bg-[#8f172d] px-3 py-1 text-[10px] font-semibold text-white shadow-sm motion-safe:transition motion-safe:hover:-translate-y-0.5 hover:bg-[#4D1C25] focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30" aria-label="Replay product workflow animation">↻ Replay</button></div></div>
+          <div id="stock-history-flow" class="flex flex-col lg:flex-row items-stretch lg:items-center gap-2"></div>
+        </div>
+        <div id="stock-history-materials-card" class="hidden rounded-lg border border-[#E7DFCC] overflow-hidden">
+          <div class="px-4 py-3 bg-[#F0EAD9] border-b border-[#E7DFCC] flex items-center justify-between gap-3">
+            <div><div class="text-xs font-bold uppercase tracking-wider text-stone-600">{{ vertical_ui.recipe_label }} & {{ vertical_ui.production_inputs_label }}</div><div class="text-[10px] text-stone-400 mt-0.5">Inputs are shown even before the first production movement.</div><div id="stock-history-base-note" class="hidden mt-1 text-[11px] font-medium text-emerald-700"></div></div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="min-w-[640px] w-full text-sm">
+              <thead class="bg-stone-50 text-xs text-stone-500"><tr><th class="px-4 py-2 text-left">Material</th><th class="px-4 py-2 text-left">Type</th><th class="px-4 py-2 text-right">Qty / Batch</th><th class="px-4 py-2 text-left">Unit</th><th class="px-4 py-2 text-left">Usage</th><th class="px-4 py-2 text-left">Relation to base material</th></tr></thead>
+              <tbody id="stock-history-material-rows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div id="stock-history-usedin-card" class="hidden rounded-lg border border-[#E7DFCC] overflow-hidden">
+          <div class="px-4 py-3 bg-[#F0EAD9] border-b border-[#E7DFCC]"><div class="text-xs font-bold uppercase tracking-wider text-stone-600">Used in</div><div class="text-[10px] text-stone-400 mt-0.5">Where this material goes, and how much of it per amount of each product's base material.</div></div>
+          <div class="overflow-x-auto"><table class="min-w-[560px] w-full text-sm"><thead class="bg-stone-50 text-xs text-stone-500"><tr><th class="px-4 py-2 text-left">Product</th><th class="px-4 py-2 text-right">Qty / Batch</th><th class="px-4 py-2 text-left">Relation to base material</th></tr></thead><tbody id="stock-history-usedin-rows"></tbody></table></div>
+        </div>
+        </div>
+        <div data-history-panel="arrivals" class="hidden">
+          <div id="stock-history-arrivals-card" class="hidden rounded-lg border border-[#E7DFCC] overflow-hidden">
+            <div class="px-4 py-3 bg-[#F0EAD9] border-b border-[#E7DFCC]"><div class="text-xs font-bold uppercase tracking-wider text-stone-600">Stock Arrivals</div><div class="text-[10px] text-stone-400 mt-0.5">Received purchase-order lines for this item, newest first.</div></div>
+            <div class="overflow-x-auto"><table class="min-w-[680px] w-full text-sm"><thead class="bg-stone-50 text-xs text-stone-500"><tr><th class="px-4 py-2 text-left">Received</th><th class="px-4 py-2 text-left">Supplier</th><th class="px-4 py-2 text-left">Reference</th><th class="px-4 py-2 text-right">Quantity</th><th class="px-4 py-2 text-right">Unit Cost</th></tr></thead><tbody id="stock-history-arrival-rows"></tbody></table></div>
+          </div>
+          <div id="stock-history-arrivals-empty" class="rounded-xl border border-dashed border-[#D9CFB4] bg-white px-5 py-10 text-center text-sm text-stone-400">No received purchase-order lines are available for this item yet.</div>
+        </div>
+        <div data-history-panel="overview" class="space-y-4">
+
+        <div id="stock-history-movement-card" class="rounded-lg border border-[#E7DFCC] bg-[#FFFDF8] p-3">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <div class="text-xs font-bold uppercase tracking-wider text-stone-500">Stock & Production</div>
+            <div id="stock-history-unit-label" class="text-xs text-stone-400"></div>
+          </div>
+          <div class="overflow-x-auto">
+            <svg id="stock-history-chart" viewBox="0 0 900 340" class="w-full min-w-[620px] h-[240px] md:h-[320px]" role="img" aria-label="Stock balance chart"></svg>
+          </div>
+          <div class="stock-history-legend mt-2 flex flex-wrap gap-4 text-[11px]" role="group" aria-label="Inventory chart legend">
+            <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-[#8f172d]"></span>Closing Stock</span>
+            <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-emerald-300"></span>Stock In</span>
+            <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-rose-300"></span>Stock Out</span>
+            <span data-production-legend class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-sky-300"></span>Production</span>
+          </div>
+        </div>
+
+        <div id="stock-history-no-movements" class="hidden rounded-lg border border-stone-200 bg-stone-50 px-4 py-4 text-sm text-stone-500">No stock movement history is available for this product yet. Its workflow is shown above.</div>
+        </div>
+
+        <div data-history-panel="ledger" class="hidden">
+        <div id="stock-history-daily-card" class="rounded-lg border border-[#E7DFCC] overflow-hidden">
+          <div class="px-4 py-3 bg-[#F0EAD9] border-b border-[#E7DFCC] text-xs font-bold uppercase tracking-wider text-stone-600">Daily Movement</div>
+          <div class="overflow-x-auto">
+            <table class="min-w-[720px] w-full text-sm">
+              <thead class="bg-stone-50 text-xs text-stone-500">
+                <tr>
+                  <th class="px-4 py-2 text-left">Date</th>
+                  <th class="px-4 py-2 text-right">Opening</th>
+                  <th id="production-header" class="px-4 py-2 text-right">Production</th>
+                  <th class="px-4 py-2 text-right">Stock In</th>
+                  <th class="px-4 py-2 text-right">Stock Out</th>
+                  <th class="px-4 py-2 text-right">Closing</th>
+                </tr>
+              </thead>
+              <tbody id="stock-history-rows"></tbody>
+            </table>
+          </div>
+        </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{{ vertical_ui|json_script:"stock-history-vertical-config" }}
+<script>
+(() => {
+  const inventoryVertical = JSON.parse(document.getElementById("stock-history-vertical-config").textContent);
+  const historyInline = {{ history_inline|yesno:"true,false" }};
+  const periodStart = "{{ start|date:'Y-m-d' }}", periodEnd = "{{ end|date:'Y-m-d' }}";
+  const historyModal = document.getElementById('stock-history-modal');
+  const historyTitle = document.getElementById('stock-history-title');
+  const historySubtitle = document.getElementById('stock-history-subtitle');
+  const historyLoading = document.getElementById('stock-history-loading');
+  const historyError = document.getElementById('stock-history-error');
+  const historyEmpty = document.getElementById('stock-history-empty');
+  const historyContent = document.getElementById('stock-history-content');
+  const historySummary = document.getElementById('stock-history-summary');
+  const historyUnitLabel = document.getElementById('stock-history-unit-label');
+  const historyChart = document.getElementById('stock-history-chart');
+  const historyRows = document.getElementById('stock-history-rows');
+  const historyFlowCard = document.getElementById('stock-history-flow-card');
+  const historyFlowTitle = document.getElementById('stock-history-flow-title');
+  const historyFlow = document.getElementById('stock-history-flow');
+  const historyFlowReplay = document.getElementById('stock-history-flow-replay');
+  const historyArrivalsCard = document.getElementById('stock-history-arrivals-card');
+  const historyArrivalRows = document.getElementById('stock-history-arrival-rows');
+  const historyMaterialsCard = document.getElementById('stock-history-materials-card');
+  const historyMaterialRows = document.getElementById('stock-history-material-rows');
+  const historyBaseNote = document.getElementById('stock-history-base-note');
+  const historyUsedInCard = document.getElementById('stock-history-usedin-card');
+  const historyUsedInRows = document.getElementById('stock-history-usedin-rows');
+  const historyMovementCard = document.getElementById('stock-history-movement-card');
+  const historyDailyCard = document.getElementById('stock-history-daily-card');
+  const historyNoMovements = document.getElementById('stock-history-no-movements');
+  const historyClose = document.getElementById('stock-history-close');
+  const periodButtons = [...document.querySelectorAll('.stock-period-btn')];
+  const historyTabs = [...document.querySelectorAll('[data-history-tab]')];
+  const historyPanels = [...document.querySelectorAll('[data-history-panel]')];
+  const historyWorkflowTab = document.getElementById('stock-history-workflow-tab');
+  const historyArrivalsEmpty = document.getElementById('stock-history-arrivals-empty');
+
+  let stockHistoryData = null;
+  let selectedDays = 7;
+  let previousActiveElement = null;
+  let flowAnimationRun = 0;
+
+  function setHistoryTab(tab) {
+    historyTabs.forEach(button => {
+      const active = button.dataset.historyTab === tab;
+      button.classList.toggle('border-[#8f172d]', active);
+      button.classList.toggle('text-[#8f172d]', active);
+      button.classList.toggle('border-transparent', !active);
+      button.classList.toggle('text-stone-400', !active);
+      button.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    historyPanels.forEach(panel => panel.classList.toggle('hidden', panel.dataset.historyPanel !== tab));
+    if (tab === 'workflow' && stockHistoryData?.kind === 'finished') {
+      window.requestAnimationFrame(() => animateProductFlow(0));
+    }
+  }
+
+  function setHistoryState(state, message = '') {
+    historyLoading.classList.toggle('hidden', state !== 'loading');
+    historyError.classList.toggle('hidden', state !== 'error');
+    historyEmpty.classList.toggle('hidden', state !== 'empty');
+    historyContent.classList.toggle('hidden', state !== 'ready');
+    if (state === 'error') historyError.textContent = message;
+  }
+
+  function setActivePeriod(days) {
+    selectedDays = Number(days);
+    periodButtons.forEach(btn => {
+      const active = Number(btn.dataset.days) === selectedDays;
+      btn.classList.toggle('bg-[#8f172d]', active);
+      btn.classList.toggle('text-white', active);
+      btn.classList.toggle('text-stone-600', !active);
+      btn.classList.toggle('hover:bg-stone-100', !active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    if (stockHistoryData) renderHistory();
+  }
+
+  function num(value) {
+    const n = Number(value || 0);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function fmt(value, digits = 2) {
+    return num(value).toLocaleString(undefined, {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    });
+  }
+
+  function fmtMoney(value) {
+    return '{{ biz.currency_symbol|default:"₦"|escapejs }}' + fmt(value);
+  }
+
+  function filteredHistory() {
+    if (!stockHistoryData || !Array.isArray(stockHistoryData.data)) return [];
+    const rows = stockHistoryData.data.map(row => ({
+      date: row.date,
+      opening: num(row.opening),
+      production: num(row.production),
+      customerProduction: num(row.customer_production),
+      inflow: num(row.inflow),
+      outflow: num(row.outflow),
+      closing: num(row.closing),
+      closingPurchaseUnits: row.closing_purchase_units != null ? num(row.closing_purchase_units) : null,
+    }));
+    if (historyInline && periodStart && periodEnd) return rows.filter(row => row.date >= periodStart && row.date <= periodEnd);
+    return rows.slice(-selectedDays);
+  }
+
+  function renderSummary(rows) {
+    const latest = rows[rows.length - 1];
+    const factor = stockHistoryData.factor ? num(stockHistoryData.factor) : 1;
+    const unit = stockHistoryData.purchase_unit || stockHistoryData.usage_unit || '';
+    const displayUnit = stockHistoryData.purchase_unit_plural || unit;
+    const latestPurchase = latest && latest.closingPurchaseUnits != null
+      ? latest.closingPurchaseUnits
+      : latest ? latest.closing / factor : 0;
+
+    historySummary.innerHTML = latest ? `
+      ${summaryMetric('Latest stock', `${fmt(latest.closing)} ${Math.abs(latest.closing) === 1 ? stockHistoryData.usage_unit : stockHistoryData.unit_plural}`, 'emerald')}
+      ${stockHistoryData.total_produced != null ? summaryMetric('Total made (all time)', `${fmt(stockHistoryData.total_produced)} ${stockHistoryData.unit_plural || stockHistoryData.usage_unit || ''}`, 'sky') : ''}
+      ${stockHistoryData.total_delivered_to_customers != null ? summaryMetric('Customer orders (all time)', `${fmt(stockHistoryData.total_delivered_to_customers)} ${stockHistoryData.unit_plural || stockHistoryData.usage_unit || ''}`, 'rose') : ''}
+      ${summaryMetric('Purchase units', `${fmt(latestPurchase)} ${Math.abs(latestPurchase) === 1 ? unit : displayUnit}`, 'stone')}
+    ` : '<span class="text-stone-400">No data for this period.</span>';
+
+    historyUnitLabel.textContent = `${stockHistoryData.unit_plural || stockHistoryData.usage_unit || ''}${unit && unit !== stockHistoryData.usage_unit ? ` · ${unit}` : ''}`;
+  }
+
+  function summaryMetric(label, value, tone) {
+    const tones = { emerald: 'text-emerald-700', sky: 'text-sky-700', rose: 'text-rose-700', stone: 'text-stone-700' };
+    return `<span class="min-w-0 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 sm:min-w-[132px]"><span class="block text-[9px] font-bold uppercase tracking-wider text-stone-400">${escapeFlowText(label)}</span><strong class="mt-0.5 block truncate font-mono text-xs ${tones[tone] || tones.stone}">${escapeFlowText(value)}</strong></span>`;
+  }
+
+  function renderTable(rows) {
+    document.querySelectorAll('[data-production-legend]').forEach(el => {
+      el.style.display =
+        stockHistoryData.kind === 'finished' ? '' : 'none';
+    });
+    const productionHeader = document.getElementById('production-header');
+
+    // Production is relevant only for finished goods.
+    const isFinishedGood = stockHistoryData.kind === 'finished';
+
+    if (productionHeader) {
+      productionHeader.style.display = isFinishedGood ? '' : 'none';
+    }
+    historyRows.innerHTML = rows.slice().reverse().map((row, index, arr) => {
+      const previous = arr[index + 1];
+      const opening = row.opening || (previous ? previous.closing : row.closing - row.inflow - row.outflow);
+      const productionCell = isFinishedGood
+        ? `
+          <td class="px-4 py-2.5 text-right font-mono text-sky-700">
+            +${fmt(row.production)} ${stockHistoryData.unit_plural || stockHistoryData.usage_unit || ''}
+          </td>
+        `
+        : '';
+      return `
+        <tr class="border-t border-[#E7DFCC]">
+          <td class="px-4 py-2.5">${new Date(`${row.date}T00:00:00`).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+          <td class="px-4 py-2.5 text-right font-mono">${fmt(opening)} ${stockHistoryData.unit_plural || stockHistoryData.usage_unit || ''}</td>
+          ${productionCell}
+          <td class="px-4 py-2.5 text-right font-mono text-emerald-700">+${fmt(row.inflow)} ${stockHistoryData.unit_plural || stockHistoryData.usage_unit || ''}</td>
+          <td class="px-4 py-2.5 text-right font-mono text-rose-700">${fmt(row.outflow)} ${stockHistoryData.unit_plural || stockHistoryData.usage_unit || ''}</td>
+          <td class="px-4 py-2.5 text-right font-mono font-semibold">${fmt(row.closing)} ${stockHistoryData.unit_plural || stockHistoryData.usage_unit || ''}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function renderChart(rows) {
+    const width = 900;
+    const height = 340;
+    const pad = { left: 62, right: 20, top: 20, bottom: 48 };
+    const chartW = width - pad.left - pad.right;
+    const chartH = height - pad.top - pad.bottom;
+    const maxValue = Math.max(1, ...rows.map(r => Math.max(r.closing, r.opening, r.inflow, r.production, Math.abs(r.outflow))));
+    const minValue = Math.min(0, ...rows.map(r => Math.min(r.closing, r.opening, r.outflow)));
+    const range = Math.max(1, maxValue - minValue);
+
+    const x = i => rows.length <= 1 ? pad.left + chartW / 2 : pad.left + (i / (rows.length - 1)) * chartW;
+    const y = value => pad.top + ((maxValue - value) / range) * chartH;
+
+    const points = rows.map((r, i) => `${x(i).toFixed(1)},${y(r.closing).toFixed(1)}`).join(' ');
+    const barWidth = Math.max(4, Math.min(18, chartW / Math.max(rows.length, 1) * 0.45));
+    const zeroY = y(0);
+
+    const gridValues = [0, 0.25, 0.5, 0.75, 1].map(t => maxValue - range * t);
+    const grid = gridValues.map(value => `
+      <line x1="${pad.left}" x2="${width - pad.right}" y1="${y(value)}" y2="${y(value)}" stroke="#E7DFCC" stroke-width="1" />
+      <text x="${pad.left - 8}" y="${y(value) + 4}" text-anchor="end" font-size="11" fill="#78716C">${fmt(value)}</text>
+    `).join('');
+
+    const isFinishedGood = stockHistoryData.kind === 'finished';
+
+    const bars = rows.map((r, i) => {
+      const inflowH = Math.abs(y(0) - y(Math.max(0, r.inflow)));
+      const outflowH = Math.abs(y(0) - y(Math.min(0, r.outflow)));
+
+      const inflowY = Math.min(
+        y(0),
+        y(Math.max(0, r.inflow))
+      );
+
+      const outflowY = Math.min(
+        y(0),
+        y(Math.min(0, r.outflow))
+      );
+
+      const productionH = isFinishedGood
+        ? Math.abs(y(0) - y(Math.max(0, r.production)))
+        : 0;
+
+      const productionY = isFinishedGood
+        ? Math.min(y(0), y(Math.max(0, r.production)))
+        : y(0);
+
+      const productionBar = isFinishedGood
+        ? `
+          <rect
+            x="${x(i) - barWidth * 1.75}"
+            y="${productionY}"
+            width="${barWidth * 0.65}"
+            height="${Math.max(1, productionH)}"
+            rx="2"
+            fill="#7DD3FC"
+            opacity="0.75"
+          >
+            <title>
+              ${rows[i].date}: production +${fmt(r.production)}
+            </title>
+          </rect>
+        `
+        : '';
+
+      return `
+        ${productionBar}
+
+        <rect
+          x="${x(i) - barWidth * 0.95}"
+          y="${inflowY}"
+          width="${barWidth * 0.8}"
+          height="${Math.max(1, inflowH)}"
+          rx="2"
+          fill="#86EFAC"
+          opacity="0.75"
+        >
+          <title>${rows[i].date}: +${fmt(r.inflow)}</title>
+        </rect>
+
+        <rect
+          x="${x(i) + barWidth * 0.15}"
+          y="${outflowY}"
+          width="${barWidth * 0.8}"
+          height="${Math.max(1, outflowH)}"
+          rx="2"
+          fill="#FDA4AF"
+          opacity="0.75"
+        >
+          <title>${rows[i].date}: ${fmt(r.outflow)}</title>
+        </rect>
+      `;
+    }).join('');
+
+    const labels = rows.map((r, i) => {
+      const step = Math.max(1, Math.ceil(rows.length / 8));
+      if (i % step !== 0 && i !== rows.length - 1) return '';
+      return `<text x="${x(i)}" y="${height - 18}" text-anchor="middle" font-size="11" fill="#78716C">${new Date(`${r.date}T00:00:00`).toLocaleDateString(undefined, { day: '2-digit', month: 'short' })}</text>`;
+    }).join('');
+
+    historyChart.innerHTML = `
+      <line x1="${pad.left}" x2="${width - pad.right}" y1="${zeroY}" y2="${zeroY}" stroke="#A8A29E" stroke-width="1" stroke-dasharray="4 4" />
+      ${grid}
+      ${bars}
+      <polyline points="${points}" fill="none" stroke="var(--tenant-button)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+      ${rows.map((r, i) => `<circle cx="${x(i)}" cy="${y(r.closing)}" r="3.5" fill="var(--tenant-button)"><title>${r.date}: ${fmt(r.closing)}</title></circle>`).join('')}
+      ${labels}
+    `;
+  }
+
+  function renderMaterials() {
+    const materials = Array.isArray(stockHistoryData?.materials) ? stockHistoryData.materials : [];
+    const show = stockHistoryData?.kind === 'finished' && materials.length;
+    historyMaterialsCard.classList.toggle('hidden', !show);
+    historyMaterialRows.innerHTML = materials.map(row => `
+      <tr class="border-t border-[#E7DFCC]">
+        <td class="px-4 py-2.5 font-medium text-stone-700">${escapeFlowText(row.name)}</td>
+        <td class="px-4 py-2.5 text-xs text-stone-500">${escapeFlowText(row.category)}</td>
+        <td class="px-4 py-2.5 text-right font-mono">${fmt(row.qty_per_batch)}</td>
+        <td class="px-4 py-2.5 text-xs text-stone-500">${escapeFlowText(row.usage_unit || '')}</td>
+        <td class="px-4 py-2.5 text-xs">${row.flexible ? '<span class="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Flexible at approval</span>' : `<span class="text-stone-400">Fixed ${escapeFlowText(inventoryVertical.recipe_label.toLowerCase())}</span>`}</td>
+        <td class="px-4 py-2.5 text-xs text-stone-600">${relationCell(row)}</td>
+      </tr>
+    `).join('');
+    const base = stockHistoryData?.base_material;
+    const notes = [];
+    if (show && base) notes.push(`Base material: ${base.text}. Other ingredients are sized relative to it.`);
+    (stockHistoryData?.recipe_warnings || []).forEach(w => notes.push(w));
+    historyBaseNote.textContent = notes.join(' ');
+    historyBaseNote.classList.toggle('hidden', !show || !notes.length);
+    const usedIn = Array.isArray(stockHistoryData?.used_in) ? stockHistoryData.used_in : [];
+    const showUsedIn = stockHistoryData?.kind === 'raw' && usedIn.length;
+    historyUsedInCard.classList.toggle('hidden', !showUsedIn);
+    historyUsedInRows.innerHTML = usedIn.map(row => `
+      <tr class="border-t border-[#E7DFCC]">
+        <td class="px-4 py-2.5 font-medium text-stone-700">${escapeFlowText(row.product)}</td>
+        <td class="px-4 py-2.5 text-right font-mono text-xs">${escapeFlowText(row.qty_text)}</td>
+        <td class="px-4 py-2.5 text-xs text-stone-600">${relationCell(row)}</td>
+      </tr>
+    `).join('');
+  }
+
+  function relationCell(row) {
+    if (row.is_base) return '<span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">Base material</span>';
+    if (!row.relation) return '<span class="text-stone-300">—</span>';
+    const percent = row.percent_text ? ` <span class="text-stone-400">(${escapeFlowText(row.percent_text)})</span>` : '';
+    return `${escapeFlowText(row.relation)}${percent}`;
+  }
+
+  function escapeFlowText(value) {
+    const node = document.createElement('span');
+    node.textContent = String(value ?? '');
+    return node.innerHTML;
+  }
+
+  function flowNode(kicker, title, detail, tone = 'stone') {
+    const tones = {
+      sky: 'border-sky-200 bg-sky-50 text-sky-950',
+      amber: 'border-amber-200 bg-amber-50 text-amber-950',
+      emerald: 'border-emerald-200 bg-emerald-50 text-emerald-950',
+      rose: 'border-rose-200 bg-rose-50 text-rose-950',
+      stone: 'border-stone-200 bg-white text-stone-800'
+    };
+    const accessibleLabel = `${kicker}: ${title}. ${detail}`;
+    return `<button type="button" data-flow-node class="relative flex-1 min-w-0 rounded-xl border ${tones[tone]} p-3 text-left shadow-sm motion-safe:transition motion-safe:duration-200 motion-safe:hover:-translate-y-1 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-rose-300" aria-label="${escapeFlowText(accessibleLabel)}"><span class="absolute right-3 top-3 h-2 w-2 rounded-full bg-current opacity-20" aria-hidden="true"></span><span class="block text-[9px] uppercase tracking-[0.16em] font-bold opacity-60">${escapeFlowText(kicker)}</span><span class="mt-1 block text-sm font-semibold leading-tight">${escapeFlowText(title)}</span><span class="mt-1 block text-[10px] leading-4 opacity-70">${escapeFlowText(detail)}</span></button>`;
+  }
+
+  function flowArrow() {
+    return '<div data-flow-arrow class="self-center shrink-0 text-[#8f172d] font-bold text-lg rotate-90 opacity-30 motion-safe:transition lg:rotate-0" aria-hidden="true">→</div>';
+  }
+
+  function animateProductFlow(startIndex = 0) {
+    const nodes = [...historyFlow.querySelectorAll('[data-flow-node]')];
+    const arrows = [...historyFlow.querySelectorAll('[data-flow-arrow]')];
+    if (!nodes.length) return;
+    const run = ++flowAnimationRun;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    nodes.forEach(node => node.classList.remove('ring-2', 'ring-rose-300'));
+    arrows.forEach(arrow => arrow.classList.add('opacity-30'));
+
+    nodes.slice(startIndex).forEach((node, offset) => {
+      const nodeIndex = startIndex + offset;
+      window.setTimeout(() => {
+        if (run !== flowAnimationRun) return;
+        nodes.forEach(item => item.classList.remove('ring-2', 'ring-rose-300'));
+        node.classList.add('ring-2', 'ring-rose-300');
+        if (nodeIndex > 0 && arrows[nodeIndex - 1]) {
+          arrows[nodeIndex - 1].classList.remove('opacity-30');
+          if (!reducedMotion && arrows[nodeIndex - 1].animate) {
+            arrows[nodeIndex - 1].animate(
+              [{opacity: 0.25}, {opacity: 1}, {opacity: 0.55}],
+              {duration: 520, easing: 'ease-out'}
+            );
+          }
+        }
+        if (!reducedMotion && node.animate) {
+          node.animate(
+            [
+              {transform: 'translateY(0) scale(1)', boxShadow: '0 1px 2px rgba(0,0,0,.05)'},
+              {transform: 'translateY(-5px) scale(1.025)', boxShadow: '0 12px 24px rgba(143,23,45,.16)'},
+              {transform: 'translateY(0) scale(1)', boxShadow: '0 1px 2px rgba(0,0,0,.05)'},
+            ],
+            {duration: 620, easing: 'ease-in-out'}
+          );
+        }
+      }, reducedMotion ? 0 : offset * 430);
+    });
+  }
+
+  function wireProductFlowAnimation() {
+    const nodes = [...historyFlow.querySelectorAll('[data-flow-node]')];
+    nodes.forEach((node, index) => {
+      node.addEventListener('click', () => animateProductFlow(index));
+    });
+    window.requestAnimationFrame(() => animateProductFlow(0));
+  }
+
+  function renderProductFlow() {
+    const isProduct = stockHistoryData?.kind === 'finished';
+    historyFlowCard.classList.toggle('hidden', !isProduct);
+    historyFlowReplay.disabled = !isProduct;
+    if (!isProduct) {
+      flowAnimationRun += 1;
+      return;
+    }
+    const materials = Array.isArray(stockHistoryData.materials) ? stockHistoryData.materials : [];
+    const arrivals = Array.isArray(stockHistoryData.arrivals) ? stockHistoryData.arrivals : [];
+    const product = stockHistoryData.name || 'Product';
+    if (inventoryVertical.uses_production) {
+      const inputNames = materials.slice(0, 3).map(row => row.name).join(', ');
+      const more = Math.max(0, materials.length - 3);
+      historyFlowTitle.textContent = `${inventoryVertical.recipe_label} · production · fulfilment`;
+      historyFlow.innerHTML = [
+        flowNode('Inputs', `${materials.length} configured`, inputNames ? `${inputNames}${more ? ` +${more} more` : ''}` : `Add ${inventoryVertical.recipe_item_label.toLowerCase()}s and production inputs`, 'sky'),
+        flowArrow(),
+        flowNode(inventoryVertical.recipe_label, `${stockHistoryData.units_per_batch || 1} ${stockHistoryData.usage_unit || 'units'} / batch`, 'Requirements scale proportionally to the planned quantity.', 'amber'),
+        flowArrow(),
+        flowNode('Process', inventoryVertical.process_label, 'Materials are released, output and wastage are recorded, and cost is frozen.', 'rose'),
+        flowArrow(),
+        flowNode('Output', product, `${fmt(stockHistoryData.stock || 0)} ${stockHistoryData.unit_plural || stockHistoryData.usage_unit || ''} currently in ${inventoryVertical.stock_location}.`, 'emerald'),
+        flowArrow(),
+        flowNode('Fulfilment', `${inventoryVertical.sales} & customer orders`, 'Stock, customer delivery, offcut, shortage, and market allocation keep distinct audit trails.', 'stone')
+      ].join('');
+    } else {
+      const suppliers = [...new Set(arrivals.map(row => row.supplier))];
+      historyFlowTitle.textContent = 'Procurement · stock arrival · sale';
+      historyFlow.innerHTML = [
+        flowNode('Source', suppliers.length ? `${suppliers.length} supplier${suppliers.length === 1 ? '' : 's'}` : 'Supplier', suppliers.slice(0, 3).join(', ') || 'Create a purchase order for this product.', 'sky'),
+        flowArrow(),
+        flowNode('Arrival control', inventoryVertical.process_label, `${arrivals.length} received PO line${arrivals.length === 1 ? '' : 's'} currently traced for this product.`, 'amber'),
+        flowArrow(),
+        flowNode('Stock product', product, `${fmt(stockHistoryData.stock || 0)} ${stockHistoryData.unit_plural || stockHistoryData.usage_unit || ''} in ${inventoryVertical.stock_location}.`, 'emerald'),
+        flowArrow(),
+        flowNode('Sale', inventoryVertical.sales, inventoryVertical.direct_sale_channel === 'distribution' ? 'Trade customer pricing, credit, receivable, and COGS are snapshotted.' : 'Immediate POS sale reduces available shop stock and records COGS.', 'rose')
+      ].join('');
+    }
+    wireProductFlowAnimation();
+  }
+
+  function renderArrivals() {
+    const arrivals = Array.isArray(stockHistoryData?.arrivals) ? stockHistoryData.arrivals : [];
+    historyArrivalsCard.classList.toggle('hidden', !arrivals.length);
+    historyArrivalsEmpty.classList.toggle('hidden', !!arrivals.length);
+    historyArrivalRows.innerHTML = arrivals.map(row => `
+      <tr class="border-t border-[#E7DFCC]">
+        <td class="px-4 py-2.5 text-xs text-stone-600">${escapeFlowText(row.date)}</td>
+        <td class="px-4 py-2.5 font-medium text-stone-700">${escapeFlowText(row.supplier)}</td>
+        <td class="px-4 py-2.5 text-xs font-mono text-stone-500">${escapeFlowText(row.reference)}</td>
+        <td class="px-4 py-2.5 text-right font-mono">${fmt(row.quantity)} ${escapeFlowText(row.unit || '')}</td>
+        <td class="px-4 py-2.5 text-right font-mono">${fmtMoney(row.unit_cost)}</td>
+      </tr>
+    `).join('');
+  }
+
+  function renderHistory() {
+    const rows = filteredHistory();
+    const hasMaterials = stockHistoryData?.kind === 'finished' && Array.isArray(stockHistoryData.materials) && stockHistoryData.materials.length;
+    renderMaterials();
+    renderArrivals();
+    renderProductFlow();
+    if (!rows.length) {
+      if (stockHistoryData?.kind === 'finished') {
+        setHistoryState('ready');
+        historySummary.innerHTML = `
+          ${stockHistoryData.total_produced != null ? summaryMetric('Total made (all time)', `${fmt(stockHistoryData.total_produced)} ${stockHistoryData.unit_plural || stockHistoryData.usage_unit || ''}`, 'sky') : ''}
+          ${stockHistoryData.total_delivered_to_customers != null ? summaryMetric('Customer orders (all time)', `${fmt(stockHistoryData.total_delivered_to_customers)} ${stockHistoryData.unit_plural || stockHistoryData.usage_unit || ''}`, 'rose') : ''}
+        `;
+        historyMovementCard.classList.add('hidden');
+        historyDailyCard.classList.add('hidden');
+        historyNoMovements.classList.remove('hidden');
+        historyNoMovements.textContent = hasMaterials
+          ? `No stock movement history is available yet. The ${inventoryVertical.recipe_label.toLowerCase()} and workflow are shown above.`
+          : 'No stock movement history is available yet. The product workflow is shown above.';
+      } else {
+        setHistoryState('empty');
+      }
+      return;
+    }
+    setHistoryState('ready');
+    historyMovementCard.classList.remove('hidden');
+    historyDailyCard.classList.remove('hidden');
+    historyNoMovements.classList.add('hidden');
+    renderSummary(rows);
+    renderChart(rows);
+    renderTable(rows);
+  }
+
+  async function openStockHistory(button) {
+    previousActiveElement = document.activeElement;
+    if (!historyInline) {
+    historyModal.classList.remove('hidden');
+    historyModal.classList.add('flex');
+    historyModal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('overflow-hidden');
+    }
+
+    historyTitle.textContent = historyInline ? 'Stock history and workflow' : button.dataset.stockName || 'Stock history';
+    historySubtitle.textContent = button.dataset.stockHistoryKind === 'finished' ? 'Product stock, workflow and history' : 'Material stock, arrivals and history';
+    historyWorkflowTab.classList.toggle('hidden', button.dataset.stockHistoryKind !== 'finished');
+    setHistoryTab('overview');
+    historySummary.innerHTML = '<span>Loading…</span>';
+    historyUnitLabel.textContent = '';
+    stockHistoryData = null;
+    setHistoryState('loading');
+
+    try {
+      const historyUrl = button.dataset.stockHistoryUrl;
+      const response = await fetch(historyUrl, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      });
+      if (!response.ok) throw new Error(`Request failed (${response.status})`);
+      stockHistoryData = await response.json();
+      renderHistory();
+    } catch (error) {
+      console.error('Stock history error:', error);
+      setHistoryState(
+        'error',
+        'The stock history could not be loaded.'
+      );
+    }
+  }
+
+  function closeStockHistory() {
+    flowAnimationRun += 1;
+    historyModal.classList.add('hidden');
+    historyModal.classList.remove('flex');
+    historyModal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('overflow-hidden');
+    if (previousActiveElement) previousActiveElement.focus();
+  }
+
+  document.querySelectorAll('[data-stock-history-trigger]').forEach(button => {
+    button.addEventListener('click', () => openStockHistory(button));
+  });
+
+  historyClose.addEventListener('click', closeStockHistory);
+  historyModal.addEventListener('click', event => {
+    if (!historyInline && event.target === historyModal) closeStockHistory();
+  });
+
+  document.addEventListener('keydown', event => {
+    if (!historyInline && event.key === 'Escape' && !historyModal.classList.contains('hidden')) {
+      closeStockHistory();
+    }
+  });
+
+  periodButtons.forEach(button => {
+    button.addEventListener('click', () => setActivePeriod(button.dataset.days));
+  });
+  historyTabs.forEach(button => {
+    button.addEventListener('click', () => setHistoryTab(button.dataset.historyTab));
+  });
+  historyFlowReplay.addEventListener('click', () => animateProductFlow(0));
+  if (historyInline) {
+    periodButtons.forEach(button => button.hidden = true);
+    openStockHistory({dataset:{stockName:'',stockHistoryKind:'finished',stockHistoryUrl:'{{ history_url|escapejs }}'}});
+  }
+})();
+</script>

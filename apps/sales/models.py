@@ -59,7 +59,7 @@ class CustomerProductPrice(BusinessOwnedModel):
 
     This is an override layer above FinishedGood channel pricing. Orders snapshot
     the resolved price into OrderItem/SaleItem so later price changes do not alter
-    historical documents or analytics.
+    historical documents or analytics unless an explicit audited period correction is applied.
     """
     CHANNEL_CHOICES = [
         ("distribution", "Distribution"),

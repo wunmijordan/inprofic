@@ -1067,6 +1067,16 @@ def stock_history(request, kind, pk):
             status=400,
         )
 
+    period_start = request.GET.get('start')
+    period_end = request.GET.get('end')
+    if period_start or period_end:
+        from sales.customer_activity import ActivityDates
+        period = ActivityDates({'start': period_start, 'end': period_end})
+        if not period.is_valid():
+            return JsonResponse({'error': 'Choose a valid start and end date.'}, status=400)
+        period_start, period_end = period.cleaned_data['start'], period.cleaned_data['end']
+        movements = movements.filter(occurred_at__date__range=(period_start, period_end))
+
     days = (
         movements
         .values("occurred_at__date")
@@ -1214,6 +1224,12 @@ def stock_history(request, kind, pk):
         }
 
     purchase_filter = {"raw_material": item} if kind == "raw" else {"finished_good": item}
+    arrival_lines = PurchaseOrderItem.objects.filter(
+        purchase_order__business=request.business, purchase_order__status="received", **purchase_filter,
+    ).select_related("purchase_order", "raw_material", "finished_good").order_by(
+        "-purchase_order__received_date", "-purchase_order__date", "-id")
+    if period_start and period_end:
+        arrival_lines = arrival_lines.filter(purchase_order__received_date__range=(period_start, period_end))
     arrivals = [
         {
             "date": (line.purchase_order.received_date or line.purchase_order.date).isoformat(),
@@ -1223,15 +1239,13 @@ def stock_history(request, kind, pk):
             "unit_cost": str(line.unit_cost),
             "reference": f"PO-{line.purchase_order_id}",
         }
-        for line in PurchaseOrderItem.objects.filter(
-            purchase_order__status="received",
-            **purchase_filter,
-        ).select_related("purchase_order", "raw_material", "finished_good").order_by(
-            "-purchase_order__received_date", "-purchase_order__date", "-id"
-        )[:50]
+        for line in arrival_lines[:50]
     ]
 
+    from core.quantities import plural_unit
     response = {
+        "unit_plural": plural_unit(usage_unit, 2),
+        "purchase_unit_plural": plural_unit(purchase_unit, 2),
         "kind": kind,
         "name": name,
         "purchase_unit": purchase_unit,
@@ -1259,3 +1273,16 @@ def stock_history(request, kind, pk):
     }
 
     return JsonResponse(response)
+
+
+@login_required
+@require_http_methods(["GET"])
+def product_detail(request, pk):
+    from .product_detail import product_context
+    if not user_has_permission(request.user, request.business, "inventory", "view"):
+        return render(request, "403.html", status=403)
+    good = get_object_or_404(FinishedGood.objects.filter(business=request.business).select_related("business").prefetch_related(
+        "channel_prices", "recipe_items__raw_material", "production_materials__raw_material", "market_stock_lots"), pk=pk)
+    context = product_context(request, good)
+    context.update(history_inline=True, vertical_ui=vertical_config(request.business))
+    return render(request, "inventory/product_detail.html", context)

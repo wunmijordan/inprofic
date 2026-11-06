@@ -10,6 +10,7 @@ import { Command, CommandInput, CommandList, CommandEmpty, CommandItem } from '.
 // The server remains the authorization and save boundary. Only contained edits
 // belong here. Procurement approval retains its full review inside the dialog.
 const FORM_PATH = /^\/(?:inventory\/(?:raw-material|product)\/(?:add|\d+\/edit)|procurement\/(?:suppliers\/)?(?:add|\d+\/(?:edit|approve))|sales\/(?:customers\/)?(?:add|\d+\/edit)|expenses\/(?:add|\d+\/edit|payments\/add)|finance\/(?:accounts\/(?:add|\d+\/edit)|(?:supplier-payment|customer-payment|expense-payment|stock-adjustment)\/add)|(?:orders|runs)\/(?:add|\d+\/edit))\/$/;
+const PRODUCT_DETAIL_PATH = /^\/inventory\/product\/\d+\/detail\/$/;
 const CUSTOMER_ACTIVITY_PATH = /^\/sales\/customers\/\d+\/activity\/$/;
 const embedded = window.parent !== window && window.name === 'inprofic-form-dialog';
 const postParent = (type: string, extra = {}) => window.parent.postMessage({ source: 'inprofic-ui', type, ...extra }, location.origin);
@@ -112,8 +113,10 @@ function FormHost() {
       if (content && dialog) {
         const heading = dialog.querySelector<HTMLElement>('.ui-dialog-heading');
         const measure = () => {
+          const view = doc.defaultView;
+          if (!view || !content.isConnected || !dialog.isConnected) return;
           const main = content.closest('main');
-          const style = main ? doc.defaultView!.getComputedStyle(main) : null;
+          const style = main ? view.getComputedStyle(main) : null;
           const padding = style ? parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) : 32;
           const height = Math.ceil(content.getBoundingClientRect().height + padding + (heading?.getBoundingClientRect().height || 64) + 2);
           dialog.style.setProperty('--ui-form-height', `${height}px`);
@@ -131,7 +134,9 @@ function FormHost() {
       const success = !!doc.querySelector('[data-message-level~="success"]');
       // Never treat an expired session or permission page as a successful save.
       const isWorkspace = !!doc.querySelector('[data-ui-workspace]');
-      if (submitted.current && !stayOpen.current && isWorkspace && !hasError && (success || url.pathname !== new URL(model.url).pathname)) { void close(true); return; }
+      const reviewStep = !!doc.querySelector('[data-ui-review-step]');
+      if (submitted.current && reviewStep && !hasError) dirty.current = false;
+      if (submitted.current && !reviewStep && !stayOpen.current && isWorkspace && !hasError && (success || url.pathname !== new URL(model.url).pathname)) { void close(true); return; }
       if (success && submitted.current) { changed.current = true; dirty.current = false; }
       submitted.current = false;
       if (hasError) requestAnimationFrame(() => {
@@ -144,7 +149,7 @@ function FormHost() {
   };
   return <Dialog open={!!model} onOpenChange={value => { if (!value) void close(); }}>
     <DialogContent style={{ "--ui-form-width": `${model?.width || 56}rem` } as React.CSSProperties} className="ui-form-dialog" onOpenAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => frame.current?.focus()); }} onCloseAutoFocus={event => event.preventDefault()}>
-      <div className="ui-dialog-heading"><DialogTitle>{model?.title || 'Edit record'}</DialogTitle><DialogDescription className="sr-only">{model?.url && CUSTOMER_ACTIVITY_PATH.test(new URL(model.url).pathname) ? "Review customer activity and special prices. Date filters do not change records." : "Complete the form. Validation and saving follow the same business rules as the full page."}</DialogDescription>
+      <div className="ui-dialog-heading"><DialogTitle>{model?.title || 'Edit record'}</DialogTitle><DialogDescription className="sr-only">{model?.url && (CUSTOMER_ACTIVITY_PATH.test(new URL(model.url).pathname) || PRODUCT_DETAIL_PATH.test(new URL(model.url).pathname)) ? "Review activity, costs and special prices. Date filters do not change records." : "Complete the form. Validation and saving follow the same business rules as the full page."}</DialogDescription>
       {loaded && shareSource && <SnapshotMenu source={shareSource}/>}
       </div>
       {!loaded && <p role="status" className="ui-form-loading">Loading form…</p>}
@@ -301,7 +306,7 @@ function boot() {
       if (/^(cancel|back|return)\b/i.test(link.textContent?.trim() || '')) { event.preventDefault(); postParent('cancel'); }
       return;
     }
-    if (url.origin !== location.origin || !(FORM_PATH.test(url.pathname) || CUSTOMER_ACTIVITY_PATH.test(url.pathname)) || !openForm) return;
+    if (url.origin !== location.origin || !(FORM_PATH.test(url.pathname) || CUSTOMER_ACTIVITY_PATH.test(url.pathname) || PRODUCT_DETAIL_PATH.test(url.pathname)) || !openForm) return;
     event.preventDefault();
     if (link.dataset.confirm && !(await confirmRequest(link.dataset.confirm, false, 'edit-payment'))) return;
     openForm(url.href,link.getAttribute('aria-label') || link.textContent?.trim().replace(/^\+\s*/,'') || 'Record form',link);

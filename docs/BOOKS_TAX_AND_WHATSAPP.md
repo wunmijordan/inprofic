@@ -120,7 +120,7 @@ default where that selling flow permits a default. Market Stock distribution
 requires an explicit Distribution or customer price. Release forms preview the
 applied price; product search lists current agreements and historical applied
 prices. Existing invoices and profitability retain saved selling prices after
-an agreement changes. Finance still recognises paid-sales revenue only once an
+an agreement changes unless an authorized editor explicitly previews and confirms a period correction. The customer pricing review supports all existing distributions or a selected period. Actual recorded receipts remain fixed by default. Mistaken receipt amounts can be corrected only through a separate reviewed choice: original cash entries are retained and offset, corrected receipts retain their accounts/methods, and the previous/new payment and invoice amounts are audited atomically. Partial receipts require the actual amount; ambiguous cash links and submitted e-invoices are blocked. Stock quantities and frozen unit costs stay unchanged. Rebuild derived Books for corrected records. Finance still recognises paid-sales revenue only once an
 invoice is fully settled, consistent with its existing Profit & Loss definition.
 
 Procurement snapshots and full sharing text include miscellaneous expenses for

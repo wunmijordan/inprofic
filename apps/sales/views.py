@@ -84,6 +84,11 @@ def customer_form(request, pk=None):
                 for deleted in price_formset.deleted_objects:
                     deleted.delete()
             messages.success(request, "Customer saved.")
+            from accounts.services import user_has_permission
+            if price_formset.has_changed() and customer.product_prices.filter(channel="distribution").exists() and all(
+                user_has_permission(request.user, request.business, module, "edit") for module in ("sales", "finance")
+            ):
+                return redirect("customer_reprice", pk=customer.pk)
             return redirect("customer_list")
     else:
         form = CustomerForm(instance=obj)

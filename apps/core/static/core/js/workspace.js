@@ -1,4 +1,11 @@
 (() => {
+  // Native page transitions may be skipped when the viewport changes. The
+  // navigation still succeeds; consume the transition's expected rejection.
+  window.addEventListener('pagereveal', event => {
+    event.viewTransition?.ready.catch(() => {});
+    event.viewTransition?.finished.catch(() => {});
+  });
+
   const root = document.documentElement;
   const tenantId = root.dataset.tenant || 'global';
   const themeKey = 'inprofic-theme';

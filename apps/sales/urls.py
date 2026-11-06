@@ -1,7 +1,9 @@
 from django.urls import path
 from . import views
+from .repricing_views import customer_reprice
 
 urlpatterns = [
+    path("customers/<int:pk>/reprice/", customer_reprice, name="customer_reprice"),
     path("customers/", views.customer_list, name="customer_list"),
     path("customers/<int:pk>/activity/", views.customer_activity, name="customer_activity"),
     path("customers/add/", views.customer_form, name="customer_add"),
