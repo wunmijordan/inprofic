@@ -8,6 +8,7 @@ from django.http import HttpResponse
 from django.urls import reverse
 from django.views.decorators.http import require_GET
 from core.seo import absolute_url
+from core.share_text import render_lines
 from core.snapshot_images import render_report_snapshot, snapshot_response
 from .spending import workspace_period, workspace_records
 
@@ -38,11 +39,11 @@ def summary_text(request, context, url):
             lines += [f'*Purchase request #{po.pk} · {row["date"]:%d %b %Y}*',
                 f'{row["usage"]} · {po.request_status_label} · Payment: {row["payment"]}']
             for vendor in po.request_orders:
-                lines.append(vendor.supplier or 'Vendor not named')
+                lines.append('• ' + (vendor.supplier or 'Vendor not named'))
                 for item in vendor.items.all():
                     if item.qty:
                         from core.quantities import format_quantity
-                        lines.append(f'• {item.item_name}: {format_quantity(item.qty, item.stock_unit)} × {money(item.unit_cost)} = {money(item.line_total)}')
+                        lines.append(f'  • {item.item_name}: {format_quantity(item.qty, item.stock_unit)} × {money(item.unit_cost)} = {money(item.line_total)}')
                 lines.append(f'Group total: {money(vendor.total)}')
                 paid = vendor.total - vendor.payment_balance
                 if paid:
@@ -62,7 +63,7 @@ def summary_text(request, context, url):
             lines.append(f'*{label}: {money(totals[key])}*')
     lines += ['', 'Grand total includes paid and unpaid entries. Money paid out uses cash records dated in this period, including payments for earlier purchases.',
               '', 'Open full purchases & expenses:', url]
-    return '\n'.join(lines)
+    return render_lines(lines)
 
 
 def share_context(request, context):

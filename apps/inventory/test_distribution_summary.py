@@ -291,10 +291,10 @@ class DistributionSummaryTests(ToolBase):
         self.assertEqual(offsets,sorted(offsets))
         self.assertIn('• Customer distributions: '+self.biz.currency_symbol+'150.00\n',text)
         self.assertIn('• Balance due: '+self.biz.currency_symbol+'130.00\n',text)
-        self.assertIn('*Ada*\n• Bread: 10 loaves\n\nInvoice #',text)
-        self.assertIn('*Bola*\n• Bread: 5 loaves\n\nInvoice #',text)
+        self.assertIn('• *Ada*\n  ◦ Bread: 10 loaves\n\nInvoice #',text)
+        self.assertIn('• *Bola*\n  ◦ Bread: 5 loaves\n\nInvoice #',text)
         self.assertEqual(text.count('*Ada*'),1)
-        self.assertIn('Payment methods:\n• Transfer: '+self.biz.currency_symbol+'10.00\n',text)
+        self.assertIn('Payment methods:\n  ◦ Transfer: '+self.biz.currency_symbol+'10.00\n',text)
         self.assertTrue(text.splitlines()[-1].startswith('http://testserver/inventory/market-stock/?date='))
         self.assertTrue(text.endswith('#distribution-summary'))
 

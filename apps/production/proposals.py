@@ -8,6 +8,7 @@ import time
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from core.share_text import render_lines
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db import transaction
@@ -114,12 +115,12 @@ def share_data(request, proposal, groups):
     lines = [f'*Production proposal · {proposal.title}*', request.business.name,
              f'Planned for {proposal.planned_date:%d %b %Y}', 'Planning only · no stock reserved or released.']
     for group in groups:
-        lines += ['', f'*{group["label"]}*']
-        lines += [f'• {line.finished_good.name}: {format_quantity(line.quantity, line.finished_good.unit)}' for line in group['lines']]
+        lines += ['', f'• *{group["label"]}*']
+        lines += [f'  • {line.finished_good.name}: {format_quantity(line.quantity, line.finished_good.unit)}' for line in group['lines']]
     if proposal.notes:
         lines += ['', proposal.notes]
     lines += ['', 'Review and use this proposal (sign-in required):', url]
-    return {'proposal_share_text': '\n'.join(lines), 'proposal_image_url': reverse('proposal_snapshot', args=[proposal.pk])}
+    return {'proposal_share_text': render_lines(lines), 'proposal_image_url': reverse('proposal_snapshot', args=[proposal.pk])}
 
 
 @login_required

@@ -66,6 +66,45 @@ class RoleGateTests(DashboardBase):
         self.assertContains(complete, 'data-dashboard-mode="simple"')
 
 
+class BasicChannelBreakdownTests(DashboardBase):
+    def setUp(self):
+        super().setUp()
+        self.customer = Customer.objects.create(business=self.business, name='Direct customer',
+            region='Lagos', customer_group='Ikeja')
+        self.good = FinishedGood.objects.create(business=self.business, name='Loaf', unit='loaf')
+        self.sale = Sale.objects.create(business=self.business, date=TODAY,
+            source='distribution_order', customer=self.customer.name, customer_master=self.customer,
+            transaction_type='paid', payment_method='Cash')
+        SaleItem.objects.create(sale=self.sale, finished_good=self.good, piece_qty=2, price=100)
+
+    def test_basic_dashboard_direct_distribution_has_customer_region_and_area(self):
+        self.client.force_login(self.admin)
+        page = self.client.get(reverse('dashboard'), {'view': 'simple'})
+        self.assertEqual(page.status_code, 200)
+        self.assertEqual(page.context['channel_breakdowns']['distribution'], [
+            {'region': 'Lagos', 'group': 'Ikeja', 'sales': Decimal('200')}])
+
+    def test_order_labels_take_precedence_with_per_field_customer_fallback(self):
+        from .views import _channel_breakdown
+        order = Order.objects.create(business=self.business, date=TODAY,
+            order_type='distribution', customer=self.customer,
+            customer_region='Original region', customer_group='   ')
+        self.sale.linked_order = order
+        self.sale.save(update_fields=['linked_order'])
+        self.assertEqual(_channel_breakdown('distribution', TODAY, TODAY), [
+            {'region': 'Original region', 'group': 'Ikeja', 'sales': Decimal('200')}])
+
+    def test_missing_labels_and_foreign_customer_remain_unassigned(self):
+        from .views import _channel_breakdown
+        private = Business.objects.create(name='Foreign', slug='foreign-channel')
+        foreign_customer = Customer.objects.create(business=private, name='Private',
+            region='PRIVATE REGION', customer_group='PRIVATE AREA')
+        self.sale.customer_master = foreign_customer
+        self.sale.save(update_fields=['customer_master'])
+        self.assertEqual(_channel_breakdown('distribution', TODAY, TODAY), [
+            {'region': 'Unassigned region', 'group': 'Unassigned area', 'sales': Decimal('200')}])
+
+
 class EverySectionTests(DashboardBase):
     def seed(self):
         customer = Customer.objects.create(business=self.business, name="Ada Stores", region="Ikeja")
@@ -114,6 +153,29 @@ class EverySectionTests(DashboardBase):
 
     def test_every_section_loads_for_an_empty_business(self):
         self.check_all()
+
+    def test_detail_tables_format_currency_and_quantities_without_changing_records(self):
+        self.seed()
+        RawMaterial.objects.filter(name='Flour', business=self.business).update(stock=Decimal('1234.567'))
+        SaleItem.objects.filter(sale__business=self.business, sale__transaction_type='paid').update(price=Decimal('1234.56'))
+        account = CashAccount.objects.get(business=self.business, name='Till')
+        account.opening_balance = Decimal('-12345.67')
+        account.save(update_fields=['opening_balance'])
+        self.client.force_login(self.admin)
+        sales = self.get_section('sales', 'sales').json()['tables'][0]['rows']
+        self.assertIn(f'{self.business.currency_symbol}12,345.60', [row[2] for row in sales])
+        accounts = self.get_section('finance', 'accounts').json()['tables'][0]['rows']
+        self.assertEqual(accounts[0][2], f'-{self.business.currency_symbol}12,345.67')
+        materials = self.get_section('inventory', 'raw').json()['tables'][0]['rows']
+        flour = next(row for row in materials if row[0] == 'Flour')
+        self.assertEqual(flour[1], '1,234.57')
+        self.assertEqual(RawMaterial.objects.get(business=self.business, name='Flour').stock, Decimal('1234.567'))
+
+    def test_summary_tables_limit_unformatted_decimal_cells(self):
+        from .complete_summaries import table, kpi
+        self.assertEqual(table('Values', ['Quantity', 'Empty', 'Reference'],
+            [[Decimal('1234.567891'), None, '00123']])['rows'], [['1,234.57', '', '00123']])
+        self.assertEqual(kpi('Quantity', Decimal('1234.567891'))['value'], '1,234.57')
 
     def test_every_section_loads_with_data(self):
         self.seed()

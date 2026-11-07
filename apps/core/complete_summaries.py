@@ -57,11 +57,11 @@ def pct(value):
 
 
 def kpi(label, value, hint=""):
-    return {"label": label, "value": value, "hint": hint}
+    return {"label": label, "value": num(value) if isinstance(value, Decimal) else value, "hint": hint}
 
 
 def table(title, columns, rows):
-    return {"title": title, "columns": columns, "rows": [[("" if c is None else str(c)) for c in row] for row in rows]}
+    return {"title": title, "columns": columns, "rows": [[("" if c is None else num(c) if isinstance(c, Decimal) else str(c)) for c in row] for row in rows]}
 
 
 def chart(title, labels, series, unit=""):
@@ -192,7 +192,7 @@ def pulse_attention(ctx):
         ],
         "tables": [
             table("Low raw materials", ["Material", "In stock", "Reorder at"],
-                  [[m.name, f"{num(m.stock, 3)} {m.usage_unit}", num(m.reorder_level, 3)] for m in low_raw]),
+                  [[m.name, f"{num(m.stock, 2)} {m.usage_unit}", num(m.reorder_level, 2)] for m in low_raw]),
             table("Orders awaiting approval", ["Order", "Date", "Type"],
                   [[f"#{o.display_number}", o.date.isoformat(), o.display_order_type] for o in pending]),
             table("Market lots expiring soon", ["Product", "Expires", "Available"],
@@ -314,9 +314,9 @@ def recipe_variance_section(ctx):
                          [("Planned", [r["planned"] for r in top]), ("Actual", [r["actual"] for r in top])])] if top else [],
         "tables": [
             table("Ingredients", ["Ingredient", "Planned", "Actual", "Variance", "Value", "Written off", "Status"],
-                  [[r["name"], f"{num(r['planned'], 3)} {r['unit']}", num(r["actual"], 3),
-                    f"{num(r['variance'], 3)} ({pct(r['variance_pct'])})", money(ctx, r["variance_value"]),
-                    num(r["shrink_qty"], 3), pretty(r["status"])] for r in report["ingredients"][:25]]),
+                  [[r["name"], f"{num(r['planned'], 2)} {r['unit']}", num(r["actual"], 2),
+                    f"{num(r['variance'], 2)} ({pct(r['variance_pct'])})", money(ctx, r["variance_value"]),
+                    num(r["shrink_qty"], 2), pretty(r["status"])] for r in report["ingredients"][:25]]),
             table("Output", ["Product", "Batches", "Planned", "Produced", "Wasted", "Yield", "Waste value"],
                   [[r["name"], r["batches"], num(r["planned"]), num(r["produced"]), num(r["wasted"]),
                     pct(r["yield_pct"]), money(ctx, r["waste_value"])] for r in report["outputs"][:25]]),
@@ -355,7 +355,7 @@ def procurement_summary(ctx):
             table("Suppliers", ["Supplier", "Orders", "Spend"], [[r["_s"] or "Unnamed supplier", r["n"], money(ctx, r["total"])] for r in by_supplier]),
             table("Most purchased items", ["Item", "Quantity", "Spend"], [[r["_i"] or "—", num(r["qty"]), money(ctx, r["total"])] for r in by_item]),
             table("Price movement (cost per usage unit)", ["Date", "Material", "Cost", "Supplier"],
-                  [[s.effective_date.isoformat(), s.raw_material.name, f"{ctx.cur}{num(s.usage_unit_cost, 4)}", s.supplier or "—"] for s in snapshots]),
+                  [[s.effective_date.isoformat(), s.raw_material.name, money(ctx, s.usage_unit_cost), s.supplier or "—"] for s in snapshots]),
         ],
     }
 
@@ -389,11 +389,11 @@ def inventory_summary(ctx):
             "Items", [raw_out, raw_low, max(raw_stock["count"] - raw_out - raw_low, 0)])])],
         "tables": [
             table("Highest-value raw materials", ["Material", "In stock", "Value"],
-                  [[m.name, f"{num(m.stock, 3)} {m.usage_unit}", money(ctx, m._v)] for m in top_value]),
+                  [[m.name, f"{num(m.stock, 2)} {m.usage_unit}", money(ctx, m._v)] for m in top_value]),
             table("Products at or below reorder level", ["Product", "In stock", "Reorder at"],
                   [[g.name, f"{num(g.stock)} {g.unit}", num(g.reorder_level)] for g in low_goods]),
             table("Stock movements in period", ["Type", "Movements", "Net quantity"],
-                  [[pretty(r["movement_type"]), r["n"], num(r["qty"], 3)] for r in movements]),
+                  [[pretty(r["movement_type"]), r["n"], num(r["qty"], 2)] for r in movements]),
         ],
     }
 
@@ -628,6 +628,6 @@ def ledger_status(ctx):
             table("Backlog items going negative", ["Item", "First negative", "Days negative"],
                   [[names.get(key, key[1]), days[0].isoformat(), len(days)] for key, days in sorted(health.items(), key=lambda kv: kv[1][0])[:20]]),
             table("Stock differing from opening + movements", ["Item", "Stored", "Expected", "Drift"],
-                  [[names.get((r["kind"], r["id"]), r["id"]), num(r["stored"], 3), num(r["expected"], 3), num(r["drift"], 3)] for r in drift[:20]]),
+                  [[names.get((r["kind"], r["id"]), r["id"]), num(r["stored"], 2), num(r["expected"], 2), num(r["drift"], 2)] for r in drift[:20]]),
         ],
     }

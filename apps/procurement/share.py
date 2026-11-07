@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from django.utils import timezone
 from core.quantities import format_quantity
+from core.share_text import render_lines
 from PIL import Image, ImageDraw
 
 from .stockview import stock_line, stock_status
@@ -107,16 +108,16 @@ def share_text(summary, url=None):
         if line['group_id'] != current_group:
             current_group = line['group_id']
             group = group_lookup[current_group]
-            out += ['', f"*{group['name']}*", f"Payment: {group['payment']}" + (f" · {group['method']}" if group['paid'] else "")]
+            out += ['', f"• *{group['name']}*", f"Payment: {group['payment']}" + (f" · {group['method']}" if group['paid'] else "")]
             if group['paid'] and group['account']:
                 out.append(f"Account: {group['account']}")
             amounts = [f"{label}: {_money(group[key],symbol)}" for key,label in [('total','Group total'),('paid','Paid'),('balance','Balance')] if group[key]]
             if amounts: out.append(' · '.join(amounts))
         if line["removed"]:
-            out.append(f"• {line['name']}: removed (was {format_quantity(line['requested'],line['unit'])})")
+            out.append(f"  • {line['name']}: removed (was {format_quantity(line['requested'],line['unit'])})")
         else:
             note = f" (requested {_qty(line['requested'])})" if line["reduced"] else ""
-            out.append(f"• {line['name']}: {format_quantity(line['approved'],line['unit'])} × {_money(line['unit_cost'], symbol)} "
+            out.append(f"  • {line['name']}: {format_quantity(line['approved'],line['unit'])} × {_money(line['unit_cost'], symbol)} "
                        f"= {_money(line['total'], symbol)}{note}")
         out.append(f"   Stock now: {stock_line(line['stock'])}")
     out.append(f"_Stock as of {s['stock_time']}_")
@@ -136,7 +137,7 @@ def share_text(summary, url=None):
         out.append("Date expenses do not change the purchase invoice or approval amount. Use the period summary when combining several requests so date expenses are counted once.")
     if url:
         out += ["", f"{link_prompt(s)}:", url]
-    return "\n".join(out)
+    return render_lines(out)
 
 
 # --------------------------------------------------------------------------

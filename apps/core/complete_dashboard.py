@@ -1,5 +1,6 @@
 """Permission-filtered registry for the lazy Complete dashboard."""
 from datetime import date, timedelta
+from decimal import Decimal
 
 from django.apps import apps
 from django.core.cache import cache
@@ -263,7 +264,11 @@ def complete_dashboard_section(request, group, section):
             value = obj
             for part in field_name.split("__"):
                 value = getattr(value, part, "") if value is not None else ""
-            if hasattr(value, "strftime"):
+            if value is not None and field_name in {"total", "amount", "value", "opening_balance"}:
+                value = _money_text(value, request.business.currency_symbol)
+            elif isinstance(value, Decimal):
+                value = summaries.num(value)
+            elif hasattr(value, "strftime"):
                 value = value.isoformat()
             elif value is None:
                 value = ""

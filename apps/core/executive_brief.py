@@ -14,6 +14,7 @@ from .accounting import _sale_expressions, profit_and_loss
 from .complete_summaries import MONEY, pretty
 from .daily_brief import _money
 from .quantities import format_quantity, material_stock_label, has_value
+from .share_text import bullet
 
 ZERO = Decimal('0')
 SECTION_LABELS = {
@@ -44,7 +45,7 @@ def _customer_payment_labels(sales, business, money):
     """Current settlement of period invoices, including later receipts/returns."""
     from sales.models import CustomerPayment, return_prefetch
 
-    totals, distribution = {}, {}
+    totals = {}
     invoices = sales.prefetch_related(
         'items__finished_good', return_prefetch('items__distribution_returns'),
         Prefetch('payments', queryset=CustomerPayment.raw_objects.filter(business=business)),
@@ -52,27 +53,22 @@ def _customer_payment_labels(sales, business, money):
     for sale in invoices:
         name = sale.customer or ''
         due, received = sale.net_total, sale.received_value
-        groups = [totals, distribution] if sale.source == 'distribution_order' else [totals]
-        for group in groups:
-            values = group.setdefault(name, [ZERO, ZERO])
-            values[0] += due
-            values[1] += received
+        values = totals.setdefault(name, [ZERO, ZERO])
+        values[0] += due
+        values[1] += received
 
-    def labels(group):
-        result = {}
-        for name, (due, received) in group.items():
-            balance = max(ZERO, due - received)
-            if not due:
-                result[name] = 'No balance due'
-            elif not balance:
-                result[name] = 'Fully paid'
-            elif received:
-                result[name] = f'Partially paid · Balance: {money(balance)}'
-            else:
-                result[name] = f'Unpaid · Balance: {money(balance)}'
-        return result
-
-    return labels(totals), labels(distribution)
+    labels = {}
+    for name, (due, received) in totals.items():
+        balance = max(ZERO, due - received)
+        if not due:
+            labels[name] = 'No balance due'
+        elif not balance:
+            labels[name] = 'Fully paid'
+        elif received:
+            labels[name] = f'Partially paid · Balance: {money(balance)}'
+        else:
+            labels[name] = f'Unpaid · Balance: {money(balance)}'
+    return labels
 
 
 def enrich(brief, start, end, *, user=None, selected_sections=None):
@@ -107,25 +103,23 @@ def enrich(brief, start, end, *, user=None, selected_sections=None):
         for field, label in [('sale__source', 'Channel'), ('sale__transaction_type', 'Payment status')]:
             rows = items.values(field).annotate(value=Sum(line), count=Count('sale_id', distinct=True)).order_by(field)
             lines += [f"{label} · {Sale(business=business, source=r[field]).display_source if field == 'sale__source' else pretty(r[field])}: {r['count']} sale{'s' if r['count'] != 1 else ''} · {money(r['value'])}" for r in rows]
-        rows = items.values('finished_good__name', 'finished_good__unit').annotate(value=Sum(line), quantity=Sum(units)).order_by('-value', 'finished_good__name')
-        lines += [f"{r['finished_good__name']}: {format_quantity(r['quantity'], r['finished_good__unit'])} · {money(r['value'])}" for r in rows if r['quantity'] or r['value']]
-        customer_payments, distribution_payments = _customer_payment_labels(sales, business, money)
+        customer_payments = _customer_payment_labels(sales, business, money)
         if count:
             lines.append('Payment status includes payments and returns recorded to date.')
         rows = items.values('sale__customer').annotate(value=Sum(line), count=Count('sale_id', distinct=True)).order_by('-value', 'sale__customer')
-        lines += [f"Customer · {r['sale__customer'] or 'Walk-in'}: {r['count']} sale{'s' if r['count'] != 1 else ''} · {money(r['value'])} · {customer_payments[r['sale__customer'] or '']}" for r in rows]
-        distribution = items.filter(sale__source='distribution_order').values(
+        products = items.values(
             'sale__customer', 'finished_good__name', 'finished_good__unit').annotate(
             quantity=Sum(units), value=Sum(line)).order_by('sale__customer','finished_good__name')
-        current_customer = None
-        for row in distribution:
+        customer_products = {}
+        for row in products:
             if not row['quantity'] and not row['value']:
                 continue
-            name = row['sale__customer'] or 'Customer not named'
-            if name != current_customer:
-                lines.append(f"Distribution · {name} · {distribution_payments[row['sale__customer'] or '']}")
-                current_customer = name
-            lines.append(f"  {row['finished_good__name']}: {format_quantity(row['quantity'],row['finished_good__unit'])}" + (f" · {money(row['value'])}" if row['value'] else ''))
+            customer_products.setdefault(row['sale__customer'] or '', []).append(
+                f"  {row['finished_good__name']}: {format_quantity(row['quantity'],row['finished_good__unit'])}" + (f" · {money(row['value'])}" if row['value'] else ''))
+        for row in rows:
+            name = row['sale__customer'] or ''
+            lines.append(f"Customer · {name or 'Walk-in'}: {row['count']} sale{'s' if row['count'] != 1 else ''} · {money(row['value'])} · {customer_payments[name]}")
+            lines.extend(customer_products.get(name, []))
         if allowed['inventory']:
             from inventory.models import DistributionReturn
             returns = DistributionReturn.objects.filter(business=business,date__range=(start,end)).select_related('sale_item__finished_good','sale_item__sale')
@@ -346,7 +340,7 @@ def full_text(brief):
         lines.append(f'Ledger scope: {scope}.')
     for section in brief['executive_sections']:
         lines += ['', f"*{section['title']}*"]
-        lines += ['• ' + line for line in section['lines']]
+        lines += [bullet(line, nested=line.startswith('  ')) for line in section['lines']]
     if not brief['executive_sections']:
         lines += ['', 'No activity or balances to show for this selection.' if brief.get('selected_sections') != [] else 'No report sections selected. Choose what to include in Report contents.']
     return '\n'.join(lines)

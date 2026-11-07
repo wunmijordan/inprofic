@@ -11,6 +11,7 @@ from django.http import Http404
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
+from core.share_text import render_lines
 
 from accounts.services import user_has_permission
 from core import ledger
@@ -116,13 +117,13 @@ def distribution_text(*, business, title, day, intro, rows, allocations, settlem
     if rows:
         lines += ['*Stock by product*']
     for row in rows:
-        lines.append(f"*{row['product']}*")
+        lines.append(f"• *{row['product']}*")
         for key, label in [('opening','Opening balance'),('received','Received'),('returned','Returned to stock'),
             ('distributed','To customers'),('physical_sold','Sold in Physical Store'),('physical','Transferred to Physical Store'),
             ('write_off','Written off'),('reversal','Production reversed'),('closing','Closing balance'),('expired','Expired stock')]:
-            if row.get(key): lines.append(f"• {label}: {quantity(row[key],row['unit'])}")
+            if row.get(key): lines.append(f"  • {label}: {quantity(row[key],row['unit'])}")
         adjustment = row['other_change'] + row.get('write_off',ZERO) - row.get('reversal',ZERO)
-        if adjustment: lines.append(f"• {'Other stock out' if adjustment < 0 else 'Other stock in'}: {quantity(abs(adjustment),row['unit'])}")
+        if adjustment: lines.append(f"  • {'Other stock out' if adjustment < 0 else 'Other stock in'}: {quantity(abs(adjustment),row['unit'])}")
         lines.append('')
     customers, physical = {}, []
     for allocation in allocations:
@@ -137,22 +138,22 @@ def distribution_text(*, business, title, day, intro, rows, allocations, settlem
     if customers: lines += ['*Customer breakdown*']
     method_order = {method: index for index, (method, _) in enumerate(Sale.PAYMENT_CHOICES)}
     for (name, _customer_id), customer in sorted(customers.items(), key=lambda pair: pair[0][0].casefold()):
-        lines += [f'*{name}*']
+        lines += [f'• *{name}*']
         if customer['labels']:
             lines.append(customer['labels'])
         for product in customer['products']:
-            lines.append(f"• {product['product']}: {quantity(product['quantity'], product['unit'])}")
+            lines.append(f"  • {product['product']}: {quantity(product['quantity'], product['unit'])}")
         for invoice in sorted(customer['invoices'], key=lambda row: (row['date'], row['sale'])):
             lines += ['', f"Invoice #{invoice['sale']} · {invoice['date']:%d %b %Y}"]
             for item in invoice.get('products',[]):
                 discount = f" · discount {money(item['discount'])} per unit" if item['discount'] else ''
-                lines.append(f"• {item['product']}: {item['quantity']} × {money(item['price'])}{discount} = {money(item['value'])}")
+                lines.append(f"  • {item['product']}: {item['quantity']} × {money(item['price'])}{discount} = {money(item['value'])}")
             for key,label in [('gross','Value'),('returned','Returns'),('net','After returns'),('paid','Collected'),('net_due','Balance due'),('refund_review','Refund review')]:
-                if invoice[key]: lines.append(f"• {label}: {money(invoice[key])}")
+                if invoice[key]: lines.append(f"  • {label}: {money(invoice[key])}")
             methods = invoice['payment_methods']
             if methods:
                 lines.append('Payment methods:')
-                lines += [f'• {method}: {money(amount)}' for method, amount in sorted(
+                lines += [f'  • {method}: {money(amount)}' for method, amount in sorted(
                     methods.items(), key=lambda pair: (method_order.get(pair[0], len(method_order)), pair[0]))]
 
         lines.append('')
@@ -161,21 +162,21 @@ def distribution_text(*, business, title, day, intro, rows, allocations, settlem
         lines += [f"• {row['product']} · {row['destination']}: {quantity(row['quantity'], row['unit'])}" for row in physical]
         lines.append('')
     lines += ['', 'Full summary:', url]
-    return '\n'.join(lines)
+    return render_lines(lines)
 
 
 def recorded_returns_text(*, business, day, intro, rows, url):
     lines = ['*Recorded distribution returns*', business.name, f'Return date: {day:%a, %d %b %Y}',
              'As of: ' + intro.removeprefix(business.name + ' · '), '']
     for row in rows:
-        lines += [f"*{row['customer'] or 'Customer (name unavailable)'} · Invoice #{row['sale']}*",
-                  f"• Product: {row['product']}", *([f"• {row['customer_labels']}"] if row.get('customer_labels') else []), f"• Returned: {format_quantity(row['quantity'], row['unit'])}",
-                  f"• Date: {row['date']:%d %b %Y}", f"• Condition: {row['condition']}",
-                  f"• Reason: {row['reason'] or 'Not recorded'}", '']
+        lines += [f"• *{row['customer'] or 'Customer (name unavailable)'} · Invoice #{row['sale']}*",
+                  f"  • Product: {row['product']}", *([f"  • {row['customer_labels']}"] if row.get('customer_labels') else []), f"  • Returned: {format_quantity(row['quantity'], row['unit'])}",
+                  f"  • Date: {row['date']:%d %b %Y}", f"  • Condition: {row['condition']}",
+                  f"  • Reason: {row['reason'] or 'Not recorded'}", '']
     if not rows:
         lines += ['No distribution returns recorded for this date.', '']
     lines += ['*Open recorded returns*', 'Sign-in required.', url]
-    return '\n'.join(lines)
+    return render_lines(lines)
 
 
 def distribution_summaries(request, *, lots=None, directory=None):

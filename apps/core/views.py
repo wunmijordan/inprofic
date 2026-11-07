@@ -814,7 +814,7 @@ def _channel_breakdown(channel, start, end, sales=None):
             Sale.objects.filter(
                 source=source, date__range=(start, end), transaction_type="paid"
             )
-            .select_related("linked_order")
+            .select_related("linked_order", "customer_master")
             .prefetch_related("items__finished_good", return_prefetch("items__distribution_returns"))
         )
     buckets = {}
@@ -822,8 +822,13 @@ def _channel_breakdown(channel, start, end, sales=None):
         if sale.source != source or sale.transaction_type != "paid" or not (start <= sale.date <= end):
             continue
         order = sale.linked_order
-        region = (order.customer_region if order and order.customer_region else "Unassigned region").strip()
-        group = (order.customer_group if order and order.customer_group else "Unassigned area").strip()
+        customer = sale.customer_master
+        if customer and customer.business_id != sale.business_id:
+            customer = None
+        region = ((order.customer_region if order else '') or '').strip()
+        group = ((order.customer_group if order else '') or '').strip()
+        region = region or (customer.region.strip() if customer else '') or 'Unassigned region'
+        group = group or (customer.customer_group.strip() if customer else '') or 'Unassigned area'
         key = (region, group)
         buckets[key] = buckets.get(key, Decimal("0")) + sale.net_total
     return [{"region": k[0], "group": k[1], "sales": v} for k, v in sorted(buckets.items(), key=lambda item: (-item[1], item[0][0], item[0][1]))]
@@ -1993,7 +1998,7 @@ def dashboard(request):
     with performance_section(request, "dashboard.sales"):
         month_sales = list(
             Sale.objects.filter(date__range=(month_start, dashboard_date))
-            .select_related("linked_order")
+            .select_related("linked_order", "customer_master")
             .prefetch_related(Prefetch("items", queryset=SaleItem.objects.select_related("finished_good").prefetch_related(return_prefetch())), "payments")
         )
     today_sales = [sale for sale in month_sales if sale.date == dashboard_date]

@@ -77,11 +77,12 @@ class ExecutiveReportTests(BriefBase):
         for weekly in [False, True]:
             text = self.report(weekly)['text']
             self.assertIn(f'Customer · Paid customer: 1 sale · {symbol}50.00 · Fully paid', text)
-            self.assertIn(f'Customer · Partial customer: 1 sale · {symbol}50.00 · Partially paid · Balance: {symbol}30.00', text)
-            self.assertIn(f'Distribution · Partial customer · Partially paid · Balance: {symbol}30.00', text)
-            self.assertIn(f'Distribution · Unpaid customer · Unpaid · Balance: {symbol}50.00', text)
+            self.assertIn(f'• Customer · Partial customer: 1 sale · {symbol}50.00 · Partially paid · Balance: {symbol}30.00', text)
+            self.assertIn(f'• Customer · Unpaid customer: 1 sale · {symbol}50.00 · Unpaid · Balance: {symbol}50.00', text)
+            self.assertNotIn('Distribution · ', text)
+            self.assertIn(f'Unpaid · Balance: {symbol}50.00\n  ◦ Bread: 10 loaves · {symbol}50.00', text)
 
-    def test_distribution_status_excludes_other_channels_and_counts_return_credit(self):
+    def test_customer_status_combines_channels_and_counts_return_credit(self):
         from inventory.models import DistributionReturn
 
         self.sell(10, 5, customer='Ada')
@@ -92,12 +93,13 @@ class ExecutiveReportTests(BriefBase):
         symbol = self.business.currency_symbol
         text = self.report()['text']
         self.assertIn(f'Customer · Ada: 2 sales · {symbol}100.00 · Partially paid · Balance: {symbol}30.00', text)
-        self.assertIn(f'Distribution · Ada · Partially paid · Balance: {symbol}30.00', text)
+        self.assertNotIn('Distribution · Ada', text)
+        self.assertIn(f'  ◦ Bread: 20 loaves · {symbol}100.00', text)
         DistributionReturn.raw_objects.create(business=self.business, sale_item=sale.items.get(),
             date=TODAY, quantity=6, condition=DistributionReturn.REDISTRIBUTABLE, unit_value=1)
         text = self.report()['text']
         self.assertIn(f'Customer · Ada: 2 sales · {symbol}70.00 · Fully paid', text)
-        self.assertIn('Distribution · Ada · Fully paid', text)
+        self.assertIn(f'  ◦ Bread: 14 loaves · {symbol}70.00', text)
         self.assertEqual(CustomerPayment.raw_objects.get(sale=sale).amount, 20)
 
     def test_customer_settlement_uses_lifetime_tenant_scoped_receipts(self):
@@ -114,7 +116,7 @@ class ExecutiveReportTests(BriefBase):
             customer='Ada', date=TODAY, amount=35)
         with patch.object(ledger, 'current_scope', return_value='backlog'):
             text = self.report()['text']
-        self.assertIn(f'Distribution · Ada · Partially paid · Balance: {self.business.currency_symbol}35.00', text)
+        self.assertIn(f'Customer · Ada: 1 sale · {self.business.currency_symbol}50.00 · Partially paid · Balance: {self.business.currency_symbol}35.00', text)
 
     def test_denied_sections_are_absent_from_page_text_and_image(self):
         member = UserBusiness.objects.get(user=self.admin, business=self.business)

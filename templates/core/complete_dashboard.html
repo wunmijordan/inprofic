@@ -122,6 +122,8 @@
         const chartMuted = themeStyles.getPropertyValue('--ui-surface-muted-text').trim() || '#78716c';
         const chartBorder = themeStyles.getPropertyValue('--ui-border').trim() || '#d6d3d1';
         const chartSurface = themeStyles.getPropertyValue('--ui-surface').trim() || '#fff';
+        const moneyChart = Boolean(chart.unit && chart.unit === data.currency);
+        const formatChartValue = value => `${chart.unit || ''}${Number(value || 0).toLocaleString('en-NG', {minimumFractionDigits: moneyChart ? 2 : 0, maximumFractionDigits: 2})}`;
         const ChartLibrary = await waitForChart();
         if (requestId !== activeSectionRequest) return;
         if (ChartLibrary) {
@@ -132,11 +134,11 @@
               font: {family: 'Sora, sans-serif'}, responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false},
               scales: {
                 x: {ticks: {color: chartMuted, maxRotation: 0, autoSkip: chart.labels.length > 18}, grid: {color: chartBorder}},
-                y: {beginAtZero: true, ticks: {color: chartMuted, font: {family: 'IBM Plex Mono, monospace'}}, grid: {color: chartBorder}},
+                y: {beginAtZero: true, ticks: {color: chartMuted, font: {family: 'IBM Plex Mono, monospace'}, callback: value => formatChartValue(value)}, grid: {color: chartBorder}},
               },
               plugins: {
                 legend: {position: 'bottom', labels: {color: chartText, boxWidth: 10, font: {size: 10}}},
-                tooltip: {enabled: true, backgroundColor: chartSurface, borderColor: chartBorder, borderWidth: 1, titleColor: chartText, bodyColor: chartText, displayColors: true, callbacks: {label: context => ` ${context.dataset.label}: ${chart.unit || ''}${Number(context.raw || 0).toLocaleString(undefined, {maximumFractionDigits: 2})}`}},
+                tooltip: {enabled: true, backgroundColor: chartSurface, borderColor: chartBorder, borderWidth: 1, titleColor: chartText, bodyColor: chartText, displayColors: true, callbacks: {label: context => ` ${context.dataset.label}: ${formatChartValue(context.raw)}`}},
               },
             },
           });
