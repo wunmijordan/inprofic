@@ -117,10 +117,11 @@ class ProductionProposalTests(TestCase):
         self.assertTrue(response.context['formset'].errors[0]['finished_good'])
 
     def test_save_proposal_validates_and_still_has_no_domain_effects(self):
-        response = self.client.post(reverse('proposal_add'), {'title': 'Saved plan', 'planned_date': '2026-11-09',
+        response = self.client.post(reverse('proposal_add'), {'after_save':'share', 'title': 'Saved plan', 'planned_date': '2026-11-09',
             'lines-TOTAL_FORMS': '1', 'lines-INITIAL_FORMS': '0', 'lines-0-channel': 'physical_store',
             'lines-0-finished_good': self.good.pk, 'lines-0-quantity': '12'})
         self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.endswith("?share=1"))
         self.assertEqual(OrderProposal.objects.get(title='Saved plan').lines.get().quantity, 12)
         self.assertFalse(Order.objects.exists())
         self.assertFalse(StockMovement.objects.exists())

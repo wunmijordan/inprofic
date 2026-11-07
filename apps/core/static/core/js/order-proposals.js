@@ -1,4 +1,21 @@
 (() => {
+  const shareHeading = document.querySelector('[data-proposal-share-ready]');
+  if (shareHeading) {
+    const openShare = () => {
+      const trigger = shareHeading.querySelector('[data-ui-snapshot-menu] button');
+      if (!trigger) return false;
+      trigger.focus();
+      trigger.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowDown', bubbles: true}));
+      const url = new URL(location.href);
+      url.searchParams.delete('share');
+      history.replaceState(null, '', url.pathname + url.search + url.hash);
+      return true;
+    };
+    if (!openShare()) {
+      const observer = new MutationObserver(() => { if (openShare()) observer.disconnect(); });
+      observer.observe(shareHeading, {childList: true, subtree: true});
+    }
+  }
   document.querySelectorAll('[data-proposal-editor]').forEach(form => {
     if (form.dataset.proposalWired) return;
     form.dataset.proposalWired = '1';

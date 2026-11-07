@@ -143,6 +143,8 @@ def proposal_form(request, pk=None):
             proposal = form.save()
             formset.save()
             audit(request.business, request.user, 'update' if pk else 'create', proposal, 'Production proposal saved; no operational records changed')
+            if request.POST.get('after_save') == 'share':
+                return redirect(reverse('proposal_detail', args=[proposal.pk]) + '?share=1')
             return redirect('proposal_detail', pk=proposal.pk)
     return render(request, 'production/proposal_form.html', {'form': form, 'formset': formset, 'proposal': instance})
 
