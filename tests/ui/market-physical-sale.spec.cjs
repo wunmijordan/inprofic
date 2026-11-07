@@ -23,6 +23,12 @@ test('sell directly from Market Stock with compact mobile summary',async({page})
  const text=await page.locator('#distribution-share').evaluate(el=>JSON.parse(el.textContent));
  expect(text).toContain('Sold in Physical Store: 2 loaves');
  expect(text).not.toContain('Reading this report');
+ const cards=page.locator('[aria-labelledby="distribution-settlement-heading"] dl > div');
+ expect(await cards.count()).toBeGreaterThan(0);
+ expect(await cards.evaluateAll(nodes=>nodes.every(node=>{
+   const style=getComputedStyle(node);
+   return node.classList.contains('workspace-card-raised') && style.boxShadow!=='none' && parseFloat(style.borderRadius)>0;
+ }))).toBe(true);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  await expect(page.locator('details').filter({has:page.locator('summary').filter({hasText:'Batch lots'})})).not.toHaveAttribute('open','');
  const download=page.waitForEvent('download');
@@ -43,7 +49,7 @@ test('product search exposes current channel prices and recorded applied prices'
  const frame=page.frameLocator('iframe[name="inprofic-form-dialog"]');
  await expect(frame.locator('#product-prices')).toContainText('Current selling prices');
  await expect(frame.locator('#product-prices')).toContainText('Distribution');
- await frame.locator('#product-sales > summary').click();
+ await frame.getByRole('navigation',{name:'Product sections'}).getByRole('link',{name:'Sales',exact:true}).click();
  await expect(frame.getByRole('columnheader',{name:'Quantity / price',exact:true})).toBeVisible();
  await page.setViewportSize({width:390,height:844});
  expect(await dialog.evaluate(el=>el.getBoundingClientRect().width<=innerWidth+1)).toBe(true);

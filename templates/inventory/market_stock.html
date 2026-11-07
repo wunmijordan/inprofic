@@ -36,12 +36,12 @@
   </div>
 
   <dl class="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-3">
-    {% if physical_sales_value %}<div><dt class="text-xs rounded-lg p-3">Physical Store sales from Market Stock</dt><dd class="font-mono font-semibold">{{ physical_sales_value|money:biz.currency_symbol }}</dd></div>{% endif %}
-    {% if distribution_settlement.totals.net %}<div><dt class="text-xs rounded-lg p-3">Net distribution value</dt><dd class="font-mono font-semibold">{{ distribution_settlement.totals.net|money:biz.currency_symbol }}</dd></div>{% endif %}
-    {% if distribution_settlement.totals.paid %}<div><dt class="text-xs rounded-lg p-3">Collected</dt><dd class="font-mono font-semibold">{{ distribution_settlement.totals.paid|money:biz.currency_symbol }}</dd></div>{% endif %}
-    {% if distribution_settlement.totals.returned %}<div><dt class="text-xs rounded-lg p-3">Return credits</dt><dd class="font-mono font-semibold">{{ distribution_settlement.totals.returned|money:biz.currency_symbol }}</dd></div>{% endif %}
-    {% if distribution_settlement.totals.net_due %}<div><dt class="text-xs rounded-lg p-3">Balance due</dt><dd class="font-mono font-semibold">{{ distribution_settlement.totals.net_due|money:biz.currency_symbol }}</dd></div>{% endif %}
-    {% if distribution_settlement.totals.refund_review %}<div><dt class="text-xs rounded-lg p-3">Overpayment / refund review</dt><dd class="font-mono font-semibold">{{ distribution_settlement.totals.refund_review|money:biz.currency_symbol }}</dd></div>{% endif %}
+    {% if physical_sales_value %}<div class="workspace-card workspace-card-raised min-w-0 p-3"><dt class="text-xs">Physical Store sales from Market Stock</dt><dd class="mt-2 font-mono font-semibold break-words">{{ physical_sales_value|money:biz.currency_symbol }}</dd></div>{% endif %}
+    {% if distribution_settlement.totals.net %}<div class="workspace-card workspace-card-raised min-w-0 p-3"><dt class="text-xs">Net distribution value</dt><dd class="mt-2 font-mono font-semibold break-words">{{ distribution_settlement.totals.net|money:biz.currency_symbol }}</dd></div>{% endif %}
+    {% if distribution_settlement.totals.paid %}<div class="workspace-card workspace-card-raised min-w-0 p-3"><dt class="text-xs">Collected</dt><dd class="mt-2 font-mono font-semibold break-words">{{ distribution_settlement.totals.paid|money:biz.currency_symbol }}</dd></div>{% endif %}
+    {% if distribution_settlement.totals.returned %}<div class="workspace-card workspace-card-raised min-w-0 p-3"><dt class="text-xs">Return credits</dt><dd class="mt-2 font-mono font-semibold break-words">{{ distribution_settlement.totals.returned|money:biz.currency_symbol }}</dd></div>{% endif %}
+    {% if distribution_settlement.totals.net_due %}<div class="workspace-card workspace-card-raised min-w-0 p-3"><dt class="text-xs">Balance due</dt><dd class="mt-2 font-mono font-semibold break-words">{{ distribution_settlement.totals.net_due|money:biz.currency_symbol }}</dd></div>{% endif %}
+    {% if distribution_settlement.totals.refund_review %}<div class="workspace-card workspace-card-raised min-w-0 p-3"><dt class="text-xs">Overpayment / refund review</dt><dd class="mt-2 font-mono font-semibold break-words">{{ distribution_settlement.totals.refund_review|money:biz.currency_symbol }}</dd></div>{% endif %}
   </dl>
   <details class="mt-4"><summary class="cursor-pointer text-sm font-semibold">Review by customer and invoice</summary>
     <div class="mt-2 overflow-x-auto"><table class="w-full text-xs"><thead><tr>

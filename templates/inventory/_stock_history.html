@@ -1,11 +1,11 @@
 <div
   id="stock-history-modal"
-  class="{% if history_inline %}workspace-card{% else %}fixed inset-0 z-50 hidden items-end sm:items-center justify-center p-0 sm:p-4 bg-stone-950/55 backdrop-blur-sm{% endif %}"
+  class="{% if history_inline %}min-w-0{% else %}fixed inset-0 z-50 hidden items-end sm:items-center justify-center p-0 sm:p-4 bg-stone-950/55 backdrop-blur-sm{% endif %}"
   data-history-inline="{% if history_inline %}true{% else %}false{% endif %}"
-  aria-hidden="{% if history_inline %}false{% else %}true{% endif %}"
+  {% if history_inline %}role="region" aria-labelledby="stock-history-title"{% else %}aria-hidden="true"{% endif %}
 >
   <div
-    class="st-modal-surface w-full max-w-5xl {% if not history_inline %}max-h-[94dvh]{% endif %} overflow-hidden bg-[#FAF6EF] border border-[#E7DFCC] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col"
+    class="{% if history_inline %}min-w-0 w-full{% else %}st-modal-surface w-full max-w-5xl max-h-[94dvh] overflow-hidden bg-[#FAF6EF] border border-[#E7DFCC] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col{% endif %}"
     {% if not history_inline %}role="dialog"{% endif %}
     {% if not history_inline %}aria-modal="true"{% endif %}
     aria-labelledby="stock-history-title"
@@ -41,7 +41,7 @@
       <button type="button" role="tab" aria-selected="false" data-history-tab="ledger" class="history-tab whitespace-nowrap border-b-2 border-transparent px-3 py-3 text-xs font-semibold">Daily ledger</button>
     </nav>
 
-    <div class="flex-1 min-h-0 overflow-y-auto">
+    <div class="{% if history_inline %}min-w-0{% else %}flex-1 min-h-0 overflow-y-auto{% endif %}">
       <div id="stock-history-loading" class="px-5 py-12 text-center text-sm text-stone-400">Loading Stock history…</div>
       <div id="stock-history-error" class="hidden px-5 py-12 text-center text-sm text-rose-600"></div>
       <div id="stock-history-empty" class="hidden px-5 py-12 text-center text-sm text-stone-400">No Stock movement history is available for this item yet.</div>

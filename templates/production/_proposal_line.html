@@ -1,5 +1,6 @@
 <div class="workspace-card p-3 space-y-3" data-proposal-line>
 {% for hidden in row.hidden_fields %}{{ hidden }}{% endfor %}{{ row.non_field_errors }}
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" data-proposal-fields>{% for field in row.visible_fields %}{% if field.name != 'DELETE' %}<div><label class="text-sm" for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} *{% endif %}</label>{{ field }}{{ field.errors }}</div>{% endif %}{% endfor %}</div>
-<div class="text-sm">{{ row.DELETE }} <label for="{{ row.DELETE.id_for_label }}">Remove this line</label></div>
+<input type="hidden" name="{{ row.DELETE.html_name }}" id="{{ row.DELETE.id_for_label }}" value="{% if row.DELETE.value %}on{% endif %}" data-proposal-delete>
+<button type="button" class="rounded px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50" data-proposal-remove>Remove</button>
 </div>

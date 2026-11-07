@@ -20,6 +20,10 @@ test('plan mixed customers and channels, share it, and review one combined order
  await choose(rows.nth(1),'channel','Physical Store');
  await choose(rows.nth(1),'finished_good','Fixture Loaf');
  await rows.nth(1).locator('input[name$="-quantity"]').fill('10');
+ await page.getByRole('button',{name:'Add product / destination',exact:true}).click();
+ await rows.nth(2).getByRole('button',{name:'Remove',exact:true}).click();
+ await expect(rows.nth(2)).not.toBeVisible();
+ await expect(page.locator('input[type="checkbox"][name$="-DELETE"]')).toHaveCount(0);
  await page.getByRole('button',{name:'Save proposal',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Mixed channel production plan',exact:true})).toBeVisible();
  const text=await page.locator('#proposal-share').evaluate(el=>JSON.parse(el.textContent));
@@ -57,6 +61,8 @@ test('product modal section controls reveal their own data on mobile',async({pag
  await nav.getByRole('link',{name:'Sales',exact:true}).click();
  await expect(frame.locator('#product-sales')).toHaveAttribute('open','');
  await expect(frame.locator('#product-sales').getByRole('columnheader',{name:'Quantity / price'})).toBeVisible();
+ await expect(frame.locator('#stock-history-modal')).not.toBeVisible();
+ await nav.getByRole('link',{name:'Selling prices',exact:true}).click();
  await frame.locator('#product-prices > summary').click();
  await nav.getByRole('link',{name:'Selling prices',exact:true}).click();
  await expect(frame.locator('#product-prices')).toHaveAttribute('open','');
@@ -67,6 +73,9 @@ test('product modal section controls reveal their own data on mobile',async({pag
  await page.setViewportSize({width:390,height:844});
  await nav.getByRole('link',{name:'Stock and workflow',exact:true}).click();
  await expect(frame.locator('#stock-history-content')).toBeVisible();
+ await expect(frame.locator('#product-sales')).not.toBeVisible();
+ await expect(frame.locator('#stock-history-modal .st-modal-surface')).toHaveCount(0);
+ await expect(frame.locator('#stock-history-modal [role=dialog]')).toHaveCount(0);
  for (const [name,key] of [['Workflow','workflow'],['Arrivals','arrivals'],['Daily ledger','ledger'],['Overview','overview']]){
   await frame.getByRole('tab',{name,exact:true}).click();
   await expect(frame.getByRole('tab',{name,exact:true})).toHaveAttribute('aria-selected','true');

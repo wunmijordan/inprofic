@@ -8,6 +8,12 @@
     try { id = decodeURIComponent(hash.slice(1)); } catch (_) { return; }
     const target = document.getElementById(id);
     if (!target) return;
+    const panelNav = navigations.find(nav => nav.hasAttribute('data-detail-panels') &&
+      [...nav.querySelectorAll('a[href^="#"]')].some(link => link.hash === hash));
+    if (panelNav) panelNav.querySelectorAll('a[href^="#"]').forEach(link => {
+      const panel = document.getElementById(link.hash.slice(1));
+      if (panel) panel.hidden = panel !== target;
+    });
     for (let node = target; node; node = node.parentElement) {
       if (node.tagName === 'DETAILS') node.open = true;
     }
@@ -20,7 +26,7 @@
       if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
       heading.focus({preventScroll: true});
     }
-    target.scrollIntoView({block: 'start', behavior: 'instant'});
+    if (!panelNav) target.scrollIntoView({block: 'start', behavior: 'instant'});
   }
   navigations.forEach(nav => nav.addEventListener('click', event => {
     const link = event.target.closest('a[href^="#"]');
@@ -31,5 +37,9 @@
     reveal(link.hash, true);
   }));
   window.addEventListener('hashchange', () => reveal(location.hash, false));
-  if (location.hash) requestAnimationFrame(() => reveal(location.hash, false));
+  const firstPanel = document.querySelector('[data-detail-panels] a[href^="#"]');
+  const matchingPanel = document.querySelector('[data-detail-panels]') &&
+    [...document.querySelectorAll('[data-detail-panels] a[href^="#"]')].some(link => link.hash === location.hash);
+  const initial = firstPanel ? (matchingPanel ? location.hash : firstPanel.hash) : location.hash;
+  if (initial) reveal(initial, false);
 })();

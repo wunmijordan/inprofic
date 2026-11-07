@@ -244,7 +244,8 @@ resting and raised depth. `--ui-shadow` is the low card shadow
 (`0 1px 3px rgb(15 23 42 / .10)`), while `--ui-shadow-raised` is used by panels and
 dialogs (`0 8px 24px rgb(15 23 42 / .14)`). Dark mode changes both values in
 `workspace.css`; the sidecar records the variants. Reuse the tokens rather than
-copying a bespoke shadow onto every card.
+copying a bespoke shadow onto every card. Add `workspace-card-raised` alongside
+`workspace-card` when a compact summary value needs the shared raised emphasis.
 
 [button-surfaces.css](apps/core/static/core/css/button-surfaces.css) applies a
 shallow vertical highlight, inset edges and a small shadow only to marked visual
