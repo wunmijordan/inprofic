@@ -800,6 +800,18 @@ def _remap_operational_references(business, mappings):
             for key, value in remap_keys(report.flexible_per_batch, 'production.OrderItem').items()
         }
         report.save(update_fields=['flexible_totals', 'output', 'flexible_per_batch'])
+    ProposalLink = apps.get_model('production.ProposalOrderLink')
+    for link in ProposalLink.objects.filter(proposal__business=business):
+        for destination in link.planned_destinations:
+            if destination.get('customer') is not None:
+                customer = mapped('sales.Customer', destination['customer'])
+                if customer is None:
+                    raise BackupRestoreError('A production proposal destination is missing its customer.')
+                destination['customer'] = customer
+            destination['quantities'] = remap_keys(destination.get('quantities'), 'inventory.FinishedGood')
+        # Old session seeds never remain valid after restoring into a business.
+        link.seed = secrets.token_urlsafe(24)
+        link.save(update_fields=['planned_destinations', 'seed'])
     # System journals are reproducible; retain manual journals and derive fresh
     # source IDs/chart references from the restored operating documents.
     Entry = apps.get_model('core.JournalEntry')

@@ -984,3 +984,49 @@ class ProductionCostLine(TimestampedModel):
 
     def __str__(self):
         return f"{self.snapshot.finished_good.name} — {self.raw_material.name}"
+
+
+class OrderProposal(BusinessOwnedModel):
+    """Optional production plan. Saving/sharing never reserves or moves stock."""
+    title = models.CharField(max_length=160)
+    planned_date = models.DateField()
+    notes = models.TextField(blank=True)
+    archived = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-planned_date', '-pk']
+
+    def __str__(self):
+        return self.title
+
+
+class OrderProposalLine(TimestampedModel):
+    CHANNELS = [('distribution', 'Distribution'), ('online', 'Online'),
+                ('physical_store', 'Physical Store'), ('market_stock', 'Market Stock')]
+    proposal = models.ForeignKey(OrderProposal, on_delete=models.CASCADE, related_name='lines')
+    channel = models.CharField(max_length=20, choices=CHANNELS)
+    customer = models.ForeignKey('sales.Customer', null=True, blank=True, on_delete=models.PROTECT)
+    customer_name = models.CharField(max_length=120, blank=True)
+    finished_good = models.ForeignKey('inventory.FinishedGood', on_delete=models.PROTECT)
+    quantity = models.DecimalField(max_digits=12, decimal_places=2)
+
+    class Meta:
+        ordering = ['pk']
+        constraints = [models.CheckConstraint(condition=models.Q(quantity__gt=0), name='proposal_quantity_positive')]
+
+    @property
+    def destination_key(self):
+        return f'{self.channel}:{self.customer_id or 0}:{self.customer_name.strip().casefold()}'
+
+    @property
+    def destination_label(self):
+        who = self.customer.name if self.customer_id else self.customer_name
+        return ' · '.join(filter(None, [self.get_channel_display(), who]))
+
+
+class ProposalOrderLink(TimestampedModel):
+    proposal = models.ForeignKey(OrderProposal, on_delete=models.CASCADE, related_name='order_links')
+    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name='proposal_link')
+    destination_key = models.CharField(max_length=255)
+    seed = models.CharField(max_length=64, unique=True)
+    planned_destinations = models.JSONField(default=list, blank=True)

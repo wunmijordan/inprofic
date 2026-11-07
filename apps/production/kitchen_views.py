@@ -15,7 +15,7 @@ Quantities are handled as *units*: a batch is ``units_per_batch`` pieces and
 loose pieces are only the part of a batch that is left over, so the two inputs
 always add up to one number and a batch can be broken to fill a channel.
 """
-from decimal import InvalidOperation
+from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -113,20 +113,44 @@ def _order_form_data(order, dest):
     }
 
 
+def _proposal_split(order):
+    from .models import ProposalOrderLink
+    link = ProposalOrderLink.objects.filter(order=order, proposal__business_id=order.business_id).first()
+    return link.planned_destinations if link else []
+
+
+def _destination_limit(order):
+    return max(MAX_DESTINATIONS, min(20, len(_proposal_split(order))))
+
+
 def _page(request, order, items, channels, post=None):
     """Context for the assignment page; ``post`` re-fills it after a failed save."""
+    limit = _destination_limit(order)
+    if post is None and order.order_type == Order.TYPE_UNASSIGNED:
+        proposal = _proposal_split(order)
+        if proposal:
+            post = {}
+            for index, group in enumerate(proposal[:limit]):
+                post.update({f"d{index}_channel": MARKET_STOCK if group["channel"] == "market_stock" else group["channel"],
+                    f"d{index}_customer": str(group.get("customer") or ""),
+                    f"d{index}_customer_name": group.get("customer_name", ""), f"d{index}_pay_status": "unpaid"})
+                for item in items:
+                    quantity = Decimal(group['quantities'].get(str(item.finished_good_id), '0'))
+                    batches, pieces = to_batches_and_pieces(quantity, per_batch(item.finished_good))
+                    post[f"d{index}_b_{item.pk}"] = _plain(batches)
+                    post[f"d{index}_p_{item.pk}"] = _plain(pieces)
     saved = list(order.allocations.select_related("customer").prefetch_related("lines")) if order.is_multi_channel else []
     if post is not None:
-        destinations = [_read_destination(post, i) for i in range(MAX_DESTINATIONS)]
+        destinations = [_read_destination(post, i) for i in range(limit)]
     elif saved:
         destinations = [
             _read_destination({}, i, _allocation_defaults(saved[i]) if i < len(saved) else None)
-            for i in range(MAX_DESTINATIONS)
+            for i in range(limit)
         ]
     else:
-        destinations = [_read_destination({}, i, _order_defaults(order) if i == 0 else None) for i in range(MAX_DESTINATIONS)]
+        destinations = [_read_destination({}, i, _order_defaults(order) if i == 0 else None) for i in range(limit)]
     saved_units = {}
-    for index, allocation in enumerate(saved[:MAX_DESTINATIONS]):
+    for index, allocation in enumerate(saved[:limit]):
         for line in allocation.lines.all():
             saved_units[(index, line.order_item_id)] = line
     rows = []
@@ -170,7 +194,7 @@ def _page(request, order, items, channels, post=None):
         "customers": Customer.objects.filter(active=True).order_by("name"),
         "accounts": CashAccount.objects.filter(active=True).order_by("name"),
         "stock_location": vertical_config(request.business)["stock_location"],
-        "market_stock_value": MARKET_STOCK, "visible_destinations": sum(shown), "max_destinations": MAX_DESTINATIONS,
+        "market_stock_value": MARKET_STOCK, "visible_destinations": sum(shown), "max_destinations": limit,
     }
 
 
@@ -207,7 +231,7 @@ def order_split(request, pk):
 
     post = request.POST
     errors, units = [], {}
-    destinations = [_read_destination(post, i) for i in range(MAX_DESTINATIONS)]
+    destinations = [_read_destination(post, i) for i in range(_destination_limit(order))]
     for dest in destinations:
         if dest["removed"]:
             continue  # taken off the page by the manager: ignore whatever it still holds

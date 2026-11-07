@@ -114,7 +114,17 @@ def _price_map():
 
 
 @login_required
+@transaction.atomic
 def order_form(request, pk=None):
+    from .proposals import order_seed
+    from .models import OrderProposal, ProposalOrderLink
+    seed_token, proposal_seed = order_seed(request) if pk is None else (None, None)
+    if proposal_seed and request.method == "POST":
+        # Serialize uses of the same plan so a double submit creates one order.
+        OrderProposal.objects.select_for_update().get(pk=proposal_seed['proposal'], business=request.business)
+        existing = ProposalOrderLink.objects.filter(seed=seed_token, proposal__business=request.business).first()
+        if existing:
+            return redirect('order_detail', pk=existing.order_id)
     obj = get_object_or_404(Order, pk=pk) if pk else None
     if obj and obj.status != "pending":
         messages.error(request, "Only pending orders can be edited.")
@@ -125,7 +135,7 @@ def order_form(request, pk=None):
     # Baker / Chef roles use this same form, trimmed to what the floor needs.
     # Their entries are saved unassigned: no channel, customer or payment, and a
     # manager later decides where each portion goes.
-    kitchen = is_kitchen_restricted(request.user, request.business)
+    kitchen = is_kitchen_restricted(request.user, request.business) or bool(proposal_seed and proposal_seed.get("combined"))
     if kitchen:
         if obj and obj.order_type != Order.TYPE_UNASSIGNED:
             messages.error(request, "That order has already been assigned, so it can't be changed from this account.")
@@ -259,24 +269,38 @@ def order_form(request, pk=None):
                     f"Order #{order.display_number} created inside shared production run {target_run.run_number}",
                     {"order_id": order.pk},
                 )
+            if proposal_seed:
+                ProposalOrderLink.objects.create(proposal_id=proposal_seed['proposal'], order=order,
+                    destination_key=proposal_seed['key'], seed=seed_token, planned_destinations=proposal_seed['destinations'])
+                audit(request.business, request.user, 'create', order, 'Pending order created from reviewed production proposal',
+                    {'proposal_id': proposal_seed['proposal'], 'destination': proposal_seed['key']})
             # Cash is recorded only when the completed customer order creates
             # its Sale record. This prevents an order from counting the same
             # payment twice (once at order creation and again at completion).
             if target_run and obj is None:
                 messages.success(request, f"Order #{order.display_number} added to shared production run {target_run.run_number}.")
                 return redirect("production_run_detail", pk=target_run.pk)
+            if proposal_seed and proposal_seed.get('combined'):
+                messages.success(request, 'Pending order created. Review the proposed channel split before approval.')
+                return redirect('order_split', pk=order.pk)
             messages.success(request, "Order updated." if obj else "Order created — approve it from the Orders page when ready.")
             return redirect("order_detail", pk=order.pk)
     else:
         new_initial = {"date": ledger.default_entry_date(), "order_type": "physical_store" if kitchen else "distribution"}
+        if proposal_seed:
+            new_initial.update(proposal_seed['initial'])
         new_basis, new_pool = Order.BASIS_PRODUCT_QUANTITY, Decimal("0")
         form = OrderForm(instance=obj, initial=None if obj else new_initial, business=request.business)
         store_replenishment = bool(
             obj and obj.order_type == "physical_store" and obj.production_destination == "store"
         ) and not kitchen  # the floor may log any made-in-house product
-        formset = OrderItemFormSet(
+        if proposal_seed:
+            store_replenishment = not kitchen and new_initial["order_type"] == "physical_store"
+        formset_class = type('ProposalOrderItems', (OrderItemFormSet,), {'extra': len(proposal_seed['items'])}) if proposal_seed else OrderItemFormSet
+        formset = formset_class(
+            initial=proposal_seed['items'] if proposal_seed else None,
             instance=obj, store_replenishment=store_replenishment,
-            market_stock=bool(obj and obj.is_market_stock_order),
+            market_stock=bool(obj.is_market_stock_order if obj else proposal_seed and proposal_seed["initial"].get("is_market_stock")),
             order_type=((obj.order_type if obj.order_type != Order.TYPE_UNASSIGNED else "physical_store") if obj else new_initial["order_type"]),
             production_basis=(obj.production_basis if obj else new_basis),
             base_material_quantity=(obj.base_material_quantity if obj else new_pool),
@@ -298,6 +322,7 @@ def order_form(request, pk=None):
     return render(request, "production/order_form.html", {
         "form": form, "formset": formset, "prices": prices, "obj": obj,
         "target_run": target_run, "kitchen_mode": kitchen,
+        "proposal_seed": proposal_seed, "seed_token": seed_token,
         "production_enabled": request.business.uses_production,
         "daily_colors": daily_colors,
     })

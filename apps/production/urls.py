@@ -1,7 +1,14 @@
 from django.urls import path
-from . import kitchen_views, views
+from . import kitchen_views, proposals, views
 
 urlpatterns = [
+    path("orders/proposals/<int:pk>/archive/", proposals.proposal_archive, name="proposal_archive"),
+    path("orders/proposals/", proposals.proposal_list, name="proposal_list"),
+    path("orders/proposals/add/", proposals.proposal_form, name="proposal_add"),
+    path("orders/proposals/<int:pk>/", proposals.proposal_detail, name="proposal_detail"),
+    path("orders/proposals/<int:pk>/edit/", proposals.proposal_form, name="proposal_edit"),
+    path("orders/proposals/<int:pk>/use/", proposals.proposal_use, name="proposal_use"),
+    path("orders/proposals/<int:pk>/snapshot.png", proposals.proposal_snapshot, name="proposal_snapshot"),
     path("settings/", views.production_settings, name="production_settings"),
     path("orders/variance/", views.production_variance, name="production_variance"),
     path("runs/", views.production_runs, name="production_runs"),

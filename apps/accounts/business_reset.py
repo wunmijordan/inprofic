@@ -37,7 +37,7 @@ def reset_groups():
         OrderItem, OrderMaterialUsage, OrderNumberSequence, ProductionBatch,
         ProductionBatchReconciliation, ProductionCostLine, ProductionCostSnapshot,
         ProductionOffcutAllocation, ProductionQualityCheck, ProductionRun,
-        ProductionRunMaterial, ProductionRunOrder,
+        ProductionRunMaterial, ProductionRunOrder, OrderProposal, OrderProposalLine, ProposalOrderLink,
     )
     from sales.models import CustomerPayment, Sale, SaleItem
     from whatsapp_storefront.models import (
@@ -49,7 +49,7 @@ def reset_groups():
     # recipes, finished goods, customers, suppliers, cash accounts and settings.
     return {
         "production": [
-            Order, OrderFlexibleMaterialReport, OrderNumberSequence, OrderItem,
+            OrderProposal, OrderProposalLine, ProposalOrderLink, Order, OrderFlexibleMaterialReport, OrderNumberSequence, OrderItem,
             OrderAllocation, OrderAllocationLine, OrderMaterialUsage, ProductionRun,
             ProductionRunOrder, ProductionRunMaterial, ProductionBatch,
             ProductionOffcutAllocation, ProductionBatchReconciliation,

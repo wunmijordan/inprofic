@@ -97,6 +97,7 @@
         </div>
 
         <div data-history-panel="ledger" class="hidden">
+        <p id="stock-history-ledger-empty" class="hidden rounded-xl border border-dashed border-[#D9CFB4] p-5 text-sm">No daily stock movements were recorded in the selected period.</p>
         <div id="stock-history-daily-card" class="rounded-lg border border-[#E7DFCC] overflow-hidden">
           <div class="px-4 py-3 bg-[#F0EAD9] border-b border-[#E7DFCC] text-xs font-bold uppercase tracking-wider text-stone-600">Daily Movement</div>
           <div class="overflow-x-auto">
@@ -151,6 +152,7 @@
   const historyUsedInRows = document.getElementById('stock-history-usedin-rows');
   const historyMovementCard = document.getElementById('stock-history-movement-card');
   const historyDailyCard = document.getElementById('stock-history-daily-card');
+  const historyLedgerEmpty = document.getElementById('stock-history-ledger-empty');
   const historyNoMovements = document.getElementById('stock-history-no-movements');
   const historyClose = document.getElementById('stock-history-close');
   const periodButtons = [...document.querySelectorAll('.stock-period-btn')];
@@ -568,6 +570,7 @@
 
   function renderHistory() {
     const rows = filteredHistory();
+    historyLedgerEmpty.classList.toggle('hidden', rows.length > 0);
     const hasMaterials = stockHistoryData?.kind === 'finished' && Array.isArray(stockHistoryData.materials) && stockHistoryData.materials.length;
     renderMaterials();
     renderArrivals();

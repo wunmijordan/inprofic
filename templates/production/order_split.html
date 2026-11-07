@@ -230,6 +230,12 @@
     }
   });
 
+  // Sparse assignments should not submit hundreds of empty matrix cells.
+  form.addEventListener('formdata', function (event) {
+    form.querySelectorAll('[data-row] input[type="number"]').forEach(function (field) {
+      if (!field.value || Number(field.value) === 0) event.formData.delete(field.name);
+    });
+  });
   cards.forEach(syncCard);
   updateControls();
 })();

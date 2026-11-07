@@ -37,6 +37,7 @@ what was borrowed and what was deliberately left out).
 - **Production requests** — the store asks production to make more of
   something, either as a general restock or linked to a specific pending
   customer order line (which fills in the product and quantity for you).
+- **Production proposals** — plan products for multiple customers and channels, share a paper-style snapshot or complete text, adjust quantities and use the proposal to prefill one production order. The proposed customer/channel split is reviewed before approval. Proposals never reserve stock, release materials or record sales/payments.
 - **Production orders** — the approval step: completing one deducts raw
   materials by recipe in proportion to output against the registered batch
   yield, and completion adds finished stock inside a database transaction.
