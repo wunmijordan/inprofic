@@ -5,7 +5,7 @@ records are changed, and quantities in different registered units never combine.
 """
 from decimal import Decimal
 
-from django.db.models import Count, ExpressionWrapper, F, Sum
+from django.db.models import Count, ExpressionWrapper, F, Prefetch, Sum
 from django.utils import timezone
 
 from accounts.services import user_has_permission
@@ -38,6 +38,41 @@ HIGHLIGHT_KEYS = {
     'Production attention': 'production',
     'Open purchase requests': 'purchasing', 'Purchases & expenses': 'purchasing', 'Expenses': 'expenses',
 }
+
+
+def _customer_payment_labels(sales, business, money):
+    """Current settlement of period invoices, including later receipts/returns."""
+    from sales.models import CustomerPayment, return_prefetch
+
+    totals, distribution = {}, {}
+    invoices = sales.prefetch_related(
+        'items__finished_good', return_prefetch('items__distribution_returns'),
+        Prefetch('payments', queryset=CustomerPayment.raw_objects.filter(business=business)),
+    )
+    for sale in invoices:
+        name = sale.customer or ''
+        due, received = sale.net_total, sale.received_value
+        groups = [totals, distribution] if sale.source == 'distribution_order' else [totals]
+        for group in groups:
+            values = group.setdefault(name, [ZERO, ZERO])
+            values[0] += due
+            values[1] += received
+
+    def labels(group):
+        result = {}
+        for name, (due, received) in group.items():
+            balance = max(ZERO, due - received)
+            if not due:
+                result[name] = 'No balance due'
+            elif not balance:
+                result[name] = 'Fully paid'
+            elif received:
+                result[name] = f'Partially paid · Balance: {money(balance)}'
+            else:
+                result[name] = f'Unpaid · Balance: {money(balance)}'
+        return result
+
+    return labels(totals), labels(distribution)
 
 
 def enrich(brief, start, end, *, user=None, selected_sections=None):
@@ -74,8 +109,11 @@ def enrich(brief, start, end, *, user=None, selected_sections=None):
             lines += [f"{label} · {Sale(business=business, source=r[field]).display_source if field == 'sale__source' else pretty(r[field])}: {r['count']} sale{'s' if r['count'] != 1 else ''} · {money(r['value'])}" for r in rows]
         rows = items.values('finished_good__name', 'finished_good__unit').annotate(value=Sum(line), quantity=Sum(units)).order_by('-value', 'finished_good__name')
         lines += [f"{r['finished_good__name']}: {format_quantity(r['quantity'], r['finished_good__unit'])} · {money(r['value'])}" for r in rows if r['quantity'] or r['value']]
+        customer_payments, distribution_payments = _customer_payment_labels(sales, business, money)
+        if count:
+            lines.append('Payment status includes payments and returns recorded to date.')
         rows = items.values('sale__customer').annotate(value=Sum(line), count=Count('sale_id', distinct=True)).order_by('-value', 'sale__customer')
-        lines += [f"Customer · {r['sale__customer'] or 'Walk-in'}: {r['count']} sale{'s' if r['count'] != 1 else ''} · {money(r['value'])}" for r in rows]
+        lines += [f"Customer · {r['sale__customer'] or 'Walk-in'}: {r['count']} sale{'s' if r['count'] != 1 else ''} · {money(r['value'])} · {customer_payments[r['sale__customer'] or '']}" for r in rows]
         distribution = items.filter(sale__source='distribution_order').values(
             'sale__customer', 'finished_good__name', 'finished_good__unit').annotate(
             quantity=Sum(units), value=Sum(line)).order_by('sale__customer','finished_good__name')
@@ -85,7 +123,7 @@ def enrich(brief, start, end, *, user=None, selected_sections=None):
                 continue
             name = row['sale__customer'] or 'Customer not named'
             if name != current_customer:
-                lines.append(f"Distribution · {name}")
+                lines.append(f"Distribution · {name} · {distribution_payments[row['sale__customer'] or '']}")
                 current_customer = name
             lines.append(f"  {row['finished_good__name']}: {format_quantity(row['quantity'],row['finished_good__unit'])}" + (f" · {money(row['value'])}" if row['value'] else ''))
         if allowed['inventory']:

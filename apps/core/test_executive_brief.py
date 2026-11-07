@@ -7,7 +7,7 @@ from django.urls import reverse
 
 from accounts.models import UserBusiness, UserModulePermission
 from inventory.models import RawMaterial, FinishedGood
-from sales.models import Sale, SaleItem
+from sales.models import CustomerPayment, Sale, SaleItem
 from .accounting import profit_and_loss
 from .brief_views import _report
 from .models import Business
@@ -64,6 +64,57 @@ class ExecutiveReportTests(BriefBase):
         self.assertEqual(len(capped['outstanding_sales']), 30)
         self.assertEqual(len(complete['outstanding_sales']), 32)
         self.assertEqual(capped['receivables'], complete['receivables'])
+
+    def test_customer_sales_show_current_payment_status_in_daily_and_weekly_text(self):
+        self.sell(10, 5, customer='Paid customer')
+        self.sell(10, 5, paid=False, customer='Partial customer')
+        self.sell(10, 5, paid=False, customer='Unpaid customer')
+        partial = Sale.objects.get(customer='Partial customer')
+        # A later receipt must count even when the stored invoice status is stale.
+        CustomerPayment.objects.create(business=self.business, sale=partial,
+            customer=partial.customer, date=TODAY, amount=20)
+        symbol = self.business.currency_symbol
+        for weekly in [False, True]:
+            text = self.report(weekly)['text']
+            self.assertIn(f'Customer · Paid customer: 1 sale · {symbol}50.00 · Fully paid', text)
+            self.assertIn(f'Customer · Partial customer: 1 sale · {symbol}50.00 · Partially paid · Balance: {symbol}30.00', text)
+            self.assertIn(f'Distribution · Partial customer · Partially paid · Balance: {symbol}30.00', text)
+            self.assertIn(f'Distribution · Unpaid customer · Unpaid · Balance: {symbol}50.00', text)
+
+    def test_distribution_status_excludes_other_channels_and_counts_return_credit(self):
+        from inventory.models import DistributionReturn
+
+        self.sell(10, 5, customer='Ada')
+        self.sell(10, 5, paid=False, customer='Ada')
+        sale = Sale.objects.get(source='distribution_order')
+        CustomerPayment.objects.create(business=self.business, sale=sale,
+            customer='Ada', date=TODAY, amount=20)
+        symbol = self.business.currency_symbol
+        text = self.report()['text']
+        self.assertIn(f'Customer · Ada: 2 sales · {symbol}100.00 · Partially paid · Balance: {symbol}30.00', text)
+        self.assertIn(f'Distribution · Ada · Partially paid · Balance: {symbol}30.00', text)
+        DistributionReturn.raw_objects.create(business=self.business, sale_item=sale.items.get(),
+            date=TODAY, quantity=6, condition=DistributionReturn.REDISTRIBUTABLE, unit_value=1)
+        text = self.report()['text']
+        self.assertIn(f'Customer · Ada: 2 sales · {symbol}70.00 · Fully paid', text)
+        self.assertIn('Distribution · Ada · Fully paid', text)
+        self.assertEqual(CustomerPayment.raw_objects.get(sale=sale).amount, 20)
+
+    def test_customer_settlement_uses_lifetime_tenant_scoped_receipts(self):
+        from . import ledger
+        from .models import LedgerCutover
+
+        self.sell(10, 5, paid=False, customer='Ada')
+        sale = Sale.objects.get(customer='Ada')
+        LedgerCutover.raw_objects.create(business=self.business, cutover_date=TODAY)
+        CustomerPayment.raw_objects.create(business=self.business, sale=sale,
+            customer='Ada', date=TODAY, amount=15)
+        private = Business.objects.create(name='Other business', slug='other-payment-brief')
+        CustomerPayment.raw_objects.create(business=private, sale=sale,
+            customer='Ada', date=TODAY, amount=35)
+        with patch.object(ledger, 'current_scope', return_value='backlog'):
+            text = self.report()['text']
+        self.assertIn(f'Distribution · Ada · Partially paid · Balance: {self.business.currency_symbol}35.00', text)
 
     def test_denied_sections_are_absent_from_page_text_and_image(self):
         member = UserBusiness.objects.get(user=self.admin, business=self.business)
