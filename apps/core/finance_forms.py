@@ -5,7 +5,7 @@ from django.db.models import Prefetch, Sum
 from .models import CashAccount
 from inventory.models import StockAdjustment, RawMaterial, FinishedGood, InventoryLocation
 from procurement.models import SupplierPayment, PurchaseOrder
-from sales.models import CustomerPayment, Sale, SaleItem
+from sales.models import CustomerPayment, Sale, SaleItem, return_prefetch
 from expenses.models import Expense
 
 CLS = "w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 focus:border-[#8f172d]"
@@ -60,11 +60,12 @@ class CustomerPaymentForm(Base):
             ).exclude(linked_order__status="reversed")
             .select_related("business")
             .prefetch_related(
-                Prefetch("items", queryset=SaleItem.objects.select_related("finished_good")),
+                Prefetch("items", queryset=SaleItem.objects.select_related("finished_good").prefetch_related(return_prefetch())),
                 Prefetch('payments', queryset=CustomerPayment.raw_objects.filter(business=business)) if business is not None else 'payments',
             )
             .order_by("customer", "-date", "-id")
         )
+        sales = [s for s in sales if s.net_total > sum((p.amount for p in s.payments.all()), Decimal("0"))]
         self.fields["sale"].queryset=sale_query.filter(pk__in=[s.pk for s in sales])
         customers=sorted({s.customer for s in sales if s.customer})
         self.fields["customer"].choices=[("","Select customer…")]+[(c,c) for c in customers]
@@ -76,7 +77,7 @@ class CustomerPaymentForm(Base):
             # Payments are already prefetched above; aggregating here would
             # issue one extra SQL query for every open sale on form load.
             paid = sum((payment.amount for payment in s.payments.all()), Decimal("0"))
-            self.sales_payload.setdefault(s.customer,[]).append({"id":s.pk,"label":f"Sale #{s.pk} — {s.display_source} — outstanding {s.total-paid:,.2f}","outstanding":float(s.total-paid)})
+            self.sales_payload.setdefault(s.customer,[]).append({"id":s.pk,"label":f"Sale #{s.pk} — {s.display_source} — outstanding {s.net_total-paid:,.2f}","outstanding":float(s.net_total-paid)})
         self.fields["customer"].widget.attrs["data-customer-sales"]="1"
     def clean(self):
         c=super().clean(); sale=c.get("sale"); amount=c.get("amount")
@@ -85,7 +86,7 @@ class CustomerPaymentForm(Base):
             self.add_error('amount', 'Payment must be greater than zero.')
         if sale and amount:
             paid=CustomerPayment.raw_objects.filter(business_id=sale.business_id, sale=sale).aggregate(v=Sum("amount"))["v"] or 0
-            if amount > sale.total-paid: self.add_error("amount", "Payment exceeds the outstanding sale balance.")
+            if amount > sale.net_total-paid: self.add_error("amount", "Payment exceeds the outstanding sale balance.")
         if sale and sale.source not in ("distribution_order","online_order"): self.add_error("sale","Only Distribution and Online sales can be paid here.")
         if sale and c.get("customer") != sale.customer: self.add_error("customer","Customer must match the selected sale.")
         return c

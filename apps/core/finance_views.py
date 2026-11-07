@@ -476,7 +476,7 @@ def customer_payment_form(request):
             with transaction.atomic():
                 sale = Sale.raw_objects.select_for_update().get(pk=form.cleaned_data['sale'].pk, business=request.business)
                 paid_before = CustomerPayment.raw_objects.filter(business=request.business, sale=sale).aggregate(v=Sum('amount'))['v'] or Decimal('0')
-                outstanding = Decimal('0') if sale.transaction_type == 'paid' else max(sale.total - paid_before, Decimal('0'))
+                outstanding = Decimal('0') if sale.transaction_type == 'paid' else max(sale.net_total - paid_before, Decimal('0'))
                 if amount > outstanding:
                     form.add_error(None, 'The combined payment exceeds the outstanding sale balance. Reload to review recent payments.')
                 else:
@@ -494,9 +494,9 @@ def customer_payment_form(request):
                         audit(request.business, request.user, 'create', payment, 'Customer payment recorded',
                               {'amount': str(payment.amount), 'sale': sale.pk, 'payment_method': payment.payment_method})
                     new_paid = paid_before + amount
-                    sale.transaction_type = 'paid' if new_paid >= sale.total else 'partial'
+                    sale.transaction_type = 'paid' if new_paid >= sale.net_total else 'partial'
                     sale.save(update_fields=['transaction_type', 'updated_at'])
-                    if sale.linked_order and new_paid >= sale.total:
+                    if sale.linked_order and new_paid >= sale.net_total:
                         linked = sale.linked_order
                         linked.customer_payment_status = 'paid'
                         linked.save(update_fields=['customer_payment_status', 'updated_at'])
@@ -613,7 +613,10 @@ def _profit_loss_context(request):
     lines += [
         {"label": "Payroll (employer cost)", "amount": -statement["payroll"], "kind": "cost"},
         {"label": "Operating supplies used", "amount": -statement["supplies"], "kind": "cost"},
-        {"label": "Stock write-offs & losses", "amount": -statement["write_offs"], "kind": "cost"},
+        {"label": "Other stock write-offs & losses" if statement["distribution_damage"] else "Stock write-offs & losses",
+         "amount": -(statement["write_offs"] - statement["distribution_damage"]), "kind": "cost"},
+        *([{"label": "Damaged distribution goods cost", "amount": -statement["distribution_damage"], "kind": "cost"}]
+          if statement["distribution_damage"] else []),
         {"label": "Net profit", "amount": statement["net_profit"], "kind": "net", "margin": statement["net_margin"]},
     ]
     for line in lines:

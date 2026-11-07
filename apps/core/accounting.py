@@ -19,8 +19,10 @@ from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.db.models import Case, DecimalField, ExpressionWrapper, F, Sum, Value, When
-from django.db.models.functions import Coalesce
+from django.db.models import Case, DecimalField, ExpressionWrapper, F, OuterRef, Prefetch, Q, Subquery, Sum, Value, When
+from django.db.models.functions import Coalesce, Greatest, NullIf
+
+from sales.models import return_prefetch
 
 ZERO = Decimal("0")
 CENT = Decimal("0.01")
@@ -75,11 +77,11 @@ def shift_period(business, period, steps):
     return fiscal_period(business, add_months(period["start"], steps * period["months"]), kind=period["kind"])
 
 
-def _sale_expressions(prefix="items__"):
+def _sale_expressions(prefix="items__", *, net_returns=True):
     """Revenue, cost and unit expressions. ``prefix`` is the path to the sale
     item: ``items__`` from a Sale queryset, ``""`` from a SaleItem queryset.
-    Mirrors SaleItem.line_total and SaleItem.total_units so database aggregates
-    agree with the figures shown on sales screens."""
+    Retains the frozen invoice price and yield, deducting lifetime return credits
+    by default. Books opt out to post the original invoice and dated credits."""
     money_field = DecimalField(max_digits=24, decimal_places=6)
     units_field = DecimalField(max_digits=20, decimal_places=4)
 
@@ -92,8 +94,19 @@ def _sale_expressions(prefix="items__"):
     )
     units_per_batch = Coalesce(f("units_per_batch_snapshot"), current_yield, output_field=units_field)
     total_units = ExpressionWrapper(f("batch_qty") * units_per_batch + f("piece_qty"), output_field=units_field)
+    gross_units = total_units
+    if net_returns:
+        from inventory.models import DistributionReturn
+        returned = DistributionReturn.raw_objects.filter(
+            sale_item_id=OuterRef(f"{prefix}pk"),
+            business_id=OuterRef(f"{prefix}sale__business_id"),
+        ).order_by().values("sale_item_id").annotate(qty=Sum("quantity")).values("qty")[:1]
+        total_units = Greatest(gross_units - Coalesce(Subquery(returned, output_field=units_field),
+            Value(ZERO), output_field=units_field), Value(ZERO), output_field=units_field)
     standard = ExpressionWrapper(total_units * (f("price") - f("discount")), output_field=money_field)
     commercial = ExpressionWrapper(f("commercial_quantity") * f("commercial_unit_price"), output_field=money_field)
+    if net_returns:
+        commercial = ExpressionWrapper(commercial * total_units / NullIf(gross_units, Value(ZERO)), output_field=money_field)
     line_total = Case(
         When(**{f"{prefix}commercial_quantity__isnull": False, f"{prefix}commercial_unit_price__isnull": False}, then=commercial),
         default=standard, output_field=money_field,
@@ -104,6 +117,22 @@ def _sale_expressions(prefix="items__"):
     return money_field, line_total, cogs, total_units
 
 
+def settled_sales(queryset):
+    """Include invoices settled by payments plus return credits, including old returns."""
+    from inventory.models import DistributionReturn
+    from sales.models import CustomerPayment
+    # Only open invoices with returns need a settlement review. Keep correlated
+    # aggregates out of nested grouping queries (also supported by SQLite).
+    returned_sales = DistributionReturn.raw_objects.filter(
+        sale_item__sale_id__in=queryset.values("pk")).values("sale_item__sale_id")
+    candidates = queryset.exclude(transaction_type="paid").filter(pk__in=returned_sales).prefetch_related(
+        "items__finished_good", return_prefetch("items__distribution_returns"),
+        Prefetch("payments", queryset=CustomerPayment.raw_objects.filter(sale__in=queryset)))
+    credited = [sale.pk for sale in candidates if sale.net_total <= sum(
+        (p.amount for p in sale.payments.all()), ZERO)]
+    return queryset.filter(Q(transaction_type="paid") | Q(pk__in=credited))
+
+
 def daily_components(business, start, end):
     """Every profit-and-loss component grouped by date for ``start``..``end``.
 
@@ -112,13 +141,13 @@ def daily_components(business, start, end):
     """
     from accounts.models import Payslip
     from expenses.models import Expense
-    from inventory.models import OperationalSupplyDispense, StockAdjustment
+    from inventory.models import OperationalSupplyDispense, StockAdjustment, DistributionReturn
     from sales.models import Sale
 
     money_field, line_total, cogs, _units = _sale_expressions()
     revenue, cost_of_goods = defaultdict(Decimal), defaultdict(Decimal)
     for row in (
-        Sale.objects.filter(business=business, date__range=(start, end), transaction_type="paid")
+        settled_sales(Sale.objects.filter(business=business, date__range=(start, end)))
         .values("date").annotate(sales=Sum(line_total, output_field=money_field), cogs=Sum(cogs, output_field=money_field))
     ):
         revenue[row["date"]] = row["sales"] or ZERO
@@ -155,16 +184,25 @@ def daily_components(business, start, end):
     ):
         write_offs[row["date"]] = -(row["total"] or ZERO)
 
+    distribution_damage = defaultdict(Decimal)
+    for row in DistributionReturn.objects.filter(business=business, date__range=(start, end),
+            condition=DistributionReturn.DAMAGED).values("date").annotate(
+                total=Sum(ExpressionWrapper(F("quantity") * F("unit_value"), output_field=money_field))):
+        distribution_damage[row["date"]] = row["total"] or ZERO
+        write_offs[row["date"]] += row["total"] or ZERO
+
     unpaid_sales = defaultdict(Decimal)
-    for sale in Sale.objects.filter(business=business, date__range=(start, end)).exclude(transaction_type="paid").prefetch_related("items__finished_good"):
-        unpaid_sales[sale.date] += sale.total
+    for sale in Sale.objects.filter(business=business, date__range=(start, end)).exclude(
+            pk__in=settled_sales(Sale.objects.filter(business=business)).values("pk")).prefetch_related(
+                "items__finished_good", return_prefetch("items__distribution_returns")):
+        unpaid_sales[sale.date] += sale.net_total
 
     # Plain dicts (not defaultdicts with lambdas) so the result can be cached.
     return {
         "revenue": dict(revenue), "cogs": dict(cost_of_goods),
         "expenses": {category: dict(by_date) for category, by_date in expenses.items()},
         "unpaid_expenses": dict(unpaid_expenses), "payroll": dict(payroll), "supplies": dict(supplies),
-        "write_offs": dict(write_offs), "unpaid_sales": dict(unpaid_sales),
+        "write_offs": dict(write_offs), "distribution_damage": dict(distribution_damage), "unpaid_sales": dict(unpaid_sales),
     }
 
 
@@ -204,6 +242,7 @@ def summarise(components, start, end):
         "revenue": _money(revenue), "cogs": _money(cogs), "gross_profit": _money(gross), "gross_margin": margin(gross),
         "expense_lines": expense_lines, "operating_expenses": _money(operating),
         "payroll": _money(payroll), "supplies": _money(supplies), "write_offs": _money(write_offs),
+        "distribution_damage": _money(_total(components.get("distribution_damage", {}), start, end)),
         "total_costs": _money(total_costs), "net_profit": _money(net), "net_margin": margin(net),
         "unpaid_sales": _money(_total(components["unpaid_sales"], start, end)),
         "unpaid_expenses": _money(_total(components["unpaid_expenses"], start, end)),

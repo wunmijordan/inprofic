@@ -120,7 +120,7 @@ def _sale_entries(business):
     registered = bool(settings and settings.vat_registered)
     rate = (settings.vat_rate / 100) if settings else ZERO
     reg_date = settings.vat_registration_date if settings else None
-    _m, line_total, cogs, _u = _sale_expressions(prefix="")
+    _m, line_total, cogs, _u = _sale_expressions(prefix="", net_returns=False)
     sales = {s["id"]: s for s in Sale.raw_objects.filter(business=business).values("id", "date", "customer")}
     totals = defaultdict(lambda: {"gross": ZERO, "vat": ZERO, "cost": ZERO})
     rows = (SaleItem.objects.filter(sale__business=business)
@@ -147,6 +147,36 @@ def _sale_entries(business):
             legs += [("cogs", t["cost"]), ("inventory", -t["cost"])]
         if legs:
             yield (sale["date"], f"Sale #{sale_id} {sale['customer'] or ''}".strip(), "sale", str(sale_id), legs)
+
+
+def _return_entries(business):
+    """Credit the original invoice; restore stock or recognise damage, never cash."""
+    from inventory.models import DistributionReturn
+    settings = _vat_settings(business)
+    for returned in DistributionReturn.raw_objects.filter(business=business, sale_item__sale__business=business).select_related(
+            "sale_item__sale", "sale_item__finished_good"):
+        item = returned.sale_item
+        if item.total_units <= ZERO:
+            continue
+        credit = q(item.line_total * returned.quantity / item.total_units)
+        cost = q(returned.quantity * (item.unit_cost or ZERO))
+        damage = q(returned.writeoff_value)
+        vat = ZERO
+        if (settings and settings.vat_registered
+                and (not settings.vat_registration_date or item.sale.date >= settings.vat_registration_date)
+                and (item.finished_good.vat_treatment or "standard") == "standard"):
+            rate = settings.vat_rate / 100
+            vat = q(credit * rate / (1 + rate))
+        legs = [("ar", -credit), ("revenue", credit - vat)]
+        if vat:
+            legs.append(("vat_output", vat))
+        if cost:
+            legs += [("cogs", -cost), ("inventory", cost)]
+        if damage:
+            legs += [("adjustments", damage), ("inventory", -damage)]
+        if credit or cost or damage:
+            yield (returned.date, f"Distribution return #{returned.pk} — Sale #{item.sale_id}",
+                   "distribution_return", str(returned.pk), legs)
 
 
 def _purchase_entries(business):
@@ -236,7 +266,7 @@ def rebuild_books(business, user=None):
     """Recreate every system entry from the records. Manual entries are untouched."""
     accounts = ensure_chart(business)
     JournalEntry.raw_objects.filter(business=business, is_system=True).delete()
-    sources = (_opening_entries(business), _sale_entries(business), _purchase_entries(business),
+    sources = (_opening_entries(business), _sale_entries(business), _return_entries(business), _purchase_entries(business),
                _expense_entries(business, accounts), _adjustment_entries(business), _input_vat_entries(business),
                _cash_entries(business))
     pending, count = [], 0

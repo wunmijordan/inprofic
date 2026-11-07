@@ -44,7 +44,7 @@ from inventory.models import (
 )
 from procurement.models import PurchaseOrder, PurchaseOrderItem, RawMaterialCostSnapshot, SupplierPayment
 from production.models import Order, OrderItem, ProductionBatch
-from sales.models import Sale, SaleItem
+from sales.models import Sale, SaleItem, return_prefetch
 from expenses.models import Expense
 
 
@@ -230,18 +230,18 @@ def _sales_revenue(queryset):
     """Recognised revenue: only paid sales count as revenue/cash receipts.
     Unpaid sales remain visible as receivables/non-cash activity."""
     total = Decimal("0")
-    for sale in queryset.filter(transaction_type="paid").prefetch_related("items__finished_good"):
-        total += sale.total
+    for sale in queryset.filter(transaction_type="paid").prefetch_related("items__finished_good", return_prefetch("items__distribution_returns")):
+        total += sale.net_total
     return total
 
 
 def _sales_cogs(queryset):
     total = Decimal("0")
-    for sale in queryset.prefetch_related("items"):
+    for sale in queryset.prefetch_related("items", return_prefetch("items__distribution_returns")):
         if sale.transaction_type != "paid":
             continue
         for item in sale.items.all():
-            total += (item.unit_cost or Decimal("0")) * item.total_units
+            total += (item.unit_cost or Decimal("0")) * item.net_units
     return total
 
 
@@ -252,11 +252,11 @@ def _unpaid_product_value(start, end):
     for sale in Sale.objects.filter(
         source="walkin", transaction_type="unpaid", date__range=(start, end)
     ).prefetch_related(
-        Prefetch("items", queryset=SaleItem.objects.select_related("finished_good"))
+        Prefetch("items", queryset=SaleItem.objects.select_related("finished_good").prefetch_related(return_prefetch()))
     ):
-        retail += sale.total
+        retail += sale.net_total
         for item in sale.items.all():
-            cost += (item.unit_cost or Decimal("0")) * item.total_units
+            cost += (item.unit_cost or Decimal("0")) * item.net_units
     for order in Order.objects.filter(
         order_type="physical_store", transaction_type="unpaid", status="completed",
         completed_date__range=(start, end),
@@ -454,12 +454,12 @@ def _financial_breakdown(start, end):
     sales_by_channel = {label: Decimal("0") for label in channel_map.values()}
     paid_sales = list(
         Sale.objects.filter(date__range=(start, end), transaction_type="paid").prefetch_related(
-            Prefetch("items", queryset=SaleItem.objects.select_related("finished_good"))
+            Prefetch("items", queryset=SaleItem.objects.select_related("finished_good").prefetch_related(return_prefetch()))
         )
     )
     for sale in paid_sales:
         label = channel_map.get(sale.source, sale.source.replace("_", " ").title())
-        sales_by_channel[label] = sales_by_channel.get(label, Decimal("0")) + sale.total
+        sales_by_channel[label] = sales_by_channel.get(label, Decimal("0")) + sale.net_total
 
     production_orders = Order.objects.filter(
         status="completed", completed_date__range=(start, end)
@@ -476,7 +476,7 @@ def _financial_breakdown(start, end):
     cogs = Decimal("0")
     for sale in paid_sales:
         for item in sale.items.all():
-            cogs += (item.unit_cost or Decimal("0")) * item.total_units
+            cogs += (item.unit_cost or Decimal("0")) * item.net_units
     unpaid_retail, unpaid_cost = _unpaid_product_value(start, end)
     cash_procurement = _cash_procurement(start, end)
     cash_payroll = _cash_payroll(start, end)
@@ -796,12 +796,12 @@ def _sales_by_channel(start=None, end=None, sales=None):
         qs = Sale.objects.all()
         if start and end:
             qs = qs.filter(date__range=(start, end))
-        sales = qs.prefetch_related("items__finished_good")
+        sales = qs.prefetch_related("items__finished_good", return_prefetch("items__distribution_returns"))
     result = {"walkin": Decimal("0"), "distribution_order": Decimal("0"), "online_order": Decimal("0")}
     for sale in sales:
         if start and end and not (start <= sale.date <= end):
             continue
-        result[sale.source] = result.get(sale.source, Decimal("0")) + sale.total
+        result[sale.source] = result.get(sale.source, Decimal("0")) + sale.net_total
     return result
 
 def _channel_breakdown(channel, start, end, sales=None):
@@ -815,7 +815,7 @@ def _channel_breakdown(channel, start, end, sales=None):
                 source=source, date__range=(start, end), transaction_type="paid"
             )
             .select_related("linked_order")
-            .prefetch_related("items__finished_good")
+            .prefetch_related("items__finished_good", return_prefetch("items__distribution_returns"))
         )
     buckets = {}
     for sale in sales:
@@ -825,7 +825,7 @@ def _channel_breakdown(channel, start, end, sales=None):
         region = (order.customer_region if order and order.customer_region else "Unassigned region").strip()
         group = (order.customer_group if order and order.customer_group else "Unassigned area").strip()
         key = (region, group)
-        buckets[key] = buckets.get(key, Decimal("0")) + sale.total
+        buckets[key] = buckets.get(key, Decimal("0")) + sale.net_total
     return [{"region": k[0], "group": k[1], "sales": v} for k, v in sorted(buckets.items(), key=lambda item: (-item[1], item[0][0], item[0][1]))]
 
 
@@ -1492,11 +1492,11 @@ def _finished_good_search_detail(good, *, show_customer_prices=True):
             if matched:
                 sale_events += 1
             for item in matched:
-                sold_units += item.total_units
+                sold_units += item.net_units
                 if sale.transaction_type == "paid":
-                    revenue += item.line_total
+                    revenue += item.net_line_total
                 else:
-                    unpaid_value += item.line_total
+                    unpaid_value += item.net_line_total
         # SaleItem.unit_cost is already frozen at sale time. For linked
         # customer orders it comes directly from that order's
         # ProductionCostSnapshot; walk-in sales use the latest production
@@ -1506,7 +1506,7 @@ def _finished_good_search_detail(good, *, show_customer_prices=True):
         for sale in sale_qs:
             for sale_item in sale.items.all():
                 if sale.transaction_type == "paid" and sale_item.finished_good_id == good.id and sale_item.unit_cost is not None:
-                    historical_cost += sale_item.total_units * sale_item.unit_cost
+                    historical_cost += sale_item.net_units * sale_item.unit_cost
 
         period_rows.append({
             "label": label,
@@ -1542,9 +1542,9 @@ def _finished_good_search_detail(good, *, show_customer_prices=True):
         for sale in qs:
             for item in sale.items.all():
                 if item.finished_good_id == good.id:
-                    units += item.total_units
+                    units += item.net_units
                     if sale.transaction_type == "paid":
-                        revenue += item.line_total
+                        revenue += item.net_line_total
         sales_by_channel.append({
             "channel": label,
             "units": _decimal(units),
@@ -1568,8 +1568,8 @@ def _finished_good_search_detail(good, *, show_customer_prices=True):
                 row = customer_sales.setdefault(key, {"customer": key[0], "channel": key[1],
                     "price": _money(item.price or 0), "discount": _money(item.discount or 0),
                     "quantity": Decimal("0"), "value": Decimal("0")})
-                row["quantity"] += item.total_units
-                row["value"] += item.line_total
+                row["quantity"] += item.net_units
+                row["value"] += item.net_line_total
     return {
         "customer_sales": [{**row, "quantity": _decimal(row["quantity"]), "value": _money(row["value"])}
                            for row in customer_sales.values()],
@@ -1743,7 +1743,7 @@ def _customer_search_detail(name, channel):
     sale_qs = Sale.objects.filter(
         customer__iexact=name,
         source=source,
-    ).prefetch_related("items__finished_good", "linked_order")
+    ).prefetch_related("items__finished_good", return_prefetch("items__distribution_returns"), "linked_order")
     periods = _search_periods()
     rows = []
     for label, start in periods:
@@ -1753,18 +1753,18 @@ def _customer_search_detail(name, channel):
         revenue = Decimal("0")
         for sale in sales:
             if sale.transaction_type == "paid":
-                revenue += sale.total
+                revenue += sale.net_total
             for item in sale.items.all():
-                units += item.total_units
+                units += item.net_units
         rows.append(_period_row(label, start, revenue=revenue, units=units, events=orders.count()))
 
     total_revenue = Decimal("0")
     units = Decimal("0")
     for sale in sale_qs:
         if sale.transaction_type == "paid":
-            total_revenue += sale.total
+            total_revenue += sale.net_total
         for item in sale.items.all():
-            units += item.total_units
+            units += item.net_units
     last_order = order_qs.order_by("-date", "-id").first()
     last_sale = sale_qs.order_by("-date", "-id").first()
     regions = sorted({o.customer_region.strip() for o in order_qs if o.customer_region.strip()})
@@ -1994,11 +1994,11 @@ def dashboard(request):
         month_sales = list(
             Sale.objects.filter(date__range=(month_start, dashboard_date))
             .select_related("linked_order")
-            .prefetch_related(Prefetch("items", queryset=SaleItem.objects.select_related("finished_good")))
+            .prefetch_related(Prefetch("items", queryset=SaleItem.objects.select_related("finished_good").prefetch_related(return_prefetch())), "payments")
         )
     today_sales = [sale for sale in month_sales if sale.date == dashboard_date]
     today_revenue = sum(
-        (sale.total for sale in today_sales if sale.transaction_type == "paid"),
+        (sale.received_value for sale in today_sales),
         Decimal("0"),
     )
 

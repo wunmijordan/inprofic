@@ -27,7 +27,7 @@
         <td class="px-3 py-2 font-mono text-xs">{{ s.date }}</td>
         <td class="px-3 py-2">{% include "sales/_customer_link.html" with customer_id=s.activity_customer_id customer_name=s.customer|default:"Walk-in" activity_start=s.date activity_end=s.date %}</td>
         <td class="px-3 py-2 text-xs" style="min-width:11rem;max-width:20rem">{% include "partials/_items_summary.html" with items=s.items.all show_qty=True dialog_prefix="sale-items-" row_pk=s.pk %}</td>
-        <td class="px-3 py-2 text-right font-mono">{{ s.total|money:biz.currency_symbol }}</td>
+        <td class="px-3 py-2 text-right font-mono">{{ s.net_total|money:biz.currency_symbol }}</td>
         {% if biz.is_restaurant %}<td class="px-3 py-2 text-xs">{{ s.get_service_mode_display|default:"—" }}{% if s.table_reference %}<div class="text-[10px] text-stone-400">{{ s.table_reference }}</div>{% endif %}</td>{% endif %}
         <td class="px-3 py-2">
           <span class="inline-block px-2 py-0.5 rounded-full text-[11px] font-medium border {% if s.source == 'online_order' %}bg-fuchsia-50 text-fuchsia-800 border-fuchsia-300{% elif s.source == 'distribution_order' %}bg-sky-50 text-sky-800 border-sky-300{% else %}bg-violet-50 text-violet-800 border-violet-300{% endif %}">{{ s.display_source }}</span>

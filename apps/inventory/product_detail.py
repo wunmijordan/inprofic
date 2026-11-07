@@ -7,7 +7,7 @@ from django.urls import reverse
 from accounts.services import user_has_permission
 from core.accounting import _sale_expressions
 from sales.customer_activity import ActivityDates
-from sales.models import SaleItem
+from sales.models import SaleItem, return_prefetch
 from .models import MarketStockMovement
 
 ZERO=Decimal('0')
@@ -51,7 +51,7 @@ def product_context(request, good):
         totals['uncosted']=items.filter(sale__transaction_type='paid',unit_cost__isnull=True).count()
         data['realized']=totals
     if permits['sales']:
-        data['sales']=Paginator(items.annotate(recorded_cost=cost).select_related('sale','finished_good').order_by('-sale__date','-pk'),25).get_page(request.GET.get('sales_page'))
+        data['sales']=Paginator(items.annotate(recorded_cost=cost).select_related('sale','finished_good').prefetch_related(return_prefetch()).order_by('-sale__date','-pk'),25).get_page(request.GET.get('sales_page'))
     if permits['production'] and request.business.uses_production:
         batches=ProductionBatch.objects.filter(business=request.business,finished_good=good,production_date__range=(start,end),is_reversed=False)
         data['production_totals']=batches.aggregate(made=Sum('produced_units'),waste=Sum('wastage_units'),cost=Sum('total_cost'))

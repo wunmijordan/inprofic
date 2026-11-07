@@ -38,12 +38,13 @@ test('product search exposes current channel prices and recorded applied prices'
  const search=page.locator('[data-dashboard-search]');
  await search.locator('input[type="search"]').fill('Fixture Loaf');
  await search.locator('.dashboard-search-result').filter({hasText:'Fixture Loaf'}).first().click();
- const dialog=search.getByRole('dialog');
+ const dialog=page.locator('.ui-form-dialog');
  await expect(dialog).toBeVisible();
- await dialog.getByRole('tab',{name:'Details',exact:true}).click();
- await expect(dialog.getByRole('heading',{name:'Current product prices',exact:true})).toBeVisible();
- await expect(dialog.getByRole('heading',{name:'Recorded customer sales by applied price',exact:true})).toBeVisible();
- await expect(dialog).toContainText('All customers · Distribution');
+ const frame=page.frameLocator('iframe[name="inprofic-form-dialog"]');
+ await expect(frame.locator('#product-prices')).toContainText('Current selling prices');
+ await expect(frame.locator('#product-prices')).toContainText('Distribution');
+ await frame.locator('#product-sales > summary').click();
+ await expect(frame.getByRole('columnheader',{name:'Quantity / price',exact:true})).toBeVisible();
  await page.setViewportSize({width:390,height:844});
  expect(await dialog.evaluate(el=>el.getBoundingClientRect().width<=innerWidth+1)).toBe(true);
 });

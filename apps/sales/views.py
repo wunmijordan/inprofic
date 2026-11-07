@@ -9,7 +9,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET
 
 from .forms import SaleForm, SaleItemFormSet, CustomerForm, CustomerProductPriceFormSet
-from .models import Customer, CustomerProductPrice, Sale, SaleItem
+from .models import Customer, CustomerPayment, CustomerProductPrice, Sale, SaleItem, return_prefetch
 from inventory.models import FinishedGood
 from production.models import ProductionCostSnapshot
 from inventory.services import consume_transferred_physical_stock, record_finished_good_movement
@@ -46,8 +46,8 @@ def customer_list(request):
             transaction_type__in=("unpaid", "partial"),
         )
         .prefetch_related(
-            Prefetch("items", queryset=SaleItem.objects.select_related("finished_good")),
-            "payments",
+            Prefetch("items", queryset=SaleItem.objects.select_related("finished_good").prefetch_related(return_prefetch())),
+            Prefetch("payments", queryset=CustomerPayment.raw_objects.filter(business=request.business)),
         )
     )
     customers = Customer.objects.prefetch_related(
@@ -112,14 +112,14 @@ def customer_toggle_active(request, pk):
 def sales_list(request):
     sales = list(
         Sale.objects.select_related("business", "created_by", "linked_order", "customer_master").prefetch_related(
-            Prefetch("items", queryset=SaleItem.objects.select_related("finished_good"))
+            Prefetch("items", queryset=SaleItem.objects.select_related("finished_good").prefetch_related(return_prefetch()))
         )
     )
     customer_ids = dict(Customer.objects.filter(business=request.business).values_list('name','pk'))
     for sale in sales:
         sale.activity_customer_id = sale.customer_master_id or customer_ids.get(sale.customer)
-    total_revenue = sum((s.total for s in sales if s.transaction_type == "paid"), Decimal("0"))
-    unpaid_value = sum((s.total for s in sales if s.transaction_type == "unpaid"), Decimal("0"))
+    total_revenue = sum((s.net_total for s in sales if s.transaction_type == "paid"), Decimal("0"))
+    unpaid_value = sum((s.net_total for s in sales if s.transaction_type == "unpaid"), Decimal("0"))
     return render(request, "sales/sales_list.html", {"sales": sales, "total_revenue": total_revenue, "unpaid_value": unpaid_value})
 
 

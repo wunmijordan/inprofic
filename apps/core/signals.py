@@ -7,10 +7,12 @@ from django.dispatch import receiver
 from expenses.models import Expense, ExpensePayment
 from procurement.models import PurchaseOrder, PurchaseOrderItem, SupplierPayment
 from sales.models import CustomerPayment, Sale, SaleItem
+from inventory.models import DistributionReturn
 
 from .finance_cache import invalidate_finance_alert_cache
 from .models import CashAccount, FinancialTransaction
 
+@receiver([post_save, post_delete], sender=DistributionReturn, dispatch_uid='finance_alert_distribution_return_cache')
 @receiver([post_save, post_delete], sender=SaleItem, dispatch_uid='finance_alert_sale_item_cache')
 @receiver([post_save, post_delete], sender=PurchaseOrderItem, dispatch_uid='finance_alert_purchase_item_cache')
 @receiver(

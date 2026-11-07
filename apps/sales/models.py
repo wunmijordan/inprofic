@@ -45,11 +45,12 @@ class Customer(BusinessOwnedModel):
             sales = self.sales_records.filter(
                 source__in=("distribution_order", "online_order"),
                 transaction_type__in=("unpaid", "partial"),
-            ).prefetch_related("items__finished_good", "payments")
+            ).prefetch_related("items__finished_good", return_prefetch("items__distribution_returns"),
+                models.Prefetch("payments", queryset=CustomerPayment.raw_objects.filter(business_id=self.business_id)))
         for sale in sales:
             total += max(
                 Decimal("0"),
-                sale.total - sum((payment.amount for payment in sale.payments.all()), Decimal("0")),
+                sale.net_total - sum((payment.amount for payment in sale.payments.all()), Decimal("0")),
             )
         return total
 
@@ -156,6 +157,23 @@ class Sale(BusinessOwnedModel):
         return sum((i.line_total for i in self.items.all()), Decimal("0"))
 
     @property
+    def return_credit(self):
+        return sum((item.return_credit for item in self.items.all()), Decimal("0"))
+
+    @property
+    def net_total(self):
+        """Original invoice less recorded returns; cash receipts stay unchanged."""
+        return max(Decimal("0"), sum((item.net_line_total for item in self.items.all()), Decimal("0")))
+
+    @property
+    def received_value(self):
+        paid = sum((payment.amount for payment in self.payments.all()), Decimal("0"))
+        # Legacy paid-at-creation sales have a cash entry without a payment row.
+        if self.transaction_type == "paid" and not paid:
+            paid = self.total
+        return min(self.net_total, max(Decimal("0"), paid))
+
+    @property
     def display_source(self):
         if self.source == "walkin" and self.business.is_restaurant:
             return "Restaurant POS"
@@ -216,6 +234,28 @@ class SaleItem(TimestampedModel):
             return self.commercial_quantity * self.commercial_unit_price
         return self.total_units * ((self.price or Decimal("0")) - (self.discount or Decimal("0")))
 
+    @property
+    def returned_units(self):
+        from inventory.models import DistributionReturn
+        cached = getattr(self, "_prefetched_objects_cache", {}).get("distribution_returns")
+        rows = cached if cached is not None else DistributionReturn.raw_objects.filter(
+            business_id=self.sale.business_id, sale_item_id=self.pk)
+        return min(self.total_units, sum((row.quantity for row in rows if row.business_id == self.sale.business_id), Decimal("0")))
+
+    @property
+    def net_units(self):
+        return max(Decimal("0"), self.total_units - self.returned_units)
+
+    @property
+    def net_line_total(self):
+        return self.line_total - self.return_credit
+
+    @property
+    def return_credit(self):
+        if self.total_units <= 0:
+            return Decimal("0")
+        return self.line_total * self.returned_units / self.total_units
+
 
 class CustomerPayment(BusinessOwnedModel):
     ledger_date_field = "date"
@@ -233,3 +273,14 @@ class CustomerPayment(BusinessOwnedModel):
         indexes = [
             models.Index(fields=["business", "date"], name="custpay_biz_date_idx"),
         ]
+
+
+def return_prefetch(path="distribution_returns"):
+    """Lifetime credits for verified sale items, independent of the active ledger.
+
+    Prefetch restricts these children to its parent items; the explicit tenant
+    equality also rejects any malformed cross-business relationship.
+    """
+    from inventory.models import DistributionReturn
+    return models.Prefetch(path, queryset=DistributionReturn.raw_objects.filter(
+        business_id=models.F("sale_item__sale__business_id")))

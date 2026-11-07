@@ -11,7 +11,7 @@ from accounts.services import user_has_permission
 from core import ledger
 from core.models import EInvoice, FinancialTransaction
 from core.services import audit, record_cash
-from .models import Customer, CustomerPayment, CustomerProductPrice, Sale, SaleItem
+from .models import Customer, CustomerPayment, CustomerProductPrice, Sale, SaleItem, return_prefetch
 
 ZERO = Decimal('0')
 CENT = Decimal('.01')
@@ -39,7 +39,7 @@ def price_review(*, business, customer, start, end, user, lock=False, include_re
         sales = sales.select_for_update(of=('self',))
     rows, state, errors = [], [str(customer.pk), start.isoformat(), end.isoformat(), sorted((k, str(v)) for k, v in agreements.items())], []
     for sale in sales:
-        item_query = SaleItem.objects.filter(sale=sale).select_related('finished_good').order_by('pk')
+        item_query = SaleItem.objects.filter(sale=sale).select_related('finished_good').prefetch_related(return_prefetch()).order_by('pk')
         if lock:
             item_query = item_query.select_for_update(of=('self',))
         items = list(item_query)
@@ -55,7 +55,7 @@ def price_review(*, business, customer, start, end, user, lock=False, include_re
             invoices = invoices.select_for_update(of=('self',))
         invoice = invoices.first()
         state.append([sale.pk, sale.transaction_type, str(sale.updated_at),
-            [(i.pk, str(i.updated_at), str(i.price), str(i.discount), str(i.total_units), str(i.commercial_quantity), str(i.commercial_unit_price)) for i in items],
+            [(i.pk, str(i.updated_at), str(i.price), str(i.discount), str(i.total_units), str(i.commercial_quantity), str(i.commercial_unit_price), str(i.returned_units)) for i in items],
             [(p.pk, str(p.updated_at), str(p.amount)) for p in payments],
             [invoice.status, str(invoice.updated_at)] if invoice else None])
         old = sum((item.line_total for item in items), ZERO).quantize(CENT)
@@ -79,12 +79,15 @@ def price_review(*, business, customer, start, end, user, lock=False, include_re
             errors.append(f'Sale #{sale.pk}: the submitted e-invoice needs a credit/debit adjustment instead.')
         paid = sum((payment.amount for payment in payments), ZERO)
         # A paid-at-creation sale can have a cash ledger entry without a payment row.
-        paid = max(paid, old if sale.transaction_type == 'paid' else ZERO)
+        paid = max(paid, old if sale.transaction_type == 'paid' and not payments else ZERO)
         new = new.quantize(CENT)
         if not changes and (paid == old or paid == ZERO):
             continue
-        rows.append({'sale': sale, 'changes': detail, 'old': old, 'new': new, 'paid': paid,
-            'due': max(new - paid, ZERO), 'credit': max(paid - new, ZERO),
+        returned_credit = sum((i.return_credit for i in items), ZERO)
+        returned_credit += sum((d['item'].returned_units * (d['new_price'] - d['old_price']) for d in detail), ZERO)
+        net_new = max(new - returned_credit, ZERO).quantize(CENT)
+        rows.append({'net_new': net_new, 'sale': sale, 'changes': detail, 'old': old, 'new': new, 'paid': paid,
+            'due': max(net_new - paid, ZERO), 'credit': max(paid - net_new, ZERO),
             'payment_rows': payments, 'invoice': invoice})
     fingerprint = hashlib.sha256(json.dumps(state, sort_keys=True).encode()).hexdigest()
     return {'rows': rows, 'fingerprint': fingerprint, 'errors': sorted(set(errors)),
@@ -120,8 +123,8 @@ def apply_price_review(*, business, customer, start, end, user, fingerprint, rec
                 apply_receipt_corrections(business=business, user=user, row=row)
                 baseline = ZERO
                 row['paid'] = sum((receipt['new'] for receipt in row['receipts']), ZERO)
-                row['due'] = max(row['new'] - row['paid'], ZERO)
-                row['credit'] = max(row['paid'] - row['new'], ZERO)
+                row['due'] = max(row['net_new'] - row['paid'], ZERO)
+                row['credit'] = max(row['paid'] - row['net_new'], ZERO)
             if baseline > ZERO:
                 CustomerPayment.raw_objects.create(business=business, created_by=user, date=sale.date,
                     customer=sale.customer, customer_master=customer, sale=sale, amount=baseline,
@@ -147,7 +150,7 @@ def apply_price_review(*, business, customer, start, end, user, fingerprint, rec
                     if order.order_type == 'distribution' and not order.is_market_stock and (
                         order.customer_id == customer.pk or (not order.customer_id and order.customer_name == customer.name)):
                         OrderItem.objects.filter(order=order, finished_good_id=item.finished_good_id).update(price=item.price)
-            state = 'paid' if row['paid'] >= row['new'] else ('partial' if row['paid'] > ZERO else 'unpaid')
+            state = 'paid' if row['paid'] >= sale.net_total else ('partial' if row['paid'] > ZERO else 'unpaid')
             sale.transaction_type = state
             sale.save(update_fields=['transaction_type', 'updated_at'])
             OrderAllocation.objects.filter(sale=sale, order__business=business).update(payment_status='paid' if state == 'paid' else 'unpaid')
@@ -188,11 +191,11 @@ def receipt_review(business, review, amounts=None, *, lock=False):
             receipts.append({'key': f'direct-{sale.pk}', 'old': baseline, 'payment': None,
                 'date': sale.date, 'method': sale.payment_method, 'account': sale.account_id,
                 'reference': f'ORDER-{sale.linked_order_id}' if sale.linked_order_id else f'SALE-{sale.pk}'})
-        remainder = row['new']
+        remainder = row['net_new']
         for index, receipt in enumerate(receipts):
             proposed = receipt['old']
             if sale.transaction_type == 'paid' and row['paid'] > ZERO:
-                proposed = (row['new'] * receipt['old'] / row['paid']).quantize(CENT) if index < len(receipts)-1 else remainder
+                proposed = (row['net_new'] * receipt['old'] / row['paid']).quantize(CENT) if index < len(receipts)-1 else remainder
                 remainder -= proposed
             key = receipt['key']
             defaults[key] = str(proposed)
@@ -236,8 +239,8 @@ def receipt_review(business, review, amounts=None, *, lock=False):
             receipt['original_due'] = row['due']
         row['receipts'] = receipts
         row['corrected_paid'] = sum((r['new'] for r in receipts), ZERO)
-        row['corrected_due'] = max(row['new'] - row['corrected_paid'], ZERO)
-        row['corrected_credit'] = max(row['corrected_paid'] - row['new'], ZERO)
+        row['corrected_due'] = max(row['net_new'] - row['corrected_paid'], ZERO)
+        row['corrected_credit'] = max(row['corrected_paid'] - row['net_new'], ZERO)
     review['due_total'] = sum((row['corrected_due'] for row in review['rows']), ZERO)
     review['credit_total'] = sum((row['corrected_credit'] for row in review['rows']), ZERO)
     return {'errors': sorted(set(errors)), 'amounts': amounts if amounts is not None else defaults}

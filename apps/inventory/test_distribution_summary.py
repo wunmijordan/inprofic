@@ -178,7 +178,7 @@ class DistributionSummaryTests(ToolBase):
         data = distribution_summaries(self.request())
         totals = data['distribution_settlement']['totals']
         self.assertEqual(totals, dict(gross=100, returned=30, net=70, paid=50,
-                                     outstanding=50, net_due=20, refund_review=0))
+                                     outstanding=20, net_due=20, refund_review=0))
         self.assertIn('Expected value after returns: ₦70.00', data['distribution_share_text'])
         self.assertIn('Balance due: ₦20.00', data['distribution_share_text'])
         self.assertNotIn('ledger', data['distribution_share_text'].lower())
@@ -188,6 +188,7 @@ class DistributionSummaryTests(ToolBase):
         self.assertEqual(sale.transaction_type, 'partial')
         sale.transaction_type = 'paid'
         sale.save()
+        CustomerPayment.raw_objects.filter(sale=sale).update(amount=100)
         totals = distribution_summaries(self.request())['distribution_settlement']['totals']
         self.assertEqual((totals['paid'], totals['outstanding'], totals['refund_review']), (100, 0, 30))
 

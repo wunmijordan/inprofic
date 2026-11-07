@@ -11,7 +11,7 @@ from django.utils import timezone
 from accounts.services import user_has_permission
 from core.accounting import _sale_expressions
 from .forms import INPUT_CLS
-from .models import CustomerPayment, Sale, SaleItem
+from .models import CustomerPayment, Sale, SaleItem, return_prefetch
 
 
 class ActivityDates(forms.Form):
@@ -42,7 +42,7 @@ def customer_activity_context(request, customer):
     start,end = form.cleaned_data['start'],form.cleaned_data['end']
     all_sales = Sale.objects.filter(business=request.business).filter(
         Q(customer_master=customer) | Q(customer_master__isnull=True,customer=customer.name))
-    sales = all_sales.filter(date__range=(start,end)).select_related('linked_order').prefetch_related('items__finished_good')
+    sales = all_sales.filter(date__range=(start,end)).select_related('linked_order').prefetch_related('items__finished_good', return_prefetch('items__distribution_returns'))
     items = SaleItem.objects.filter(sale__in=sales)
     money_field,line,_cost,units = _sale_expressions(prefix='')
     # Aggregate open balances in SQL rather than loading every historic line or

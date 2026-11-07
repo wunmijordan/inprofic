@@ -44,7 +44,7 @@ def report_date(request):
 
 
 def distribution_settlement(request, *, directory=None):
-    """Read-only invoice review; returns estimate credits, never post them.
+    """Invoice review using recorded return credits and unchanged cash receipts.
 
     Select invoices in the active ledger but include their lifetime payments and
     returns, so a later-period settlement cannot make an earlier invoice unpaid.
@@ -80,7 +80,7 @@ def distribution_settlement(request, *, directory=None):
                 returned += item.line_total * min(returns.get(item.pk, ZERO), item.total_units) / item.total_units
         gross, returned = (value.quantize(Decimal('.01')) for value in (gross, returned))
         # Paid sales may have been collected at creation without a CustomerPayment.
-        paid = max(payments.get(sale.pk, ZERO), gross if sale.transaction_type == 'paid' else ZERO)
+        paid = max(payments.get(sale.pk, ZERO), gross if sale.transaction_type == 'paid' and not payments.get(sale.pk, ZERO) else ZERO)
         net = gross - returned
         payment_methods = methods.get(sale.pk, {}).copy()
         direct = paid - sum(payment_methods.values(), ZERO)
@@ -91,7 +91,7 @@ def distribution_settlement(request, *, directory=None):
                      'price': item.price, 'discount': item.discount, 'value': item.line_total} for item in sale.items.all()]
         row = dict(products=products, payment_methods=payment_methods, sale=sale.pk, date=sale.date, customer=sale.customer,
                    gross=gross, returned=returned, net=net, paid=paid,
-                   outstanding=max(gross - paid, ZERO), net_due=max(net - paid, ZERO),
+                   outstanding=max(net - paid, ZERO), net_due=max(net - paid, ZERO),
                    refund_review=max(paid - net, ZERO))
         row.update(customer_labels(directory, sale.customer_master_id, sale.customer))
         rows.append(row)

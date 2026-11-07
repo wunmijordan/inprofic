@@ -54,7 +54,12 @@ what was borrowed and what was deliberately left out).
   apply the suggested expiry to each batch at completion. Color-tag tooltips show
   the production weekday. Market Stock customer releases accept several products
   on one invoice, with available, entered and remaining quantities per line for the
-  selected release date. Batch expiry applies independently; undated batches stay
+  selected release date. Recorded customer returns credit the original invoice
+  balance without changing cash receipts. Redistributable goods return to Market
+  Stock for a new customer or store sale; damaged goods become a Finance loss at
+  their recorded stock cost. Basic dashboard sales include received values on
+  today’s store, distribution and online sales, including part-payments.
+  Batch expiry applies independently; undated batches stay
   sellable. Completion product cards open one at a time and preserve entered values.
   Historical backlog batches keep their recorded expiry without contributing to
   current expiry alerts. Physical Store transfers retain their stock checks.

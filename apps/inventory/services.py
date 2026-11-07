@@ -585,11 +585,13 @@ def record_distribution_return(*, business, sale_item, quantity, date, condition
     quantity = Decimal(quantity).quantize(Decimal("0.01"))
     item = SaleItem.objects.select_for_update(of=("self", "sale", "finished_good")).select_related(
         "sale", "finished_good", "production_batch"
-    ).get(pk=sale_item.pk)
+    ).get(pk=sale_item.pk, sale__business=business)
     if item.sale.business_id != business.pk or item.sale.source != "distribution_order":
         raise ValidationError("Select a Distribution sale belonging to the active business.")
+    if condition not in dict(DistributionReturn.CONDITION_CHOICES):
+        raise ValidationError("Choose a valid return condition.")
     already_returned = sum(
-        (row.quantity for row in DistributionReturn.raw_objects.filter(sale_item=item)),
+        (row.quantity for row in DistributionReturn.raw_objects.filter(business=business, sale_item=item)),
         Decimal("0"),
     )
     returnable = max(Decimal("0"), item.total_units - already_returned)
@@ -658,13 +660,22 @@ def record_distribution_return(*, business, sale_item, quantity, date, condition
             unit_value=unit_value,
             on_date=date,
         )
+    # Settlement changes the amount due, never the money actually collected.
+    from sales.models import CustomerPayment
+    paid = sum(CustomerPayment.raw_objects.filter(business=business, sale=item.sale).values_list(
+        "amount", flat=True), Decimal("0"))
+    if item.sale.transaction_type != "paid" and paid > 0 and paid >= item.sale.net_total:
+        item.sale.transaction_type = "paid"
+        item.sale.save(update_fields=["transaction_type", "updated_at"])
     audit(
         business,
         user,
         "distribution_return",
         returned,
         f"{quantity:.2f} {item.finished_good.unit} returned from Distribution sale #{item.sale_id}",
-        {"condition": condition, "reason": reason, "writeoff_value": str(returned.writeoff_value)},
+        {"condition": condition, "reason": reason, "writeoff_value": str(returned.writeoff_value),
+         "customer_credit": str(item.line_total * quantity / item.total_units),
+         "net_invoice": str(item.sale.net_total)},
     )
     return returned
 

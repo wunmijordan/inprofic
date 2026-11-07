@@ -84,8 +84,14 @@ material/product and mentions a reorder threshold only when one is configured.
 Ledger scope labels appear on shared summaries only for businesses that have
 configured ledger cut-over. Distribution summaries show expected selling value
 as distributed value less recorded returns, and expected balance as that value
-less collections. These read-only figures do not automatically credit invoices
-or post refunds.
+less collections. Recorded returns now credit the original customer invoice in
+customer balances, payment validation and Finance. The original invoice lines
+and actual cash receipts remain intact; any excess payment stays available for
+refund/credit review. Reselling returned stock creates a separate sale for its
+new customer or the Physical Store. Damaged returns appear as damaged
+distribution goods cost in Profit & Loss at their recorded stock cost. Rebuild
+Books to include dated return-credit and stock/damage journals; this does not
+automatically post a cash refund.
 
 Customer region and area labels on distribution pages, images and shared text
 come from the current business customer directory. Historical sale-name snapshots
