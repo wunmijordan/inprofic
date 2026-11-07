@@ -846,6 +846,9 @@ class InventoryLocation(BusinessOwnedModel):
 
 class StockAdjustment(BusinessOwnedModel):
     ledger_date_field = "date"
+    SOURCE_PHYSICAL = "physical_store"
+    SOURCE_MARKET = "market_stock"
+    STOCK_SOURCE_CHOICES = [(SOURCE_PHYSICAL, "Physical Store"), (SOURCE_MARKET, "Market Stock")]
     REASON_CHOICES = [
         ("count", "Physical count correction"), ("wastage", "Wastage / spoilage"),
         ("damage", "Damage"), ("return_customer", "Customer return"),
@@ -858,6 +861,8 @@ class StockAdjustment(BusinessOwnedModel):
     quantity = models.DecimalField(max_digits=14, decimal_places=2)
     reason = models.CharField(max_length=30, choices=REASON_CHOICES, default="count")
     description = models.CharField(max_length=255)
+    stock_source = models.CharField(max_length=20, choices=STOCK_SOURCE_CHOICES, default=SOURCE_PHYSICAL)
+    recipient = models.CharField(max_length=160, blank=True, default="")
     unit_value = models.DecimalField(max_digits=16, decimal_places=6, default=0)
     location = models.ForeignKey(InventoryLocation, null=True, blank=True, on_delete=models.PROTECT)
     reversed = models.BooleanField(default=False)
@@ -1012,6 +1017,7 @@ class MarketStockMovement(BusinessOwnedModel):
     TRANSFER_PHYSICAL = "transfer_physical"
     EXPIRY = "expiry"
     REVERSAL = "reversal"
+    NON_STOCK = "non_stock"
     TYPE_CHOICES = [
         (PRODUCTION_IN, "Production received into Market Stock"),
         (RELEASE, "Released to distributor"),
@@ -1019,6 +1025,7 @@ class MarketStockMovement(BusinessOwnedModel):
         (TRANSFER_PHYSICAL, "Transferred to Physical Store"),
         (EXPIRY, "Expired / unsellable write-off"),
         (REVERSAL, "Production reversal"),
+        (NON_STOCK, "Staff / gifting issue"),
     ]
 
     lot = models.ForeignKey(MarketStockLot, on_delete=models.PROTECT, related_name="movements")

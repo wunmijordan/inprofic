@@ -22,6 +22,7 @@ SECTION_LABELS = {
     'expenses': 'Expenses', 'position': 'Cash accounts and who owes / is owed',
     'cash_flow': 'Money in and money out', 'materials': 'Material stock levels',
     'products': 'Product stock levels',
+    'product_use': 'Staff and gifting issues',
     'production': 'Production and approval queue', 'purchasing': 'Purchasing and open requests',
     'commerce': 'Commerce activity', 'delivery': 'Delivery activity', 'ledger': 'Ledger controls',
 }
@@ -29,6 +30,7 @@ TITLE_KEYS = {
     'Sales activity': 'sales', 'Profit and loss': 'profit', 'Expenses': 'expenses',
     'Cash and outstanding balances': 'position', 'Cash movement': 'cash_flow',
     'Material stock': 'materials', 'Product stock': 'products',
+    'Staff and gifting': 'product_use',
     'Production': 'production', 'Purchasing': 'purchasing',
     'Commerce': 'commerce', 'Delivery': 'delivery', 'Ledger controls': 'ledger',
 }
@@ -38,6 +40,7 @@ HIGHLIGHT_KEYS = {
     'Payables': 'position', 'Material stock alerts': 'materials', 'Product stock alerts': 'products',
     'Production attention': 'production',
     'Open purchase requests': 'purchasing', 'Purchases & expenses': 'purchasing', 'Expenses': 'expenses',
+    'Staff and gifting': 'product_use',
 }
 
 
@@ -134,7 +137,8 @@ def enrich(brief, start, end, *, user=None, selected_sections=None):
         brief['executive_pl'] = pl
         metrics = [('Paid-sales revenue',pl['revenue']),('Cost of goods',pl['cogs']),
             ('Gross profit',pl['gross_profit']),('Operating expenses',pl['operating_expenses']),
-            ('Payroll',pl['payroll']),('Operational supplies',pl['supplies']),('Stock write-offs',pl['write_offs']),
+            ('Payroll',pl['payroll']),('Operational supplies',pl['supplies']),('Stock write-offs',pl['write_offs'] - pl.get('product_use',ZERO)),
+            ('Staff / gifting inventory cost',pl.get('product_use',ZERO)),
             ('Total costs',pl['total_costs']),('Net profit / loss',pl['net_profit']),
             ('Unpaid sales',pl['unpaid_sales']),('Unpaid expenses',pl['unpaid_expenses'])]
         lines = [f'{label}: {money(value)}' for label,value in metrics if value]
@@ -193,6 +197,22 @@ def enrich(brief, start, end, *, user=None, selected_sections=None):
             highlight(title + ' alerts', f'{len(risks)} / {len(records)}',
                       'Needs attention: ' + ', '.join(risks[:3]) + (f' +{len(risks)-3} more' if len(risks) > 3 else '') if risks else 'No low or out-of-stock items')
 
+    if allowed['inventory']:
+        from inventory.product_use import product_issues
+        issues = list(product_issues(business, start, end))
+        lines = []
+        cost = sum((-issue.value for issue in issues), ZERO)
+        for issue in issues:
+            lines.append(f'{issue.get_reason_display()} · {issue.recipient or "Recipient not recorded"} · {issue.date:%d %b %Y} · {issue.get_stock_source_display()}')
+            lines.append(f'  {issue.finished_good.name}: {format_quantity(-issue.quantity, issue.finished_good.unit)}' + (f' · Inventory cost: {money(-issue.value)}' if issue.value else ''))
+            if issue.description and issue.description != f'{issue.get_reason_display()} — {issue.recipient}':
+                lines.append(f'  Note: {issue.description}')
+        if cost:
+            lines.append(f'Staff and gifting inventory cost: {money(cost)} (included in stock costs)')
+        section('Staff and gifting · selected period', lines)
+        if issues:
+            highlight('Staff and gifting', f'{len(issues)} issues', f'Inventory cost: {money(cost)}' if cost else 'Recorded stock withdrawals')
+
     if business.uses_production and allowed['production']:
         from production.models import Order, ProductionBatch
         orders = Order.objects.filter(business=business, date__range=(start, end))
@@ -228,8 +248,23 @@ def enrich(brief, start, end, *, user=None, selected_sections=None):
         lines = [f'Received purchases: {money(received_value)} · {received.count()} orders'] if received_value else []
         if request_count(current): lines.append(f'Open purchase requests: {request_count(current)}')
         lines += [f"Open request #{po.pk} · {po.supplier or 'Unnamed supplier'} · {po.date:%d %b %Y} · {po.get_status_display()}" for po in current.order_by('date', 'pk')]
-        suppliers = received.values('supplier').annotate(count=Count('pk')).order_by('supplier')
-        lines += [f"Received from {r['supplier'] or 'Unnamed supplier'}: {r['count']} orders" for r in suppliers]
+        vendors = {}
+        for po in received.select_related('supplier_master').prefetch_related('items__raw_material', 'items__finished_good').order_by('supplier', 'pk'):
+            vendor = vendors.setdefault(payee(po), {'total': ZERO, 'products': {}})
+            for item in po.items.all():
+                if not item.qty:
+                    continue
+                key = (item.item_name, item.stock_unit)
+                product = vendor['products'].setdefault(key, [ZERO, ZERO])
+                product[0] += item.qty
+                product[1] += item.line_total
+                vendor['total'] += item.line_total
+        for name, vendor in vendors.items():
+            if not vendor['products']:
+                continue
+            lines.append(f"Received from {name}: {money(vendor['total'])}")
+            for (name, unit), (quantity, value) in sorted(vendor['products'].items()):
+                lines.append(f'  {name}: {format_quantity(quantity, unit)}' + (f' · {money(value)}' if value else ''))
         if allowed['expenses'] or allowed['finance']:
             from expenses.models import Expense
             miscellaneous = list(Expense.objects.filter(business=business,date__range=(start,end),amount__gt=0).order_by('date','description'))
@@ -386,6 +421,8 @@ def select_highlights(highlights):
     # Show actual exceptions first; a quiet shelf-life indicator should not
     # displace an outstanding approval or purchasing queue.
     operations.sort(key=lambda row: Decimal(row['value']) > 0, reverse=True)
+    if 'Staff and gifting' in by_label:
+        selected.append(by_label['Staff and gifting'])
     selected.extend(operations[:max(0, 8-len(selected))])
     return selected[:8]
 

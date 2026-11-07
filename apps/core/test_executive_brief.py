@@ -65,6 +65,21 @@ class ExecutiveReportTests(BriefBase):
         self.assertEqual(len(complete['outstanding_sales']), 32)
         self.assertEqual(capped['receivables'], complete['receivables'])
 
+    def test_received_purchases_group_products_under_vendor_totals(self):
+        from procurement.models import PurchaseOrder, PurchaseOrderItem
+        flour = RawMaterial.objects.create(business=self.business, name='Flour',
+            purchase_unit='bag', usage_unit='kg')
+        for vendor, quantity, cost in [('Vendor A', 1, 100), ('Vendor A', 2, 100), ('Vendor B', 4, 80)]:
+            po = PurchaseOrder.objects.create(business=self.business, date=YESTERDAY,
+                supplier=vendor, status='received', received_date=YESTERDAY)
+            PurchaseOrderItem.objects.create(purchase_order=po, raw_material=flour, qty=quantity, unit_cost=cost)
+        symbol = self.business.currency_symbol
+        for weekly in [False, True]:
+            text = self.report(weekly)['text']
+            self.assertIn(f'Received purchases: {symbol}620.00', text)
+            self.assertIn(f'• Received from Vendor A: {symbol}300.00\n  ◦ Flour: 3 bags · {symbol}300.00', text)
+            self.assertIn(f'• Received from Vendor B: {symbol}320.00\n  ◦ Flour: 4 bags · {symbol}320.00', text)
+
     def test_customer_sales_show_current_payment_status_in_daily_and_weekly_text(self):
         self.sell(10, 5, customer='Paid customer')
         self.sell(10, 5, paid=False, customer='Partial customer')

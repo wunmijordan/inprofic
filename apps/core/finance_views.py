@@ -524,7 +524,7 @@ def stock_adjustment_form(request):
                     form.add_error("finished_good","This product is not in physical-store stock."); return render(request,"core/adjustment_form.html",{"form":form})
                 if x.quantity + x.finished_good.stock < 0:
                     form.add_error("quantity","Adjustment would make stock negative."); return render(request,"core/adjustment_form.html",{"form":form})
-                latest=x.finished_good.adjustments.order_by("-date","-id").first()
+                latest=x.finished_good.adjustments.filter(stock_source='physical_store').order_by("-date","-id").first()
                 x.unit_value=latest.unit_value if latest else x.finished_good.est_cost
             x.save()
             ref=f"ADJ-{x.pk}"
@@ -613,8 +613,9 @@ def _profit_loss_context(request):
     lines += [
         {"label": "Payroll (employer cost)", "amount": -statement["payroll"], "kind": "cost"},
         {"label": "Operating supplies used", "amount": -statement["supplies"], "kind": "cost"},
-        {"label": "Other stock write-offs & losses" if statement["distribution_damage"] else "Stock write-offs & losses",
-         "amount": -(statement["write_offs"] - statement["distribution_damage"]), "kind": "cost"},
+        {"label": "Other stock write-offs & losses" if statement["distribution_damage"] or statement['product_use'] else "Stock write-offs & losses",
+         "amount": -(statement["write_offs"] - statement["distribution_damage"] - statement['product_use']), "kind": "cost"},
+        *([{'label': 'Staff / gifting inventory cost', 'amount': -statement['product_use'], 'kind': 'cost'}] if statement['product_use'] else []),
         *([{"label": "Damaged distribution goods cost", "amount": -statement["distribution_damage"], "kind": "cost"}]
           if statement["distribution_damage"] else []),
         {"label": "Net profit", "amount": statement["net_profit"], "kind": "net", "margin": statement["net_margin"]},

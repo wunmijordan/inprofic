@@ -138,10 +138,10 @@ def render_distribution_snapshot(*, business, title, day, products, cards, url, 
     draw.text((PAD, 46), _fit(draw, business.name, body, inner-290), font=body, fill=MUTED)
     draw.text((WIDTH-PAD, 46), scope, font=small, fill=MUTED, anchor='ra')
     draw.text((PAD, 87), _fit(draw, title, title_font, inner), font=title_font, fill=INK)
-    draw.text((PAD, 142), day.strftime('%d %b %Y') + ' · customer allocations', font=body, fill=INK)
+    draw.text((PAD, 142), day.strftime('%d %b %Y') + ' · stock destinations', font=body, fill=INK)
     draw.text((PAD, 176), 'Selected-date balances. Closing includes blocked stock.', font=small, fill=MUTED)
     x_opening, x_taken, x_left = 550, 790, WIDTH-PAD
-    for label, x, anchor in [('Product / customer', PAD, 'la'),
+    for label, x, anchor in [('Product / destination', PAD, 'la'),
                              ('Opening', x_opening, 'ra'),
                              ('Taken', x_taken, 'ra'), ('Closing', x_left, 'ra')]:
         draw.text((x, 216), label, font=small, fill=MUTED, anchor=anchor)
@@ -151,7 +151,7 @@ def render_distribution_snapshot(*, business, title, day, products, cards, url, 
     for product, customers in table_rows:
         draw.text((PAD, y), _fit(draw, product['product'], bold, 270), font=bold, fill=INK)
         for x, key in [(x_opening, 'opening'), (x_taken, 'distributed'), (x_left, 'closing')]:
-            amount = product[key] + product.get('physical', 0) + product.get('physical_sold',0) if key == 'distributed' else product[key]
+            amount = product[key] + product.get('physical', 0) + product.get('physical_sold',0) + product.get('issued',0) if key == 'distributed' else product[key]
             value = quantity(amount, product['unit']) if amount else '—'
             draw.text((x, y+3), _fit(draw, value, body, 215), font=body, fill=INK, anchor='ra')
         y += 44
@@ -169,7 +169,7 @@ def render_distribution_snapshot(*, business, title, day, products, cards, url, 
                         draw.text((PAD+12, y), _fit(draw, customer['customer_labels'], small, 480), font=small, fill=MUTED)
                 y += 31
         else:
-            draw.text((PAD+12, y), ('Allocations in the full text' if product['customers'] else 'No customer allocation on this date'), font=small, fill=MUTED)
+            draw.text((PAD+12, y), ('Allocations in the full text' if product['customers'] else 'No stock issued on this date'), font=small, fill=MUTED)
             y += 31
         draw.line((PAD, y+12, WIDTH-PAD, y+12), fill=LINE)
         y += 28
@@ -198,7 +198,7 @@ def render_distribution_snapshot(*, business, title, day, products, cards, url, 
     text_width = inner-180
     draw.text((PAD, y+8), _fit(draw, 'Open INPROFIC for the full breakdown', bold, text_width), font=bold, fill=ACCENT)
     draw.text((PAD, y+48), 'Sign-in required. Full details accompany this image.', font=small, fill=MUTED)
-    draw.text((PAD, y+78), 'Returns need credit/refund review; invoices are unchanged.', font=_font(FONT_REGULAR,17), fill=MUTED)
+    draw.text((PAD, y+78), 'Returns reduce expected value; recorded receipts stay unchanged.', font=_font(FONT_REGULAR,17), fill=MUTED)
     draw.text((PAD, y+109), _fit(draw, url.replace('https://','').replace('http://',''), small, text_width), font=small, fill=INK)
     if qr:
         image.paste(qr, (WIDTH-PAD-152, y+3))

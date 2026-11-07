@@ -365,6 +365,8 @@ def procurement_summary(ctx):
 # ===========================================================================
 
 def inventory_summary(ctx):
+    from inventory.product_use import product_issues
+    from .quantities import format_quantity
     from inventory.models import FinishedGood, RawMaterial, StockAdjustment, StockMovement
     raw_stock, fg_stock = _stock_values(ctx)
     raws = RawMaterial.objects.filter(business=ctx.business)
@@ -378,16 +380,21 @@ def inventory_summary(ctx):
                  .values("movement_type").annotate(n=Count("pk"), qty=Sum("quantity")).order_by("-n"))
     top_value = raws.annotate(_v=ExpressionWrapper(F("stock") * F("cost_per_unit"), output_field=MONEY)).filter(stock__gt=0).order_by("-_v")[:10]
     low_goods = goods.filter(reorder_level__gt=0, stock__lte=F("reorder_level")).order_by("stock")[:10]
+    issues = list(product_issues(ctx.business, ctx.start, ctx.end))
     return {
         "kpis": [
             kpi("Raw material value", money(ctx, raw_stock["value"]), f"{raw_stock['count']} item(s) at cost"),
             kpi("Product stock value", money(ctx, fg_stock["value"]), f"{fg_stock['count']} item(s) at selling price"),
             kpi("Raw materials out of stock", raw_out), kpi("Raw materials low", raw_low),
             kpi("Products out of stock", fg_out), kpi("Adjustments (net value)", money(ctx, adj_value), f"{adjustments.count()} in {ctx.label}"),
+            kpi('Staff / gifting inventory cost', money(ctx, sum((-issue.value for issue in issues), ZERO))),
         ],
         "charts": [chart("Raw materials by stock health", ["Out of stock", "Low", "Healthy"], [(
             "Items", [raw_out, raw_low, max(raw_stock["count"] - raw_out - raw_low, 0)])])],
         "tables": [
+            table('Staff and gifting', ['Date', 'Product', 'Purpose', 'Recipient', 'Stock source', 'Quantity', 'Inventory cost'],
+                [[issue.date, issue.finished_good.name, issue.get_reason_display(), issue.recipient or 'Not recorded',
+                  issue.get_stock_source_display(), format_quantity(-issue.quantity, issue.finished_good.unit), money(ctx, -issue.value)] for issue in issues]),
             table("Highest-value raw materials", ["Material", "In stock", "Value"],
                   [[m.name, f"{num(m.stock, 2)} {m.usage_unit}", money(ctx, m._v)] for m in top_value]),
             table("Products at or below reorder level", ["Product", "In stock", "Reorder at"],

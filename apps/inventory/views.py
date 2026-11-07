@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models.deletion import ProtectedError
 from django.utils import timezone
+from django.urls import reverse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import HttpResponse
 from django.http import JsonResponse
@@ -89,6 +90,37 @@ def _raw_material_stock_breakdown_markup(material):
         f"<font color='#78716C' size='9'><b><i>{usage_unit}</i></b></font>"
     )
 
+
+
+@login_required
+@require_http_methods(['GET', 'POST'])
+def product_stock_issue(request, stock_source):
+    from .forms import ProductStockIssueForm
+    from .models import StockAdjustment
+    from .services import issue_product_stock
+    if not user_has_permission(request.user, request.business, 'inventory', 'edit'):
+        return render(request, '403.html', status=403)
+    if stock_source == StockAdjustment.SOURCE_MARKET and not request.business.uses_production:
+        return render(request, '403.html', status=403)
+    initial = {'date': ledger.default_entry_date(), 'finished_good': request.GET.get('product')}
+    form = ProductStockIssueForm(request.POST or None, business=request.business,
+        stock_source=stock_source, initial=initial)
+    if request.method == 'POST' and form.is_valid():
+        data = form.cleaned_data
+        try:
+            issue_product_stock(business=request.business, good=data['finished_good'], quantity=data['quantity'],
+                date=data['date'], stock_source=stock_source, reason=data['reason'], recipient=data['recipient'],
+                description=data['description'], user=request.user)
+        except ValidationError as exc:
+            form.add_error(None, exc)
+        else:
+            messages.success(request, 'Product issue recorded and stock updated.')
+            if stock_source == StockAdjustment.SOURCE_MARKET:
+                return redirect(reverse('market_stock') + '?date=' + data['date'].isoformat())
+            return redirect(reverse('inventory') + '#finished')
+    return render(request, 'inventory/product_stock_issue.html', {'form': form,
+        'stock_source_label': dict(StockAdjustment.STOCK_SOURCE_CHOICES)[stock_source],
+        'back_url': reverse('market_stock') if stock_source == StockAdjustment.SOURCE_MARKET else reverse('inventory') + '#finished'})
 
 
 @login_required

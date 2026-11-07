@@ -3,6 +3,8 @@ from . import alert_views, views
 from .distribution_summary import distribution_snapshot
 
 urlpatterns = [
+    path('product-use/market/', views.product_stock_issue, {'stock_source': 'market_stock'}, name='market_stock_issue'),
+    path('product-use/physical/', views.product_stock_issue, {'stock_source': 'physical_store'}, name='physical_stock_issue'),
     path("alerts/feed/", alert_views.alert_feed, name="inventory_alert_feed"),
     path("alerts/acknowledge/", alert_views.alert_acknowledge, name="inventory_alert_acknowledge"),
     path("alert-settings/", alert_views.alert_settings_view, name="inventory_alert_settings"),

@@ -490,7 +490,7 @@
     "name": "Holistic Daily Brief and Weekly Summary with executive snapshots",
     "group": "insights",
     "audience": "business owners and dashboard users",
-    "proof": "Choose daily and weekly sections independently. Read product-grouped production with production costs, material package breakdowns, sales with customer distribution details, canonical P&L and named balances. Purchasing includes period miscellaneous expenses. Compact images and complete selected text omit zero-value fields and retain stock warnings, respecting sender permissions.",
+    "proof": "Choose daily and weekly sections independently. Read product-grouped production with production costs, material package breakdowns, customer sales with payment status and balances, canonical P&L and named balances. Received purchases show vendor totals with product quantities and values. Period staff/gifting records identify recipients, stock source and inventory cost; compact images carry issue highlights. Purchasing includes miscellaneous expenses. Images and complete selected text omit zero-value fields and respect sender permissions.",
     "highlight": "NEW",
     "added_on": "2026-11-04"
   },
@@ -545,6 +545,15 @@
     "group": "operations",
     "audience": "production managers, owners and planning teams",
     "proof": "Plan products for Distribution customers, Online buyers, Physical Store and Market Stock in one proposal. Share a paper-style image or complete text, adjust quantities and prefill one pending production order. Review the proposed destinations in the existing channel-split flow before approval. Saving or sharing a proposal never reserves stock, releases materials or records sales or payments; order links retain the planning trail.",
+    "highlight": "NEW",
+    "added_on": "2026-11-07"
+  },
+  {
+    "id": "product-staff-gifting-issues",
+    "name": "Staff and gifting issues from existing product stock",
+    "group": "operations",
+    "audience": "owners, storekeepers and distribution teams",
+    "proof": "Issue products directly from sellable Market Stock or available Physical Store stock. Record recipient, purpose, quantity, date and inventory cost with an audit trail. Market issues follow batch expiry rules; no sale, customer balance or cash payment is created. Finance identifies the cost once, while period reports and shared snapshots/text retain the withdrawals and recipients.",
     "highlight": "NEW",
     "added_on": "2026-11-07"
   }

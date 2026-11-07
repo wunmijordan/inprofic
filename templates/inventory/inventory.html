@@ -193,7 +193,7 @@
         <td class="px-3 py-2 text-right font-mono">{{ g.selling_price|money:biz.currency_symbol }}</td>
         <td class="px-3 py-2 text-xs text-stone-500">{% if vertical_ui.uses_production %}{{ g.recipe_items.count }} {{ vertical_ui.recipe_item_label }}{{ g.recipe_items.count|pluralize }}{% if g.production_materials.count %}, {{ g.production_materials.count }} production input{{ g.production_materials.count|pluralize }}{% endif %}{% else %}<span class="font-mono">{{ g.est_cost|money:biz.currency_symbol }}</span> / {{ g.unit }}{% endif %}</td>
         <td class="px-3 py-2 text-right">
-          {% if module_permissions.inventory.edit %}<a href="{% url 'finished_good_edit' g.pk %}" class="text-stone-400 hover:text-[#8f172d] mr-2">Edit</a>{% endif %}
+          {% if module_permissions.inventory.edit and g.stock > 0 %}<a href="{% url 'physical_stock_issue' %}?product={{ g.pk }}" class="workspace-action mr-2" aria-label="Staff / gifting issue · {{ g.name }}">Staff / gifting</a>{% endif %}{% if module_permissions.inventory.edit %}<a href="{% url 'finished_good_edit' g.pk %}" class="text-stone-400 hover:text-[#8f172d] mr-2">Edit</a>{% endif %}
           {% if module_permissions.inventory.edit %}<form action="{% url 'finished_good_delete' g.pk %}" method="post" class="inline" onsubmit="return confirm('Remove {{ g.name }}?');">{% csrf_token %}<button class="text-stone-400 hover:text-rose-600">Delete</button></form>{% endif %}
         </td>
       </tr>

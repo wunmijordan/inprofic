@@ -185,6 +185,11 @@ def daily_components(business, start, end):
         write_offs[row["date"]] = -(row["total"] or ZERO)
 
     distribution_damage = defaultdict(Decimal)
+    product_use = {}
+    for row in StockAdjustment.objects.filter(business=business, date__range=(start, end), reversed=False,
+            finished_good__isnull=False, quantity__lt=0, reason__in=['staff', 'charity']).values('date').annotate(
+                total=Sum(ExpressionWrapper(F('quantity') * F('unit_value'), output_field=money_field))):
+        product_use[row['date']] = -(row['total'] or ZERO)
     for row in DistributionReturn.objects.filter(business=business, date__range=(start, end),
             condition=DistributionReturn.DAMAGED).values("date").annotate(
                 total=Sum(ExpressionWrapper(F("quantity") * F("unit_value"), output_field=money_field))):
@@ -202,7 +207,7 @@ def daily_components(business, start, end):
         "revenue": dict(revenue), "cogs": dict(cost_of_goods),
         "expenses": {category: dict(by_date) for category, by_date in expenses.items()},
         "unpaid_expenses": dict(unpaid_expenses), "payroll": dict(payroll), "supplies": dict(supplies),
-        "write_offs": dict(write_offs), "distribution_damage": dict(distribution_damage), "unpaid_sales": dict(unpaid_sales),
+        "write_offs": dict(write_offs), "distribution_damage": dict(distribution_damage), 'product_use': product_use, "unpaid_sales": dict(unpaid_sales),
     }
 
 
@@ -243,6 +248,7 @@ def summarise(components, start, end):
         "expense_lines": expense_lines, "operating_expenses": _money(operating),
         "payroll": _money(payroll), "supplies": _money(supplies), "write_offs": _money(write_offs),
         "distribution_damage": _money(_total(components.get("distribution_damage", {}), start, end)),
+        'product_use': _money(_total(components.get('product_use', {}), start, end)),
         "total_costs": _money(total_costs), "net_profit": _money(net), "net_margin": margin(net),
         "unpaid_sales": _money(_total(components["unpaid_sales"], start, end)),
         "unpaid_expenses": _money(_total(components["unpaid_expenses"], start, end)),

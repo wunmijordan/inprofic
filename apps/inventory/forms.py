@@ -21,9 +21,37 @@ from .models import (
     ProductCategory,
     RawMaterial,
     RecipeItem,
+    StockAdjustment,
 )
 
 INPUT_CLS = "w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 focus:border-[#8f172d]"
+
+
+class ProductStockIssueForm(forms.Form):
+    date = forms.DateField(label='Issue date', widget=forms.DateInput(attrs={'type': 'date'}))
+    finished_good = forms.ModelChoiceField(queryset=FinishedGood.objects.none(), label='Product')
+    quantity = forms.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal('0.01'),
+        help_text='Quantity in the product’s registered unit. Available stock is shown beside each product.')
+    reason = forms.ChoiceField(label='Purpose', choices=[('staff', 'Staff issue'), ('charity', 'Gift / donation')])
+    recipient = forms.CharField(max_length=160, label='Staff member / recipient',
+        help_text='Name the person, team or organisation receiving these products.')
+    description = forms.CharField(max_length=255, required=False, label='Note', widget=forms.Textarea(attrs={'rows': 2}))
+
+    def __init__(self, *args, business, stock_source, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.quantities import format_quantity
+        from .services import market_stock_availability
+        products = FinishedGood.objects.filter(business=business).order_by('name')
+        self.fields['finished_good'].queryset = products
+        try:
+            on_date = self.fields['date'].to_python(self.data.get('date') if self.is_bound else self.initial.get('date'))
+        except forms.ValidationError:
+            on_date = None
+        available = market_stock_availability(business, on_date or timezone.localdate()) if stock_source == StockAdjustment.SOURCE_MARKET else None
+        self.fields['finished_good'].label_from_instance = lambda good: (
+            f"{good.name} · {format_quantity(Decimal(available.get(str(good.pk), {}).get('available', 0)) if available is not None else good.stock or 0, good.unit)} available")
+        for field in self.fields.values():
+            field.widget.attrs['class'] = INPUT_CLS
 
 
 def _set_static_model_choices(field, choices):

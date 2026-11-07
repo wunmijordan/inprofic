@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mx-auto max-w-2xl">
+  <div class="mb-4 flex items-start justify-between gap-3">
+    <div>
+      <h1 class="font-display text-xl font-semibold">Staff / gifting issue · {{ stock_source_label }}</h1>
+      {% include "_help_tip.html" with label="Issue products from stock" help_text="Record products taken by staff or given away. This reduces available stock and records the inventory cost in Finance. It does not create a sale or a customer balance. Market Stock uses sellable batches first; expired stock cannot be gifted or issued to staff." portal_bubble=True %}
+    </div>
+    <a href="{{ back_url }}" class="workspace-action">Back</a>
+  </div>
+  <form method="post" class="cf-form-shell cf-form-body space-y-4">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div role="alert" class="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{{ form.non_field_errors }}</div>{% endif %}
+    {% for field in form %}{% include "_field.html" with field=field %}{% endfor %}
+    <div class="flex flex-wrap gap-2">
+      <button type="submit" class="workspace-action workspace-action-primary">Record issue</button>
+      <a href="{{ back_url }}" class="workspace-action">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -11,7 +11,13 @@ what was borrowed and what was deliberately left out).
 - **Inventory** — raw materials (with a real purchase→package→usage unit
   chain: buy in bags, track in kg, dispense in grams/spoons/caps — see
   "Units" below) and finished goods, each with a recipe (bill of materials)
-  and an optional batch size.
+  and an optional batch size. Staff and gifting issues can be recorded directly
+  from sellable Market Stock or available Physical Store stock. Each issue records
+  its recipient, purpose, date, quantity and inventory cost, reduces only its stock
+  source, and creates an audited stock adjustment without a sale or cash payment.
+  Finance identifies that cost separately within stock costs; it is counted once.
+  Period reports and shared summaries include the issues and recipients, with
+  concise quantity/cost highlights on snapshots.
 - **Procurement** — submit a purchase request, have a business administrator
   approve quantities, then receive approved goods. Reductions and removals
   retain requested quantities and reasons. Group items by optional saved or freely
@@ -311,7 +317,7 @@ Daily Brief and Weekly Summary now provide a holistic executive report: all
 material/product stock positions with pluralized units, material package breakdowns and stock status, sales
 by channel/product/customer, canonical Finance P&L, cash movements and account
 balances, outstanding customer/supplier/expense balances, purchasing, and relevant
-production, commerce and delivery activity. Each customer appears once under Sales activity, with product quantities and values nested below their total and fully paid, partially paid or unpaid status. Remaining balances use payments and returns recorded to date. Shared summary text uses distinct main-item and subitem bullets across briefs, distribution, purchases and proposals. Purchasing includes miscellaneous expenses for the selected period. Production is grouped by product with explicit production costs. Zero-value fields and empty sections are omitted while out-of-stock warnings remain visible. Both separate selected-period
+production, commerce and delivery activity. Each customer appears once under Sales activity, with product quantities and values nested below their total and fully paid, partially paid or unpaid status. Remaining balances use payments and returns recorded to date. Shared summary text uses distinct main-item and subitem bullets across briefs, distribution, purchases and proposals. Purchasing groups received items by vendor with each product’s quantity and value, and includes miscellaneous expenses for the selected period. Production is grouped by product with explicit production costs. Zero-value fields and empty sections are omitted while out-of-stock warnings remain visible. Both separate selected-period
 activity from current positions, respect the sender's module permissions, and keep
 production-only sections out of purchased-stock businesses. The paper-style image
 has at most 8 headline rows plus the net-profit card; the full report text is passed

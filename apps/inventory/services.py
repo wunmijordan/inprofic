@@ -782,3 +782,75 @@ def consume_transferred_physical_stock(good, quantity):
     )
     good.transferred_market_stock -= amount
     return amount
+
+
+@transaction.atomic
+def issue_product_stock(*, business, good, quantity, date, stock_source, reason, recipient, description, user):
+    """Issue existing products without a sale; the adjustment owns the cost once."""
+    from core import ledger
+    from core.services import audit
+
+    quantity = Decimal(quantity)
+    if not quantity.is_finite() or quantity <= 0 or quantity > Decimal('999999999999.99'):
+        raise ValidationError('Enter a positive quantity within the supported range.')
+    if quantity != quantity.quantize(Decimal('0.01')):
+        raise ValidationError('Enter a positive quantity with at most two decimal places.')
+    if stock_source not in dict(StockAdjustment.STOCK_SOURCE_CHOICES) or reason not in {'staff', 'charity'}:
+        raise ValidationError('Choose a valid stock source and purpose.')
+    recipient = (recipient or '').strip()
+    description = (description or '').strip()
+    if not recipient or len(recipient) > 160 or len(description) > 255:
+        raise ValidationError('Enter the recipient (up to 160 characters) and a note up to 255 characters.')
+    if not date or date > timezone.localdate():
+        raise ValidationError('Choose an issue date on or before today.')
+    ledger.check_scope_date(date)
+    backlog = ledger.segment_for(business, date) == ledger.SEGMENT_BACKLOG
+    if good.business_id != business.pk:
+        raise ValidationError('Product must belong to the active business.')
+    good = FinishedGood.raw_objects.select_for_update().get(business=business, pk=good.pk)
+    market = stock_source == StockAdjustment.SOURCE_MARKET
+    if market and not business.uses_production:
+        raise ValidationError('Market Stock is not used by this business.')
+    lots = _sellable_market_lots(good, date, lock=True) if market else []
+    available = sum((lot.quantity_available for lot in lots), Decimal('0')) if market else good.stock
+    if available is None or quantity > available:
+        raise ValidationError(f'Only {format_quantity(available or 0, good.unit)} is available from this stock source.')
+    adjustment = StockAdjustment.objects.create(business=business, created_by=user, date=date,
+        finished_good=good, quantity=-quantity, reason=reason, recipient=recipient,
+        stock_source=stock_source, description=description or f'{dict(StockAdjustment.REASON_CHOICES)[reason]} — {recipient}')
+    reference = f'ADJ-{adjustment.pk}'
+    note = f'{adjustment.get_reason_display()} — {recipient}; {reference}'
+    if description:
+        note = f'{note}; {description}'[:255]
+    value, remaining = Decimal('0'), quantity
+    if market:
+        for lot in lots:
+            taken = min(remaining, lot.quantity_available)
+            if not taken:
+                continue
+            value += taken * lot.unit_cost
+            if not backlog:
+                lot.quantity_available -= taken
+                if lot.quantity_available == 0:
+                    lot.active, lot.closed_reason = False, 'non_stock'
+                lot.save(update_fields=['quantity_available', 'active', 'closed_reason', 'updated_at'])
+            _record_market_movement(lot, date=date, movement_type=MarketStockMovement.NON_STOCK,
+                quantity=-taken, user=user, note=note)
+            record_finished_good_movement(good, -taken, StockMovement.ADJUSTMENT,
+                affects_stock=False, unit_value=lot.unit_cost, note=note, reference=reference, on_date=date)
+            remaining -= taken
+            if remaining == 0:
+                break
+    else:
+        value = quantity * good.est_cost
+        record_finished_good_movement(good, -quantity, StockMovement.ADJUSTMENT,
+            unit_value=good.est_cost, note=note, reference=reference, on_date=date)
+        if not backlog:
+            consume_transferred_physical_stock(good, quantity)
+    adjustment.unit_value = value / quantity
+    adjustment.save(update_fields=['unit_value'])
+    audit(business, user, 'issue_product_stock', adjustment,
+        f'{format_quantity(quantity, good.unit)} of {good.name} issued to {recipient}'[:255],
+        {'quantity': str(quantity), 'stock_source': stock_source, 'purpose': reason,
+         'recipient': recipient, 'inventory_cost': str(value)})
+    return adjustment

@@ -2409,7 +2409,7 @@ def _sales_rows(qs=None):
 
 
 def _adjustment_rows():
-    return [[a.date, a.raw_material.name if a.raw_material else a.finished_good.name, "Raw material" if a.raw_material else "Finished good", a.get_reason_display(), a.quantity, a.unit_value, a.value, a.description, a.location.name if a.location else ""] for a in StockAdjustment.objects.select_related("raw_material","finished_good","location")]
+    return [[a.date, a.raw_material.name if a.raw_material else a.finished_good.name, "Raw material" if a.raw_material else "Finished good", a.get_reason_display(), a.quantity, a.unit_value, a.value, a.description, a.location.name if a.location else "", a.get_stock_source_display() if a.finished_good_id else "", a.recipient] for a in StockAdjustment.objects.select_related("raw_material","finished_good","location")]
 
 def _operational_dispense_rows():
     return [[d.date, d.raw_material.name, d.raw_material.usage_unit, d.quantity, d.get_reason_display(), d.description, d.location.name if d.location else "", d.created_by.username if d.created_by else ""] for d in OperationalSupplyDispense.objects.select_related("raw_material","location","created_by")]
@@ -2518,12 +2518,12 @@ def export_expenses_xlsx(request):
 @login_required
 @reports_full_required
 def export_adjustments_csv(request):
-    return _csv_response("stock-adjustments.csv", ["Date", "Item", "Type", "Reason", "Quantity", "Unit Value", "Value", "Description", "Location"], _adjustment_rows())
+    return _csv_response("stock-adjustments.csv", ["Date", "Item", "Type", "Reason", "Quantity", "Unit Value", "Value", "Description", "Location", "Stock Source", "Recipient"], _adjustment_rows())
 
 @login_required
 @reports_full_required
 def export_adjustments_xlsx(request):
-    return _xlsx_response("stock-adjustments.xlsx", "Adjustments", ["Date", "Item", "Type", "Reason", "Quantity", "Unit Value", "Value", "Description", "Location"], _adjustment_rows())
+    return _xlsx_response("stock-adjustments.xlsx", "Adjustments", ["Date", "Item", "Type", "Reason", "Quantity", "Unit Value", "Value", "Description", "Location", "Stock Source", "Recipient"], _adjustment_rows())
 
 @login_required
 @reports_full_required
