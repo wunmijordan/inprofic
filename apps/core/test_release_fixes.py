@@ -46,7 +46,8 @@ class ReviewFixTests(BriefBase):
         cutover = LedgerCutover.objects.create(business=self.business, cutover_date=today)
         self.assertIn(po, _carry_candidates(self.business, cutover)[1])
         report = _report(self.business, {}, user=self.admin)
-        self.assertIn('Open purchase requests (current): 1', report['text'])
+        self.assertIn('Purchasing · selected period and current queue', report['text'])
+        self.assertIn('Open purchase requests: 1', report['text'])
 
     def test_procurement_viewers_can_preview_but_cannot_edit_or_approve(self):
         membership = UserBusiness.objects.get(user=self.admin, business=self.business)

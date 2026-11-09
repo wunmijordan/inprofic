@@ -192,11 +192,12 @@ test('Daily Brief, Weekly Summary and distribution snapshots all download paper-
 
 test('full executive report text is identical in image sharing and Copy text', async ({page}) => {
   await login(page);
+  const day = await page.evaluate(() => new Intl.DateTimeFormat('en-CA', {timeZone:'Africa/Lagos'}).format(new Date()));
   for (const [route, name] of [['/brief/', 'daily-executive'], ['/brief/?view=weekly', 'weekly-executive']]) {
-    await page.goto(route);
-    await expect(page.locator('#brief-text')).toContainText('Full business report');
+    await page.goto(`${route}${route.includes('?') ? '&' : '?'}date=${day}`);
+    await expect(page.locator('#brief-text')).toContainText('Stock and outstanding balances as of');
     const expected = await page.locator('#brief-share').evaluate(el => JSON.parse(el.textContent));
-    for (const section of ['Material stock', 'Product stock', 'Sales activity', 'Profit and loss', 'Cash movement', 'Purchasing', 'Production']) expect(expected).toContain(section);
+    for (const section of ['Material stock', 'Product stock', 'Sales activity', 'Profit and loss', 'Cash and outstanding balances']) expect(expected).toContain(section);
     await page.evaluate(() => {
       Object.defineProperty(navigator, 'canShare', {configurable:true, value:() => true});
       Object.defineProperty(navigator, 'share', {configurable:true, value:async payload => {

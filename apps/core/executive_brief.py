@@ -17,6 +17,20 @@ from .quantities import format_quantity, material_stock_label, has_value
 from .share_text import bullet
 
 ZERO = Decimal('0')
+
+
+def selected_report_sections(preferences, mode):
+    """Upgrade older saved choices once; retain explicit non-sales opt-outs."""
+    if not isinstance(preferences, dict):
+        return None
+    selected = preferences.get(mode)
+    known = preferences.get('known_sections', {})
+    known = known.get(mode, []) if isinstance(known, dict) else []
+    if selected is not None and any(key in selected for key in ('sales','production')) and 'product_use' not in known:
+        return list(dict.fromkeys([*selected, 'product_use']))
+    return selected
+
+
 SECTION_LABELS = {
     'sales': 'Sales and customer breakdown', 'profit': 'Profit and loss',
     'expenses': 'Expenses', 'position': 'Cash accounts and who owes / is owed',
@@ -111,23 +125,28 @@ def enrich(brief, start, end, *, user=None, selected_sections=None):
             lines.append('Payment status includes payments and returns recorded to date.')
         rows = items.values('sale__customer').annotate(value=Sum(line), count=Count('sale_id', distinct=True)).order_by('-value', 'sale__customer')
         products = items.values(
-            'sale__customer', 'finished_good__name', 'finished_good__unit').annotate(
-            quantity=Sum(units), value=Sum(line)).order_by('sale__customer','finished_good__name')
+            'sale__customer', 'sale__source', 'finished_good__name', 'finished_good__unit').annotate(
+            quantity=Sum(units), value=Sum(line)).order_by('sale__customer','sale__source','finished_good__name')
         customer_products = {}
         for row in products:
             if not row['quantity'] and not row['value']:
                 continue
             customer_products.setdefault(row['sale__customer'] or '', []).append(
-                f"  {row['finished_good__name']}: {format_quantity(row['quantity'],row['finished_good__unit'])}" + (f" · {money(row['value'])}" if row['value'] else ''))
+                f"  {row['finished_good__name']}: {format_quantity(row['quantity'],row['finished_good__unit'])}" + (f" · {money(row['value'])}" if row['value'] else '') + f" · {Sale(business=business,source=row['sale__source']).display_source}")
+        returns_by_customer = {}
+        if allowed['inventory']:
+            from .brief_activity import customer_return_lines
+            returns_by_customer = customer_return_lines(business, start, end)
+            if returns_by_customer:
+                lines.append('Return destinations include later recorded activity; transfers are shown separately from sales.')
         for row in rows:
             name = row['sale__customer'] or ''
             lines.append(f"Customer · {name or 'Walk-in'}: {row['count']} sale{'s' if row['count'] != 1 else ''} · {money(row['value'])} · {customer_payments[name]}")
             lines.extend(customer_products.get(name, []))
-        if allowed['inventory']:
-            from inventory.models import DistributionReturn
-            returns = DistributionReturn.objects.filter(business=business,date__range=(start,end)).select_related('sale_item__finished_good','sale_item__sale')
-            for returned in returns:
-                lines.append(f"Returned · {returned.sale_item.sale.customer}: {returned.sale_item.finished_good.name}, {format_quantity(returned.quantity,returned.sale_item.finished_good.unit)}")
+            lines.extend(returns_by_customer.pop(name, []))
+        for name, return_lines in returns_by_customer.items():
+            lines.append(f'Customer · {name or "Walk-in"} · Returns from earlier sales')
+            lines.extend(return_lines)
         section('Sales activity · selected period', lines)
         highlight('Recorded sales', money(total), f'{count} sales · includes unpaid / part-paid')
         brief['executive_sales_total'] = total
@@ -197,9 +216,9 @@ def enrich(brief, start, end, *, user=None, selected_sections=None):
             highlight(title + ' alerts', f'{len(risks)} / {len(records)}',
                       'Needs attention: ' + ', '.join(risks[:3]) + (f' +{len(risks)-3} more' if len(risks) > 3 else '') if risks else 'No low or out-of-stock items')
 
-    if allowed['inventory']:
+    if allowed['inventory'] or (business.uses_production and allowed['production']):
         from inventory.product_use import product_issues
-        issues = list(product_issues(business, start, end))
+        issues = list(product_issues(business, start, end)) if allowed['inventory'] else []
         lines = []
         cost = sum((-issue.value for issue in issues), ZERO)
         for issue in issues:
@@ -207,11 +226,18 @@ def enrich(brief, start, end, *, user=None, selected_sections=None):
             lines.append(f'  {issue.finished_good.name}: {format_quantity(-issue.quantity, issue.finished_good.unit)}' + (f' · Inventory cost: {money(-issue.value)}' if issue.value else ''))
             if issue.description and issue.description != f'{issue.get_reason_display()} — {issue.recipient}':
                 lines.append(f'  Note: {issue.description}')
+        production_use = []
+        if business.uses_production and allowed['production']:
+            from .brief_activity import non_sales_production
+            production_use = list(non_sales_production(business, start, end))
+            for row in production_use:
+                lines.append(f'Non-sales production · {row["purpose"]} · {row["date"]:%d %b %Y}')
+                lines.append(f'  {row["product"]}: {format_quantity(row["quantity"],row["unit"])}' + (f' · Production cost: {money(row["cost"])}' if row['cost'] else ''))
         if cost:
             lines.append(f'Staff and gifting inventory cost: {money(cost)} (included in stock costs)')
         section('Staff and gifting · selected period', lines)
-        if issues:
-            highlight('Staff and gifting', f'{len(issues)} issues', f'Inventory cost: {money(cost)}' if cost else 'Recorded stock withdrawals')
+        if issues or production_use:
+            highlight('Staff and gifting', f'{len(issues)+len(production_use)} records', f'Inventory cost: {money(cost)}' if cost else 'Non-sales product use')
 
     if business.uses_production and allowed['production']:
         from production.models import Order, ProductionBatch
@@ -375,7 +401,7 @@ def full_text(brief):
         lines.append(f'Ledger scope: {scope}.')
     for section in brief['executive_sections']:
         lines += ['', f"*{section['title']}*"]
-        lines += [bullet(line, nested=line.startswith('  ')) for line in section['lines']]
+        lines += [bullet(line, level=(len(line)-len(line.lstrip()))//2) for line in section['lines']]
     if not brief['executive_sections']:
         lines += ['', 'No activity or balances to show for this selection.' if brief.get('selected_sections') != [] else 'No report sections selected. Choose what to include in Report contents.']
     return '\n'.join(lines)

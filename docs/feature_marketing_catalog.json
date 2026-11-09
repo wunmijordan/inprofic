@@ -490,7 +490,7 @@
     "name": "Holistic Daily Brief and Weekly Summary with executive snapshots",
     "group": "insights",
     "audience": "business owners and dashboard users",
-    "proof": "Choose daily and weekly sections independently. Read product-grouped production with production costs, material package breakdowns, customer sales with payment status and balances, canonical P&L and named balances. Received purchases show vendor totals with product quantities and values. Period staff/gifting records identify recipients, stock source and inventory cost; compact images carry issue highlights. Purchasing includes miscellaneous expenses. Images and complete selected text omit zero-value fields and respect sender permissions.",
+    "proof": "Choose daily and weekly sections independently. Customer product lines retain channel, payment status and balances. Returns sit beneath the original customer with recorded redistribution, direct Physical Store sales, non-sales use and remaining returned stock; transfers stay distinct from sales. Include staff/gifting stock withdrawals and completed non-stock production/excess, product production costs, material package breakdowns, P&L, named balances, received items by vendor and miscellaneous expenses. Compact images and complete text respect permissions and omit zero-value fields.",
     "highlight": "NEW",
     "added_on": "2026-11-04"
   },

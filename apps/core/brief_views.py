@@ -78,14 +78,14 @@ def _send_test(request, pref, business):
 
 def _report(business, params, today=None, *, user=None):
     """What the page shows and shares: the daily brief for a chosen date, or a week's P&L."""
-    from .executive_brief import enrich
+    from .executive_brief import enrich, selected_report_sections
     today = today or timezone.localdate()
     weekly = params.get("view") == "weekly"
     mode = 'weekly' if weekly else 'daily'
     selection = None
     if user is not None:
         preferences = DailyBriefPreference.raw_objects.filter(business=business, user=user).values_list('report_sections', flat=True).first() or {}
-        selection = preferences.get(mode) if isinstance(preferences, dict) else None
+        selection = selected_report_sections(preferences, mode)
     if weekly:
         start, note = daily_brief.parse_week(params.get("date"), today)
         brief = daily_brief.build_weekly_brief(business, start, today)
@@ -164,6 +164,10 @@ def daily_brief_page(request):
                 mode = 'weekly' if request.GET.get('view') == 'weekly' else 'daily'
                 preferences = dict(pref.report_sections or {})
                 preferences[mode] = list(dict.fromkeys(selected))
+                known = preferences.get('known_sections', {})
+                known = dict(known) if isinstance(known, dict) else {}
+                known[mode] = list(SECTION_LABELS)
+                preferences['known_sections'] = known
                 pref.report_sections = preferences
                 pref.save(update_fields=['report_sections', 'updated_at'])
                 messages.success(request, 'Report contents saved for your account in this business.')

@@ -9,7 +9,7 @@
   <div class="flex gap-2">
     <a data-button-surface href="{% url 'export_expenses_csv' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export CSV</a>
     <a data-button-surface href="{% url 'export_expenses_xlsx' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export Excel</a>
-    {% if module_permissions.expenses.edit %}<a data-button-surface href="{% url 'expense_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ Record Expense</a>{% endif %}
+    {% if module_permissions.expenses.edit %}<a data-button-surface href="{% url 'expense_add' %}" aria-label="Record general-use expenses" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ Record Expense</a>{% endif %}
   </div>
 </div>
 <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg shadow-[0_2px_8px_#000000d2] overflow-x-auto overflow-y-auto max-h-[34rem]">

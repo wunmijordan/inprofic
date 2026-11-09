@@ -368,7 +368,7 @@ def send_due_briefs(now=None):
     """
     from accounts.models import UserBusiness
     from accounts.services import user_has_permission
-    from .executive_brief import enrich
+    from .executive_brief import enrich, selected_report_sections
     from .context import set_current_business
     from .models import DailyBriefPreference
     now = now or timezone.localtime()
@@ -394,7 +394,7 @@ def send_due_briefs(now=None):
                 continue
             if wants_email or wants_whatsapp:
                 brief = build_brief(business)
-                enrich(brief, brief["day"], brief["day"], user=user, selected_sections=(pref.report_sections or {}).get("daily"))
+                enrich(brief, brief["day"], brief["day"], user=user, selected_sections=selected_report_sections(pref.report_sections, 'daily'))
                 text = render_text(brief, today, now=now)
                 whatsapp_ok = False
                 if wants_whatsapp:
@@ -410,7 +410,7 @@ def send_due_briefs(now=None):
                     delivered += 1
             if wants_weekly and user.email:
                 weekly = build_weekly_brief(business, week_start, today)
-                enrich(weekly, weekly["start"], weekly["through"], user=user, selected_sections=(pref.report_sections or {}).get("weekly"))
+                enrich(weekly, weekly["start"], weekly["through"], user=user, selected_sections=selected_report_sections(pref.report_sections, 'weekly'))
                 send_mail(f"{business.name}: your weekly summary ({week_label(weekly['start'], weekly['end'])})",
                           render_weekly_text(weekly).replace("*", ""), settings.DEFAULT_FROM_EMAIL, [user.email])
                 DailyBriefPreference.raw_objects.filter(pk=pref.pk).update(last_weekly_for=week_start)

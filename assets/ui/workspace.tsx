@@ -15,6 +15,12 @@ const CUSTOMER_ACTIVITY_PATH = /^\/sales\/customers\/\d+\/activity\/$/;
 const embedded = window.parent !== window && window.name === 'inprofic-form-dialog';
 const postParent = (type: string, extra = {}) => window.parent.postMessage({ source: 'inprofic-ui', type, ...extra }, location.origin);
 const notifyNative = (el: Element) => ['input','change'].forEach(type => el.dispatchEvent(new Event(type, { bubbles: true })));
+const dialogTitleText = (element: Element | null) => {
+  if (!element) return '';
+  const heading = element.cloneNode(true) as HTMLElement;
+  heading.querySelectorAll('[data-form-help-tip],.form-help-tip,[role="tooltip"],[hidden],.sr-only,button,svg').forEach(node => node.remove());
+  return (heading.textContent || '').replace(/\s+/g, ' ').trim();
+};
 let confirmRequest: (message: string, destructive?: boolean, purpose?: string) => Promise<boolean>;
 let openForm: (url: string, label: string, trigger: HTMLElement) => void;
 let openLegacy: (dialog: HTMLDialogElement) => void;
@@ -143,7 +149,7 @@ function FormHost() {
         const field = doc.querySelector<HTMLElement>('.field-has-error .ui-combo-trigger,.field-has-error input:not([type=hidden]),.field-has-error textarea,.errorlist');
         field?.focus(); field?.scrollIntoView({block:'center'});
       });
-      const title = doc.querySelector('h1,h2')?.textContent?.trim();
+      const title = dialogTitleText(doc.querySelector('[data-dialog-title]') || doc.querySelector('.workspace-content h1,.workspace-content h2'));
       if (title) setModel((previous: any) => previous ? { ...previous, title } : previous);
     } catch (_) { /* Keep the dialog available so the user can close a redirected session. */ }
   };
@@ -183,7 +189,7 @@ function LegacyHost() {
   }, [dialog]);
   return <Dialog open={!!dialog} onOpenChange={value => { if (!value) { const event = new Event('cancel', {cancelable:true}); if (dialog?.dispatchEvent(event)) finish(); } }}>
     <DialogContent style={{"--ui-legacy-width":dialog?.dataset.uiDialogWidth || "68rem"} as React.CSSProperties} className="ui-legacy-dialog" onCloseAutoFocus={event => event.preventDefault()}>
-      <DialogTitle className="sr-only">{dialog?.querySelector('h1,h2,h3')?.textContent || dialog?.getAttribute('aria-label') || 'Details'}</DialogTitle>
+      <DialogTitle className="sr-only">{dialogTitleText(dialog?.querySelector('h1,h2,h3') || null) || dialog?.getAttribute('aria-label') || 'Details'}</DialogTitle>
       <DialogDescription className="sr-only">Review the details and available actions.</DialogDescription>
       <div ref={node => { content.current = node; if (node && dialog) { node.append(dialog); dialog.removeAttribute("aria-hidden"); } }} data-ui-legacy/>
     </DialogContent>
@@ -309,7 +315,7 @@ function boot() {
     if (url.origin !== location.origin || !(FORM_PATH.test(url.pathname) || CUSTOMER_ACTIVITY_PATH.test(url.pathname) || PRODUCT_DETAIL_PATH.test(url.pathname)) || !openForm) return;
     event.preventDefault();
     if (link.dataset.confirm && !(await confirmRequest(link.dataset.confirm, false, 'edit-payment'))) return;
-    openForm(url.href,link.getAttribute('aria-label') || link.textContent?.trim().replace(/^\+\s*/,'') || 'Record form',link);
+    openForm(url.href,link.getAttribute('aria-label') || dialogTitleText(link).replace(/^\+\s*/,'') || 'Record form',link);
   });
   if (embedded) {
     document.documentElement.dataset.uiEmbedded='true';

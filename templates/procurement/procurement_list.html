@@ -9,7 +9,7 @@
   <div class="flex flex-wrap items-center gap-2">
     {% if period_valid %}<a data-button-surface href="{% url 'spending_xlsx' %}{% if spending_query %}?{{ spending_query }}{% endif %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export Excel</a>
     <a data-button-surface href="{% url 'spending_csv' %}{% if spending_query %}?{{ spending_query }}{% endif %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export CSV</a>{% endif %}
-    {% if module_permissions.expenses.edit %}<a href="{% url 'expense_add' %}" class="workspace-action">+ General-use expense</a>{% endif %}
+    {% if module_permissions.expenses.edit %}<a href="{% url 'expense_add' %}" aria-label="Record general-use expenses" class="workspace-action">+ General-use expense</a>{% endif %}
     {% if period_valid %}{% include "partials/_snapshot_share.html" with snapshot_dropdown=True snapshot_id="spending-share" snapshot_text=spending_share_text snapshot_image_url=spending_image_url snapshot_filename="purchases-and-expenses" snapshot_label="Share period" %}{% endif %}
     {% if module_permissions.procurement.edit %}<a data-button-surface href="{% url 'supplier_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-white text-[#8f172d] hover:bg-[#FFFCF5] border border-[#D9CFB4]">+ Add supplier</a>{% endif %}
     {% if module_permissions.procurement.edit %}<a data-button-surface href="{% url 'po_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ Purchase request</a>{% endif %}

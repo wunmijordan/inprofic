@@ -237,6 +237,11 @@ corner radius. The frame scrolls inside the dialog. Confirmations remain compact
 (maximum 28rem with viewport clearance). See `interactions.css` and
 [workspace.tsx](assets/ui/workspace.tsx).
 
+Dialog titles use the shared heading-text extractor, which excludes help tips,
+hidden descriptions, icons and controls. Keep the record name in the heading;
+tooltip copy must never become part of the dialog title. Create-action accessible
+labels should match the loaded page heading when the title is known in advance.
+
 ## Elevation & Depth
 
 Borders and tonal surfaces organize routine work; two shared shadow tokens supply

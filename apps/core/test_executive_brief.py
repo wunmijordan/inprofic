@@ -109,12 +109,13 @@ class ExecutiveReportTests(BriefBase):
         text = self.report()['text']
         self.assertIn(f'Customer · Ada: 2 sales · {symbol}100.00 · Partially paid · Balance: {symbol}30.00', text)
         self.assertNotIn('Distribution · Ada', text)
-        self.assertIn(f'  ◦ Bread: 20 loaves · {symbol}100.00', text)
+        self.assertIn(f'  ◦ Bread: 10 loaves · {symbol}50.00 · Physical Store', text)
+        self.assertIn(f'  ◦ Bread: 10 loaves · {symbol}50.00 · Distribution Order', text)
         DistributionReturn.raw_objects.create(business=self.business, sale_item=sale.items.get(),
             date=TODAY, quantity=6, condition=DistributionReturn.REDISTRIBUTABLE, unit_value=1)
         text = self.report()['text']
         self.assertIn(f'Customer · Ada: 2 sales · {symbol}70.00 · Fully paid', text)
-        self.assertIn(f'  ◦ Bread: 14 loaves · {symbol}70.00', text)
+        self.assertIn(f'  ◦ Bread: 4 loaves · {symbol}20.00 · Distribution Order', text)
         self.assertEqual(CustomerPayment.raw_objects.get(sale=sale).amount, 20)
 
     def test_customer_settlement_uses_lifetime_tenant_scoped_receipts(self):
