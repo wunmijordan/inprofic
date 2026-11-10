@@ -196,6 +196,8 @@ function LegacyHost() {
   </Dialog>;
 }
 
+const selectPopoverInteractions = new WeakMap<Event, HTMLSelectElement>();
+
 function SelectCombo({ select }: { select: HTMLSelectElement }) {
   const [open, setOpen] = useState(false), [revision, refresh] = useState(0);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -224,7 +226,7 @@ function SelectCombo({ select }: { select: HTMLSelectElement }) {
     <PopoverTrigger asChild><button ref={trigger} type="button" className="ui-combo-trigger" role="combobox" aria-expanded={open} aria-label={label} aria-required={select.required} aria-invalid={select.getAttribute('aria-invalid') || undefined} disabled={select.disabled} onFocus={() => refresh(n => n + 1)}>
       <span>{select.multiple ? (selected.length ? selected.map(option => option.label).join(', ') : select.dataset.placeholder || 'Choose options') : selected[0]?.label || 'Choose an option'}</span><ChevronsUpDown aria-hidden="true" size={15}/>
     </button></PopoverTrigger>
-    <PopoverContent aria-label={`${label} options`} className="ui-combo-popover" align="start">
+    <PopoverContent onPointerDownCapture={event => selectPopoverInteractions.set(event.nativeEvent,select)} onFocusCapture={event => selectPopoverInteractions.set(event.nativeEvent,select)} aria-label={`${label} options`} className="ui-combo-popover" align="start">
       <Command key={revision} loop><CommandInput placeholder="Search options…" aria-label={`Search ${label}`}/><CommandList><CommandEmpty>No matching options.</CommandEmpty>
         {options.map((option,index) => <CommandItem key={index} value={`${index} ${option.label}`} disabled={option.disabled} onSelect={() => choose(option)} aria-selected={option.selected}><Check aria-hidden="true" size={14} style={{visibility:option.selected?'visible':'hidden'}}/><span>{option.label || 'None'}</span></CommandItem>)}
       </CommandList></Command>
@@ -251,6 +253,38 @@ function AppearancePopover({ panel, button }: { panel: HTMLElement; button: HTML
   };
   return <Popover><PopoverTrigger asChild><button type="button" className="workspace-icon-button" aria-label="Appearance"><span aria-hidden="true" dangerouslySetInnerHTML={{__html: button.innerHTML}}/></button></PopoverTrigger>
     <PopoverContent className="ui-appearance-content" align="end"><div ref={attach}/></PopoverContent>
+  </Popover>;
+}
+
+// Keep Django-owned filter fields intact while giving compact cards the same
+// focus, Escape, outside-click and viewport collision behavior as other menus.
+function FilterPopover({ panel, button }: { panel: HTMLElement; button: HTMLElement }) {
+  const [open, setOpen] = useState(false);
+  const placeholder = useRef<Comment | null>(null);
+  useEffect(() => {
+    placeholder.current = document.createComment('filter-panel');
+    panel.before(placeholder.current);
+    return () => { placeholder.current?.replaceWith(panel); panel.hidden = true; };
+  }, [panel]);
+  const attach = React.useCallback((node: HTMLDivElement | null) => {
+    if (node) { node.append(panel); panel.hidden = false; }
+    else { placeholder.current?.after(panel); panel.hidden = true; }
+  }, [panel]);
+  return <Popover open={open} onOpenChange={setOpen}>
+    <PopoverTrigger asChild><button type="button" className="workspace-icon-button" aria-label={button.getAttribute('aria-label') || 'Choose period'}><span aria-hidden="true" dangerouslySetInnerHTML={{__html: button.innerHTML}}/></button></PopoverTrigger>
+    <PopoverContent className="ui-filter-content" align="end" collisionPadding={12} aria-label={button.getAttribute('aria-label') || 'Choose period'} onInteractOutside={event => {
+      // Native-field islands have separate React roots. Their portalled lists
+      // are logically inside this filter even though Radix sees them outside.
+      // Radix defers pointer dismissal until click. Remember the original
+      // event's owner even after selecting an option unmounts its list.
+      const original = event.detail.originalEvent;
+      const target = original.target;
+      const owner = selectPopoverInteractions.get(original);
+      if ((target instanceof Node && panel.contains(target)) || (owner && panel.contains(owner))) event.preventDefault();
+    }}>
+      <div ref={attach}/>
+      <button type="button" className="workspace-button mt-3 w-full" onClick={() => setOpen(false)}>Done</button>
+    </PopoverContent>
   </Popover>;
 }
 
@@ -289,6 +323,13 @@ function boot() {
     if (!button || !panel) return;
     const slot = document.createElement('span'); node.append(slot); button.style.display='none';
     createRoot(slot).render(<AppearancePopover panel={panel} button={button}/>);
+  });
+  document.querySelectorAll<HTMLElement>('[data-ui-filter-root]').forEach(node => {
+    const button = node.querySelector<HTMLElement>('[data-ui-filter-toggle]');
+    const panel = node.querySelector<HTMLElement>('[data-ui-filter-panel]');
+    if (!button || !panel) return;
+    const slot = document.createElement('span'); node.append(slot); button.style.display = 'none';
+    createRoot(slot).render(<FilterPopover panel={panel} button={button}/>);
   });
   enhanceSelections();
   let queued = false;

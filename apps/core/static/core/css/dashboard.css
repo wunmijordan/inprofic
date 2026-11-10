@@ -1,4 +1,12 @@
 
+  main .dashboard-kpi [data-metric-title] {
+    font-family: 'Sora', sans-serif;
+    font-size: .75rem;
+    line-height: 1rem;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
   .dashboard-kpi { transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease; }
   .dashboard-kpi:hover { transform: translateY(-2px); border-color: color-mix(in srgb,var(--ui-accent) 28%,var(--ui-border)); box-shadow: var(--ui-shadow-raised); }
   @media (prefers-reduced-motion: reduce) { .dashboard-kpi { transition: none; } .dashboard-kpi:hover { transform: none; } }

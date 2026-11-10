@@ -24,6 +24,7 @@ def _static_asset_version():
         Path(settings.BASE_DIR) / "apps/core/static/core/css/form-experience.css",
         Path(settings.BASE_DIR) / "apps/core/static/core/js/form-experience.js",
         Path(settings.BASE_DIR) / "apps/core/static/core/css/workspace.css",
+        Path(settings.BASE_DIR) / "apps/core/static/core/css/dashboard.css",
         Path(settings.BASE_DIR) / "apps/core/static/core/css/button-surfaces.css",
         Path(settings.BASE_DIR) / "apps/core/static/core/css/interactions.css",
         Path(settings.BASE_DIR) / "apps/core/static/core/css/marketing.css",

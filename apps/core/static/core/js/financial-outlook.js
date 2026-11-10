@@ -2,6 +2,9 @@
    Shared static file so it is cached by the browser instead of riding in every page. */
 // Chart.js draws on a canvas, so CSS cannot recolour it. Read the active theme's
 // tokens and push them into Chart.js defaults; callers re-render on theme change.
+function inproficChartPalette() {
+  return ['#2563eb', '#059669', '#d97706', '#9333ea', '#e11d48', '#0891b2', '#64748b'];
+}
 function inproficChartTheme() {
   const css = getComputedStyle(document.documentElement);
   const read = (name, fallback) => (css.getPropertyValue(name).trim() || fallback);
@@ -26,7 +29,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const periodButtons = [...document.querySelectorAll('.financial-period-btn')];
   const modeButtons = [...document.querySelectorAll('.financial-mode-btn')];
   const caption = document.getElementById('financial-chart-caption');
-  const symbol = canvas.dataset.currency || '';
+  const symbol = canvas?.dataset.currency || '';
 
   if (!cashEl || !canvas) { console.warn('Financial chart: required elements not found.'); return; }
   if (typeof Chart === 'undefined') { console.error('Financial chart: Chart.js is not loaded.'); return; }

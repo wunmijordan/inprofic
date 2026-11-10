@@ -12,6 +12,7 @@ from . import pwa
 from . import audit_views
 from . import ledger_views
 from . import complete_dashboard
+from .dashboard_metrics import dashboard_metric
 from expenses import views as expense_views
 
 urlpatterns = [
@@ -30,6 +31,7 @@ urlpatterns = [
     path("marketing/location-enrich/", views.marketing_location_enrich, name="marketing_location_enrich"),
     path("", views.marketing_home, name="marketing_home"),
     path("dashboard/", views.dashboard, name="dashboard"),
+    path('dashboard/metric/', dashboard_metric, name='dashboard_metric'),
     path("dashboard/complete/", complete_dashboard.complete_dashboard, name="complete_dashboard"),
     path("dashboard/complete/<slug:group>/<slug:section>/", complete_dashboard.complete_dashboard_section, name="complete_dashboard_section"),
     path("ledger/", ledger_views.ledger_workspace, name="ledger_workspace"),

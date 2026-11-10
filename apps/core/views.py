@@ -29,7 +29,7 @@ from .forms import BusinessForm
 from .services import audit
 from .verticals import vertical_config
 from accounts.models import BusinessModuleAccess, UserBusiness
-from accounts.services import is_business_admin, seed_business_modules
+from accounts.services import is_business_admin, seed_business_modules, user_has_permission
 from inventory.models import (
     DistributionReturn,
     FinishedGood,
@@ -2144,6 +2144,12 @@ def dashboard(request):
     }
     with performance_section(request, "dashboard.render"):
         context["can_use_complete_dashboard"] = can_access_complete_dashboard
+        context['can_metric_sales'] = user_has_permission(request.user, request.business, 'sales', 'view')
+        context['can_metric_finance'] = user_has_permission(request.user, request.business, 'finance', 'view')
+        context['metric_today'] = dashboard_date
+        if context['can_metric_sales']:
+            from .dashboard_metrics import metric_choices
+            context['metric_products'], context['metric_customers'] = metric_choices(request.business)
         return render(request, "core/dashboard.html", context)
 
 

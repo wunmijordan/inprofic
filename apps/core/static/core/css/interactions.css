@@ -53,7 +53,7 @@ html body .ui-combo-trigger {
 .ui-combo-trigger[aria-invalid=true],.is-invalid .ui-combo-trigger {
   border-color: #e11d48!important
 }
-html body :is(.ui-combo-popover,.ui-menu,.ui-confirm,.ui-form-dialog,.ui-legacy-dialog,.ui-appearance-content) {
+html body :is(.ui-combo-popover,.ui-menu,.ui-confirm,.ui-form-dialog,.ui-legacy-dialog,.ui-appearance-content,.ui-filter-content) {
   --ui-local-text: var(--ui-surface-text,#182433);
   --ui-local-muted: var(--ui-surface-muted-text,#566473);
   background: var(--ui-surface,#fff)!important;
@@ -201,6 +201,27 @@ html[data-ui-embedded=true] body main [data-ui-form-panel] {
 .ui-appearance-content[data-state=closed] {
   display: none!important
 }
+.ui-filter-content {
+  width: min(19rem,calc(100vw - 1.5rem));
+  max-height: min(34rem,var(--radix-popover-content-available-height));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+html body .ui-filter-content {
+  background: linear-gradient(var(--ui-surface),var(--ui-surface)),var(--ui-bg)!important;
+}
+.metric-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7,minmax(0,1fr));
+  gap: .15rem;
+  text-align: center;
+}
+.metric-calendar-grid > span { font-size: .65rem; color: var(--ui-surface-muted-text); padding: .3rem 0; }
+.metric-calendar-grid button { min-height: 2rem; border-radius: var(--ui-radius); font-family: 'IBM Plex Mono',monospace; font-size: .75rem; }
+.metric-calendar-grid button:hover:not(:disabled) { background: var(--ui-surface-muted); }
+.metric-calendar-grid button[data-in-period=true] { background: var(--ui-surface-muted); }
+.metric-calendar-grid button[aria-pressed=true] { background: var(--ui-accent); color: var(--ui-accent-contrast); }
+.metric-calendar-grid button:disabled { opacity: .4; cursor: not-allowed; }
 .ui-appearance-content [data-ui-appearance-body] {
   position: static!important;
   display: block!important;
