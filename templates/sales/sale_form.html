@@ -62,7 +62,7 @@
           <tbody id="sale-rows">
             {% for f in formset %}
             <tr {% if forloop.first %}data-formset-row{% endif %} class="border-t border-[#E7DFCC]" data-row>
-              <td class="px-2 py-1.5">{{ f.id }}{{ f.finished_good }}</td>
+              <td class="px-2 py-1.5">{{ f.id }}{{ f.finished_good }}<div class="mt-2">{% include "_field.html" with field=f.quantity_unit %}</div></td>
               {% if vertical_ui.uses_production %}<td class="px-2 py-1.5">{{ f.batch_qty }}</td>{% else %}<td class="hidden">{{ f.batch_qty }}</td>{% endif %}
               <td class="px-2 py-1.5">{{ f.piece_qty }}</td>
               <td class="px-2 py-1.5">{{ f.discount }}</td>
@@ -112,8 +112,10 @@
   </form>
 </div>
 {{ prices|json_script:"fg-prices" }}
+{{ selling_portions|json_script:"selling-portions" }}
 {{ customer_prices|json_script:"customer-fg-prices" }}
 <script>
+  const PORTIONS = JSON.parse(document.getElementById('selling-portions').textContent);
   const PRICES = JSON.parse(document.getElementById('fg-prices').textContent);
   const CUSTOMER_PRICES = JSON.parse(document.getElementById('customer-fg-prices').textContent);
   function resolvedPrice(productId) {
@@ -131,22 +133,21 @@
       const priceCell = row.querySelector('.price-display');
       if (!select || select.dataset.wired) return;
       select.dataset.wired = '1';
-      select.addEventListener('change', () => {
-        const price = resolvedPrice(select.value);
-        priceCell.textContent = price ? '≈ ' + price : '—';
-      });
-      const price = resolvedPrice(select.value);
-      if (select.value && price) priceCell.textContent = '≈ ' + price;
+      const refresh = () => {
+        const price = resolvedPrice(select.value), portion = PORTIONS[select.value];
+        const selling = row.querySelector('select[name$="-quantity_unit"]')?.value === 'selling';
+        const factor = selling ? Number(portion?.factor || 1) : 1;
+        priceCell.textContent = price !== undefined && price !== null ? '≈ ' + (Number(price)*factor).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) + ' / ' + (selling ? portion?.unit || '' : portion?.base_unit || '') : '—';
+      };
+      select.addEventListener('change',refresh);
+      row.querySelector('select[name$="-quantity_unit"]')?.addEventListener('change',refresh);
+      row.quantityPriceRefresh = refresh;
+      refresh();
     });
   }
   wireRows();
   document.querySelector('[name="customer_master"]')?.addEventListener('change', () => {
-    document.querySelectorAll('#sale-rows tr[data-row]').forEach(row => {
-      const select = row.querySelector('select[name$="-finished_good"]');
-      const priceCell = row.querySelector('.price-display');
-      const price = resolvedPrice(select?.value);
-      if (priceCell) priceCell.textContent = price ? '≈ ' + price : '—';
-    });
+    document.querySelectorAll('#sale-rows tr[data-row]').forEach(row=>row.quantityPriceRefresh?.());
   });
   function toggleUnpaidReason(){ const type=document.querySelector('[name="transaction_type"]')?.value; const wrap=document.getElementById('unpaid-reason-wrap'); if(wrap) wrap.style.display=type==='unpaid'?'block':'none'; }
   document.querySelector('[name="transaction_type"]')?.addEventListener('change',toggleUnpaidReason); toggleUnpaidReason();

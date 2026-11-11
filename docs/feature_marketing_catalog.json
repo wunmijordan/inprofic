@@ -373,7 +373,7 @@
     "name": "Standard portions, composed products and Bulk Packs",
     "group": "commerce",
     "audience": "restaurants and production businesses selling in customer-friendly portions or bulk packs",
-    "proof": "Keep production in base units such as scoops/pieces/ml while customers buy plates, servings, bowls, cartons or other packs; show customer-safe package contents and preserve private yield conversions.",
+    "proof": "Use configured selling units for stock releases, transfers, returns, staff/gifting issues and sales entry; choose base units or selling portions when planning production. Shared quantities read simply “10 packs”, with loose units retained when necessary. Base stock, batch yields, exact accounting and saved commercial price/quantity snapshots remain intact.",
     "highlight": "NEW",
     "added_on": "2026-09-20"
   },
@@ -535,7 +535,7 @@
     "name": "Concise daily distribution snapshots with financial cards",
     "group": "operations",
     "audience": "owners and store teams",
-    "proof": "Release several Market Stock products per customer or record paid Physical Store sales directly from sellable market lots without a shelf transfer. Preview customer/channel prices, retain frozen costs and record payments and audit history. Compact date-based stock summaries separate customer releases, store sales and transfers; images carry financial cards and detailed text retains applied invoice prices, customer regions/areas, opening/closing stock and balances. Named write-offs replace opaque negative changes; recorded returns remain separate. Customer links open period activity in the shared modal, and accessible help tips keep the movement workspace compact. Recorded returns credit the original customer balance without altering cash receipts. Resales belong to the new sale; damaged returns appear as Finance losses at stock cost. Basic dashboard sales include received values from distribution and store sales, including part-payments. Open Stock Distribution directly under Operations in desktop and mobile navigation, with Inventory view access.",
+    "proof": "Release several Market Stock products per customer or record paid Physical Store sales directly from sellable market lots without a shelf transfer. Preview customer/channel prices, retain frozen costs and record payments and audit history. Compact date-based stock summaries separate customer releases, store sales and transfers; images carry financial cards and detailed text retains applied invoice prices, customer regions/areas, opening/closing stock and balances. Named write-offs replace opaque negative changes; recorded returns remain separate. Customer links open period activity in the shared modal, and accessible help tips keep the movement workspace compact. Recorded returns credit the original customer balance without altering cash receipts. Resales belong to the new sale; damaged returns appear as Finance losses at stock cost. Basic dashboard sales include received values from distribution and store sales, including part-payments. Open Stock Distribution directly under Operations in desktop and mobile navigation, with Inventory view access. Product quantities and matching price units follow configured selling portions in the release preview, full text and snapshot, without repeating package contents.",
     "highlight": "NEW",
     "added_on": "2026-11-06"
   },

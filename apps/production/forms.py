@@ -1,3 +1,4 @@
+from core.forms import ProductChoiceLabelsMixin, PortionEntryModeMixin
 from decimal import ROUND_HALF_UP, Decimal
 from django import forms
 from django.forms.models import BaseInlineFormSet, inlineformset_factory
@@ -14,7 +15,7 @@ _BASE_QUANTUM = Decimal("0.0001")
 INPUT_CLS = "w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 focus:border-[#8f172d]"
 
 
-class StyledModelForm(forms.ModelForm):
+class StyledModelForm(ProductChoiceLabelsMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for f in self.fields.values():
@@ -226,13 +227,18 @@ class OrderForm(StyledModelForm):
         return cleaned
 
 
-class OrderItemForm(StyledModelForm):
+class OrderItemForm(PortionEntryModeMixin, StyledModelForm):
+    quantity_unit = forms.ChoiceField(label="Quantity format", required=False,
+        choices=[("base", "Base units / batches"), ("selling", "Selling portions")], initial="base")
+
     class Meta:
         model = OrderItem
         fields = ["finished_good", "batch_qty", "piece_qty", "production_batch_qty", "production_piece_qty", "discount"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['quantity_unit'].widget.attrs['data-formset-default'] = 'base'
+        self.fields['quantity_unit'].help_text = 'Choose the format before entering quantities. Batch fields always count production batches; loose quantities and discounts use the selected unit.'
         for name in ("batch_qty", "piece_qty", "production_batch_qty", "production_piece_qty", "discount"):
             self.fields[name].required = False
             self.fields[name].widget.attrs.update({"min": "0", "step": "0.01"})

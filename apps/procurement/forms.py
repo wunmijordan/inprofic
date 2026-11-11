@@ -1,3 +1,5 @@
+from core.quantities import product_choice_label
+from core.forms import ProductChoiceLabelsMixin
 from decimal import Decimal
 
 from django import forms
@@ -11,7 +13,7 @@ from core.verticals import vertical_config
 INPUT_CLS = "w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 focus:border-[#8f172d]"
 
 
-class StyledModelForm(forms.ModelForm):
+class StyledModelForm(ProductChoiceLabelsMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for f in self.fields.values():
@@ -119,7 +121,7 @@ class PurchaseOrderItemForm(StyledModelForm):
             products_qs = FinishedGood.objects.filter(business=business, stock__isnull=False)
             if business and business.uses_production:
                 products_qs = products_qs.filter(source_type=FinishedGood.SOURCE_PURCHASED_FOR_RESALE)
-            products = list(products_qs.distinct().order_by("name"))
+            products = list(products_qs.select_related('portion_profile').distinct().order_by("name"))
             inventory_catalog = {
                 "raw": {item.pk: item for item in raw_materials},
                 "finished": {item.pk: item for item in products},
@@ -135,7 +137,7 @@ class PurchaseOrderItemForm(StyledModelForm):
                 material_choices.append((label, [(f"raw:{item.pk}", item.name) for item in items]))
 
         resale_label = vertical_config(business)["product_sources"]["resale_group"] if business else "Products for resale"
-        product_group = (resale_label, [(f"finished:{product.pk}", product.name) for product in products])
+        product_group = (resale_label, [(f"finished:{product.pk}", product_choice_label(product)) for product in products])
         groups = [*material_choices, product_group] if business and business.uses_production else [product_group, *material_choices]
         self.fields["item"].choices = [("", "Select an inventory item…"), *groups]
         self.fields["qty"].min_value = Decimal("0.01")

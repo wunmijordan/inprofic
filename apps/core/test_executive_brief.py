@@ -6,7 +6,7 @@ from django.core.cache import cache
 from django.urls import reverse
 
 from accounts.models import UserBusiness, UserModulePermission
-from inventory.models import RawMaterial, FinishedGood
+from inventory.models import RawMaterial, FinishedGood, ProductPortionProfile
 from sales.models import CustomerPayment, Sale, SaleItem
 from .accounting import profit_and_loss
 from .brief_views import _report
@@ -38,6 +38,18 @@ class ExecutiveReportTests(BriefBase):
             self.assertIn('Stock and outstanding balances as of', text)
             self.assertIn('current position', text)
             self.assertLessEqual(len(report['brief']['snapshot_highlights']), 8)
+
+    def test_daily_and_weekly_show_concise_selling_portions(self):
+        self.bread.stock = 40
+        self.bread.save()
+        ProductPortionProfile.objects.create(business=self.business,finished_good=self.bread,
+            active=True,customer_unit='pack',base_quantity=4)
+        self.sell(40,5)
+        for weekly in [False, True]:
+            text = self.report(weekly)['text']
+            self.assertIn('Bread: 10 packs',text)
+            self.assertNotIn('packs of',text)
+            self.assertNotIn('40 loaves',text)
 
     def test_daily_and_weekly_profit_matches_finance_and_separates_sales_from_paid_revenue(self):
         self.sell(10, 5)

@@ -31,6 +31,12 @@ what was borrowed and what was deliberately left out).
   forms omit recipe, batch-yield and base-material controls, while Supporting
   Supplies retain procurement, packaging/conversion, stock and reorder controls.
   Wholesale reuses customer pricing, credit, receivables and finance settlement.
+- **Selling quantities** — products with a configured selling portion use concise
+  quantities such as “10 packs” in stock releases, transfers, returns, staff/gifting
+  issues and shared reports. Stock and accounting retain the converted base units.
+  Production orders and proposals offer base-unit or selling-portion entry;
+  production batches retain their registered yield. Saved commercial quantities
+  and prices remain intact.
 - **Customer Orders & Sales** — one form, one model, split by type:
   - **Walk-in** — immediate, deducts from existing shelf stock, exactly
     like a normal point-of-sale transaction.

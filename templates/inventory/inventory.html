@@ -168,29 +168,29 @@
               {% else %}
                 inventory-stock-chip--healthy bg-emerald-700 text-white ring-1 ring-inset ring-green-600/10
               {% endif %}">
-              {{ g.stock|num }} {{ g.unit|unit_plural:g.stock }}
+              {{ g.stock|product_quantity:g }}
             </span>
             {% if not g.is_physical_store_configured %}<div class="text-[10px] text-sky-600 mt-1">Market-transfer shelf exception</div>{% endif %}
           {% endif %}
         </td>
         {% if vertical_ui.uses_production %}<td class="px-3 py-2 text-right">
-          {% if g.market_stock > 0 %}<a href="{% url 'market_stock' %}" class="inline-block px-2 py-0.5 rounded-full text-xs font-mono font-medium border bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/10">{{ g.market_stock|num }} {{ g.unit|unit_plural:g.market_stock }}</a>{% else %}<span class="text-xs text-stone-400">—</span>{% endif %}
-          {% if g.expiring_market_stock > 0 %}<div class="text-[10px] text-amber-700 mt-1">{{ g.expiring_market_stock|num }} expires within 7 days</div>{% endif %}
-          {% if g.expired_market_stock > 0 %}<div class="text-[10px] text-rose-700 mt-1">{{ g.expired_market_stock|num }} expired — blocked</div>{% endif %}
+          {% if g.market_stock > 0 %}<a href="{% url 'market_stock' %}" class="inline-block px-2 py-0.5 rounded-full text-xs font-mono font-medium border bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/10">{{ g.market_stock|product_quantity:g }}</a>{% else %}<span class="text-xs text-stone-400">—</span>{% endif %}
+          {% if g.expiring_market_stock > 0 %}<div class="text-[10px] text-amber-700 mt-1">{{ g.expiring_market_stock|product_quantity:g }} expires within 7 days</div>{% endif %}
+          {% if g.expired_market_stock > 0 %}<div class="text-[10px] text-rose-700 mt-1">{{ g.expired_market_stock|product_quantity:g }} expired — blocked</div>{% endif %}
         </td>
         <td class="px-3 py-2 text-right">
           {% with offcut=g.uncommitted_planned_offcut_stock %}
           {% if offcut > 0 %}
-            <span class="inline-block px-2 py-0.5 rounded-full text-xs font-mono font-medium border bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/10" title="Planned customer-order offcut currently identifiable in general finished-goods stock. It remains available for a future sale or shortage reconciliation.">{{ offcut|num }} {{ g.unit|unit_plural:offcut }}</span>
+            <span class="inline-block px-2 py-0.5 rounded-full text-xs font-mono font-medium border bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/10" title="Planned customer-order offcut currently identifiable in general finished-goods stock. It remains available for a future sale or shortage reconciliation.">{{ offcut|product_quantity:g }}</span>
           {% else %}
             <span class="text-xs text-stone-400">—</span>
           {% endif %}
           {% endwith %}
         </td>
-        <td class="px-3 py-2 text-right font-mono text-sky-700">{{ g.total_delivered_to_customers|num }}</td>
-        <td class="px-3 py-2 text-right font-mono text-stone-500">{{ g.total_produced|num }}</td>{% endif %}
+        <td class="px-3 py-2 text-right font-mono text-sky-700">{{ g.total_delivered_to_customers|product_quantity:g }}</td>
+        <td class="px-3 py-2 text-right font-mono text-stone-500">{{ g.total_produced|product_quantity:g }}</td>{% endif %}
         <!--<td class="px-3 py-2 text-right font-mono text-stone-500">{{ g.reorder_level|num }}</td>-->
-        <td class="px-3 py-2 text-right font-mono">{{ g.selling_price|money:biz.currency_symbol }}</td>
+        <td class="px-3 py-2 text-right font-mono">{{ g.selling_price|money:biz.currency_symbol }}<span class="block text-[10px] text-stone-500">per {{ g.unit }}</span></td>
         <td class="px-3 py-2 text-xs text-stone-500">{% if vertical_ui.uses_production %}{{ g.recipe_items.count }} {{ vertical_ui.recipe_item_label }}{{ g.recipe_items.count|pluralize }}{% if g.production_materials.count %}, {{ g.production_materials.count }} production input{{ g.production_materials.count|pluralize }}{% endif %}{% else %}<span class="font-mono">{{ g.est_cost|money:biz.currency_symbol }}</span> / {{ g.unit }}{% endif %}</td>
         <td class="px-3 py-2 text-right">
           {% if module_permissions.inventory.edit and g.stock > 0 %}<a href="{% url 'physical_stock_issue' %}?product={{ g.pk }}" class="workspace-action mr-2" aria-label="Staff / gifting issue · {{ g.name }}">Staff / gifting</a>{% endif %}{% if module_permissions.inventory.edit %}<a href="{% url 'finished_good_edit' g.pk %}" class="text-stone-400 hover:text-[#8f172d] mr-2">Edit</a>{% endif %}

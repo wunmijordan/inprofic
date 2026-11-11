@@ -15,7 +15,7 @@ from core.share_text import render_lines
 
 from accounts.services import user_has_permission
 from core import ledger
-from core.quantities import format_quantity
+from core.quantities import format_product_quantity, sale_quantity_display
 from core.snapshot_images import render_distribution_snapshot, render_report_snapshot, snapshot_response
 from core.verticals import vertical_config
 from sales.models import Customer, CustomerPayment, Sale, SaleItem
@@ -60,7 +60,7 @@ def distribution_settlement(request, *, directory=None):
         released = MarketStockMovement.objects.filter(
             business=business, movement_type=MarketStockMovement.RELEASE, date=report_date(request)).values('sale_id')
         sales = sales.filter(pk__in=released)
-    sales = list(sales.prefetch_related('items__finished_good'))
+    sales = list(sales.prefetch_related('items__finished_good__portion_profile'))
     ids = [sale.pk for sale in sales]
     payments = dict(CustomerPayment.raw_objects.filter(business=business, sale_id__in=ids)
                     .values('sale_id').annotate(amount=Sum('amount')).values_list('sale_id', 'amount'))
@@ -88,8 +88,7 @@ def distribution_settlement(request, *, directory=None):
         if direct > ZERO:
             method = sale.payment_method or 'Method not recorded'
             payment_methods[method] = payment_methods.get(method, ZERO) + direct
-        products = [{'product': item.finished_good.name, 'quantity': format_quantity(item.total_units,item.finished_good.unit),
-                     'price': item.price, 'discount': item.discount, 'value': item.line_total} for item in sale.items.all()]
+        products = [{'product': item.finished_good.name, **sale_quantity_display(item), 'value': item.line_total} for item in sale.items.all()]
         row = dict(products=products, payment_methods=payment_methods, sale=sale.pk, date=sale.date, customer=sale.customer,
                    gross=gross, returned=returned, net=net, paid=paid,
                    outstanding=max(net - paid, ZERO), net_due=max(net - paid, ZERO),
@@ -104,7 +103,7 @@ def distribution_settlement(request, *, directory=None):
 def distribution_text(*, business, title, day, intro, rows, allocations, settlement, url, issues=()):
     """WhatsApp-friendly overview, followed by complete product/customer detail."""
     money = lambda amount: f'{business.currency_symbol}{amount:,.2f}'
-    quantity = format_quantity
+    quantity = lambda value, row: format_product_quantity(value, row.get('finished_good'), unit=row['unit'])
     lines = [f'*{title}*', business.name, f'Distribution date: {day:%a, %d %b %Y}',
              'As of: ' + intro.removeprefix(business.name + ' · '), '']
     if settlement is not None and any(settlement['totals'].values()):
@@ -121,9 +120,9 @@ def distribution_text(*, business, title, day, intro, rows, allocations, settlem
         for key, label in [('opening','Opening balance'),('received','Received'),('returned','Returned to stock'),
             ('distributed','To customers'),('physical_sold','Sold in Physical Store'),('physical','Transferred to Physical Store'),
             ('issued','Staff / gifting'),('write_off','Written off'),('reversal','Production reversed'),('closing','Closing balance'),('expired','Expired stock')]:
-            if row.get(key): lines.append(f"  • {label}: {quantity(row[key],row['unit'])}")
+            if row.get(key): lines.append(f"  • {label}: {quantity(row[key],row)}")
         adjustment = row['other_change'] + row.get('write_off',ZERO) - row.get('reversal',ZERO)
-        if adjustment: lines.append(f"  • {'Other stock out' if adjustment < 0 else 'Other stock in'}: {quantity(abs(adjustment),row['unit'])}")
+        if adjustment: lines.append(f"  • {'Other stock out' if adjustment < 0 else 'Other stock in'}: {quantity(abs(adjustment),row)}")
         lines.append('')
     customers, physical = {}, []
     for allocation in allocations:
@@ -144,12 +143,12 @@ def distribution_text(*, business, title, day, intro, rows, allocations, settlem
         if customer['labels']:
             lines.append(customer['labels'])
         for product in customer['products']:
-            lines.append(f"  • {product['product']}: {quantity(product['quantity'], product['unit'])}")
+            lines.append(f"  • {product['product']}: {quantity(product['quantity'], product)}")
         for invoice in sorted(customer['invoices'], key=lambda row: (row['date'], row['sale'])):
             lines += ['', f"Invoice #{invoice['sale']} · {invoice['date']:%d %b %Y}"]
             for item in invoice.get('products',[]):
-                discount = f" · discount {money(item['discount'])} per unit" if item['discount'] else ''
-                lines.append(f"  • {item['product']}: {item['quantity']} × {money(item['price'])}{discount} = {money(item['value'])}")
+                discount = f" · discount {money(item['discount'])} per {item['price_unit']}" if item['discount'] else ''
+                lines.append(f"  • {item['product']}: {item['quantity']} {item['operator']} {money(item['price'])} per {item['price_unit']}{discount} = {money(item['value'])}")
             for key,label in [('gross','Value'),('returned','Returns'),('net','After returns'),('paid','Collected'),('net_due','Balance due'),('refund_review','Refund review')]:
                 if invoice[key]: lines.append(f"  • {label}: {money(invoice[key])}")
             methods = invoice['payment_methods']
@@ -161,13 +160,13 @@ def distribution_text(*, business, title, day, intro, rows, allocations, settlem
         lines.append('')
     if physical:
         lines += ['*Physical Store activity*']
-        lines += [f"• {row['product']} · {row['destination']}: {quantity(row['quantity'], row['unit'])}" for row in physical]
+        lines += [f"• {row['product']} · {row['destination']}: {quantity(row['quantity'], row)}" for row in physical]
         lines.append('')
     if issues:
         lines += ['*Staff and gifting*']
         for issue in issues:
             lines.append(f"• {issue.get_reason_display()} · {issue.recipient or 'Recipient not recorded'}")
-            lines.append(f"  • {issue.finished_good.name}: {quantity(-issue.quantity,issue.finished_good.unit)}" +
+            lines.append(f"  • {issue.finished_good.name}: {format_product_quantity(-issue.quantity,issue.finished_good)}" +
                 (f" · Inventory cost: {money(-issue.value)}" if issue.value else ''))
             if issue.description:
                 lines.append(f'  • Note: {issue.description}')
@@ -181,7 +180,7 @@ def recorded_returns_text(*, business, day, intro, rows, url):
              'As of: ' + intro.removeprefix(business.name + ' · '), '']
     for row in rows:
         lines += [f"• *{row['customer'] or 'Customer (name unavailable)'} · Invoice #{row['sale']}*",
-                  f"  • Product: {row['product']}", *([f"  • {row['customer_labels']}"] if row.get('customer_labels') else []), f"  • Returned: {format_quantity(row['quantity'], row['unit'])}",
+                  f"  • Product: {row['product']}", *([f"  • {row['customer_labels']}"] if row.get('customer_labels') else []), f"  • Returned: {format_product_quantity(row['quantity'],row.get('finished_good'),unit=row['unit'])}",
                   f"  • Date: {row['date']:%d %b %Y}", f"  • Condition: {row['condition']}",
                   f"  • Reason: {row['reason'] or 'Not recorded'}", '']
     if not rows:
@@ -326,27 +325,35 @@ def distribution_summaries(request, *, lots=None, directory=None):
             f'{issue.get_reason_display()} · {issue.recipient or "Recipient not recorded"}', -issue.quantity, 'non_stock')
     rows = sorted((row for row in products.values() if any(row[key] for key in ['opening','received','returned','distributed','physical_sold','physical','issued','closing','other_change'])), key=lambda row: (not (row['distributed'] or row['made'] or row['physical']), row['product'].casefold()))
     allocations = sorted(destinations.values(), key=lambda row: (row['product'].casefold(), row['destination'].casefold()))
+    goods = {good.pk: good for good in FinishedGood.objects.filter(
+        business=business, pk__in=products).select_related('portion_profile')}
+    for row in [*rows, *allocations]:
+        row['finished_good'] = goods.get(row['product_id'])
+        row['quantity_label'] = format_product_quantity(row.get('quantity',ZERO),row['finished_good'],unit=row['unit'])
     # Returns are actual records, not maximum return eligibility or a forecast.
-    returns = list(DistributionReturn.objects.filter(business=business, date=day).select_related('sale_item__sale', 'sale_item__finished_good'))
+    returns = list(DistributionReturn.objects.filter(business=business, date=day).select_related('sale_item__sale', 'sale_item__finished_good__portion_profile'))
     returned_rows = [{
         'sale': r.sale_item.sale_id, 'date': r.date, 'customer': r.sale_item.sale.customer,
         'product': r.sale_item.finished_good.name, 'unit': r.sale_item.finished_good.unit,
+        'finished_good': r.sale_item.finished_good,
         'quantity': r.quantity, 'condition': r.get_condition_display(),
         'reason': r.reason, 'writeoff_value': r.writeoff_value,
         **customer_labels(directory, r.sale_item.sale.customer_master_id, r.sale_item.sale.customer),
     } for r in returns]
+    for row in returned_rows:
+        row['quantity_label'] = format_product_quantity(row['quantity'],row['finished_good'])
     column_specs = [('opening','Opening balance'),('received','Received'),('distributed','To customers'),
         ('physical_sold','Store sales'),('physical','To store'),('issued','Staff / gifting'),('closing','Closing')]
     columns = [(key,label) for key,label in column_specs if key in {'opening','closing'} or any(row[key] for row in rows)]
     for row in rows:
-        row['report_cells'] = [format_quantity(row[key],row['unit']) if row[key] else '—' for key,_ in columns]
+        row['report_cells'] = [format_product_quantity(row[key],row.get('finished_good'),unit=row['unit']) if row[key] else '—' for key,_ in columns]
         row['stock_notes'] = []
         for key,label in [('returned','Returns'),('write_off','Written off'),('reversal','Production reversal'),('expired','Expired')]:
-            if row.get(key): row['stock_notes'].append(f"{label}: {format_quantity(abs(row[key]),row['unit'])}")
+            if row.get(key): row['stock_notes'].append(f"{label}: {format_product_quantity(abs(row[key]),row.get('finished_good'),unit=row['unit'])}")
         residual = row['other_change'] + row['write_off'] - row['reversal']
         if residual:
             label = 'Other stock out' if residual < 0 else 'Other stock in'
-            row['stock_notes'].append(f"{label}: {format_quantity(abs(residual),row['unit'])}")
+            row['stock_notes'].append(f"{label}: {format_product_quantity(abs(residual),row.get('finished_good'),unit=row['unit'])}")
     settlement = distribution_settlement(request, directory=directory)
     page_url = request.build_absolute_uri(reverse('market_stock')) + '?' + urlencode({'date': day.isoformat()})
     physical_sales = Sale.objects.filter(business=business, source='walkin', date=day,
@@ -408,7 +415,7 @@ def distribution_snapshot(request, kind):
             products=products, cards=cards, url=url + '#distribution-summary',
             scope=ledger.report_scope_label(request.business))
     else:
-        rows = [{'label': r['product'], 'value': format_quantity(r['quantity'],r['unit']),
+        rows = [{'label': r['product'], 'value': format_product_quantity(r['quantity'],r.get('finished_good'),unit=r['unit']),
                  'detail': f"{r['date']:%d %b %Y} · Sale #{r['sale']} · {r['customer']} · {r['condition']}",
                  'secondary_detail': r['customer_labels']}
                 for r in data['recorded_return_rows']]

@@ -44,19 +44,27 @@
       summary.classList.toggle('hidden', !stock);
       if (!stock) { summary.textContent = ''; return; }
       const available = Number(stock.available || 0), entered = Math.max(0, Number(quantityInput.value || 0));
-      const remaining = available - entered;
+      const factor = Number(stock.portion_multiplier || 1);
+      const remaining = available - entered * factor;
       ['border-rose-200','bg-rose-50','text-rose-800'].forEach(name => summary.classList.toggle(name, remaining < 0));
       ['border-sky-200','bg-sky-50','text-sky-900'].forEach(name => summary.classList.toggle(name, remaining >= 0));
       const verb = action === 'transfer' ? 'to Physical Store' : action === 'sale' ? 'sold in Physical Store' : 'to this customer';
-      const unit = amount => Math.abs(amount) === 1 ? stock.unit_singular : stock.unit_plural;
-      summary.textContent = `Market Stock available as of ${stockDate}: ${format(available)} ${unit(available)}. ${format(entered)} ${unit(entered)} ${verb}; ${remaining < 0 ? `${format(Math.abs(remaining))} ${unit(remaining)} over available` : `${format(remaining)} ${unit(remaining)} will remain`}.`;
+      const unit = amount => Math.abs(amount) === 1 ? stock.selling_unit_singular || stock.unit_singular : stock.selling_unit_plural || stock.unit_plural;
+      const quantityLabel = base => {
+        const count = Math.abs(base) / factor, whole = Math.floor(count + 1e-9), remainder = Math.abs(base) - whole * factor;
+        if (Math.abs(remainder) < 1e-7) return `${format(count)} ${unit(count)}`;
+        const loose = `${format(remainder)} ${Math.abs(remainder) === 1 ? stock.unit_singular : stock.unit_plural}`;
+        return whole ? `${format(whole)} ${unit(whole)} + ${loose}` : loose;
+      };
+      quantityInput.placeholder = `Quantity in ${stock.selling_unit_plural || stock.unit_plural}`;
+      summary.textContent = `Market Stock available as of ${stockDate}: ${quantityLabel(available)}. ${format(entered)} ${unit(entered)} ${verb}; ${remaining < 0 ? `${quantityLabel(remaining)} over available` : `${quantityLabel(remaining)} will remain`}.`;
       const customer = document.querySelector('select[name="customer"]')?.value;
       const price = stock.customer_prices?.[customer] ?? stock.price;
       if (action !== 'transfer') {
         if (price === null || price === undefined) summary.textContent += ' Set a Distribution or customer price before release.';
         else {
           const money = value => '{{ biz.currency_symbol|escapejs }}' + new Intl.NumberFormat(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}).format(value);
-          summary.textContent += ` Price: ${money(Number(price))} per ${stock.unit_singular}; total ${money(entered * Number(price))}.`;
+          summary.textContent += ` Price: ${money(Number(price) * factor)} per ${stock.selling_unit_singular || stock.unit_singular}; total ${money(entered * factor * Number(price))}.`;
         }
       }
 
@@ -71,7 +79,7 @@
     const selected = select.value, label = select.selectedOptions[0]?.textContent;
     select.replaceChildren(new Option('Choose a product', ''));
     Object.entries(products).sort((a,b) => a[1].name.localeCompare(b[1].name)).forEach(([id, stock]) => {
-      select.add(new Option(stock.name, id));
+      select.add(new Option(stock.choice_label || stock.name, id));
     });
     if (selected && !products[selected]) select.add(new Option(`${label} (unavailable on ${stockDate})`, selected));
     select.value = selected;

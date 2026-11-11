@@ -72,6 +72,68 @@ class BusinessForm(forms.ModelForm):
         value = self.cleaned_data.get("profit_period")
         return value or getattr(self.instance, "profit_period", None) or "year"
 
+class ProductChoiceLabelsMixin:
+    """Attach selling-portion labels once field querysets are fully configured."""
+    def __getitem__(self, name):
+        field = self.fields[name]
+        from inventory.models import FinishedGood
+        if (isinstance(field, forms.ModelChoiceField) and field.queryset is not None and field.queryset.model is FinishedGood
+                and not getattr(field, '_portion_choices_ready', False)):
+            from core.quantities import product_choice_label
+            original = field.label_from_instance
+            field.label_from_instance = lambda product: product_choice_label(product, label=original(product))
+            field.queryset = field.queryset.select_related('portion_profile')
+            field._portion_choices_ready = True
+        return super().__getitem__(name)
+
+
+class SellingQuantityMixin:
+    """Stock movement forms accept selling units; domain services keep base units."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if 'quantity' in self.fields:
+            self.fields['quantity'].label = 'Quantity (selling units)'
+
+    def clean(self):
+        cleaned = super().clean()
+        from core.quantities import product_portion
+        from decimal import Decimal
+        product = cleaned.get('finished_good')
+        if product is None and cleaned.get('sale_item'):
+            product = cleaned['sale_item'].finished_good
+        quantity = cleaned.get('quantity')
+        if product is not None and quantity is not None:
+            _, factor = product_portion(product)
+            base = quantity * factor
+            if base != base.quantize(Decimal('.01')) or base > Decimal('999999999999.99'):
+                self.add_error('quantity', 'Choose a quantity that converts to stock units with at most two decimal places and fits the stock limit.')
+            else:
+                cleaned['quantity'] = base.quantize(Decimal('.01'))
+        return cleaned
+
+
+class PortionEntryModeMixin:
+    """Optional selling-portion entry for base-unit model fields, without schema changes."""
+    def clean(self):
+        cleaned = super().clean()
+        product = cleaned.get('finished_good')
+        if product is not None and cleaned.get('quantity_unit') == 'selling':
+            from core.quantities import product_portion
+            from decimal import Decimal
+            _, factor = product_portion(product)
+            for name in ('quantity', 'piece_qty', 'production_piece_qty', 'discount'):
+                amount = cleaned.get(name)
+                if amount is None:
+                    continue
+                base = amount / factor if name == 'discount' else amount * factor
+                rounded = base.quantize(Decimal('.01'))
+                if base != rounded:
+                    self.add_error(name, 'This selling-unit value cannot be represented exactly in base units to two decimal places.')
+                else:
+                    cleaned[name] = rounded
+        return cleaned
+
+
 class ExistingAwareInlineFormSet(BaseInlineFormSet):
     """Keep create-mode starter rows without injecting blank rows on edit.
 

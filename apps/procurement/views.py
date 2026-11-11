@@ -146,7 +146,7 @@ def po_form(request, pk=None):
     )
     products_qs = (
         FinishedGood.objects.filter(business=request.business, stock__isnull=False)
-        .select_related("business")
+        .select_related("business", "portion_profile")
         .annotate(prefetched_latest_purchase_unit_value=Subquery(latest_purchase_cost))
         .prefetch_related(
             Prefetch("recipe_items", queryset=RecipeItem.objects.select_related("raw_material")),

@@ -44,6 +44,65 @@ def format_quantity(value, unit):
     return f"{number} {plural_unit(unit, abs(amount))}".strip()
 
 
+def product_portion(product):
+    """Display unit and base-unit factor from the storefront's standard portion."""
+    from inventory.portioning import customer_unit, standard_multiplier, standard_profile
+    profile = standard_profile(product) if product is not None else None
+    if profile and (profile.customer_unit or '').strip():
+        factor = standard_multiplier(product)
+        if factor > 0:
+            return customer_unit(product), factor
+    return getattr(product, 'unit', ''), Decimal('1')
+
+
+def format_product_quantity(value, product=None, *, unit=None):
+    """Express base stock as selling portions, retaining loose base-unit remainders.
+
+    This is presentation only. It never changes stock, prices or saved commercial
+    quantities. A hidden public portion caption does not disable conversion.
+    """
+    base_unit = getattr(product, 'unit', None) or unit or ''
+    selling_unit, factor = product_portion(product)
+    selling_unit = selling_unit or base_unit
+    amount = Decimal(str(value or 0))
+    if factor == 1:
+        return format_quantity(amount, selling_unit)
+    whole, remainder = divmod(abs(amount), factor)
+    if not remainder:
+        return format_quantity(amount / factor, selling_unit)
+    if not whole:
+        return format_quantity(amount, base_unit)
+    sign = Decimal('-1') if amount < 0 else Decimal('1')
+    return (format_quantity(sign * whole, selling_unit)
+            + (' - ' if amount < 0 else ' + ') + format_quantity(remainder, base_unit))
+
+
+def sale_quantity_display(item):
+    """Quantity/rate labels whose units agree, preserving commercial snapshots."""
+    if item.commercial_quantity is not None and item.commercial_unit_price is not None:
+        return {'quantity': format_quantity(item.commercial_quantity, item.commercial_unit or item.finished_good.unit),
+                'price': item.commercial_unit_price, 'discount': Decimal('0'),
+                'price_unit': item.commercial_unit or item.finished_good.unit, 'operator': '×'}
+    unit, factor = product_portion(item.finished_good)
+    # Mixed packs/loose units need the original base-unit rate explicitly named.
+    mixed = bool(item.total_units % factor)
+    if mixed:
+        unit, factor = item.finished_good.unit, Decimal('1')
+    return {'quantity': format_product_quantity(item.total_units, item.finished_good),
+            'price': item.price * factor, 'discount': item.discount * factor, 'price_unit': unit,
+            'operator': '·' if mixed else '×'}
+
+
+def product_choice_label(product, *, label=None):
+    from inventory.portioning import standard_profile
+    text = str(label) if label is not None else product.name
+    profile = standard_profile(product)
+    if profile and (profile.customer_unit or '').strip():
+        unit, _factor = product_portion(product)
+        return f'{text} · {unit}'
+    return text
+
+
 def material_stock_label(material):
     stock = material.stock
     if stock is None:

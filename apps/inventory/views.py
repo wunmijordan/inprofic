@@ -179,7 +179,7 @@ def operational_supply_dispense(request):
 
 @login_required
 def inventory(request):
-    finished_goods = FinishedGood.objects.select_related("business", "product_category")
+    finished_goods = FinishedGood.objects.select_related("business", "product_category", "portion_profile")
     if request.business.uses_production:
         finished_goods = finished_goods.prefetch_related(
             "production_batches__reconciliation_out",
@@ -240,7 +240,7 @@ def market_stock(request):
     today = timezone.localdate()
     lots = list(
         MarketStockLot.objects.select_related(
-            "finished_good", "production_batch", "source_sale_item__sale"
+            "finished_good__portion_profile", "production_batch", "source_sale_item__sale"
         ).prefetch_related("movements")
     )
     active_lots = [lot for lot in lots if lot.active and lot.quantity_available > 0]
@@ -297,7 +297,7 @@ def _market_form_response(request, form, *, title, intro, submit_label, formset=
     available_by_product = market_stock_availability(request.business, on_date)
     if not isinstance(form, MarketStockTransferForm):
         from sales.models import CustomerProductPrice
-        for good in FinishedGood.objects.filter(business=request.business, pk__in=available_by_product).prefetch_related('channel_prices'):
+        for good in FinishedGood.objects.filter(business=request.business, pk__in=available_by_product).select_related('portion_profile').prefetch_related('channel_prices'):
             stock = available_by_product[str(good.pk)]
             price = good.selling_price_for('physical_store') if isinstance(form, MarketStockPhysicalSaleForm) else good.explicit_selling_price_for('distribution')
             stock['price'] = str(price) if price is not None else None
@@ -1313,7 +1313,7 @@ def product_detail(request, pk):
     from .product_detail import product_context
     if not user_has_permission(request.user, request.business, "inventory", "view"):
         return render(request, "403.html", status=403)
-    good = get_object_or_404(FinishedGood.objects.filter(business=request.business).select_related("business").prefetch_related(
+    good = get_object_or_404(FinishedGood.objects.filter(business=request.business).select_related("business", "portion_profile").prefetch_related(
         "channel_prices", "recipe_items__raw_material", "production_materials__raw_material", "market_stock_lots"), pk=pk)
     context = product_context(request, good)
     context.update(history_inline=True, vertical_ui=vertical_config(request.business))

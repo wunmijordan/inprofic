@@ -1,7 +1,7 @@
 """Shared paper-style snapshots. Export colors stay stable across workspace themes."""
 import io
 from pathlib import Path
-from core.quantities import format_quantity
+from core.quantities import format_product_quantity
 from PIL import Image, ImageDraw, ImageFont
 
 _FONT_DIR = Path(__file__).resolve().parent / "static" / "core" / "fonts"
@@ -147,18 +147,17 @@ def render_distribution_snapshot(*, business, title, day, products, cards, url, 
         draw.text((x, 216), label, font=small, fill=MUTED, anchor=anchor)
     draw.line((PAD, 245, WIDTH-PAD, 245), fill=LINE, width=2)
     y = 258
-    quantity = format_quantity
     for product, customers in table_rows:
         draw.text((PAD, y), _fit(draw, product['product'], bold, 270), font=bold, fill=INK)
         for x, key in [(x_opening, 'opening'), (x_taken, 'distributed'), (x_left, 'closing')]:
             amount = product[key] + product.get('physical', 0) + product.get('physical_sold',0) + product.get('issued',0) if key == 'distributed' else product[key]
-            value = quantity(amount, product['unit']) if amount else '—'
+            value = format_product_quantity(amount, product.get('finished_good'),unit=product['unit']) if amount else '—'
             draw.text((x, y+3), _fit(draw, value, body, 215), font=body, fill=INK, anchor='ra')
         y += 44
         if customers:
             for customer in customers:
                 draw.text((PAD+12, y), _fit(draw, customer['destination'], small, 480), font=small, fill=MUTED)
-                draw.text((x_taken, y), _fit(draw, quantity(customer['quantity'], product['unit']), small, 210),
+                draw.text((x_taken, y), _fit(draw, format_product_quantity(customer['quantity'], product.get('finished_good'),unit=product['unit']), small, 210),
                           font=small, fill=MUTED, anchor='ra')
                 if customer.get('customer_labels'):
                     y += 24

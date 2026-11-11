@@ -198,7 +198,8 @@ function shellBizKey(){var c=window.INPROFIC_SHELL||{};return c.bizKey||'anonymo
         if (el.type === 'checkbox' || el.type === 'radio') {
           el.checked = false;
         } else if (el.tagName === 'SELECT') {
-          el.selectedIndex = 0;
+          if (el.dataset.formsetDefault !== undefined) el.value = el.dataset.formsetDefault;
+          else el.selectedIndex = 0;
         } else if (el.type === 'number') {
           el.value = el.dataset.formsetDefault ?? '0';
         } else if (el.type === 'file') {

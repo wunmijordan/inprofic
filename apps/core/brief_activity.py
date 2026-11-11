@@ -2,7 +2,7 @@
 from collections import defaultdict
 from django.db.models import Q, Prefetch
 
-from .quantities import format_quantity
+from .quantities import format_product_quantity
 
 
 def customer_return_lines(business, start, end):
@@ -17,7 +17,7 @@ def customer_return_lines(business, start, end):
     returns = DistributionReturn.objects.filter(business=business).filter(
         Q(date__range=(start, end)) | Q(sale_item__sale__business=business, sale_item__sale__date__range=(start,end)) | Q(market_lot__movements__business=business,
             market_lot__movements__date__range=(start, end), market_lot__movements__quantity__lt=0)
-    ).distinct().select_related('sale_item__sale', 'sale_item__finished_good', 'market_lot').prefetch_related(
+    ).distinct().select_related('sale_item__sale', 'sale_item__finished_good__portion_profile', 'market_lot').prefetch_related(
         Prefetch('market_lot__movements', queryset=movements))
     customers = defaultdict(list)
     for returned in returns.order_by('sale_item__sale__customer', 'date', 'pk'):
@@ -25,8 +25,7 @@ def customer_return_lines(business, start, end):
         if item.sale.business_id != business.pk or item.finished_good.business_id != business.pk or (returned.market_lot and returned.market_lot.business_id != business.pk):
             continue
         lines = customers[item.sale.customer or '']
-        unit = item.finished_good.unit
-        lines.append(f'  Returned · {item.finished_good.name}: {format_quantity(returned.quantity,unit)} · {returned.date:%d %b %Y}')
+        lines.append(f'  Returned · {item.finished_good.name}: {format_product_quantity(returned.quantity,item.finished_good)} · {returned.date:%d %b %Y}')
         if returned.condition == DistributionReturn.DAMAGED:
             lines.append('    Damaged / unsellable · removed from customer balance')
             continue
@@ -37,7 +36,7 @@ def customer_return_lines(business, start, end):
         for movement in lot.movements.all():
             if movement.quantity >= 0:
                 continue
-            amount = format_quantity(-movement.quantity, unit)
+            amount = format_product_quantity(-movement.quantity,item.finished_good)
             if movement.movement_type == MarketStockMovement.RELEASE:
                 sale = movement.sale if movement.sale and movement.sale.business_id == business.pk else None
                 if sale and sale.source == 'walkin':
@@ -58,7 +57,7 @@ def customer_return_lines(business, start, end):
                 label = movement.get_movement_type_display()
             lines.append(f'    {label}: {amount} · {movement.date:%d %b %Y}')
         if lot.quantity_available:
-            lines.append(f'    Remaining in Market Stock: {format_quantity(lot.quantity_available,unit)}')
+            lines.append(f'    Remaining in Market Stock: {format_product_quantity(lot.quantity_available,item.finished_good)}')
     return customers
 
 
@@ -83,6 +82,6 @@ def non_sales_production(business, start, end):
             purpose = purpose.removeprefix('Non-stock production (').removesuffix(')')
         else:
             purpose = purpose.removeprefix('Excess production for ')
-        yield {'product': row.finished_good.name, 'unit': row.finished_good.unit, 'quantity': row.quantity,
+        yield {'product': row.finished_good.name, 'product_id': row.finished_good_id, 'unit': row.finished_good.unit, 'quantity': row.quantity,
                'purpose': purpose, 'date': row.business_date or batch_dates[row.reference],
                'cost': row.quantity * row.unit_value}

@@ -1,6 +1,8 @@
 from datetime import date
 from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 
+from core.quantities import product_portion, product_choice_label
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
@@ -72,7 +74,7 @@ def _price_map():
     """
     goods = list(FinishedGood.objects.filter(
         source_type=FinishedGood.SOURCE_MADE_IN_HOUSE
-    ).select_related("base_material").prefetch_related("channel_prices", "recipe_items"))
+    ).select_related("base_material", "portion_profile").prefetch_related("channel_prices", "recipe_items"))
     products = {}
     base_materials = {
         str(material.pk): {
@@ -99,6 +101,9 @@ def _price_map():
             "units_per_batch": f"{g.units_per_batch or Decimal('1')}",
             "output_weight_grams": f"{g.output_weight_grams or Decimal('0')}",
             "unit": g.unit,
+            "choice_label": product_choice_label(g),
+            "portion_factor": str(product_portion(g)[1]),
+            "portion_unit": product_portion(g)[0],
             "base_material": ({
                 "id": g.base_material_id,
                 "name": g.base_material.name,

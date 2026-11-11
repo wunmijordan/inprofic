@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+from core.quantities import product_portion
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
@@ -26,7 +28,7 @@ def today():
 
 
 def _direct_sale_prices(channel, saleable_products):
-    goods = FinishedGood.objects.filter(saleable_products).prefetch_related("channel_prices")
+    goods = FinishedGood.objects.filter(saleable_products).select_related("portion_profile").prefetch_related("channel_prices")
     prices = {str(g.pk): str(g.selling_price_for(channel)) for g in goods}
     customer_prices = {}
     if channel == "distribution":
@@ -35,7 +37,8 @@ def _direct_sale_prices(channel, saleable_products):
             customer__active=True,
         ).values_list("customer_id", "finished_good_id", "price"):
             customer_prices.setdefault(str(customer_id), {})[str(good_id)] = str(price)
-    return prices, customer_prices
+    portions = {str(g.pk): {"factor":str(product_portion(g)[1]),"unit":product_portion(g)[0],"base_unit":g.unit} for g in goods}
+    return prices, customer_prices, portions
 
 
 @login_required
@@ -204,12 +207,13 @@ def sale_form(request):
                     })
             restricted_shortage = any(row.get("restricted") for row in shortages)
             if invalid_products or restricted_shortage or (shortages and not force):
-                prices, customer_prices = _direct_sale_prices(sale_channel, saleable_products)
+                prices, customer_prices, portions = _direct_sale_prices(sale_channel, saleable_products)
                 return render(request, "sales/sale_form.html", {
                     "form": form,
                     "formset": formset,
                     "shortages": shortages,
                     "prices": prices,
+                    "selling_portions": portions,
                     "customer_prices": customer_prices,
                     "force_allowed": bool(shortages and not restricted_shortage and not invalid_products),
                 })
@@ -267,11 +271,12 @@ def sale_form(request):
     else:
         form = SaleForm(initial={"date": ledger.default_entry_date(), "customer": "Walk-in"}, business=request.business)
         formset = SaleItemFormSet(instance=Sale())
-    prices, customer_prices = _direct_sale_prices(sale_channel, saleable_products)
+    prices, customer_prices, portions = _direct_sale_prices(sale_channel, saleable_products)
     return render(request, "sales/sale_form.html", {
         "form": form,
         "formset": formset,
         "prices": prices,
+        "selling_portions": portions,
         "customer_prices": customer_prices,
     })
 

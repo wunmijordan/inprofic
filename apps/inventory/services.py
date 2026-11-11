@@ -4,7 +4,7 @@ from django.db import models, transaction
 from django.db.models import F
 from django.utils import timezone
 
-from core.quantities import plural_unit, format_quantity
+from core.quantities import plural_unit, format_quantity, format_product_quantity, product_portion, product_choice_label
 
 from .models import (
     DistributionReturn,
@@ -281,7 +281,7 @@ def market_stock_available(good, on_date):
 def market_stock_availability(business, on_date):
     """Product availability for the form uses exactly the release lot rules."""
     from core.ledger import segment_for
-    rows = sellable_market_lot_queryset(business, on_date).select_related("finished_good")
+    rows = sellable_market_lot_queryset(business, on_date).select_related("finished_good__portion_profile")
     result = {}
     backlog = segment_for(business, on_date) == "backlog"
     for lot in rows:
@@ -292,6 +292,9 @@ def market_stock_availability(business, on_date):
             "available": Decimal("0"), "unit": lot.finished_good.unit, "name": lot.finished_good.name,
             "unit_singular": plural_unit(lot.finished_good.unit,1), "unit_plural": plural_unit(lot.finished_good.unit,2),
         })
+        unit, factor = product_portion(lot.finished_good)
+        item.update(portion_multiplier=str(factor), selling_unit_singular=plural_unit(unit,1),
+                    selling_unit_plural=plural_unit(unit,2), choice_label=product_choice_label(lot.finished_good))
         item["available"] += quantity
     for item in result.values():
         item["available"] = str(item["available"])
@@ -438,7 +441,7 @@ def _allocate_market_stock_line(*, business, good, customer, quantity, date, use
     lots = list(_sellable_market_lots(good, date, lock=True))
     available = sum((Decimal(lot.quantity_available) for lot in lots), Decimal("0"))
     if quantity > available:
-        raise ValidationError(f"Only {format_quantity(available,good.unit)} is available in sellable Market Stock on {date:%d %b %Y}.")
+        raise ValidationError(f"Only {format_product_quantity(available,good)} is available in sellable Market Stock on {date:%d %b %Y}.")
 
     physical_store = sale.source == "walkin"
     target = sale.customer if not physical_store else "Physical Store"

@@ -5,6 +5,12 @@ register = template.Library()
 
 
 @register.filter
+def product_quantity(value, product):
+    from core.quantities import format_product_quantity
+    return format_product_quantity(value, product)
+
+
+@register.filter
 def money(value, symbol="₦"):
     try:
         return f"{symbol}{float(value):,.2f}"

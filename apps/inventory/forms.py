@@ -1,3 +1,5 @@
+from core.quantities import format_product_quantity
+from core.forms import ProductChoiceLabelsMixin, SellingQuantityMixin
 from decimal import Decimal, InvalidOperation
 
 from django import forms
@@ -27,11 +29,11 @@ from .models import (
 INPUT_CLS = "w-full rounded-md border border-[#D9CFB4] bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#8f172d]/30 focus:border-[#8f172d]"
 
 
-class ProductStockIssueForm(forms.Form):
+class ProductStockIssueForm(SellingQuantityMixin, ProductChoiceLabelsMixin, forms.Form):
     date = forms.DateField(label='Issue date', widget=forms.DateInput(attrs={'type': 'date'}))
     finished_good = forms.ModelChoiceField(queryset=FinishedGood.objects.none(), label='Product')
     quantity = forms.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal('0.01'),
-        help_text='Quantity in the product’s registered unit. Available stock is shown beside each product.')
+        help_text='Enter the quantity in the selected product’s selling unit. Packaging and available stock are shown beside each product.')
     reason = forms.ChoiceField(label='Purpose', choices=[('staff', 'Staff issue'), ('charity', 'Gift / donation')])
     recipient = forms.CharField(max_length=160, label='Staff member / recipient',
         help_text='Name the person, team or organisation receiving these products.')
@@ -39,9 +41,8 @@ class ProductStockIssueForm(forms.Form):
 
     def __init__(self, *args, business, stock_source, **kwargs):
         super().__init__(*args, **kwargs)
-        from core.quantities import format_quantity
         from .services import market_stock_availability
-        products = FinishedGood.objects.filter(business=business).order_by('name')
+        products = FinishedGood.objects.filter(business=business).select_related('portion_profile').order_by('name')
         self.fields['finished_good'].queryset = products
         try:
             on_date = self.fields['date'].to_python(self.data.get('date') if self.is_bound else self.initial.get('date'))
@@ -49,7 +50,7 @@ class ProductStockIssueForm(forms.Form):
             on_date = None
         available = market_stock_availability(business, on_date or timezone.localdate()) if stock_source == StockAdjustment.SOURCE_MARKET else None
         self.fields['finished_good'].label_from_instance = lambda good: (
-            f"{good.name} · {format_quantity(Decimal(available.get(str(good.pk), {}).get('available', 0)) if available is not None else good.stock or 0, good.unit)} available")
+            f"{good.name} · {format_product_quantity(Decimal(available.get(str(good.pk), {}).get('available', 0)) if available is not None else good.stock or 0, good)} available")
         for field in self.fields.values():
             field.widget.attrs['class'] = INPUT_CLS
 
@@ -61,14 +62,14 @@ def _set_static_model_choices(field, choices):
     field.choices = [*empty, *choices]
 
 
-class StyledModelForm(forms.ModelForm):
+class StyledModelForm(ProductChoiceLabelsMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for f in self.fields.values():
             f.widget.attrs["class"] = INPUT_CLS
 
 
-class StyledForm(forms.Form):
+class StyledForm(ProductChoiceLabelsMixin, forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
@@ -915,7 +916,7 @@ def _market_stock_product_choices(business, on_date):
     ).order_by("name")
 
 
-class MarketStockReleaseForm(StyledForm):
+class MarketStockReleaseForm(SellingQuantityMixin, StyledForm):
     PAYMENT_CHOICES = [("unpaid", "Receivable / pay later"), ("paid", "Payment received")]
 
     date = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}))
@@ -971,7 +972,7 @@ class MarketStockPhysicalSaleForm(StyledForm):
         self.fields["account"].queryset = CashAccount.objects.filter(business=business, active=True).order_by("name")
 
 
-class MarketStockReleaseItemForm(StyledForm):
+class MarketStockReleaseItemForm(SellingQuantityMixin, StyledForm):
     finished_good = forms.ModelChoiceField(queryset=FinishedGood.objects.none(), label="Product")
     quantity = forms.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.01"))
 
@@ -1002,7 +1003,7 @@ MarketStockReleaseItemFormSet = formset_factory(
 )
 
 
-class MarketStockTransferForm(StyledForm):
+class MarketStockTransferForm(SellingQuantityMixin, StyledForm):
     date = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}))
     finished_good = forms.ModelChoiceField(queryset=FinishedGood.objects.none(), label="Product")
     quantity = forms.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.01"))
@@ -1014,7 +1015,7 @@ class MarketStockTransferForm(StyledForm):
         self.fields["finished_good"].queryset = _market_stock_product_choices(business, _market_stock_form_date(self))
 
 
-class DistributionReturnForm(StyledModelForm):
+class DistributionReturnForm(SellingQuantityMixin, StyledModelForm):
     class Meta:
         model = DistributionReturn
         fields = ["date", "sale_item", "quantity", "condition", "reason"]
@@ -1029,12 +1030,12 @@ class DistributionReturnForm(StyledModelForm):
         queryset = SaleItem.objects.filter(
             sale__business=business,
             sale__source="distribution_order",
-        ).select_related("sale", "finished_good").order_by("-sale__date", "-sale_id", "id")
+        ).select_related("sale", "finished_good__portion_profile").order_by("-sale__date", "-sale_id", "id")
         self.fields["sale_item"].queryset = queryset
         self.fields["sale_item"].label = "Original Distribution sale line"
         self.fields["sale_item"].label_from_instance = lambda item: (
             f"Sale #{item.sale_id} · {item.sale.customer} · {item.finished_good.name} · "
-            f"{item.total_units:.2f} {item.finished_good.unit}"
+            + format_product_quantity(item.total_units,item.finished_good)
         )
 
 

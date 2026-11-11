@@ -84,6 +84,13 @@ with tempfile.TemporaryDirectory(prefix='inprofic-ui-') as directory:
         from sales.models import CustomerProductPrice
         CustomerProductPrice.raw_objects.create(business=business,customer=Customer.objects.get(business=business,name='Customer 00'),
             finished_good=good,channel='distribution',price=200)
+    if os.environ.get('INPROFIC_UI_PORTION_FIXTURE') == '1':
+        from inventory.models import ProductPortionProfile
+        ProductPortionProfile.raw_objects.create(business=business,finished_good=good,
+            active=True,customer_unit='pack',base_quantity=4)
+        good.stock = 80
+        good.reorder_level = 10
+        good.save(update_fields=['stock','reorder_level'])
     outsider = Business.objects.create(name='Other UI Tenant',slug='other-ui')
     CashAccount.raw_objects.create(business=outsider,name='PRIVATE OTHER TENANT',opening_balance=500)
     ensure_default_plans()

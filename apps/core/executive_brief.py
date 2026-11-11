@@ -13,7 +13,7 @@ from . import ledger
 from .accounting import _sale_expressions, profit_and_loss
 from .complete_summaries import MONEY, pretty
 from .daily_brief import _money
-from .quantities import format_quantity, material_stock_label, has_value
+from .quantities import format_quantity, format_product_quantity, material_stock_label, has_value
 from .share_text import bullet
 
 ZERO = Decimal('0')
@@ -94,6 +94,11 @@ def enrich(brief, start, end, *, user=None, selected_sections=None):
     allowed = {module: user is None or user_has_permission(user, business, module, 'view')
                for module in ('sales', 'finance', 'expenses', 'inventory', 'production', 'procurement', 'commerce', 'delivery', 'ledger')}
     sections, highlights, available_sections = [], [], []
+    from inventory.models import FinishedGood
+    product_lookup = {good.pk: good for good in FinishedGood.objects.filter(
+        business=business).select_related('portion_profile')} if any(allowed[key] for key in ('sales','inventory','production','procurement')) else {}
+    def product_quantity(amount, product_id, unit):
+        return format_product_quantity(amount, product_lookup.get(product_id), unit=unit)
     money = lambda value: _money(business, value)
 
     def section(title, lines):
@@ -125,14 +130,14 @@ def enrich(brief, start, end, *, user=None, selected_sections=None):
             lines.append('Payment status includes payments and returns recorded to date.')
         rows = items.values('sale__customer').annotate(value=Sum(line), count=Count('sale_id', distinct=True)).order_by('-value', 'sale__customer')
         products = items.values(
-            'sale__customer', 'sale__source', 'finished_good__name', 'finished_good__unit').annotate(
+            'sale__customer', 'sale__source', 'finished_good_id', 'finished_good__name', 'finished_good__unit').annotate(
             quantity=Sum(units), value=Sum(line)).order_by('sale__customer','sale__source','finished_good__name')
         customer_products = {}
         for row in products:
             if not row['quantity'] and not row['value']:
                 continue
             customer_products.setdefault(row['sale__customer'] or '', []).append(
-                f"  {row['finished_good__name']}: {format_quantity(row['quantity'],row['finished_good__unit'])}" + (f" · {money(row['value'])}" if row['value'] else '') + f" · {Sale(business=business,source=row['sale__source']).display_source}")
+                f"  {row['finished_good__name']}: {product_quantity(row['quantity'],row['finished_good_id'],row['finished_good__unit'])}" + (f" · {money(row['value'])}" if row['value'] else '') + f" · {Sale(business=business,source=row['sale__source']).display_source}")
         returns_by_customer = {}
         if allowed['inventory']:
             from .brief_activity import customer_return_lines
@@ -187,7 +192,7 @@ def enrich(brief, start, end, *, user=None, selected_sections=None):
     if allowed['inventory']:
         from inventory.models import RawMaterial, FinishedGood
         raws = list(RawMaterial.objects.filter(business=business).order_by('name'))
-        goods = list(FinishedGood.objects.filter(business=business).prefetch_related('market_stock_lots').order_by('name'))
+        goods = list(FinishedGood.objects.filter(business=business).select_related('portion_profile').prefetch_related('market_stock_lots').order_by('name'))
         for title, records, unit_field in [('Material stock', raws, 'usage_unit'), ('Product stock', goods, 'unit')]:
             lines, risks = [], []
             for item in records:
@@ -196,14 +201,14 @@ def enrich(brief, start, end, *, user=None, selected_sections=None):
                 market = item.market_stock if unit_field == 'unit' and business.uses_production else ZERO
                 expired = item.expired_market_stock if unit_field == 'unit' and business.uses_production else ZERO
                 if market:
-                    lines.append(f'🟢 OK · {item.name} · Market Stock: {format_quantity(market,unit)}')
+                    lines.append(f'🟢 OK · {item.name} · Market Stock: {format_product_quantity(market,item)}')
                 if expired:
-                    lines.append(f'🔴 EXPIRED · {item.name} · Market Stock: {format_quantity(expired,unit)}')
+                    lines.append(f'🔴 EXPIRED · {item.name} · Market Stock: {format_product_quantity(expired,item)}')
                     if status not in {'OUT OF STOCK','LOW'}:
-                        risks.append(f'{item.name}: {format_quantity(expired,unit)} expired')
+                        risks.append(f'{item.name}: {format_product_quantity(expired,item)} expired')
                 if item.stock is None:
                     continue
-                quantity = material_stock_label(item) if unit_field == 'usage_unit' else format_quantity(item.stock,unit)
+                quantity = material_stock_label(item) if unit_field == 'usage_unit' else format_product_quantity(item.stock,item)
                 if market or expired:
                     quantity += ' · Physical Store'
                 badge = {'OK': '🟢', 'WARNING': '🟡', 'LOW': '🔴', 'OUT OF STOCK': '⚪'}.get(status, '⚪')
@@ -223,7 +228,7 @@ def enrich(brief, start, end, *, user=None, selected_sections=None):
         cost = sum((-issue.value for issue in issues), ZERO)
         for issue in issues:
             lines.append(f'{issue.get_reason_display()} · {issue.recipient or "Recipient not recorded"} · {issue.date:%d %b %Y} · {issue.get_stock_source_display()}')
-            lines.append(f'  {issue.finished_good.name}: {format_quantity(-issue.quantity, issue.finished_good.unit)}' + (f' · Inventory cost: {money(-issue.value)}' if issue.value else ''))
+            lines.append(f'  {issue.finished_good.name}: {product_quantity(-issue.quantity,issue.finished_good_id,issue.finished_good.unit)}' + (f' · Inventory cost: {money(-issue.value)}' if issue.value else ''))
             if issue.description and issue.description != f'{issue.get_reason_display()} — {issue.recipient}':
                 lines.append(f'  Note: {issue.description}')
         production_use = []
@@ -232,7 +237,7 @@ def enrich(brief, start, end, *, user=None, selected_sections=None):
             production_use = list(non_sales_production(business, start, end))
             for row in production_use:
                 lines.append(f'Non-sales production · {row["purpose"]} · {row["date"]:%d %b %Y}')
-                lines.append(f'  {row["product"]}: {format_quantity(row["quantity"],row["unit"])}' + (f' · Production cost: {money(row["cost"])}' if row['cost'] else ''))
+                lines.append(f'  {row["product"]}: {product_quantity(row["quantity"],row["product_id"],row["unit"])}' + (f' · Production cost: {money(row["cost"])}' if row['cost'] else ''))
         if cost:
             lines.append(f'Staff and gifting inventory cost: {money(cost)} (included in stock costs)')
         section('Staff and gifting · selected period', lines)
@@ -249,11 +254,11 @@ def enrich(brief, start, end, *, user=None, selected_sections=None):
         if active: lines.append(f"In production: {active} orders")
         lines += [f"Orders · {pretty(r['status'])}: {r['count']}" for r in orders.values('status').annotate(count=Count('pk')).order_by('status')]
         batches = ProductionBatch.objects.filter(business=business, production_date__range=(start, end), is_reversed=False)
-        rows = batches.values('finished_good__name', 'finished_good__unit').annotate(
+        rows = batches.values('finished_good_id', 'finished_good__name', 'finished_good__unit').annotate(
             count=Count('pk'), planned=Sum('planned_units'), gross=Sum('produced_units'), waste=Sum('wastage_units'), cost=Sum('total_cost')).order_by('finished_good__name')
         for r in rows:
             gross, waste = r['gross'] or ZERO, r['waste'] or ZERO
-            parts = [f"{label}: {format_quantity(amount,r['finished_good__unit'])}" for label,amount in [
+            parts = [f"{label}: {product_quantity(amount,r['finished_good_id'],r['finished_good__unit'])}" for label,amount in [
                 ('Produced',gross),('Planned',r['planned'] if r['planned'] != gross else ZERO),('Wastage',waste),('Saleable',max(ZERO,gross-waste) if waste else ZERO)] if amount]
             if r['cost']: parts.append(f"Production cost: {money(r['cost'])}")
             if parts: lines += [r['finished_good__name'], '  ' + ' · '.join(parts)]
