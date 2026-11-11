@@ -84,13 +84,29 @@ def sale_quantity_display(item):
                 'price': item.commercial_unit_price, 'discount': Decimal('0'),
                 'price_unit': item.commercial_unit or item.finished_good.unit, 'operator': '×'}
     unit, factor = product_portion(item.finished_good)
-    # Mixed packs/loose units need the original base-unit rate explicitly named.
+    stored_factor = getattr(item, 'price_unit_quantity', Decimal('1'))
+    stored_unit = getattr(item, 'price_unit', '')
+    if stored_unit:
+        return {'quantity': format_quantity(item.total_units / stored_factor, stored_unit),
+                'price': item.price, 'discount': item.discount, 'price_unit': stored_unit, 'operator': '×'}
     mixed = bool(item.total_units % factor)
     if mixed:
         unit, factor = item.finished_good.unit, Decimal('1')
     return {'quantity': format_product_quantity(item.total_units, item.finished_good),
             'price': item.price * factor, 'discount': item.discount * factor, 'price_unit': unit,
             'operator': '·' if mixed else '×'}
+
+
+def product_price_fields(product):
+    """Snapshot the configured selling unit while stock stays in base units."""
+    unit, factor = product_portion(product)
+    return {'price_unit_quantity': factor, 'price_unit': unit}
+
+
+def set_product_price(item, channel, customer=None):
+    item.price = item.finished_good.selling_price_for(channel, customer)
+    for name, value in product_price_fields(item.finished_good).items():
+        setattr(item, name, value)
 
 
 def product_choice_label(product, *, label=None):

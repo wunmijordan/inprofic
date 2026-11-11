@@ -1385,3 +1385,13 @@ The headless API returns each product's `bulk_packs[]`, but it does not render t
 4. Do not use the standard Online price to calculate a selected pack's basket total. The server recalculates and validates the authoritative amount.
 
 No new API key, endpoint or configuration is needed. Refresh any cached catalogue response after deploying the frontend change. A `bulk_pack_id` without the integrating site's selector/checkout-field wiring will not make the option visible or purchasable from that site.
+
+### Selling-portion pricing across operations
+
+The configured channel or customer price is per standard selling portion when one
+exists, including the POS Distribution channel. A 4-bun pack priced at ₦1,100
+therefore costs ₦11,000 for 10 packs and consumes 40 base units. Explicit Bulk Pack
+and Individual Option choices retain their own prices and conversions. External
+checkout modes remain unchanged. Operational releases, invoices, production forms
+and summaries use the same pricing convention. Existing exact checkout commercial
+snapshots remain intact during the legacy operational pricing correction.

@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 from django import forms
 from django.forms.models import BaseInlineFormSet
 from .models import Business
@@ -112,23 +113,45 @@ class SellingQuantityMixin:
         return cleaned
 
 
-class PortionEntryModeMixin:
-    """Optional selling-portion entry for base-unit model fields, without schema changes."""
+class SellingPortionEntryMixin:
+    """User quantities are selling portions; model quantities remain base stock."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.is_bound:
+            return
+        product = getattr(self.instance, 'finished_good', None) if getattr(self.instance, 'finished_good_id', None) else None
+        if product is None and self.initial.get('finished_good'):
+            value = self.initial['finished_good']
+            product = value if hasattr(value, 'unit') else self.fields['finished_good'].queryset.filter(pk=value).first()
+        if product is not None:
+            from core.quantities import product_portion
+            _, factor = product_portion(product)
+            for batch_name, piece_name in [('batch_qty', 'piece_qty'), ('production_batch_qty', 'production_piece_qty')]:
+                if batch_name in self.initial:
+                    self.initial[piece_name] = Decimal(str(self.initial.get(piece_name) or 0)) + Decimal(str(self.initial.get(batch_name) or 0)) * (product.units_per_batch or Decimal('1'))
+                    self.initial[batch_name] = 0
+            for name in ('quantity', 'piece_qty', 'production_piece_qty'):
+                if name in self.initial:
+                    self.initial[name] = Decimal(str(self.initial[name] or 0)) / factor
+            if 'discount' in self.initial:
+                old_factor = getattr(self.instance, 'price_unit_quantity', factor)
+                self.initial['discount'] = Decimal(str(self.initial['discount'] or 0)) * factor / old_factor
+
     def clean(self):
         cleaned = super().clean()
         product = cleaned.get('finished_good')
-        if product is not None and cleaned.get('quantity_unit') == 'selling':
+        if product is not None:
             from core.quantities import product_portion
             from decimal import Decimal
             _, factor = product_portion(product)
-            for name in ('quantity', 'piece_qty', 'production_piece_qty', 'discount'):
+            for name in ('quantity', 'piece_qty', 'production_piece_qty'):
                 amount = cleaned.get(name)
                 if amount is None:
                     continue
-                base = amount / factor if name == 'discount' else amount * factor
+                base = amount * factor
                 rounded = base.quantize(Decimal('.01'))
                 if base != rounded:
-                    self.add_error(name, 'This selling-unit value cannot be represented exactly in base units to two decimal places.')
+                    self.add_error(name, 'This quantity cannot be represented exactly in stock units to two decimal places.')
                 else:
                     cleaned[name] = rounded
         return cleaned

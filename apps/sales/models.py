@@ -192,6 +192,9 @@ class SaleItem(TimestampedModel):
     units_per_batch_snapshot = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True, editable=False)
     quantity_snapshot_source = models.CharField(max_length=30, default="sale", editable=False)
     discount = models.DecimalField(max_digits=12, decimal_places=2, default=0, blank=True)
+    price_unit_quantity = models.DecimalField(max_digits=20, decimal_places=6, default=1,
+        help_text="Base stock units covered by the saved selling price.")
+    price_unit = models.CharField(max_length=100, blank=True, default="")
     price = models.DecimalField(max_digits=12, decimal_places=2, default=0,
         help_text="Snapshot of the product's selling price at sale time — set automatically.")
     commercial_quantity = models.DecimalField(
@@ -232,7 +235,8 @@ class SaleItem(TimestampedModel):
     def line_total(self):
         if self.commercial_quantity is not None and self.commercial_unit_price is not None:
             return self.commercial_quantity * self.commercial_unit_price
-        return self.total_units * ((self.price or Decimal("0")) - (self.discount or Decimal("0")))
+        amount = self.total_units * ((self.price or Decimal("0")) - (self.discount or Decimal("0"))) / self.price_unit_quantity
+        return amount.quantize(Decimal("0.01")) if self.price_unit else amount
 
     @property
     def returned_units(self):
@@ -254,7 +258,8 @@ class SaleItem(TimestampedModel):
     def return_credit(self):
         if self.total_units <= 0:
             return Decimal("0")
-        return self.line_total * self.returned_units / self.total_units
+        credit = self.line_total * self.returned_units / self.total_units
+        return credit.quantize(Decimal("0.01")) if self.price_unit else credit
 
 
 class CustomerPayment(BusinessOwnedModel):

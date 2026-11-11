@@ -103,7 +103,12 @@ def _sale_expressions(prefix="items__", *, net_returns=True):
         ).order_by().values("sale_item_id").annotate(qty=Sum("quantity")).values("qty")[:1]
         total_units = Greatest(gross_units - Coalesce(Subquery(returned, output_field=units_field),
             Value(ZERO), output_field=units_field), Value(ZERO), output_field=units_field)
-    standard = ExpressionWrapper(total_units * (f("price") - f("discount")), output_field=money_field)
+    from django.db import connection
+    from django.db.models.functions import Round
+    numerator = total_units * (f("price") - f("discount"))
+    # SQLite otherwise performs integer division on whole-number Decimal columns.
+    divisor_numerator = numerator * Value(1.0) if connection.vendor == 'sqlite' else numerator
+    standard = Round(ExpressionWrapper(divisor_numerator / f("price_unit_quantity"), output_field=money_field), 2)
     commercial = ExpressionWrapper(f("commercial_quantity") * f("commercial_unit_price"), output_field=money_field)
     if net_returns:
         commercial = ExpressionWrapper(commercial * total_units / NullIf(gross_units, Value(ZERO)), output_field=money_field)

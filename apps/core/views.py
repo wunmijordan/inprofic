@@ -1556,6 +1556,9 @@ def _finished_good_search_detail(good, *, show_customer_prices=True):
             "revenue": _money(revenue),
         })
 
+    from core.quantities import product_portion
+    selling_unit, selling_factor = product_portion(good)
+    estimated_unit_cost *= selling_factor
     # These are current agreements, separate from frozen prices on past sales.
     pricing = [{"customer": "All customers", "channel": "Default", "price": _money(good.selling_price)}]
     pricing += [{"customer": "All customers", "channel": row.get_channel_display(), "price": _money(row.price)}
@@ -1595,6 +1598,7 @@ def _finished_good_search_detail(good, *, show_customer_prices=True):
             "total_produced": _decimal(good.total_produced),
             "delivered_to_customers": _decimal(good.total_delivered_to_customers),
             "selling_price": _money(good.selling_price),
+            "price_unit": selling_unit,
             "estimated_recipe_cost_per_unit": _money(estimated_unit_cost),
             "estimated_margin_per_unit": _money(good.selling_price - estimated_unit_cost),
             "margin_pct": _money(((good.selling_price - estimated_unit_cost) / good.selling_price * 100) if good.selling_price else 0),

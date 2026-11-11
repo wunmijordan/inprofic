@@ -25,7 +25,10 @@ def product_context(request, good):
     start,end=form.cleaned_data['start'],form.cleaned_data['end']
     data.update(start=start,end=end)
     data['history_url'] += f'?start={start.isoformat()}&end={end.isoformat()}'
-    data['estimated_cost']=good.est_cost
+    from core.quantities import product_portion
+    selling_unit, factor = product_portion(good)
+    data['selling_unit'] = selling_unit
+    data['estimated_cost']=good.est_cost * factor
     estimated_cost = data['estimated_cost']
     prices=[{'name':'Default','channel':'All customers','price':good.selling_price}]
     prices += [{'name':row.get_channel_display(),'channel':'All customers','price':row.price} for row in good.channel_prices.all()]
@@ -46,8 +49,8 @@ def product_context(request, good):
         totals={key:value or ZERO for key,value in totals.items()}
         totals['profit']=totals['revenue']-totals['cost']
         totals['margin']=totals['profit']/totals['revenue']*100 if totals['revenue'] else None
-        totals['unit_cost']=totals['cost']/totals['units'] if totals['units'] else None
-        totals['unit_price']=totals['revenue']/totals['units'] if totals['units'] else None
+        totals['unit_cost']=totals['cost']/totals['units'] * factor if totals['units'] else None
+        totals['unit_price']=totals['revenue']/totals['units'] * factor if totals['units'] else None
         totals['uncosted']=items.filter(sale__transaction_type='paid',unit_cost__isnull=True).count()
         data['realized']=totals
     if permits['sales']:

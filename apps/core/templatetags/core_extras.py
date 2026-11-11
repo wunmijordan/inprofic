@@ -65,3 +65,9 @@ def get_item(mapping, key):
         return mapping.get(key, [])
     except AttributeError:
         return []
+
+
+@register.filter
+def product_selling_unit(product):
+    from core.quantities import product_portion
+    return product_portion(product)[0]

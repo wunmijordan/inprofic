@@ -51,13 +51,13 @@ class SellingQuantityTests(TestCase):
         self.lot.refresh_from_db()
         sale = Sale.raw_objects.get(business=self.business)
         item = sale.items.get()
-        self.assertEqual((item.total_units,self.lot.quantity_available,sale.total),(40,20,4000))
-        self.assertEqual(FinancialTransaction.raw_objects.get(business=self.business).amount,4000)
+        self.assertEqual((item.total_units,self.lot.quantity_available,sale.total),(40,20,1000))
+        self.assertEqual(FinancialTransaction.raw_objects.get(business=self.business).amount,1000)
         display = sale_quantity_display(item)
-        self.assertEqual((display['quantity'],display['price'],display['price_unit']),('10 packs',400,'pack'))
+        self.assertEqual((display['quantity'],display['price'],display['price_unit']),('10 packs',100,'pack'))
         summary = self.client.get(reverse('market_stock')).context
         self.assertIn('10 packs',summary['distribution_share_text'])
-        self.assertIn('400.00 per pack',summary['distribution_share_text'])
+        self.assertIn('100.00 per pack',summary['distribution_share_text'])
         self.assertEqual(summary['distribution_rows'][0]['distributed'],40)
         self.assertIn('5 packs',summary['distribution_rows'][0]['report_cells'])
         labels = []
@@ -78,19 +78,20 @@ class SellingQuantityTests(TestCase):
         self.assertEqual(DistributionReturn.raw_objects.get(business=self.business).quantity,4)
         self.assertEqual(FinancialTransaction.raw_objects.filter(business=self.business).count(),1)
 
-    def test_production_optional_modes_and_sales_entry_keep_batches_in_base_units(self):
-        for mode, expected in [('base',10),('selling',40)]:
+    def test_production_and_sales_entry_use_selling_portions(self):
+        for mode, expected in [('selling',40)]:
             data={'finished_good':self.good.pk,'quantity_unit':mode,'batch_qty':1,'piece_qty':10,
                   'production_batch_qty':0,'production_piece_qty':12,'discount':4}
             form = OrderItemForm(data)
             self.assertTrue(form.is_valid(),form.errors)
             self.assertEqual(form.cleaned_data['piece_qty'],expected)
             self.assertEqual(form.cleaned_data['batch_qty'],1)
-            self.assertEqual(form.cleaned_data['production_piece_qty'],48 if mode=='selling' else 12)
-            self.assertEqual(form.cleaned_data['discount'],1 if mode=='selling' else 4)
+            self.assertEqual(form.cleaned_data['production_piece_qty'],48)
+            self.assertEqual(form.cleaned_data['discount'],4)
         sale = SaleItemForm({'finished_good':self.good.pk,'quantity_unit':'selling','batch_qty':0,'piece_qty':10,'discount':0})
         self.assertTrue(sale.is_valid(),sale.errors)
         self.assertEqual(sale.cleaned_data['piece_qty'],40)
+        self.assertNotIn('quantity_unit',sale.fields)
         self.assertIn('Burger buns · pack',str(sale['finished_good']))
         self.assertNotIn('4 buns',str(sale['finished_good']))
 

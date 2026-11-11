@@ -141,21 +141,21 @@
         <table class="w-full min-w-[980px] text-sm">
           <thead class="bg-[#F0EAD9] text-stone-600 text-xs"><tr>
             <th class="text-left px-2 py-2 min-w-[220px]">Product</th>
-            <th class="text-right px-2 py-2 w-20">Batches</th>
-            <th class="text-right px-2 py-2 w-20">Pieces</th>
-            <th class="text-right px-2 py-2 w-20 production-plan-col">Produce<br>batches</th>
-            <th class="text-right px-2 py-2 w-20 production-plan-col">Produce<br>pieces</th>
+            <th class="hidden">Batches</th>
+            <th class="text-right px-2 py-2 w-20">Quantity</th>
+            <th class="hidden production-plan-col">Produce batches</th>
+            <th class="text-right px-2 py-2 w-20 production-plan-col">Produce quantity</th>
             <th class="kitchen-hide-col text-right px-2 py-2 w-24">Discount</th>
-            <th class="kitchen-hide-col text-right px-2 py-2 w-32">Price/Unit</th>
+            <th class="kitchen-hide-col text-right px-2 py-2 w-32">Price / selling unit</th>
             <th class="w-16"></th>
           </tr></thead>
           <tbody id="order-rows">
             {% for f in formset %}
             <tr {% if forloop.first %}data-formset-row{% endif %} class="border-t border-[#E7DFCC]" data-row>
-              <td class="px-2 py-2">{{ f.id }}{{ f.finished_good }}<div class="mt-2">{% include "_field.html" with field=f.quantity_unit %}</div><div class="base-material-row-hint mt-1 hidden text-[10px] leading-4 text-stone-500"></div>{% for error in f.finished_good.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}{% for error in f.non_field_errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
-              <td class="px-2 py-1.5">{{ f.batch_qty }}{% for error in f.batch_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
+              <td class="px-2 py-2">{{ f.id }}{{ f.finished_good }}<div class="base-material-row-hint mt-1 hidden text-[10px] leading-4 text-stone-500"></div>{% for error in f.finished_good.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}{% for error in f.non_field_errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
+              <td class="hidden">{{ f.batch_qty }}{% for error in f.batch_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
               <td class="px-2 py-1.5">{{ f.piece_qty }}{% for error in f.piece_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
-              <td class="px-2 py-1.5 production-plan-col">{{ f.production_batch_qty }}{% for error in f.production_batch_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
+              <td class="hidden production-plan-col">{{ f.production_batch_qty }}{% for error in f.production_batch_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
               <td class="px-2 py-1.5 production-plan-col">{{ f.production_piece_qty }}{% for error in f.production_piece_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
               <td class="kitchen-hide-col px-2 py-1.5">{{ f.discount }}{% for error in f.discount.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
               <td class="kitchen-hide-col px-2 py-1.5 text-right text-xs text-stone-500 font-mono price-display">—</td>
@@ -374,7 +374,7 @@
       }
 
       const batches = numberValue(row.querySelector('input[name$="-batch_qty"]'));
-      const factor = row.querySelector('select[name$="-quantity_unit"]')?.value === 'selling' ? Number(product.portion_factor || 1) : 1;
+      const factor = Number(product.portion_factor || 1);
       const pieces = numberValue(row.querySelector('input[name$="-piece_qty"]')) * factor;
       const unitsPerBatch = Math.max(Number(product.units_per_batch || 1), 0.0000001);
       const outputWeight = Math.max(Number(product.output_weight_grams || 0), 0);
@@ -622,9 +622,9 @@
         return;
       }
       const labels = { customer: 'customer', channel: 'channel', default: 'default' };
-      const portion = row.querySelector('select[name$="-quantity_unit"]')?.value === 'selling';
+      const portion = true;
       const product = PRICES[select.value];
-      const price = Number(resolved.price) * (portion ? Number(product.portion_factor || 1) : 1);
+      const price = Number(resolved.price);
       priceCell.textContent = '≈ ' + price.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) + ' / ' + (portion ? product.portion_unit : product.unit) + ' (' + labels[resolved.source] + ')';
     });
   }
@@ -636,8 +636,6 @@
         if (input && input.value === '') input.value = '0';
       });
 
-      const mode = row.querySelector('select[name$="-quantity_unit"]');
-      if (mode && !mode.dataset.wired) { mode.dataset.wired='1'; mode.addEventListener('change',()=>{refreshPrices();refreshBaseMaterialAllocation();}); }
       const select = row.querySelector('select[name$="-finished_good"]');
       if (select && !select.dataset.wired) {
         select.dataset.wired = '1';

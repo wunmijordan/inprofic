@@ -626,13 +626,16 @@ class ProcurementStockVisibilityTests(TestCase):
         status = stock_status(self.product)
         self.assertEqual((status["tracked"], status["status"]), (False, "untracked"))
 
-    def test_share_text_and_summary_carry_current_stock_and_a_sign_in_link(self):
+    def test_share_text_omits_stock_and_keeps_purchase_details_and_sign_in_link(self):
         from .share import share_text, summarize
         po, line, extra = self.make_request()
         url = "https://app.example/procurement/9/approve/"
         text = share_text(summarize(po, self.business, url))
-        self.assertIn("Stock now: 3 cartons (Low, reorder at 10", text)
-        self.assertIn("Stock as of", text)
+        self.assertNotIn("Stock now", text)
+        self.assertNotIn("Stock as of", text)
+        self.assertNotIn("reorder at", text)
+        self.assertIn("Purchase request", text)
+        self.assertIn("Group total", text)
         self.assertIn("(sign-in required)", text)
         self.assertTrue(text.rstrip().endswith(url))
         approved = text.replace("approve this purchase request", "")

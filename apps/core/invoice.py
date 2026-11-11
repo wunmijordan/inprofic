@@ -175,12 +175,14 @@ def production_order_pdf(order):
     _header(story, order.business, "PRODUCTION ORDER", f"Production Order #{order.display_number}", order.date, "Customer" if is_customer_order else "For", counterparty)
     rows = []
     for item in order.items.select_related("finished_good"):
+        from core.quantities import sale_quantity_display
+        display = sale_quantity_display(item)
         rows.append([
             item.finished_good.name,
             f"{item.batch_qty:,.2f}",
             f"{item.piece_qty:,.2f}",
-            f"{item.total_units:,.2f} {item.finished_good.unit}",
-            _money(item.price, symbol) if is_customer_order else "—",
+            display["quantity"],
+            _money(display["price"], symbol) if is_customer_order else "—",
             _money(item.line_total, symbol) if is_customer_order else "—",
         ])
     _table(story, ["Finished good", "Batches", "Pieces", "Total units", "Price", "Line total"], rows, [42*mm, 22*mm, 22*mm, 34*mm, 28*mm, 32*mm], order.total if is_customer_order else None, symbol)
@@ -267,10 +269,12 @@ def sale_invoice_pdf(sale):
     _header(story, sale.business, "SALES INVOICE", f"Sale #{sale.pk}", sale.date, "Customer", sale.customer or "Walk-in")
     rows = []
     for item in sale.items.select_related("finished_good"):
-        effective_price = (item.price or Decimal("0")) - (item.discount or Decimal("0"))
+        from core.quantities import sale_quantity_display
+        display = sale_quantity_display(item)
+        effective_price = display["price"] - display["discount"]
         rows.append([
             item.finished_good.name,
-            f"{item.total_units:,.2f} {item.finished_good.unit}",
+            display["quantity"],
             _money(effective_price, symbol),
             _money(item.line_total, symbol),
         ])

@@ -798,3 +798,13 @@ The checkout response now includes an `attribution` object. Attribution is descr
 Headless catalogue responses include a `privacy_policy` descriptor with `presentation: "modal"` and an endpoint at `/api/v1/storefronts/<slug>/privacy-policy`. Fetch that endpoint only when the customer opens Privacy. The response supplies the current effective date and either safe HTML/Word-rendered content or a PDF document URL. Render it inside the integrating website's own modal with a close control; the payload does not include navigation back to the INPROFIC overview.
 
 Customer delivery tracking is intentionally order-only. Internal rider batch IDs, stop sequence, route grouping and batch wording are not exposed. Customer/rider/dispatch messaging is available only after pickup has started the delivery (`picked_up_at` is set); the server enforces the same rule for hosted and headless message endpoints.
+
+### Selling-portion pricing across operations
+
+The configured channel or customer price is per standard selling portion when one
+exists, including the POS Distribution channel. A 4-bun pack priced at ₦1,100
+therefore costs ₦11,000 for 10 packs and consumes 40 base units. Explicit Bulk Pack
+and Individual Option choices retain their own prices and conversions. External
+checkout modes remain unchanged. Operational releases, invoices, production forms
+and summaries use the same pricing convention. Existing exact checkout commercial
+snapshots remain intact during the legacy operational pricing correction.

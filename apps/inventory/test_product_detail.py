@@ -30,7 +30,7 @@ class ProductDetailTests(TestCase):
         self.assertEqual(response.context['realized']['cost'], 400)
         self.assertEqual(response.context['realized']['profit'], 400)
         self.assertEqual(response.context['realized']['margin'], 50)
-        self.assertContains(response, '10.00 loaves')
+        self.assertContains(response, '10 loaves')
         self.assertContains(response, 'Ada')
         self.assertContains(response, 'Stock history and workflow', html=False)
 

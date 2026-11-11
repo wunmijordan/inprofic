@@ -19,12 +19,12 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from accounts.services import is_kitchen_restricted, user_has_permission
-from core.forms import ProductChoiceLabelsMixin, PortionEntryModeMixin
+from core.forms import ProductChoiceLabelsMixin, SellingPortionEntryMixin
 from core.seo import absolute_url
 from core.services import audit
 from core.snapshot_images import render_report_snapshot, snapshot_response
 from inventory.models import FinishedGood
-from core.quantities import format_product_quantity
+from core.quantities import format_product_quantity, product_portion
 from sales.models import Customer
 from .forms import INPUT_CLS
 from .models import OrderProposal, OrderProposalLine, ProposalOrderLink
@@ -48,10 +48,7 @@ class ProposalForm(forms.ModelForm):
             field.widget.attrs['class'] = INPUT_CLS
 
 
-class ProposalLineForm(PortionEntryModeMixin, ProductChoiceLabelsMixin, forms.ModelForm):
-    quantity_unit = forms.ChoiceField(label="Quantity format", required=False,
-        choices=[("base", "Base units"), ("selling", "Selling portions")], initial="base")
-
+class ProposalLineForm(SellingPortionEntryMixin, ProductChoiceLabelsMixin, forms.ModelForm):
     class Meta:
         model = OrderProposalLine
         fields = ['channel', 'customer', 'customer_name', 'finished_good', 'quantity']
@@ -63,8 +60,6 @@ class ProposalLineForm(PortionEntryModeMixin, ProductChoiceLabelsMixin, forms.Mo
             business=business, source_type=FinishedGood.SOURCE_MADE_IN_HOUSE)
         self.fields['customer_name'].label = 'Online buyer name (optional)'
         self.fields['quantity'].widget.attrs.update(min='0.01', step='0.01')
-        self.fields['quantity_unit'].widget.attrs['data-formset-default'] = 'base'
-        self.fields['quantity_unit'].help_text = 'Choose the quantity format before entering the amount.'
         for field in self.fields.values():
             field.widget.attrs['class'] = INPUT_CLS
 
@@ -108,7 +103,7 @@ def proposal_query(request):
 def grouped(proposal, data=None):
     groups = OrderedDict()
     for line in proposal.lines.all():
-        line.review_quantity = data.get(f'quantity-{line.pk}', str(line.quantity)) if data is not None else str(line.quantity)
+        line.review_quantity = data.get(f'quantity-{line.pk}', str(line.quantity / product_portion(line.finished_good)[1])) if data is not None else str(line.quantity / product_portion(line.finished_good)[1])
         group = groups.setdefault(line.destination_key, {'key': line.destination_key,
             'label': line.destination_label, 'channel': line.channel, 'customer': line.customer,
             'customer_name': line.customer_name, 'lines': []})
@@ -179,7 +174,7 @@ def proposal_use(request, pk):
         for group in groups:
             quantities = {}
             for line in group['lines']:
-                quantity = Decimal(request.POST.get(f'quantity-{line.pk}', ''))
+                quantity = Decimal(request.POST.get(f'quantity-{line.pk}', '')) * product_portion(line.finished_good)[1]
                 if not quantity.is_finite() or quantity < 0 or quantity > Decimal('9999999999.99') or quantity != quantity.quantize(Decimal('.01')):
                     raise ValueError
                 if quantity:

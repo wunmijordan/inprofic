@@ -55,7 +55,7 @@ def price_review(*, business, customer, start, end, user, lock=False, include_re
             invoices = invoices.select_for_update(of=('self',))
         invoice = invoices.first()
         state.append([sale.pk, sale.transaction_type, str(sale.updated_at),
-            [(i.pk, str(i.updated_at), str(i.price), str(i.discount), str(i.total_units), str(i.commercial_quantity), str(i.commercial_unit_price), str(i.returned_units)) for i in items],
+            [(i.pk, str(i.updated_at), str(i.price), str(i.discount), str(i.total_units), str(i.commercial_quantity), str(i.commercial_unit_price), str(i.price_unit_quantity), i.price_unit, str(i.returned_units)) for i in items],
             [(p.pk, str(p.updated_at), str(p.amount)) for p in payments],
             [invoice.status, str(invoice.updated_at)] if invoice else None])
         old = sum((item.line_total for item in items), ZERO).quantize(CENT)
@@ -65,10 +65,11 @@ def price_review(*, business, customer, start, end, user, lock=False, include_re
             if item.commercial_quantity is not None and item.commercial_unit_price is not None:
                 errors.append(f'Sale #{sale.pk}: a commercial portion/bulk price needs a separate correction.')
                 continue
-            price = agreements[item.finished_good_id]
+            from core.quantities import product_portion
+            price = agreements[item.finished_good_id] * item.price_unit_quantity / product_portion(item.finished_good)[1]
             if price < item.discount:
                 errors.append(f'Sale #{sale.pk}: the agreed price is below the saved discount.')
-            new += item.total_units * (price - item.price)
+            new += item.total_units / item.price_unit_quantity * (price - item.price)
             detail.append({'item': item, 'old_price': item.price, 'new_price': price})
         try:
             if ledger.segment_for(business, sale.date) == ledger.SEGMENT_BACKLOG and not ledger.can_enter_backlog(user, business):
@@ -84,7 +85,7 @@ def price_review(*, business, customer, start, end, user, lock=False, include_re
         if not changes and (paid == old or paid == ZERO):
             continue
         returned_credit = sum((i.return_credit for i in items), ZERO)
-        returned_credit += sum((d['item'].returned_units * (d['new_price'] - d['old_price']) for d in detail), ZERO)
+        returned_credit += sum((d['item'].returned_units / d['item'].price_unit_quantity * (d['new_price'] - d['old_price']) for d in detail), ZERO)
         net_new = max(new - returned_credit, ZERO).quantize(CENT)
         rows.append({'net_new': net_new, 'sale': sale, 'changes': detail, 'old': old, 'new': new, 'paid': paid,
             'due': max(net_new - paid, ZERO), 'credit': max(paid - net_new, ZERO),

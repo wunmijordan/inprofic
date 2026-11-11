@@ -256,27 +256,12 @@ def selection_for(good, *, bulk_pack=None, individual_option=None, channel=None)
             "individual_option": None,
             "contents": public_contents(good, profile_key=bulk_pack.profile_key),
         }
-    if channel == "distribution":
-        # A generic Distribution channel price represents the FinishedGood's
-        # base sellable unit.  Do not inherit the standard customer portion's
-        # multiplier, public contents or packaging into Bulk/Distribution.
-        return {
-            "profile_key": BASE_PRODUCT_PROFILE_KEY,
-            "customer_unit": good.unit,
-            "multiplier": Decimal("1"),
-            "unit_price": good.explicit_selling_price_for("distribution"),
-            "minimum": None,
-            "bulk_pack": None,
-            "individual_option": None,
-            "contents": public_contents(good, profile_key=BASE_PRODUCT_PROFILE_KEY),
-            "portion_note": "",
-        }
     profile = standard_profile(good)
     return {
         "profile_key": STANDARD_PROFILE_KEY,
         "customer_unit": customer_unit(good),
         "multiplier": standard_multiplier(good),
-        "unit_price": None,
+        "unit_price": good.explicit_selling_price_for("distribution") if channel == "distribution" else None,
         "minimum": None,
         "bulk_pack": None,
         "individual_option": None,

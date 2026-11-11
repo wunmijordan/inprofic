@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from core.quantities import product_portion
+from core.quantities import product_price_fields, set_product_price, product_portion
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -226,7 +226,7 @@ def sale_form(request):
                 formset.instance = sale
                 items = formset.save(commit=False)
                 for item in items:
-                    item.price = item.finished_good.selling_price_for(
+                    set_product_price(item,
                         sale_channel,
                         sale.customer_master if sale_channel == "distribution" else None,
                     )

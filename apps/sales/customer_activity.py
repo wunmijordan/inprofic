@@ -35,14 +35,14 @@ def customer_activity_context(request, customer):
         ('This month', day.replace(day=1).isoformat(),day.isoformat()),
         ('This year', day.replace(month=1,day=1).isoformat(),day.isoformat()),
     ]}
-    prices = customer.product_prices.filter(business=request.business,finished_good__business=request.business).select_related('finished_good')
+    prices = customer.product_prices.filter(business=request.business,finished_good__business=request.business).select_related('finished_good__portion_profile')
     result['prices'] = prices
     if not form.is_valid():
         return result
     start,end = form.cleaned_data['start'],form.cleaned_data['end']
     all_sales = Sale.objects.filter(business=request.business).filter(
         Q(customer_master=customer) | Q(customer_master__isnull=True,customer=customer.name))
-    sales = all_sales.filter(date__range=(start,end)).select_related('linked_order').prefetch_related('items__finished_good', return_prefetch('items__distribution_returns'))
+    sales = all_sales.filter(date__range=(start,end)).select_related('linked_order').prefetch_related('items__finished_good__portion_profile', return_prefetch('items__distribution_returns'))
     items = SaleItem.objects.filter(sale__in=sales)
     money_field,line,_cost,units = _sale_expressions(prefix='')
     # Aggregate open balances in SQL rather than loading every historic line or

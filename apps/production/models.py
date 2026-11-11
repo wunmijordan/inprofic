@@ -416,6 +416,9 @@ class OrderItem(TimestampedModel):
         help_text="Optional loose pieces in the production plan. Leave 0/blank to produce exactly the ordered quantity.",
     )
     discount = models.DecimalField(max_digits=12, decimal_places=2, default=0, blank=True)
+    price_unit_quantity = models.DecimalField(max_digits=20, decimal_places=6, default=1,
+        help_text="Base stock units covered by the saved selling price.")
+    price_unit = models.CharField(max_length=100, blank=True, default="")
     price = models.DecimalField(max_digits=12, decimal_places=2, default=0,
         help_text="Snapshot of the product's selling price at order time — set automatically.")
     commercial_quantity = models.DecimalField(
@@ -498,7 +501,8 @@ class OrderItem(TimestampedModel):
         """
         if self.commercial_quantity is not None and self.commercial_unit_price is not None:
             return self.commercial_quantity * self.commercial_unit_price
-        return self.total_units * ((self.price or Decimal("0")) - (self.discount or Decimal("0")))
+        amount = self.total_units * ((self.price or Decimal("0")) - (self.discount or Decimal("0"))) / self.price_unit_quantity
+        return amount.quantize(Decimal("0.01")) if self.price_unit else amount
 class OrderAllocation(TimestampedModel):
     """One channel's share of a multi-channel production order.
 
@@ -592,6 +596,9 @@ class OrderAllocationLine(TimestampedModel):
     order_item = models.ForeignKey(OrderItem, related_name="allocation_lines", on_delete=models.CASCADE)
     batch_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     piece_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    price_unit_quantity = models.DecimalField(max_digits=20, decimal_places=6, default=1,
+        help_text="Base stock units covered by the saved selling price.")
+    price_unit = models.CharField(max_length=100, blank=True, default="")
     price = models.DecimalField(max_digits=12, decimal_places=2, default=0,
                                 help_text="Selling price for this channel/customer, snapshotted when assigned.")
     discount = models.DecimalField(max_digits=12, decimal_places=2, default=0, blank=True)
@@ -614,7 +621,8 @@ class OrderAllocationLine(TimestampedModel):
 
     @property
     def line_total(self):
-        return self.total_units * ((self.price or Decimal("0")) - (self.discount or Decimal("0")))
+        amount = self.total_units * ((self.price or Decimal("0")) - (self.discount or Decimal("0"))) / self.price_unit_quantity
+        return amount.quantize(Decimal("0.01")) if self.price_unit else amount
 
 
 class OrderMaterialUsage(BusinessOwnedModel):

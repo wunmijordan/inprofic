@@ -434,9 +434,11 @@ class FinishedGood(LedgerStockMixin, BusinessOwnedModel):
 
     @property
     def est_cost(self):
-        """Estimated ingredient cost PER UNIT (matches selling_price being
-        per unit) — recipe quantities are per batch, so this divides the
-        batch cost back down by units_per_batch."""
+        """Estimated cost per internal stock unit.
+
+        Recipe quantities are per batch. Selling-portion comparisons multiply
+        this base cost by the configured portion size before comparing prices.
+        """
         if self.business_id and (not self.business.uses_production or self.is_purchased_for_resale):
             if hasattr(self, "prefetched_latest_purchase_unit_value"):
                 latest_value = self.prefetched_latest_purchase_unit_value

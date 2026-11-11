@@ -440,7 +440,7 @@ class FinishedGoodForm(StyledModelForm):
             self.fields["stock"].help_text = "Use this only for the opening balance. Record later supplier arrivals through Procurement so quantity and cost history remain traceable."
             self.fields["reorder_level"].label = "Reorder level"
             self.fields["reorder_level"].help_text = "Restock warning threshold in the stock / selling unit above."
-            self.fields["selling_price"].help_text = "Default selling price. Channel-specific prices below can override it where needed."
+            self.fields["selling_price"].help_text = "Price per configured selling portion (or per product unit when no portion is set). Channel and customer prices use the same selling unit."
 
     def clean(self):
         cleaned = super().clean()

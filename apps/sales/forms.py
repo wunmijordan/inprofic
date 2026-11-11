@@ -1,4 +1,4 @@
-from core.forms import ProductChoiceLabelsMixin, PortionEntryModeMixin
+from core.forms import ProductChoiceLabelsMixin, SellingPortionEntryMixin
 from django import forms
 from django.forms import inlineformset_factory
 from core.forms import ExistingAwareInlineFormSet
@@ -91,20 +91,13 @@ class SaleForm(StyledModelForm):
         return cleaned
 
 
-class SaleItemForm(PortionEntryModeMixin, StyledModelForm):
-    quantity_unit = forms.ChoiceField(label="Quantity format", required=False,
-        choices=[("base", "Base units / batches"), ("selling", "Selling portions")], initial="selling")
-
+class SaleItemForm(SellingPortionEntryMixin, StyledModelForm):
     class Meta:
         model = SaleItem
         fields = ["finished_good", "batch_qty", "piece_qty", "discount"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['quantity_unit'].widget.attrs['data-formset-default'] = 'selling'
-        self.fields['quantity_unit'].help_text = 'Choose the format before entering quantities. Batch fields always count production batches; loose quantities and discounts use the selected unit.'
-        if self.instance.pk:
-            self.initial['quantity_unit'] = 'base'
         # The Sales form is the only place where physical-store products are
         # sold directly. Only finished goods configured for physical-store
         # shelf stock are therefore valid choices here.

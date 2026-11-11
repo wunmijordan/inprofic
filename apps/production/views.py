@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 
-from core.quantities import product_portion, product_choice_label
+from core.quantities import product_price_fields, set_product_price, product_portion, product_choice_label
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -258,7 +258,7 @@ def order_form(request, pk=None):
                     continue
                 item = item_form.instance
                 item.order = order
-                item.price = item.finished_good.selling_price_for(
+                set_product_price(item,
                     "physical_store" if order.order_type == Order.TYPE_UNASSIGNED else order.order_type, order.customer
                 )
                 if order.order_type in ("physical_store", Order.TYPE_UNASSIGNED) or order.production_basis == Order.BASIS_BASE_MATERIAL:
@@ -431,6 +431,7 @@ def order_recreate(request, pk):
                 production_piece_qty=item.production_piece_qty,
                 discount=item.discount,
                 price=item.finished_good.selling_price_for(source.order_type, source.customer),
+                **product_price_fields(item.finished_good),
             )
         if source.is_multi_channel:
             channel_allocations.copy_allocations(source, new_order, item_map)
@@ -1599,7 +1600,7 @@ def order_complete(request, pk):
                             SaleItem.objects.create(
                                 sale=offcut_sale, finished_good=good,
                                 batch_qty=alloc_batches, piece_qty=alloc_pieces,
-                                discount=Decimal("0"), price=price,
+                                discount=Decimal("0"), price=price, **product_price_fields(good),
                                 unit_cost=snapshot.unit_cost, production_batch=batch,
                             )
                             ProductionOffcutAllocation.objects.create(
@@ -1679,7 +1680,7 @@ def order_complete(request, pk):
                         SaleItem.objects.create(
                             sale=sale, finished_good=item.finished_good,
                             batch_qty=item.batch_qty, piece_qty=item.piece_qty,
-                            discount=item.discount, price=item.price,
+                            discount=item.discount, price=item.price, price_unit_quantity=item.price_unit_quantity, price_unit=item.price_unit,
                             commercial_quantity=item.commercial_quantity,
                             commercial_unit=item.commercial_unit,
                             commercial_unit_price=item.commercial_unit_price,

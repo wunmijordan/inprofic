@@ -4,7 +4,7 @@ from django.db import models, transaction
 from django.db.models import F
 from django.utils import timezone
 
-from core.quantities import plural_unit, format_quantity, format_product_quantity, product_portion, product_choice_label
+from core.quantities import product_price_fields, plural_unit, format_quantity, format_product_quantity, product_portion, product_choice_label
 
 from .models import (
     DistributionReturn,
@@ -471,7 +471,7 @@ def _allocate_market_stock_line(*, business, good, customer, quantity, date, use
             batch_qty=batches,
             piece_qty=pieces,
             discount=Decimal("0"),
-            price=price,
+            price=price, **product_price_fields(good),
             unit_cost=lot.unit_cost,
             production_batch=lot.production_batch,
         )

@@ -34,9 +34,13 @@ what was borrowed and what was deliberately left out).
 - **Selling quantities** — products with a configured selling portion use concise
   quantities such as “10 packs” in stock releases, transfers, returns, staff/gifting
   issues and shared reports. Stock and accounting retain the converted base units.
-  Production orders and proposals offer base-unit or selling-portion entry;
-  production batches retain their registered yield. Saved commercial quantities
-  and prices remain intact.
+  Production orders and proposals use selling portions directly; base quantities
+  and batch yields remain internal. Channel and customer prices are per configured
+  selling portion. An audited migration corrects legacy operational sale/order
+  pricing units and invoice balances, preserving cash receipts and exact storefront
+  commercial totals. Submitted e-invoices retain their original payload for adjustment
+  review; draft invoices must be prepared again. Derived Books require their normal
+  explicit rebuild to incorporate corrected operational values.
 - **Customer Orders & Sales** — one form, one model, split by type:
   - **Walk-in** — immediate, deducts from existing shelf stock, exactly
     like a normal point-of-sale transaction.

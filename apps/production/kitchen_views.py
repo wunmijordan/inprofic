@@ -17,6 +17,8 @@ always add up to one number and a batch can be broken to fill a channel.
 """
 from decimal import Decimal, InvalidOperation
 
+from core.quantities import product_price_fields, set_product_price
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
@@ -297,8 +299,8 @@ def order_split(request, pk):
                 setattr(order, name, getattr(channel.instance, name))
             order.save()
             for item in items:
-                item.price = item.finished_good.selling_price_for(order.order_type, order.customer)
-                item.save(update_fields=["price", "updated_at"])
+                set_product_price(item, order.order_type, order.customer)
+                item.save(update_fields=["price", "price_unit_quantity", "price_unit", "updated_at"])
             summary = channel_labels[used[0]["channel"]]
             audit(request.business, request.user, "update", order,
                   f"Order #{order.display_number} assigned to {summary}", {"multi_channel": False})

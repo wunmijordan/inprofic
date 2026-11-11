@@ -119,8 +119,6 @@ def share_text(summary, url=None):
             note = f" (requested {_qty(line['requested'])})" if line["reduced"] else ""
             out.append(f"  • {line['name']}: {format_quantity(line['approved'],line['unit'])} × {_money(line['unit_cost'], symbol)} "
                        f"= {_money(line['total'], symbol)}{note}")
-        out.append(f"   Stock now: {stock_line(line['stock'])}")
-    out.append(f"_Stock as of {s['stock_time']}_")
     out.append("")
     if s["changed"]:
         out.append(f"Requested total: {_money(s['requested_total'], symbol)}")
@@ -130,11 +128,10 @@ def share_text(summary, url=None):
     if s["approved_by"]:
         out.append(f"Approved by {s['approved_by']}")
     if s.get('miscellaneous'):
-        out += ['',f"*Miscellaneous expenses · {s['date']:%d %b %Y}*"]
+        out += ['',f"*General Expenses · {s['date']:%d %b %Y}*"]
         out += [f"• {expense['description']}: {_money(expense['amount'],symbol)}" + (f" · {expense['vendor']}" if expense['vendor'] else '') + f" · {expense['payment']}" for expense in s['miscellaneous']]
         out.append(f"Expenses total: {_money(s['miscellaneous_total'],symbol)}")
-        out.append(f"*Grand total: {_money(s['grand_total'],symbol)}*")
-        out.append("Date expenses do not change the purchase invoice or approval amount. Use the period summary when combining several requests so date expenses are counted once.")
+        out.append('',f"*Grand total: {_money(s['grand_total'],symbol)}*")
     if url:
         out += ["", f"{link_prompt(s)}:", url]
     return render_lines(out)
@@ -230,7 +227,7 @@ def render_snapshot(summary):
     d.text((PAD + 32, ty + 70), _fit(d, foot, f_small, inner - 64), font=f_small, fill=MUTED)
     if expense_rows:
         ey = y + 30 + total_h + 22
-        d.text((PAD,ey),f"Miscellaneous expenses · {s['date']:%d %b %Y}",font=f_small,fill=INK)
+        d.text((PAD,ey),f"General Expenses · {s['date']:%d %b %Y}",font=f_small,fill=INK)
         for expense in expense_rows:
             ey += 38
             d.text((PAD,ey),_fit(d,expense['description'],f_small,inner-260),font=f_small,fill=MUTED)

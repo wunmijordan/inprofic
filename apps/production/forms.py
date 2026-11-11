@@ -1,4 +1,4 @@
-from core.forms import ProductChoiceLabelsMixin, PortionEntryModeMixin
+from core.forms import ProductChoiceLabelsMixin, SellingPortionEntryMixin
 from decimal import ROUND_HALF_UP, Decimal
 from django import forms
 from django.forms.models import BaseInlineFormSet, inlineformset_factory
@@ -227,18 +227,13 @@ class OrderForm(StyledModelForm):
         return cleaned
 
 
-class OrderItemForm(PortionEntryModeMixin, StyledModelForm):
-    quantity_unit = forms.ChoiceField(label="Quantity format", required=False,
-        choices=[("base", "Base units / batches"), ("selling", "Selling portions")], initial="base")
-
+class OrderItemForm(SellingPortionEntryMixin, StyledModelForm):
     class Meta:
         model = OrderItem
         fields = ["finished_good", "batch_qty", "piece_qty", "production_batch_qty", "production_piece_qty", "discount"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['quantity_unit'].widget.attrs['data-formset-default'] = 'base'
-        self.fields['quantity_unit'].help_text = 'Choose the format before entering quantities. Batch fields always count production batches; loose quantities and discounts use the selected unit.'
         for name in ("batch_qty", "piece_qty", "production_batch_qty", "production_piece_qty", "discount"):
             self.fields[name].required = False
             self.fields[name].widget.attrs.update({"min": "0", "step": "0.01"})

@@ -152,7 +152,7 @@ def build_invoice_payload(sale, settings, buyer_tin=""):
         treatment = item.finished_good.vat_treatment or "standard"
         category = treatment if vat_on else "out_of_scope"
         vat = vat_from_gross(gross, settings.vat_rate) if vat_on and treatment == "standard" else ZERO
-        units = Decimal(item.total_units or 0)
+        units = item.commercial_quantity if item.commercial_quantity is not None else Decimal(item.total_units or 0) / item.price_unit_quantity
         label = item.finished_good.name + (f" ({item.product_option_value})" if item.product_option_value else "")
         lines.append({
             "description": label, "quantity": str(units), "unit_price_gross": str(q(gross / units) if units else q(gross)),

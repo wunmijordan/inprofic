@@ -62,7 +62,7 @@
           <tbody id="sale-rows">
             {% for f in formset %}
             <tr {% if forloop.first %}data-formset-row{% endif %} class="border-t border-[#E7DFCC]" data-row>
-              <td class="px-2 py-1.5">{{ f.id }}{{ f.finished_good }}<div class="mt-2">{% include "_field.html" with field=f.quantity_unit %}</div></td>
+              <td class="px-2 py-1.5">{{ f.id }}{{ f.finished_good }}</td>
               {% if vertical_ui.uses_production %}<td class="px-2 py-1.5">{{ f.batch_qty }}</td>{% else %}<td class="hidden">{{ f.batch_qty }}</td>{% endif %}
               <td class="px-2 py-1.5">{{ f.piece_qty }}</td>
               <td class="px-2 py-1.5">{{ f.discount }}</td>
@@ -135,12 +135,11 @@
       select.dataset.wired = '1';
       const refresh = () => {
         const price = resolvedPrice(select.value), portion = PORTIONS[select.value];
-        const selling = row.querySelector('select[name$="-quantity_unit"]')?.value === 'selling';
+        const selling = true;
         const factor = selling ? Number(portion?.factor || 1) : 1;
-        priceCell.textContent = price !== undefined && price !== null ? '≈ ' + (Number(price)*factor).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) + ' / ' + (selling ? portion?.unit || '' : portion?.base_unit || '') : '—';
+        priceCell.textContent = price !== undefined && price !== null ? '≈ ' + Number(price).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) + ' / ' + (selling ? portion?.unit || '' : portion?.base_unit || '') : '—';
       };
       select.addEventListener('change',refresh);
-      row.querySelector('select[name$="-quantity_unit"]')?.addEventListener('change',refresh);
       row.quantityPriceRefresh = refresh;
       refresh();
     });

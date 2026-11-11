@@ -69,8 +69,8 @@ class ProductionProposalTests(TestCase):
         self.assertEqual(page.status_code, 200)
         formset = page.context['formset']
         self.assertEqual(len(formset.forms), 2)
-        self.assertEqual(formset.forms[0].initial['piece_qty'], '30.00')
-        self.assertEqual(formset.forms[1].initial['piece_qty'], '5.00')
+        self.assertEqual(formset.forms[0].initial['piece_qty'], Decimal('30.00'))
+        self.assertEqual(formset.forms[1].initial['piece_qty'], Decimal('5.00'))
         response = self.save_order(token)
         self.assertEqual(response.status_code, 302, getattr(response, 'context', None))
         order = Order.objects.get()
@@ -98,7 +98,7 @@ class ProductionProposalTests(TestCase):
     def test_quantities_can_be_adjusted_and_zero_omits_products(self):
         result = self.use(**{f'quantity-{self.a.pk}': '7.50', f'quantity-{self.c.pk}': '0'})
         page = self.client.get(result.url)
-        self.assertEqual(page.context['formset'].forms[0].initial['piece_qty'], '17.50')
+        self.assertEqual(page.context['formset'].forms[0].initial['piece_qty'], Decimal('17.50'))
         self.assertEqual(len(page.context['formset'].forms), 1)
         bad = self.use(**{f'quantity-{self.a.pk}': '-1'})
         self.assertEqual(bad.status_code, 400)

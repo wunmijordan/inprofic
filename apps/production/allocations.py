@@ -19,6 +19,8 @@ Fill rules when less is saleable than was allocated: customer allocations are
 served first (they carry a receivable and a promise), in their saved order, then
 stock-type allocations. A customer is billed only for what was delivered.
 """
+from core.quantities import product_price_fields
+
 from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal
 
 from core.models import FinancialTransaction
@@ -111,6 +113,7 @@ def replace_allocations(order, destinations):
             OrderAllocationLine.objects.create(
                 allocation=allocation, order_item=item, batch_qty=batches, piece_qty=pieces,
                 price=item.finished_good.selling_price_for(channel.order_type, channel.customer),
+                **product_price_fields(item.finished_good),
                 discount=item.discount or ZERO,
             )
     order.order_type = Order.TYPE_MULTI
@@ -196,7 +199,7 @@ def post_item_allocations(order, item, batch, *, unit_cost, location, user, comp
             batches, pieces = to_batches_and_pieces(delivered, size)
             SaleItem.objects.create(
                 sale=sale, finished_good=good, batch_qty=batches, piece_qty=pieces, discount=line.discount,
-                price=line.price, unit_cost=unit_cost, production_batch=batch,
+                price=line.price, price_unit_quantity=line.price_unit_quantity, price_unit=line.price_unit, unit_cost=unit_cost, production_batch=batch,
             )
     if market_units > 0:
         receive_market_production(batch, market_units, user=user)
@@ -251,5 +254,5 @@ def copy_allocations(source, target, item_map):
                 continue
             OrderAllocationLine.objects.create(
                 allocation=clone, order_item=new_item, batch_qty=line.batch_qty, piece_qty=line.piece_qty,
-                price=line.price, discount=line.discount,
+                price=line.price, price_unit_quantity=line.price_unit_quantity, price_unit=line.price_unit, discount=line.discount,
             )
