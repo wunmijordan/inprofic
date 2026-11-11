@@ -131,7 +131,7 @@ def share_text(summary, url=None):
         out += ['',f"*General Expenses · {s['date']:%d %b %Y}*"]
         out += [f"• {expense['description']}: {_money(expense['amount'],symbol)}" + (f" · {expense['vendor']}" if expense['vendor'] else '') + f" · {expense['payment']}" for expense in s['miscellaneous']]
         out.append(f"Expenses total: {_money(s['miscellaneous_total'],symbol)}")
-        out.append('',f"*Grand total: {_money(s['grand_total'],symbol)}*")
+        out.extend(['', f"*Grand total: {_money(s['grand_total'],symbol)}*"])
     if url:
         out += ["", f"{link_prompt(s)}:", url]
     return render_lines(out)
