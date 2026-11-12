@@ -81,7 +81,12 @@ what was borrowed and what was deliberately left out).
   apply the suggested expiry to each batch at completion. Color-tag tooltips show
   the production weekday. Market Stock customer releases accept several products
   on one invoice, with available, entered and remaining quantities per line for the
-  selected release date. Recorded customer returns credit the original invoice
+  selected release date. Authorised Inventory, Sales and Finance editors can correct
+  standalone customer releases from “Where stock went”, with a mandatory reason,
+  compensating stock movements and preserved cash receipts. Existing prices stay
+  fixed unless the customer or product changes; balances and shared summaries
+  follow the correction. Releases with recorded returns or submitted e-invoices
+  remain protected. Recorded customer returns credit the original invoice
   balance without changing cash receipts. Redistributable goods return to Market
   Stock for a new customer or store sale; damaged goods become a Finance loss at
   their recorded stock cost. Basic dashboard sales include received values on

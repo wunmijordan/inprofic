@@ -211,12 +211,16 @@ def distribution_summaries(request, *, lots=None, directory=None):
             'physical_sold': ZERO, 'write_off': ZERO, 'reversal': ZERO, 'issued': ZERO,
         })
 
-    def destination(pk, name, unit, target, quantity, kind='customer', customer_id=None):
+    def destination(pk, name, unit, target, quantity, kind='customer', customer_id=None, sale_id=None):
         labels = customer_labels(directory, customer_id, target) if kind == 'customer' else {}
         key = (pk, kind, target, labels.get('customer_id'))
         row = destinations.setdefault(key, {'product_id': pk, 'kind': kind, 'product': name, 'unit': unit or 'unit not set', 'destination': target, 'quantity': ZERO})
         row.update(labels)
         row['quantity'] += quantity
+        if sale_id and quantity > 0:
+            releases = row.setdefault('release_ids', [])
+            if sale_id not in releases:
+                releases.append(sale_id)
 
     if business.uses_production:
         source_lots = list(lots) if lots is not None else list(MarketStockLot.objects.filter(business=business).select_related('finished_good'))
@@ -257,7 +261,7 @@ def distribution_summaries(request, *, lots=None, directory=None):
                     row['received'] += lot.quantity_received
         movements = MarketStockMovement.objects.filter(business=business, date=day).values(
             'lot__finished_good_id', 'lot__finished_good__name', 'lot__finished_good__unit',
-            'movement_type', 'sale__customer', 'sale__source', 'customer__name', 'sale__customer_master_id', 'customer_id',
+            'movement_type', 'sale_id', 'sale__customer', 'sale__source', 'customer__name', 'sale__customer_master_id', 'customer_id',
         ).annotate(quantity=Sum('quantity'))
         for movement in movements:
             pk, name, unit = (movement['lot__finished_good_id'], movement['lot__finished_good__name'], movement['lot__finished_good__unit'])
@@ -273,7 +277,7 @@ def distribution_summaries(request, *, lots=None, directory=None):
                     destination(pk, name, unit, 'Physical Store sales', -quantity, 'physical_sale')
                 else:
                     row['distributed'] -= quantity
-                    destination(pk, name, unit, movement['sale__customer'] or movement['customer__name'] or 'Customer (name unavailable)', -quantity, customer_id=movement['sale__customer_master_id'] or movement['customer_id'])
+                    destination(pk, name, unit, movement['sale__customer'] or movement['customer__name'] or 'Customer (name unavailable)', -quantity, customer_id=movement['sale__customer_master_id'] or movement['customer_id'], sale_id=movement['sale_id'])
             elif kind == MarketStockMovement.TRANSFER_PHYSICAL:
                 row['physical'] -= quantity
                 destination(pk, name, unit, 'Physical Store', -quantity, 'store')
@@ -324,7 +328,7 @@ def distribution_summaries(request, *, lots=None, directory=None):
         destination(good.pk, good.name, good.unit,
             f'{issue.get_reason_display()} · {issue.recipient or "Recipient not recorded"}', -issue.quantity, 'non_stock')
     rows = sorted((row for row in products.values() if any(row[key] for key in ['opening','received','returned','distributed','physical_sold','physical','issued','closing','other_change'])), key=lambda row: (not (row['distributed'] or row['made'] or row['physical']), row['product'].casefold()))
-    allocations = sorted(destinations.values(), key=lambda row: (row['product'].casefold(), row['destination'].casefold()))
+    allocations = sorted((row for row in destinations.values() if row['quantity']), key=lambda row: (row['product'].casefold(), row['destination'].casefold()))
     goods = {good.pk: good for good in FinishedGood.objects.filter(
         business=business, pk__in=products).select_related('portion_profile')}
     for row in [*rows, *allocations]:

@@ -960,6 +960,17 @@ class MarketStockReleaseHeaderForm(MarketStockReleaseForm):
         del self.fields["quantity"]
 
 
+class MarketStockReleaseCorrectionForm(StyledForm):
+    date = forms.DateField(disabled=True, widget=forms.DateInput(attrs={"type": "date"}))
+    customer = forms.ModelChoiceField(queryset=Customer.objects.none())
+    reason = forms.CharField(max_length=255, label="Reason for correction", widget=forms.Textarea(attrs={"rows": 2}))
+    revision = forms.CharField(widget=forms.HiddenInput)
+
+    def __init__(self, *args, business, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['customer'].queryset = Customer.objects.filter(business=business, active=True).order_by('name')
+
+
 class MarketStockPhysicalSaleForm(StyledForm):
     date = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}))
     customer = forms.CharField(max_length=120, required=False, label="Customer name (optional)")
@@ -976,9 +987,11 @@ class MarketStockReleaseItemForm(SellingQuantityMixin, StyledForm):
     finished_good = forms.ModelChoiceField(queryset=FinishedGood.objects.none(), label="Product")
     quantity = forms.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.01"))
 
-    def __init__(self, *args, business=None, on_date=None, **kwargs):
+    def __init__(self, *args, business=None, on_date=None, include_product_ids=(), **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["finished_good"].queryset = _market_stock_product_choices(business, on_date or timezone.localdate())
+        choices = _market_stock_product_choices(business, on_date or timezone.localdate())
+        self.fields["finished_good"].queryset = FinishedGood.objects.filter(business=business).filter(
+            Q(pk__in=choices.values('pk')) | Q(pk__in=include_product_ids)).order_by('name')
 
 
 class BaseMarketStockReleaseItemFormSet(BaseFormSet):

@@ -24,6 +24,7 @@ urlpatterns = [
     path("market-stock/snapshot/<slug:kind>.png", distribution_snapshot, name="market_stock_snapshot"),
     path("market-stock/", views.market_stock, name="market_stock"),
     path("market-stock/release/", views.market_stock_release, name="market_stock_release"),
+    path("market-stock/releases/<int:pk>/edit/", views.market_stock_release_edit, name="market_stock_release_edit"),
     path("market-stock/sell/", views.market_stock_sell, name="market_stock_sell"),
     path("market-stock/transfer/", views.market_stock_transfer, name="market_stock_transfer"),
     path("market-stock/return/", views.distribution_return, name="distribution_return"),

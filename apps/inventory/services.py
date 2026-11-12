@@ -425,7 +425,7 @@ def _market_stock_sale(*, business, items, customer, date, payment_status, payme
     return sale
 
 
-def _allocate_market_stock_line(*, business, good, customer, quantity, date, user, note, sale):
+def _allocate_market_stock_line(*, business, good, customer, quantity, date, user, note, sale, price_snapshot=None):
     from core.services import audit
     from sales.models import SaleItem
 
@@ -446,6 +446,8 @@ def _allocate_market_stock_line(*, business, good, customer, quantity, date, use
     physical_store = sale.source == "walkin"
     target = sale.customer if not physical_store else "Physical Store"
     price = good.selling_price_for("physical_store") if physical_store else good.explicit_selling_price_for("distribution", customer)
+    if price_snapshot is not None:
+        price = price_snapshot["price"]
     if price is None:
         raise ValidationError(
             "Set a Distribution channel/customer price before releasing Distribution Market Stock; "
@@ -470,8 +472,7 @@ def _allocate_market_stock_line(*, business, good, customer, quantity, date, use
             finished_good=good,
             batch_qty=batches,
             piece_qty=pieces,
-            discount=Decimal("0"),
-            price=price, **product_price_fields(good),
+            **(price_snapshot or {"discount": Decimal("0"), "price": price, **product_price_fields(good)}),
             unit_cost=lot.unit_cost,
             production_batch=lot.production_batch,
         )
