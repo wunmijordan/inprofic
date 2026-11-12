@@ -86,7 +86,14 @@ what was borrowed and what was deliberately left out).
   compensating stock movements and preserved cash receipts. Existing prices stay
   fixed unless the customer or product changes; balances and shared summaries
   follow the correction. Releases with recorded returns or submitted e-invoices
-  remain protected. Recorded customer returns credit the original invoice
+  remain protected. When a receipt amount itself was entered incorrectly, a separate
+  signed review confirms the actual amount for each payment method/account, reverses
+  the mistaken cash entry and posts its correction with an audit trail. Quantity
+  edits never change receipts automatically. Online customers can also buy directly
+  from Market Stock using Online/customer prices per selling portion, with paid or
+  receivable settlement. Online stock movements and sales appear in the distribution
+  page, shared snapshots/text and normal sales/Finance reports.
+  Recorded customer returns credit the original invoice
   balance without changing cash receipts. Redistributable goods return to Market
   Stock for a new customer or store sale; damaged goods become a Finance loss at
   their recorded stock cost. Basic dashboard sales include received values on

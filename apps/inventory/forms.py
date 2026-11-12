@@ -960,6 +960,23 @@ class MarketStockReleaseHeaderForm(MarketStockReleaseForm):
         del self.fields["quantity"]
 
 
+class MarketStockOnlineSaleForm(MarketStockReleaseHeaderForm):
+    customer_name = forms.CharField(max_length=120, required=False, label="Online customer name",
+        help_text="Enter a name when the customer is not saved in your customer list.")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['customer'].required = False
+        self.fields['customer'].label = 'Saved customer (optional)'
+        self.order_fields(['date', 'customer', 'customer_name', 'payment_status', 'payment_method', 'account', 'note'])
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get('customer') and not (cleaned.get('customer_name') or '').strip():
+            self.add_error('customer_name', 'Choose a saved customer or enter the online customer’s name.')
+        return cleaned
+
+
 class MarketStockReleaseCorrectionForm(StyledForm):
     date = forms.DateField(disabled=True, widget=forms.DateInput(attrs={"type": "date"}))
     customer = forms.ModelChoiceField(queryset=Customer.objects.none())
@@ -1088,3 +1105,19 @@ class InventoryAlertSettingsForm(StyledModelForm):
         if poll is not None and not 15 <= poll <= 300:
             self.add_error("poll_seconds", "Choose a refresh interval from 15 to 300 seconds.")
         return cleaned
+
+
+class MarketReceiptCorrectionForm(StyledForm):
+    key = forms.CharField(disabled=True, widget=forms.HiddenInput)
+    amount = forms.DecimalField(max_digits=16, decimal_places=2, min_value=Decimal('0'), label='Actual amount received')
+
+
+MarketReceiptCorrectionFormSet = formset_factory(MarketReceiptCorrectionForm, extra=0, max_num=100, validate_max=True)
+
+
+class MarketReceiptReasonForm(StyledForm):
+    reason = forms.CharField(max_length=255, label='Reason for payment correction', widget=forms.Textarea(attrs={'rows': 2}))
+
+
+class MarketReceiptConfirmationForm(StyledForm):
+    confirm = forms.BooleanField(label='I confirm these are the amounts actually paid', required=True)

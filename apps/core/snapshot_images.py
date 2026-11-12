@@ -150,7 +150,7 @@ def render_distribution_snapshot(*, business, title, day, products, cards, url, 
     for product, customers in table_rows:
         draw.text((PAD, y), _fit(draw, product['product'], bold, 270), font=bold, fill=INK)
         for x, key in [(x_opening, 'opening'), (x_taken, 'distributed'), (x_left, 'closing')]:
-            amount = product[key] + product.get('physical', 0) + product.get('physical_sold',0) + product.get('issued',0) if key == 'distributed' else product[key]
+            amount = product[key] + product.get('online_sold', 0) + product.get('physical', 0) + product.get('physical_sold',0) + product.get('issued',0) if key == 'distributed' else product[key]
             value = format_product_quantity(amount, product.get('finished_good'),unit=product['unit']) if amount else '—'
             draw.text((x, y+3), _fit(draw, value, body, 215), font=body, fill=INK, anchor='ra')
         y += 44

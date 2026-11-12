@@ -9,7 +9,7 @@ import { Command, CommandInput, CommandList, CommandEmpty, CommandItem } from '.
 
 // The server remains the authorization and save boundary. Only contained edits
 // belong here. Procurement approval retains its full review inside the dialog.
-const FORM_PATH = /^\/(?:inventory\/(?:(?:raw-material|product)\/(?:add|\d+\/edit)|product-use\/(?:market|physical)|market-stock\/releases\/\d+\/edit)|procurement\/(?:suppliers\/)?(?:add|\d+\/(?:edit|approve))|sales\/(?:customers\/)?(?:add|\d+\/edit)|expenses\/(?:add|\d+\/edit|payments\/add)|finance\/(?:accounts\/(?:add|\d+\/edit)|(?:supplier-payment|customer-payment|expense-payment|stock-adjustment)\/add)|(?:orders|runs)\/(?:add|\d+\/edit))\/$/;
+const FORM_PATH = /^\/(?:inventory\/(?:(?:raw-material|product)\/(?:add|\d+\/edit)|product-use\/(?:market|physical)|market-stock\/(?:releases\/\d+\/(?:edit|payments)|sell-online))|procurement\/(?:suppliers\/)?(?:add|\d+\/(?:edit|approve))|sales\/(?:customers\/)?(?:add|\d+\/edit)|expenses\/(?:add|\d+\/edit|payments\/add)|finance\/(?:accounts\/(?:add|\d+\/edit)|(?:supplier-payment|customer-payment|expense-payment|stock-adjustment)\/add)|(?:orders|runs)\/(?:add|\d+\/edit))\/$/;
 const PRODUCT_DETAIL_PATH = /^\/inventory\/product\/\d+\/detail\/$/;
 const CUSTOMER_ACTIVITY_PATH = /^\/sales\/customers\/\d+\/activity\/$/;
 const embedded = window.parent !== window && window.name === 'inprofic-form-dialog';

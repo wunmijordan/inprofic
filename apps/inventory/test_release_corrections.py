@@ -185,3 +185,93 @@ class ReleaseCorrectionTests(TestCase):
         self.assertEqual(destinations[0]['quantity_label'], '2 packs')
         form = self.client.get(reverse('market_stock_release_edit', args=[sale.pk]))
         self.assertEqual(form.context['formset'].initial[0]['quantity'], 2)
+
+    def test_reviewed_receipt_correction_reverses_wrong_cash_and_updates_original_payment(self):
+        from .release_payments import market_payment_review, apply_market_payment_review
+        sale = self.release(paid=True)
+        self.correct(sale, 3)
+        payment = CustomerPayment.raw_objects.get(sale=sale)
+        original = FinancialTransaction.raw_objects.get(reference=f'SALE-{sale.pk}')
+        amounts = {f'payment-{payment.pk}': '300.00'}
+        review = market_payment_review(business=self.business, sale_id=sale.pk, user=self.user, amounts=amounts)
+        self.assertFalse(review['errors'])
+        self.assertEqual(review['row']['corrected_due'], 0)
+        apply_market_payment_review(business=self.business, sale_id=sale.pk, user=self.user, amounts=amounts,
+            fingerprint=review['fingerprint'], reason='Customer paid the correct lower amount')
+        original.refresh_from_db(); payment.refresh_from_db(); self.lot.refresh_from_db(); sale.refresh_from_db()
+        self.assertTrue(original.reversed)
+        self.assertEqual(original.amount, 500)
+        self.assertEqual(payment.amount, 300)
+        self.assertEqual(sale.total, 300)
+        self.assertEqual(self.lot.quantity_available, 17)
+        reversal = FinancialTransaction.raw_objects.get(reversal_of=original)
+        self.assertEqual((reversal.amount, reversal.transaction_type), (500, FinancialTransaction.OUTFLOW))
+        self.assertTrue(FinancialTransaction.raw_objects.filter(reference=f'SALE-{sale.pk}', amount=300, reversed=False).exists())
+        self.assertTrue(AuditLog.raw_objects.filter(action='correct_market_payment').exists())
+        # A second review resolves the replacement receipt, never the reversed entry.
+        again = market_payment_review(business=self.business, sale_id=sale.pk, user=self.user)
+        self.assertFalse(again['errors'])
+        self.assertEqual(again['row']['paid'], 300)
+
+    def test_receipt_review_rejects_stale_amounts_ambiguous_cash_and_foreign_keys(self):
+        from .release_payments import market_payment_review, apply_market_payment_review
+        sale = self.release(paid=True)
+        review = market_payment_review(business=self.business, sale_id=sale.pk, user=self.user,
+            amounts={f'direct-{sale.pk}': '400'})
+        with self.assertRaisesMessage(ValidationError, 'changed'):
+            apply_market_payment_review(business=self.business, sale_id=sale.pk, user=self.user,
+                amounts=review['amounts'], fingerprint='stale', reason='Wrong receipt')
+        invalid = market_payment_review(business=self.business, sale_id=sale.pk, user=self.user, amounts={'payment-9999': '400'})
+        self.assertTrue(invalid['errors'])
+        tx = FinancialTransaction.raw_objects.get()
+        tx.pk = None
+        tx.save()
+        ambiguous = market_payment_review(business=self.business, sale_id=sale.pk, user=self.user,
+            amounts={f'direct-{sale.pk}': '400'})
+        self.assertTrue(ambiguous['errors'])
+        self.assertFalse(FinancialTransaction.raw_objects.filter(reversed=True).exists())
+
+    def test_payment_review_requires_signed_confirmation_and_preserves_stock(self):
+        sale = self.release(paid=True)
+        self.correct(sale, 3)
+        url = reverse('market_stock_payments', args=[sale.pk])
+        page = self.client.get(url)
+        self.assertEqual(page.status_code, 200)
+        self.assertEqual(page.context['formset'].initial[0]['amount'], 500)
+        preview = self.client.post(url, {'action': 'preview', 'reason': 'Actual receipt was 300',
+            'receipts-TOTAL_FORMS': 1, 'receipts-INITIAL_FORMS': 1, 'receipts-0-amount': '300'})
+        self.assertEqual(preview.status_code, 200)
+        token = preview.context['review_token']
+        self.assertTrue(token)
+        denied = self.client.post(url, {'action': 'apply', 'review_token': token})
+        self.assertEqual(denied.status_code, 200)
+        self.assertFalse(FinancialTransaction.raw_objects.filter(reversed=True).exists())
+        saved = self.client.post(url, {'action': 'apply', 'review_token': token, 'confirm': 'on'})
+        self.assertEqual(saved.status_code, 302)
+        self.assertEqual(CustomerPayment.raw_objects.get(sale=sale).amount, 300)
+
+    def test_split_method_receipt_correction_balances_each_account_without_new_stock_changes(self):
+        from core.services import record_cash
+        from .release_payments import market_payment_review, apply_market_payment_review
+        sale = self.release()
+        card = CashAccount.raw_objects.create(business=self.business, name='Card account')
+        payments = []
+        for amount, method, account in [(200, 'Cash', self.account), (300, 'Card', card)]:
+            payment = CustomerPayment.raw_objects.create(business=self.business, sale=sale, date=self.day,
+                customer=self.customer.name, customer_master=self.customer, amount=amount,
+                payment_method=method, account=account)
+            record_cash(self.business, self.user, date=self.day, amount=amount,
+                transaction_type=FinancialTransaction.INCOME, category='Customer payment',
+                description=f'Payment received for Sale #{sale.pk}', payment_method=method,
+                reference=f'CUSTPAY-{payment.pk}', account=account)
+            payments.append(payment)
+        sale.transaction_type = 'paid'
+        sale.save(update_fields=['transaction_type'])
+        amounts = {f'payment-{payments[0].pk}': '100', f'payment-{payments[1].pk}': '250'}
+        review = market_payment_review(business=self.business, sale_id=sale.pk, user=self.user, amounts=amounts)
+        self.assertFalse(review['errors'])
+        apply_market_payment_review(business=self.business, sale_id=sale.pk, user=self.user,
+            amounts=amounts, fingerprint=review['fingerprint'], reason='Entered both payment amounts incorrectly')
+        self.account.refresh_from_db(); card.refresh_from_db(); self.lot.refresh_from_db(); sale.refresh_from_db()
+        self.assertEqual((self.account.balance, card.balance), (100, 250))
+        self.assertEqual((sale.transaction_type, self.lot.quantity_available), ('partial', 15))

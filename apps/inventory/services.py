@@ -385,20 +385,33 @@ def sell_market_stock_items(*, business, items, date, payment_method, account, u
         note=note, physical_store=True, customer_name=customer_name)
 
 
+def sell_market_stock_online(*, business, items, date, payment_status, payment_method, account, user,
+                             customer=None, customer_name='', note=''):
+    if not business.uses_production:
+        raise ValidationError('Online Market Stock sales require a production business. Use the normal Online sales channel for purchased stock.')
+    return _market_stock_sale(business=business, items=items, customer=customer, date=date,
+        payment_status=payment_status, payment_method=payment_method, account=account, user=user,
+        note=note, customer_name=customer_name, online=True)
+
+
 @transaction.atomic
 def _market_stock_sale(*, business, items, customer, date, payment_status, payment_method, account, user,
-                       note="", physical_store=False, customer_name=""):
+                       note="", physical_store=False, customer_name="", online=False):
     """Release multiple products atomically into one customer invoice and payment."""
     from core.models import FinancialTransaction
     from core.services import record_cash
     from sales.models import Sale
 
-    if physical_store and payment_method not in dict(Sale.PAYMENT_CHOICES):
-        raise ValidationError("Choose a valid payment method.")
     if not items:
         raise ValidationError("Add at least one product to release.")
-    if not physical_store and (customer is None or customer.business_id != business.pk):
+    if not physical_store and not online and customer is None:
         raise ValidationError("Customer must belong to the active business.")
+    if customer is not None and customer.business_id != business.pk:
+        raise ValidationError("Customer must belong to the active business.")
+    if online and customer is None and not customer_name.strip():
+        raise ValidationError("Enter the online customer's name or choose a saved customer.")
+    if payment_status == 'paid' and payment_method not in dict(Sale.PAYMENT_CHOICES):
+        raise ValidationError("Choose a valid payment method.")
     if payment_status not in {"paid", "unpaid"}:
         raise ValidationError("Choose a valid payment status.")
     if payment_status == "paid" and (not account or account.business_id != business.pk or not account.active):
@@ -408,18 +421,18 @@ def _market_stock_sale(*, business, items, customer, date, payment_status, payme
         business=business, pk__in=[item["finished_good"].pk for item in items]
     ).order_by("pk"))
     sale = Sale.raw_objects.create(
-        business=business, created_by=user, date=date, customer=(customer_name.strip() or "Walk-in") if physical_store else customer.name, customer_master=customer,
+        business=business, created_by=user, date=date, customer=customer.name if customer else (customer_name.strip() or "Walk-in"), customer_master=customer,
         transaction_type=payment_status,
-        unpaid_description="" if payment_status == "paid" else "Distribution Market Stock receivable — payment to be recorded through Finance.",
+        unpaid_description="" if payment_status == "paid" else "Market Stock receivable — payment to be recorded through Finance.",
         account=account if payment_status == "paid" else None,
-        payment_method=payment_method or "Transfer", source="walkin" if physical_store else "distribution_order",
+        payment_method=payment_method or "Transfer", source="online_order" if online else "walkin" if physical_store else "distribution_order",
     )
     for item in items:
         _allocate_market_stock_line(business=business, good=item["finished_good"], customer=customer,
             quantity=item["quantity"], date=date, user=user, note=note, sale=sale)
     if payment_status == "paid":
         record_cash(business, user, date=date, amount=sale.total,
-            transaction_type=FinancialTransaction.INCOME, category="Sales revenue" if physical_store else "Distribution Market Stock sale",
+            transaction_type=FinancialTransaction.INCOME, category="Online Market Stock sale" if online else "Sales revenue" if physical_store else "Distribution Market Stock sale",
             description=f"Payment received for Market Stock sale #{sale.pk}",
             payment_method=sale.payment_method, reference=f"SALE-{sale.pk}", account=account)
     return sale
@@ -445,11 +458,13 @@ def _allocate_market_stock_line(*, business, good, customer, quantity, date, use
 
     physical_store = sale.source == "walkin"
     target = sale.customer if not physical_store else "Physical Store"
-    price = good.selling_price_for("physical_store") if physical_store else good.explicit_selling_price_for("distribution", customer)
+    price = good.selling_price_for("online", customer) if sale.source == "online_order" else good.selling_price_for("physical_store") if physical_store else good.explicit_selling_price_for("distribution", customer)
     if price_snapshot is not None:
         price = price_snapshot["price"]
     if price is None:
         raise ValidationError(
+            "Set an Online or default selling price before recording an Online Market Stock sale."
+            if sale.source == "online_order" else
             "Set a Distribution channel/customer price before releasing Distribution Market Stock; "
             "the standard selling price is not used for Distribution."
         )
@@ -484,13 +499,13 @@ def _allocate_market_stock_line(*, business, good, customer, quantity, date, use
             user=user,
             customer=customer,
             sale=sale,
-            note=note or (f"Sold in Physical Store to {sale.customer}" if physical_store else f"Released to {target}"),
+            note=note or (f"Online sale to {sale.customer}" if sale.source == "online_order" else f"Sold in Physical Store to {sale.customer}" if physical_store else f"Released to {target}"),
         )
         record_finished_good_movement(
             good,
             -taken,
             StockMovement.FG_MARKET_RELEASE,
-            note=f"Market Stock sold in Physical Store" if physical_store else f"Market Stock released to {target}",
+            note=f"Market Stock sold online to {target}" if sale.source == "online_order" else "Market Stock sold in Physical Store" if physical_store else f"Market Stock released to {target}",
             reference=f"SALE-{sale.pk}",
             affects_stock=False,
             unit_value=lot.unit_cost,
@@ -504,7 +519,7 @@ def _allocate_market_stock_line(*, business, good, customer, quantity, date, use
     audit(
         business,
         user,
-        "sell_market_stock" if physical_store else "release_market_stock",
+        "sell_market_stock_online" if sale.source == "online_order" else "sell_market_stock" if physical_store else "release_market_stock",
         sale,
         f"{format_quantity(quantity,good.unit)} of {good.name}: {target}",
         {"sale_id": sale.pk, "product_id": good.pk, "quantity": str(quantity)},

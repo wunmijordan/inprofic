@@ -105,7 +105,7 @@ def apply_price_review(*, business, customer, start, end, user, fingerprint, rec
     require_repricing(user, business)
     customer = Customer.raw_objects.select_for_update().get(pk=customer.pk, business=business)
     review = price_review(business=business, customer=customer, start=start, end=end, user=user, lock=True, include_receipts=receipt_corrections is not None)
-    corrections = receipt_review(business, review, receipt_corrections, lock=True) if receipt_corrections is not None else None
+    corrections = receipt_review(business, review, receipt_corrections, lock=True, user=user) if receipt_corrections is not None else None
     if review['fingerprint'] != fingerprint:
         raise ValidationError('Prices, invoices or payments changed. Review the updated figures before confirming.')
     if review['errors']:
@@ -167,7 +167,7 @@ def apply_price_review(*, business, customer, start, end, user, fingerprint, rec
     return review
 
 
-def receipt_review(business, review, amounts=None, *, lock=False):
+def receipt_review(business, review, amounts=None, *, lock=False, user=None):
     """Match each receipt to exactly one cash entry; never guess across accounts.
 
     Fully settled invoices initially propose their corrected full value. Partial
@@ -180,9 +180,10 @@ def receipt_review(business, review, amounts=None, *, lock=False):
         receipts = []
         for payment in row['payment_rows']:
             reference = payment.reference or f'CUSTPAY-{payment.pk}'
-            if reference == f'REPRICE-OPEN-{sale.pk}' and payment.notes.startswith((
+            if reference in {f'REPRICE-OPEN-{sale.pk}', f'RELEASE-OPEN-{sale.pk}'} and payment.notes.startswith((
                     'Original paid-at-creation settlement preserved during price correction.',
-                    'Paid-at-creation settlement after reviewed receipt correction;')):
+                    'Paid-at-creation settlement after reviewed receipt correction;',
+                    'Original receipt preserved during release correction.')):
                 reference = f'ORDER-{sale.linked_order_id}' if sale.linked_order_id else f'SALE-{sale.pk}'
             receipts.append({'key': f'payment-{payment.pk}', 'old': payment.amount, 'payment': payment,
                 'date': payment.date, 'method': payment.payment_method, 'account': payment.account_id,
@@ -247,7 +248,7 @@ def receipt_review(business, review, amounts=None, *, lock=False):
     return {'errors': sorted(set(errors)), 'amounts': amounts if amounts is not None else defaults}
 
 
-def apply_receipt_corrections(*, business, user, row):
+def apply_receipt_corrections(*, business, user, row, context='Price correction'):
     """Compensate the mistaken ledger receipt, then post the reviewed amount."""
     sale = row['sale']
     for receipt in row['receipts']:
@@ -255,7 +256,7 @@ def apply_receipt_corrections(*, business, user, row):
         if receipt['old'] != receipt['new']:
             FinancialTransaction.raw_objects.create(business=business, created_by=user, date=tx.date, amount=tx.amount,
                 transaction_type=FinancialTransaction.OUTFLOW, category=f'Reversal: {tx.category}'[:80],
-                description=f'Price correction: reverse mistaken receipt #{tx.pk}', payment_method=tx.payment_method,
+                description=f'{context}: reverse mistaken receipt #{tx.pk}'[:255], payment_method=tx.payment_method,
                 reference=f'REV-REPRICE-{tx.pk}', account=tx.account, reversal_of=tx)
             tx.reversed = True
             tx.save(update_fields=['reversed', 'updated_at'])

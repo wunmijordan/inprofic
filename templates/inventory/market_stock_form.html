@@ -5,6 +5,7 @@
     <div><h2 class="text-xl font-semibold font-display text-[#8f172d]">{{ title }}</h2><span class="mt-1 inline-block">{% include "_help_tip.html" with label=title help_text=intro portal_bubble=True %}</span></div>
     <a href="{% url 'market_stock' %}" class="text-sm text-[#8f172d] hover:underline">Market Stock</a>
   </div>
+  {% if edit_sale %}<div class="mb-3"><a class="workspace-action" href="{% url 'market_stock_payments' edit_sale.pk %}">Correct recorded payment</a></div>{% endif %}
   <form method="post" class="cf-form-shell cf-form-body space-y-4">
     {% csrf_token %}
     {% if edit_error %}<p role="alert" class="text-sm">{{ edit_error }}</p>{% endif %}
@@ -14,7 +15,7 @@
       {% if field.is_hidden %}{{ field }}{% else %}{% include "_field.html" with field=field %}{% endif %}
       {% if field.name == "customer" and formset %}
       <section data-formset>
-        <h3 class="mb-3 font-semibold">{% if market_stock_action == "sale" %}Products sold{% else %}Products for this customer{% endif %}</h3>
+        <h3 class="mb-3 font-semibold">{% if market_stock_action == "sale" or market_stock_action == "online" %}Products sold{% else %}Products for this customer{% endif %}</h3>
         {{ formset.management_form }}
         {% if formset.non_form_errors %}<div role="alert" class="mb-3 text-sm text-rose-700">{{ formset.non_form_errors }}</div>{% endif %}
         <div data-market-release-rows class="space-y-4">
@@ -49,7 +50,7 @@
       const remaining = available - entered * factor;
       ['border-rose-200','bg-rose-50','text-rose-800'].forEach(name => summary.classList.toggle(name, remaining < 0));
       ['border-sky-200','bg-sky-50','text-sky-900'].forEach(name => summary.classList.toggle(name, remaining >= 0));
-      const verb = action === 'transfer' ? 'to Physical Store' : action === 'sale' ? 'sold in Physical Store' : 'to this customer';
+      const verb = action === 'transfer' ? 'to Physical Store' : action === 'online' ? 'sold online' : action === 'sale' ? 'sold in Physical Store' : 'to this customer';
       const unit = amount => Math.abs(amount) === 1 ? stock.selling_unit_singular || stock.unit_singular : stock.selling_unit_plural || stock.unit_plural;
       const quantityLabel = base => {
         const count = Math.abs(base) / factor, whole = Math.floor(count + 1e-9), remainder = Math.abs(base) - whole * factor;
@@ -62,7 +63,7 @@
       const customer = document.querySelector('select[name="customer"]')?.value;
       const price = stock.customer_prices?.[customer] ?? stock.price;
       if (action !== 'transfer') {
-        if (price === null || price === undefined) summary.textContent += ' Set a Distribution or customer price before release.';
+        if (price === null || price === undefined) summary.textContent += (action === 'online' ? ' Set an Online or default selling price before sale.' : ' Set a Distribution or customer price before release.');
         else {
           const money = value => '{{ biz.currency_symbol|escapejs }}' + new Intl.NumberFormat(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}).format(value);
           summary.textContent += ` Price: ${money(Number(price))} per ${stock.selling_unit_singular || stock.unit_singular}; total ${money(entered * Number(price))}.`;

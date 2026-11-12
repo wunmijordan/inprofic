@@ -24,6 +24,7 @@ from .forms import (
     ProductCompositionItemFormSet,
     ProductPortionProfileForm,
     MarketStockReleaseHeaderForm,
+    MarketStockOnlineSaleForm,
     MarketStockPhysicalSaleForm,
     MarketStockReleaseItemFormSet,
     MarketStockTransferForm,
@@ -303,6 +304,7 @@ def _market_stock_request_date(request):
 
 
 def _market_form_response(request, form, *, title, intro, submit_label, formset=None, edit_sale=None, edit_error=''):
+    online = isinstance(form, MarketStockOnlineSaleForm)
     on_date = edit_sale.date if edit_sale else _market_stock_request_date(request)
     available_by_product = market_stock_availability(request.business, on_date)
     if edit_sale:
@@ -312,12 +314,12 @@ def _market_form_response(request, form, *, title, intro, submit_label, formset=
         from sales.models import CustomerProductPrice
         for good in FinishedGood.objects.filter(business=request.business, pk__in=available_by_product).select_related('portion_profile').prefetch_related('channel_prices'):
             stock = available_by_product[str(good.pk)]
-            price = good.selling_price_for('physical_store') if isinstance(form, MarketStockPhysicalSaleForm) else good.explicit_selling_price_for('distribution')
+            price = good.selling_price_for('online') if online else good.selling_price_for('physical_store') if isinstance(form, MarketStockPhysicalSaleForm) else good.explicit_selling_price_for('distribution')
             stock['price'] = str(price) if price is not None else None
             stock['customer_prices'] = {}
         if not isinstance(form, MarketStockPhysicalSaleForm):
             for price in CustomerProductPrice.objects.filter(business=request.business, customer__business=request.business,
-                    finished_good_id__in=available_by_product, channel='distribution'):
+                    finished_good_id__in=available_by_product, channel='online' if online else 'distribution'):
                 available_by_product[str(price.finished_good_id)]['customer_prices'][str(price.customer_id)] = str(price.price)
     if edit_sale and edit_sale.customer_master_id:
         from core.quantities import product_portion
@@ -338,7 +340,7 @@ def _market_form_response(request, form, *, title, intro, submit_label, formset=
         "available_by_product": available_by_product,
         "stock_as_of": on_date.isoformat(),
         "edit_sale": edit_sale, "edit_error": edit_error,
-        "market_stock_action": "sale" if isinstance(form, MarketStockPhysicalSaleForm) else "transfer" if isinstance(form, MarketStockTransferForm) else "release",
+        "market_stock_action": "online" if online else "sale" if isinstance(form, MarketStockPhysicalSaleForm) else "transfer" if isinstance(form, MarketStockTransferForm) else "release",
     })
 
 
@@ -418,6 +420,35 @@ def market_stock_release_edit(request, pk):
     return _market_form_response(request, form, formset=formset, edit_sale=sale, edit_error=error,
         title=f'Edit customer release #{sale.pk} · {sale.customer}', submit_label='Save correction',
         intro='Correct customer or product quantities with a reason. The release date and recorded cash stay fixed. Existing product prices are retained; a changed customer or newly added product uses its configured Distribution price. Any changed balance remains available in Finance.')
+
+
+@login_required
+@require_http_methods(['GET', 'POST'])
+def market_stock_online_sale(request):
+    from .services import sell_market_stock_online
+    if not request.business.uses_production or not all(user_has_permission(
+            request.user, request.business, module, 'edit') for module in ('inventory', 'sales')):
+        return render(request, '403.html', status=403)
+    form = MarketStockOnlineSaleForm(request.POST or None, business=request.business,
+        initial={'date': ledger.default_entry_date()})
+    formset = MarketStockReleaseItemFormSet(request.POST or None, prefix='items',
+        form_kwargs={'business': request.business, 'on_date': _market_stock_request_date(request)})
+    if request.method == 'POST' and form.is_valid() and formset.is_valid():
+        try:
+            sale = sell_market_stock_online(business=request.business,
+                items=[row.cleaned_data for row in formset if row.cleaned_data and not row.cleaned_data.get('DELETE')],
+                date=form.cleaned_data['date'], customer=form.cleaned_data['customer'],
+                customer_name=form.cleaned_data['customer_name'], payment_status=form.cleaned_data['payment_status'],
+                payment_method=form.cleaned_data['payment_method'], account=form.cleaned_data['account'],
+                user=request.user, note=form.cleaned_data['note'])
+        except ValidationError as exc:
+            form.add_error(None, exc)
+        else:
+            messages.success(request, f'Online sale #{sale.pk} recorded from Market Stock.')
+            return redirect(reverse('market_stock') + '?date=' + sale.date.isoformat())
+    return _market_form_response(request, form, formset=formset, title='Sell online from Market Stock',
+        intro='Sell available Market Stock to an Online customer using Online prices per selling unit. Earliest-expiring batches are used first. Unpaid balances can be collected later in Finance.',
+        submit_label='Record Online sale')
 
 
 @login_required

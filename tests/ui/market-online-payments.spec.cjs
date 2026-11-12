@@ -1,0 +1,67 @@
+const {test,expect}=require('@playwright/test');
+test.skip(process.env.INPROFIC_UI_PORTION_FIXTURE!=='1','Requires selling-portion Market Stock fixture.');
+async function choose(root,select,name){
+ await select.locator('xpath=following-sibling::span[@data-ui-combo-root]').getByRole('combobox').click();
+ await root.locator('.ui-combo-popover').getByRole('option',{name,exact:true}).click();
+}
+test.beforeEach(async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('inprofic:essential-privacy-notice:v1','dismissed'));
+ await page.goto('/accounts/login/ui-fixture/admin/');
+});
+test('Online Market Stock sale uses the shared mobile form and appears in stock and sales summaries',async({page})=>{
+ await page.goto('/inventory/market-stock/');
+ await page.setViewportSize({width:390,height:844});
+ await page.getByRole('link',{name:'Sell online',exact:true}).click();
+ await expect(page.locator('.ui-form-dialog')).toBeVisible();
+ const form=page.frameLocator('iframe[name="inprofic-form-dialog"]');
+ await choose(form,form.locator('select[name$="-finished_good"]').first(),'Fixture Loaf · pack');
+ await form.locator('input[name$="-quantity"]').first().fill('2');
+ await form.locator('input[name="customer_name"]').fill('Online fixture buyer');
+ await choose(form,form.locator('select[name="payment_status"]'),'Payment received');
+ const account=await form.locator('select[name="account"] option').evaluateAll(options=>options.find(o=>o.value).textContent.trim());
+ await choose(form,form.locator('select[name="account"]'),account);
+ await expect(form.locator('[data-release-stock-summary]').first()).toContainText('sold online');
+ expect(await form.locator('body').evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await form.getByRole('button',{name:'Record Online sale',exact:true}).click();
+ await expect(page.locator('.ui-form-dialog')).not.toBeVisible();
+ await expect(page.locator('#distribution-summary')).toContainText('Online sale');
+ const shared=await page.locator('#distribution-share').evaluate(el=>JSON.parse(el.textContent));
+ expect(shared).toContain('Sold online: 2 packs');
+ expect(shared).toContain('Online fixture buyer');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
+test('a wrong recorded receipt can be separately reviewed and corrected after editing a release',async({page})=>{
+ await page.goto('/inventory/market-stock/release/');
+ await choose(page,page.locator('select[name="customer"]'),'Customer 00');
+ await choose(page,page.locator('select[name$="-finished_good"]').first(),'Fixture Loaf · pack');
+ await page.locator('input[name$="-quantity"]').first().fill('2');
+ await choose(page,page.locator('select[name="payment_status"]'),'Payment received');
+ const account=await page.locator('select[name="account"] option').evaluateAll(options=>options.find(o=>o.value).textContent.trim());
+ await choose(page,page.locator('select[name="account"]'),account);
+ await page.getByRole('button',{name:'Release to customer',exact:true}).click();
+ await expect(page).toHaveURL(/\/inventory\/market-stock\/$/);
+ await expect(page.locator('#distribution-summary').getByRole('link',{name:/Edit release #/}).first()).toBeVisible();
+ const href=await page.locator('#distribution-summary').getByRole('link',{name:/Edit release #/}).evaluateAll(links=>links.map(a=>a.getAttribute('href')).sort((a,b)=>Number(b.match(/releases\/(\d+)/)[1])-Number(a.match(/releases\/(\d+)/)[1]))[0]);
+ await page.locator(`#distribution-summary a[href="${href}"]`).first().click();
+ let form=page.frameLocator('iframe[name="inprofic-form-dialog"]');
+ await form.locator('input[name$="-quantity"]').first().fill('1');
+ await form.locator('textarea[name="reason"]').fill('Only one pack was actually released');
+ await form.getByRole('button',{name:'Save correction',exact:true}).click();
+ await expect(page.locator('.ui-form-dialog')).not.toBeVisible();
+ await page.locator(`#distribution-summary a[href="${href}"]`).first().click();
+ form=page.frameLocator('iframe[name="inprofic-form-dialog"]');
+ await form.getByRole('link',{name:'Correct recorded payment',exact:true}).click();
+ await expect(form.getByRole('heading',{name:/Correct recorded payments/})).toBeVisible();
+ await page.setViewportSize({width:390,height:844});
+ await form.locator('input[name$="-amount"]').fill('250');
+ await form.locator('textarea[name="reason"]').fill('Customer paid 250; 500 was a typing mistake');
+ await form.getByRole('button',{name:'Review payment correction',exact:true}).click();
+ await expect(form.getByRole('heading',{name:'Review corrected receipts',exact:true})).toBeVisible();
+ await form.locator('label.cf-switch').click();
+ expect(await form.locator('body').evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await page.screenshot({path:'/tmp/inprofic-payment-review-mobile.png'});
+ await form.getByRole('button',{name:'Confirm payment correction',exact:true}).click();
+ await expect(page.locator('.ui-form-dialog')).not.toBeVisible();
+ const shared=await page.locator('#distribution-share').evaluate(el=>JSON.parse(el.textContent));
+ expect(shared).toContain('1 pack');
+});

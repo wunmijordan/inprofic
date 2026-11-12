@@ -70,7 +70,7 @@ def customer_reprice(request, pk):
                 return redirect('customer_activity', pk=customer.pk)
         review = price_review(business=request.business, customer=customer, start=start, end=end, user=request.user, include_receipts=correct_receipts)
         if correct_receipts:
-            receipts = receipt_review(request.business, review, amounts)
+            receipts = receipt_review(request.business, review, amounts, user=request.user)
             amounts = receipts['amounts']
             review['errors'].extend(receipts['errors'])
         if previous_fingerprint and previous_fingerprint != review['fingerprint']:
