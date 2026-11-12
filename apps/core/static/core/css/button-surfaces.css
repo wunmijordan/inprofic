@@ -28,6 +28,29 @@ html body :is([data-button-surface], button.ui-button, a.ui-button, input.ui-but
     var(--ui-button-state-shadow, 0 0 #0000) !important;
 }
 
+/* Workspace text actions share the workspace-action dimensions, including
+   legacy visual buttons. Fill, border color and foreground remain independent.
+   Icons, tabs, switches and intentionally bare controls retain their own sizing. */
+html body main :is([data-button-surface], button.ui-button, a.ui-button,
+  input.ui-button, button.workspace-action, a.workspace-action,
+  a.btn, a.button, button.btn):where(:not(
+    .workspace-icon-button, .workspace-back, [data-appearance-toggle],
+    [data-no-glass], [role="tab"], [role="switch"], [role="checkbox"],
+    .appearance-swatch, .background-swatch, [class*="backdrop"])) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
+  min-height: var(--ui-control-height);
+  padding: .5rem .8rem;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: var(--ui-radius);
+  font-size: .875rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+}
+
 /* Primary actions inherit the chosen brand/tenant accent. Legacy templates
    still carry the two historic brand fill utilities; resolve those here too. */
 html body :is([data-button-surface], button.ui-button, a.ui-button, input.ui-button,

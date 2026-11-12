@@ -114,7 +114,7 @@ class SpendingWorkspaceTests(TestCase):
         self.assertEqual(response.context['spending_totals']['grand_total'], 50)
         self.assertNotContains(response, 'Flour vendor')
         self.assertNotContains(response, 'Purchase request</a>')
-        self.assertContains(response, '+ General-use expense')
+        self.assertContains(response, '+ Record expenses')
         export = self.client.get(reverse('spending_csv'), self.period)
         self.assertNotContains(export, 'Flour vendor')
         self.assertEqual(self.client.get(reverse('po_edit', args=[self.po.pk])).status_code, 403)

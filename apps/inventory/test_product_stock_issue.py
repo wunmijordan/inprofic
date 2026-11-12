@@ -175,3 +175,16 @@ class ProductStockIssueTests(TestCase):
         self.assertEqual((self.lot.quantity_available, self.other_lot.quantity_available, self.good.stock), (5, 10, 10))
         self.assertEqual(StockAdjustment.raw_objects.get().date, yesterday)
 
+
+    def test_inventory_lists_issue_quantities_and_keeps_action_outside_rows(self):
+        self.issue(quantity=2)
+        self.issue(stock_source='physical_store', quantity=3, reason='charity')
+        reversed_issue = self.issue(quantity=1)
+        reversed_issue.reversed = True
+        reversed_issue.save(update_fields=['reversed'])
+        response = self.client.get(reverse('inventory'))
+        self.assertEqual(response.status_code, 200)
+        good = next(g for g in response.context['finished_goods'] if g.pk == self.good.pk)
+        self.assertEqual(good.staff_gifting_quantity, 5)
+        self.assertContains(response, reverse('physical_stock_issue'), count=1)
+        self.assertNotContains(response, f'?product={self.good.pk}')

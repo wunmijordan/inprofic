@@ -142,9 +142,9 @@
           <thead class="bg-[#F0EAD9] text-stone-600 text-xs"><tr>
             <th class="text-left px-2 py-2 min-w-[220px]">Product</th>
             <th class="hidden">Batches</th>
-            <th class="text-right px-2 py-2 w-20">Quantity</th>
+            <th class="text-right px-2 py-2 w-20" data-order-quantity-heading>Customer / stock quantity</th>
             <th class="hidden production-plan-col">Produce batches</th>
-            <th class="text-right px-2 py-2 w-20 production-plan-col">Produce quantity</th>
+            <th class="text-right px-2 py-2 w-20 production-plan-col">Production target {% include "_help_tip.html" with label="Planned offcuts" help_text="Enter the total quantity to produce, in this product’s selling unit. A target above the customer quantity plans an offcut. Leave zero to produce the customer quantity. Completion separates planned offcuts from unexpected excess." portal_bubble=True %}</th>
             <th class="kitchen-hide-col text-right px-2 py-2 w-24">Discount</th>
             <th class="kitchen-hide-col text-right px-2 py-2 w-32">Price / selling unit</th>
             <th class="w-16"></th>
@@ -156,7 +156,7 @@
               <td class="hidden">{{ f.batch_qty }}{% for error in f.batch_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
               <td class="px-2 py-1.5">{{ f.piece_qty }}{% for error in f.piece_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
               <td class="hidden production-plan-col">{{ f.production_batch_qty }}{% for error in f.production_batch_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
-              <td class="px-2 py-1.5 production-plan-col">{{ f.production_piece_qty }}{% for error in f.production_piece_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
+              <td class="px-2 py-1.5 production-plan-col">{{ f.production_piece_qty }}<div class="planned-offcut-display mt-1 text-xs" aria-live="polite"></div>{% for error in f.production_piece_qty.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
               <td class="kitchen-hide-col px-2 py-1.5">{{ f.discount }}{% for error in f.discount.errors %}<div class="text-[11px] text-rose-600 mt-0.5">{{ error }}</div>{% endfor %}</td>
               <td class="kitchen-hide-col px-2 py-1.5 text-right text-xs text-stone-500 font-mono price-display">—</td>
               <td class="px-2 py-1.5 text-center">
@@ -333,6 +333,14 @@
     }
 
     const lockProductionPlan = currentChannel() === 'physical_store' || usingBase;
+    const quantityHeading = document.querySelector('[data-order-quantity-heading]');
+    if (quantityHeading) quantityHeading.textContent = lockProductionPlan ? 'Production target' : 'Customer quantity';
+    document.querySelectorAll('.production-plan-col').forEach(el => {
+      el.style.display = lockProductionPlan ? 'none' : '';
+    });
+    document.querySelectorAll('#order-rows input[name$="-piece_qty"]').forEach(input => {
+      input.setAttribute('aria-label', lockProductionPlan ? 'Production target (selling units)' : 'Customer quantity (selling units)');
+    });
     document.querySelectorAll('#order-rows input[name$="-production_batch_qty"], #order-rows input[name$="-production_piece_qty"]').forEach((input) => {
       input.readOnly = lockProductionPlan;
       input.classList.toggle('bg-stone-100', lockProductionPlan);
@@ -528,9 +536,6 @@
       }
       hint.textContent = '{{ vertical_ui.stock_location|escapejs }} replenishment — not a direct sale. Replenishment enters available stock. A non-stock purpose does not enter stock and requires a specific purpose. Any paid sale is recorded only in the Sales form.';
     }
-    document.querySelectorAll('.production-plan-col').forEach((el) => {
-      el.style.display = type === 'physical_store' ? 'none' : '';
-    });
     if (type === 'physical_store') {
       document.querySelectorAll('#order-rows input[name$="-production_batch_qty"], #order-rows input[name$="-production_piece_qty"]').forEach((el) => { el.value = '0'; });
     }
@@ -629,6 +634,22 @@
     });
   }
 
+  function refreshProductionTargets() {
+    document.querySelectorAll('#order-rows tr[data-row]').forEach(row => {
+      const product = PRICES[row.querySelector('select[name$="-finished_good"]')?.value];
+      const output = row.querySelector('.planned-offcut-display');
+      if (!output) return;
+      if (!product) { output.textContent = ''; return; }
+      const factor = Number(product.portion_factor || 1), batch = Number(product.units_per_batch || 1);
+      const customer = numberValue(row.querySelector('input[name$="-batch_qty"]')) * batch / factor + numberValue(row.querySelector('input[name$="-piece_qty"]'));
+      const target = numberValue(row.querySelector('input[name$="-production_batch_qty"]')) * batch / factor + numberValue(row.querySelector('input[name$="-production_piece_qty"]'));
+      const offcut = Math.max(0, target - customer);
+      output.textContent = offcut ? 'Planned offcut: ' + offcut.toLocaleString(undefined, {maximumFractionDigits:2}) + ' ' + (offcut === 1 ? product.portion_unit : product.portion_unit_plural || product.portion_unit) : 'No planned offcut';
+    });
+  }
+  document.getElementById('order-rows')?.addEventListener('input', refreshProductionTargets);
+  document.getElementById('order-rows')?.addEventListener('change', refreshProductionTargets);
+
   function wireRows() {
     document.querySelectorAll('#order-rows tr[data-row]').forEach((row) => {
       ['batch_qty', 'piece_qty', 'production_batch_qty', 'production_piece_qty', 'discount'].forEach((suffix) => {
@@ -655,11 +676,9 @@
     });
 
     const type = currentChannel();
-    document.querySelectorAll('.production-plan-col').forEach((el) => {
-      el.style.display = type === 'physical_store' ? 'none' : '';
-    });
     refreshPrices();
     refreshBaseMaterialAllocation();
+    refreshProductionTargets();
   }
 
   function addOrderProductRow() {

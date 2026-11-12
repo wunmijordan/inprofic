@@ -25,7 +25,7 @@ def reset_groups():
         DeliveryBatch, DeliveryEvent, DeliveryIssue, DeliveryMessage, DeliveryQuote,
     )
     from core.models import FinancialTransaction
-    from expenses.models import Expense, ExpensePayment
+    from expenses.models import Expense, ExpensePayment, ExpenseRequest, ExpenseRequestLine
     from inventory.models import (
         DistributionReturn, InventoryAlertState, MarketStockLot, MarketStockMovement,
         OperationalSupplyDispense, RawMaterialMeasurementChange, StockAdjustment,
@@ -57,7 +57,7 @@ def reset_groups():
         ],
         "procurement": [PurchaseOrder, PurchaseOrderItem, RawMaterialCostSnapshot, SupplierPayment],
         "sales": [Sale, SaleItem, CustomerPayment],
-        "expenses": [Expense, ExpensePayment],
+        "expenses": [Expense, ExpensePayment, ExpenseRequest, ExpenseRequestLine],
         "inventory": [
             RawMaterialMeasurementChange, StockAdjustment, OperationalSupplyDispense,
             MarketStockLot, MarketStockMovement, DistributionReturn, StockMovement,

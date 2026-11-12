@@ -67,3 +67,37 @@ class ExpensePayment(BusinessOwnedModel):
 
     def __str__(self):
         return f"Expense #{self.expense_id} payment — {self.amount}"
+
+
+class ExpenseRequest(BusinessOwnedModel):
+    """Daily planning envelope; only approval creates operational expenses."""
+    ledger_date_field = 'date'
+    date = models.DateField()
+    status = models.CharField(max_length=10, choices=[('pending','Awaiting approval'),('approved','Approved'),('declined','Removed')], default='pending')
+    notes = models.TextField(blank=True)
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='approved_expense_requests')
+    approved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-date','-pk']
+        constraints = [models.UniqueConstraint(fields=['business','date'], condition=models.Q(status='pending'), name='expense_request_pending_day')]
+
+    @property
+    def total(self):
+        return sum((line.amount for line in self.lines.all() if not line.removed), Decimal('0'))
+
+
+class ExpenseRequestLine(TimestampedModel):
+    request = models.ForeignKey(ExpenseRequest, on_delete=models.CASCADE, related_name='lines')
+    category = models.CharField(max_length=20, choices=Expense.CATEGORY_CHOICES, default='other')
+    description = models.CharField(max_length=180)
+    requested_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    vendor = models.CharField(max_length=120, blank=True)
+    notes = models.TextField(blank=True)
+    payment_status = models.CharField(max_length=10, choices=Expense.PAYMENT_STATUS_CHOICES, default='unpaid')
+    payment_method = models.CharField(max_length=10, choices=Expense.PAYMENT_METHOD_CHOICES, default='Transfer')
+    account = models.ForeignKey('core.CashAccount', null=True, blank=True, on_delete=models.PROTECT)
+    approval_reason = models.TextField(blank=True)
+    removed = models.BooleanField(default=False)
+    expense = models.OneToOneField(Expense, null=True, blank=True, on_delete=models.PROTECT, related_name='request_line')

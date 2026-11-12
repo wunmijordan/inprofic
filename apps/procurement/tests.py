@@ -355,13 +355,13 @@ class PurchaseApprovalTests(TestCase):
         self.assertContains(response, self.product.name)
         self.assertFalse(any("FOR UPDATE" in query["sql"] for query in queries))
 
-    def test_reduction_requires_reason_and_cannot_increase(self):
+    def test_quantity_changes_require_reason(self):
         po, line = self.request_order()
         url = reverse("po_approve", args=[po.pk])
         response = self.client.post(url, {f"item-{line.pk}-qty": "8"})
         self.assertContains(response, "Give a reason")
         response = self.client.post(url, {f"item-{line.pk}-qty": "11"})
-        self.assertContains(response, "cannot increase")
+        self.assertContains(response, "Give a reason")
         po.refresh_from_db()
         self.assertEqual(po.status, "draft")
 
@@ -545,7 +545,7 @@ class PurchaseShareTests(TestCase):
     def test_page_keeps_reason_open_and_shows_the_error_when_approval_is_rejected(self):
         po, line, extra = self.make_request()
         page = self.client.post(reverse("po_approve", args=[po.pk]), {f"item-{line.pk}-qty": "20", f"item-{extra.pk}-qty": "4"})
-        self.assertContains(page, "Give a reason for reducing or removing this item.")
+        self.assertContains(page, "Give a reason for changing or removing this item.")
         po.refresh_from_db()
         self.assertEqual(po.status, "draft")
 

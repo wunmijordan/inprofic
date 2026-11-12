@@ -1,26 +1,18 @@
 {% load core_extras %}
-<dialog id="po-receive-{{ p.pk }}" class="items-dialog rounded-xl border border-stone-200 bg-white p-0 shadow-2xl" style="width:min(94vw,44rem);max-width:44rem" aria-labelledby="po-receive-title-{{ p.pk }}">
-  <header class="border-b border-stone-200 px-5 py-4">
-    <h2 id="po-receive-title-{{ p.pk }}" class="font-display text-xl font-semibold">Receive request #{{ p.pk }}</h2>
-    <p class="mt-1 text-sm text-stone-500">Receive each vendor's approved items on the date they arrived. Each receipt adds that vendor's items to stock once.</p>
-  </header>
-  <div class="max-h-[60vh] space-y-4 overflow-auto p-5">
-    {% for vendor in p.request_orders %}
-    <section class="rounded-lg border border-stone-200 p-4">
-      <div class="flex flex-wrap items-start justify-between gap-2">
-        <div><h3 class="font-semibold">{{ vendor.supplier|default:"Supplier not named" }}</h3><p class="text-xs text-stone-500">PO #{{ vendor.pk }} · {{ vendor.get_status_display }}</p></div>
-        <span class="font-mono text-sm">{{ vendor.total|money:biz.currency_symbol }}</span>
-      </div>
-      <ul class="mt-3 space-y-1 text-sm">{% for item in vendor.items.all %}{% if item.qty > 0 %}<li>{{ item.item_name }} · <span class="font-mono">{{ item.qty|num }} {{ item.stock_unit|unit_plural:item.qty }}</span></li>{% endif %}{% endfor %}</ul>
-      {% if vendor.status == 'approved' and vendor.total > 0 %}
-      <form action="{% url 'po_receive' vendor.pk %}" method="post" class="mt-4 flex flex-wrap items-end justify-between gap-3">
-        {% csrf_token %}
-        {% include "partials/_event_date.html" with label="Receiving date" min=vendor.date|date:"Y-m-d" %}
-        <button type="submit" class="workspace-action workspace-action-primary">Receive vendor items</button>
-      </form>
-      {% elif vendor.received_date %}<p class="mt-3 text-sm text-stone-500">Received {{ vendor.received_date|date:"j M Y" }}</p>
-      {% else %}<p class="mt-3 text-xs text-stone-500">Awaiting approval before receiving.</p>{% endif %}
-    </section>
-    {% endfor %}
-  </div>
+<dialog id="po-receive-{{ p.pk }}" class="items-dialog workspace-card rounded-xl p-0" style="width:min(94vw,44rem);max-width:44rem" aria-labelledby="po-receive-title-{{ p.pk }}">
+  <header class="border-b px-5 py-4"><h2 id="po-receive-title-{{ p.pk }}" class="font-display text-xl font-semibold">Receive purchase #{{ p.pk }}</h2><p class="mt-1 text-sm">Select the vendors that have arrived and their receiving dates. {% include '_help_tip.html' with label='Vendor receipts' help_text='One confirmation records all selected vendors. Leave a vendor switched off if its items have not arrived. Already received items are kept in the purchase history.' portal_bubble=True %}</p></header>
+  <form action="{% url 'po_receive' p.pk %}" method="post">
+    {% csrf_token %}<input type="hidden" name="receive_group" value="1">
+    <div class="max-h-[60vh] space-y-3 overflow-auto p-5">
+      {% for vendor in p.request_orders %}<section class="workspace-card p-3" data-vendor-receipt>
+        <div class="flex flex-wrap items-start justify-between gap-2"><div><h3 class="font-semibold">{{ vendor.supplier|default:'Supplier not named' }}</h3><p class="text-xs">PO #{{ vendor.pk }} · {{ vendor.get_status_display }}</p></div><span class="font-mono text-sm">{{ vendor.total|money:biz.currency_symbol }}</span></div>
+        <ul class="mt-2 space-y-1 text-sm">{% for item in vendor.items.all %}{% if item.qty > 0 %}<li>{{ item.item_name }} · {{ item.qty|num }} {{ item.stock_unit|unit_plural:item.qty }}</li>{% endif %}{% endfor %}</ul>
+        {% if vendor.status == 'approved' and vendor.total > 0 %}<div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+          <label class="inline-flex items-center gap-2 text-sm"><span class="cf-switch"><input type="checkbox" name="vendor_ids" value="{{ vendor.pk }}" checked data-receive-vendor><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span>Receive these items</label>
+          <label class="text-sm" for="receipt-date-{{ vendor.pk }}">Receiving date *<input id="receipt-date-{{ vendor.pk }}" type="date" name="received_date_{{ vendor.pk }}" required aria-required="true" min="{{ vendor.date|date:'Y-m-d' }}" max="{% now 'Y-m-d' %}" class="workspace-input mt-1" data-receive-date></label>
+        </div>{% elif vendor.received_date %}<p class="mt-2 text-sm">Received {{ vendor.received_date|date:'j M Y' }}</p>{% endif %}
+      </section>{% endfor %}
+    </div>
+    <footer class="flex justify-end border-t px-5 py-3"><button type="submit" class="workspace-action workspace-action-primary">Receive selected purchases</button></footer>
+  </form>
 </dialog>

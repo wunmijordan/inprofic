@@ -238,7 +238,7 @@ class OrderItemForm(SellingPortionEntryMixin, StyledModelForm):
             self.fields[name].required = False
             self.fields[name].widget.attrs.update({"min": "0", "step": "0.01"})
         self.fields["production_batch_qty"].label = "Produce batches"
-        self.fields["production_piece_qty"].label = "Produce pieces"
+        self.fields["production_piece_qty"].label = "Production target (selling units)"
 
     def clean(self):
         cleaned = super().clean()
@@ -443,7 +443,7 @@ class OrderItemFormSetBase(BaseInlineFormSet):
                 form.instance.production_piece_qty = Decimal("0")
             elif basis != Order.BASIS_BASE_MATERIAL and production_plan > 0 and production_plan < ordered:
                 form.add_error(
-                    "production_batch_qty",
+                    "production_piece_qty",
                     f"Production plan ({production_plan:.2f}) cannot be below the customer order ({ordered:.2f}). Leave both production-plan fields at 0 to produce exactly the order quantity.",
                 )
 

@@ -1,4 +1,6 @@
 from decimal import Decimal
+from types import SimpleNamespace
+from django.core.exceptions import ValidationError
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import IntegrityError, transaction
@@ -111,7 +113,7 @@ def supplier_edit(request, pk):
 
 @login_required
 @transaction.atomic
-def po_form(request, pk=None):
+def po_form(request, pk=None, direct=False):
     obj = get_object_or_404(PurchaseOrder.objects.select_for_update(), pk=pk, business=request.business) if pk else None
     share_only = bool(obj and request.method == "GET" and request.GET.get("share") == "1")
     if not user_has_permission(request.user, request.business, "procurement", "view" if share_only else "edit"):
@@ -193,7 +195,12 @@ def po_form(request, pk=None):
         validations = [form.is_valid(), formset.is_valid()]
         if grouped:
             validations.append(vendor_formset.is_valid())
-        if all(validations):
+        if direct and not form.errors:
+            try:
+                ledger.resolve_event_date(SimpleNamespace(method='POST', POST={'event_date': str(form.cleaned_data['date'])}), form.cleaned_data['date'], required=True)
+            except ValidationError as exc:
+                form.add_error('date', exc)
+        if all(validations) and not form.errors:
             active_items = [
                 f.cleaned_data for f in formset.forms
                 if f.cleaned_data and not f.cleaned_data.get("DELETE")
@@ -282,6 +289,7 @@ def po_form(request, pk=None):
                             po = obj
                         if po is None or po.pk in used:
                             po = PurchaseOrder(business=request.business, created_by=request.user)
+                        po.entry_mode = "direct" if direct else "request"
                         po.request = envelope
                         po.date = form.cleaned_data['date']
                         po.supplier = group['name']
@@ -330,11 +338,14 @@ def po_form(request, pk=None):
                                         payment_method=payment.payment_method, reference=payment.reference, account=payment.account)
                     for po in saved:
                         audit(request.business, request.user, 'update' if obj else 'create', po,
-                              'Purchase request saved', {'request_id': envelope.pk if envelope else None,
+                              'Direct purchase recorded' if direct else 'Purchase request saved', {'request_id': envelope.pk if envelope else None,
                                   'before': before_states.get(po.pk), 'after': order_audit_state(po),
                                   'recorded_paid': str(recorded_paid.get(po.pk, Decimal('0')))})
+                    if direct:
+                        for received_order in saved:
+                            _receive_order(received_order, request.user, received_order.date, direct=True)
                     anchor = min(saved, key=lambda po: po.pk)
-                    messages.success(request, 'Purchase request submitted for approval.')
+                    messages.success(request, 'Purchase recorded and stock received.' if direct else 'Purchase request submitted for approval.')
                     if request.POST.get('after_save') == 'share':
                         return redirect(reverse('po_edit', args=[anchor.pk]) + '?share=1')
                     return redirect('procurement_list')
@@ -362,7 +373,7 @@ def po_form(request, pk=None):
         **{f"finished:{g.pk}": stock_payload(stock_status(g)) for g in products},
     }
     return render(request, "procurement/po_form.html", {
-        "form": form, "formset": formset, "legacy_post": not grouped, "has_recorded_payments": any(recorded_paid.values()), "vendor_formset": vendor_formset, "group_blocks": group_blocks, "obj": obj, "current_costs": current_costs, "stock_levels": stock_levels,
+        "direct_purchase": direct, "form": form, "formset": formset, "legacy_post": not grouped, "has_recorded_payments": any(recorded_paid.values()), "vendor_formset": vendor_formset, "group_blocks": group_blocks, "obj": obj, "current_costs": current_costs, "stock_levels": stock_levels,
         "share_text": share_text(summarize(_shareable_order(request, obj.pk), request.business, request.build_absolute_uri(reverse("po_approve", args=[obj.pk])), user=request.user)) if obj else "",
         "share_image_url": reverse("po_share_image", args=[obj.pk]) if obj else "",
         "stock_time": timezone.localtime().strftime("%d %b %H:%M"),
@@ -370,100 +381,118 @@ def po_form(request, pk=None):
     })
 
 
+def _receive_order(po, user, receipt_date, *, direct=False):
+    """Receive one locked vendor order inside the caller's transaction."""
+    if po.status == 'received':
+        return False
+    if po.status != 'approved' and not (direct and po.entry_mode == 'direct'):
+        raise ValidationError('Approve this purchase request before receiving stock.')
+    items = list(po.items.filter(qty__gt=0).select_related("raw_material", "finished_good"))
+    if not items:
+        raise ValidationError("There are no items to receive.")
+    invalid_item = next((
+        item for item in items
+        if (
+            not item.stock_item
+            or item.stock_item.business_id != po.business_id
+            or item.qty <= 0
+            or item.unit_cost < 0
+            or (item.finished_good_id and item.finished_good.stock is None)
+            or (
+                item.finished_good_id
+                and po.business.uses_production
+                and item.finished_good.source_type != FinishedGood.SOURCE_PURCHASED_FOR_RESALE
+            )
+        )
+    ), None)
+    if invalid_item:
+        raise ValidationError("This purchase order contains an invalid or non-purchasable inventory item.")
+    for item in items:
+        if item.raw_material_id:
+            mat = item.raw_material
+            factor = mat.total_conversion_factor or 1
+            # unit (e.g. bags); stock and cost_per_unit are always in
+            # its usage unit (e.g. kg) — convert on the way in.
+            usage_cost = (item.unit_cost / factor).quantize(Decimal("0.000001"))
+            record_raw_material_movement(
+                mat,
+                item.qty * factor,
+                StockMovement.RAW_PURCHASE,
+                note="Purchase order received", reference=f"PO-{po.pk}", unit_value=usage_cost,
+                on_date=receipt_date,
+            )
+            RawMaterialCostSnapshot.objects.create(
+                business=po.business,
+                raw_material=mat,
+                purchase_order_item=item,
+                effective_date=receipt_date,
+                purchase_unit_cost=item.unit_cost,
+                usage_unit_cost=usage_cost,
+                supplier=po.supplier or "",
+                supplier_master=po.supplier_master,
+            )
+            # This remains the material's current/latest procurement cost.
+            # A Backlog receipt is history, and a late-entered older receipt
+            # must not replace a newer dated cost, so backdating stays safe.
+            newer_cost = RawMaterialCostSnapshot.raw_objects.filter(
+                raw_material=mat, effective_date__gt=receipt_date
+            ).exists()
+            if ledger.segment_for(po.business_id, receipt_date) == ledger.SEGMENT_LIVE and not newer_cost:
+                mat.cost_per_unit = usage_cost
+                mat.save(update_fields=["cost_per_unit"])
+        else:
+            good = item.finished_good
+            if good.business_id != po.business_id or good.stock is None:
+                raise ValueError("A purchased stock product must belong to this business and have stock enabled.")
+            record_finished_good_movement(
+                good,
+                item.qty,
+                StockMovement.FG_PURCHASE,
+                note=f"Stock arrival from {po.supplier or 'supplier'}",
+                reference=f"PO-{po.pk}",
+                unit_value=item.unit_cost,
+                on_date=receipt_date,
+            )
+    po.status = "received"
+    po.received_date = receipt_date
+    po.save()
+    if po.payment_status == "paid":
+        _ensure_po_payment_recorded(po, user)
+    audit(po.business, user, "receive", po, f"Purchase order #{po.pk} received", {"payment_status": po.payment_status})
+    return True
+
+
 @login_required
 def po_receive(request, pk):
-    if not user_has_permission(request.user, request.business, "procurement", "edit"):
-        return render(request, "403.html", status=403)
-    po = get_object_or_404(PurchaseOrder, pk=pk, business=request.business)
-    if request.method == "POST":
-        # Stock arrives on the day it really arrives: today by default, or an
-        # explicit "event_date" so a late-entered receipt keeps its true date.
-        receipt_date = ledger.resolve_event_date(request, po.date)
+    if not user_has_permission(request.user, request.business, 'procurement', 'edit'):
+        return render(request, '403.html', status=403)
+    anchor = get_object_or_404(PurchaseOrder, pk=pk, business=request.business)
+    if request.method != 'POST':
+        return redirect('procurement_list')
+    try:
         with transaction.atomic():
-            # Prevent two workers from receiving the same PO and duplicating
-            # its stock/finance effects.
-            po = PurchaseOrder.objects.select_for_update().get(pk=po.pk)
-            if po.status == "received":
-                return redirect("procurement_list")
-            if po.status != "approved":
-                messages.error(request, "Approve this purchase request before receiving stock.")
-                return redirect("procurement_list")
-            items = list(po.items.filter(qty__gt=0).select_related("raw_material", "finished_good"))
-            if not items:
-                messages.error(request, "There are no approved items to receive.")
-                return redirect("procurement_list")
-            invalid_item = next((
-                item for item in items
-                if (
-                    not item.stock_item
-                    or item.stock_item.business_id != po.business_id
-                    or item.qty <= 0
-                    or item.unit_cost < 0
-                    or (item.finished_good_id and item.finished_good.stock is None)
-                    or (
-                        item.finished_good_id
-                        and po.business.uses_production
-                        and item.finished_good.source_type != FinishedGood.SOURCE_PURCHASED_FOR_RESALE
-                    )
-                )
-            ), None)
-            if invalid_item:
-                messages.error(request, "This purchase order contains an invalid or non-purchasable inventory item.")
-                return redirect("procurement_list")
-            for item in items:
-                if item.raw_material_id:
-                    mat = item.raw_material
-                    factor = mat.total_conversion_factor or 1
-                    # unit (e.g. bags); stock and cost_per_unit are always in
-                    # its usage unit (e.g. kg) — convert on the way in.
-                    usage_cost = (item.unit_cost / factor).quantize(Decimal("0.000001"))
-                    record_raw_material_movement(
-                        mat,
-                        item.qty * factor,
-                        StockMovement.RAW_PURCHASE,
-                        note="Purchase order received", reference=f"PO-{po.pk}", unit_value=usage_cost,
-                        on_date=receipt_date,
-                    )
-                    RawMaterialCostSnapshot.objects.create(
-                        business=po.business,
-                        raw_material=mat,
-                        purchase_order_item=item,
-                        effective_date=receipt_date,
-                        purchase_unit_cost=item.unit_cost,
-                        usage_unit_cost=usage_cost,
-                        supplier=po.supplier or "",
-                        supplier_master=po.supplier_master,
-                    )
-                    # This remains the material's current/latest procurement cost.
-                    # A Backlog receipt is history, and a late-entered older receipt
-                    # must not replace a newer dated cost, so backdating stays safe.
-                    newer_cost = RawMaterialCostSnapshot.raw_objects.filter(
-                        raw_material=mat, effective_date__gt=receipt_date
-                    ).exists()
-                    if ledger.segment_for(po.business_id, receipt_date) == ledger.SEGMENT_LIVE and not newer_cost:
-                        mat.cost_per_unit = usage_cost
-                        mat.save(update_fields=["cost_per_unit"])
-                else:
-                    good = item.finished_good
-                    if good.business_id != po.business_id or good.stock is None:
-                        raise ValueError("A purchased stock product must belong to this business and have stock enabled.")
-                    record_finished_good_movement(
-                        good,
-                        item.qty,
-                        StockMovement.FG_PURCHASE,
-                        note=f"Stock arrival from {po.supplier or 'supplier'}",
-                        reference=f"PO-{po.pk}",
-                        unit_value=item.unit_cost,
-                        on_date=receipt_date,
-                    )
-            po.status = "received"
-            po.received_date = receipt_date
-            po.save()
-            if po.payment_status == "paid":
-                _ensure_po_payment_recorded(po, request.user)
-            audit(po.business, request.user, "receive", po, f"Purchase order #{po.pk} received", {"payment_status": po.payment_status})
-        messages.success(request, "Stock received into inventory.")
-    return redirect("procurement_list")
+            orders = list(request_orders(anchor, lock=True))
+            if request.POST.get('receive_group') == '1':
+                selected = request.POST.getlist('vendor_ids')
+                lookup = {str(order.pk): order for order in orders}
+                if not selected or len(set(selected)) != len(selected) or any(value not in lookup for value in selected):
+                    raise ValidationError('Select the vendors being received from this request.')
+                receipts = []
+                for value in selected:
+                    po = lookup[value]
+                    raw = request.POST.get(f'received_date_{value}', '')
+                    if not raw:
+                        raise ValidationError(f'Select a receiving date for {po.supplier or "Unnamed supplier"}.')
+                    event_request = SimpleNamespace(method='POST', POST={'event_date': raw})
+                    receipts.append((po, ledger.resolve_event_date(event_request, po.date, required=True)))
+            else:
+                po = next(order for order in orders if order.pk == anchor.pk)
+                receipts = [(po, ledger.resolve_event_date(request, po.date))]
+            count = sum(_receive_order(po, request.user, day) for po, day in receipts)
+        messages.success(request, f'{count} vendor receipt(s) recorded.' if count else 'These items have already been received.')
+    except ValidationError as exc:
+        messages.error(request, ' '.join(exc.messages))
+    return redirect('procurement_list')
 
 
 @login_required
@@ -568,6 +597,7 @@ def po_approve(request, pk):
             elif unsafe_payment:
                 error = "The approved total cannot be lower than payments already recorded. Resolve the supplier advance before reducing this request."
             else:
+                link_direct_vendor_payments(vendors, request.user)
                 changes = []
                 for form in line_forms:
                     item = form.item
@@ -577,10 +607,13 @@ def po_approve(request, pk):
                     item.save(update_fields=["requested_qty", "qty", "approval_reason"])
                     changes.append({"item_id": item.pk, "requested": str(item.requested_qty), "approved": str(item.qty), "reason": item.approval_reason})
                 for vendor in vendors:
+                    new_total = sum((f.cleaned_data['qty'] * f.item.unit_cost for f in line_forms if f.item.purchase_order_id == vendor.pk), Decimal('0'))
+                    paid = paid_totals[vendor.pk]
+                    vendor.payment_status = 'paid' if paid and paid >= new_total else 'partial' if paid else 'unpaid'
                     vendor.status = 'approved'
                     vendor.approved_by = request.user
                     vendor.approved_at = timezone.now()
-                    vendor.save(update_fields=['status', 'approved_by', 'approved_at'])
+                    vendor.save(update_fields=['status', 'approved_by', 'approved_at', 'payment_status'])
                     audit(request.business, request.user, 'approve', vendor,
                           f'Purchase request #{po.pk} approved', {'items': [c for c in changes if any(i.pk == c['item_id'] and i.purchase_order_id == vendor.pk for i in items)]})
                 messages.success(request, "Request approved. Receive the approved items when they arrive.")

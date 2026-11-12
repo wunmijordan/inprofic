@@ -33,7 +33,7 @@ class MultiVendorTests(DirectProductProcurementTests):
         response = self.client.get(reverse('procurement_list'))
         self.assertEqual(len(response.context['orders'][0].request_receivable_orders),2)
         self.assertContains(response,f'data-items-dialog-open="po-receive-{first.pk}"',count=1)
-        self.assertContains(response,'Receive vendor items',count=2)
+        self.assertContains(response,'Receive selected purchases',count=1)
         from html.parser import HTMLParser
         class ReceiptParser(HTMLParser):
             def __init__(self):

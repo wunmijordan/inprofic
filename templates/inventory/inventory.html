@@ -13,16 +13,16 @@
 
 <div id="raw-panel" class="transition-all duration-300 transform opacity-0 translate-y-2 pointer-events-none hidden">
 
-
-<h2 class="text-xl font-semibold font-display text-[#8f172d]">{% if vertical_ui.uses_production %}Raw Materials{% else %}Supporting Supplies{% endif %}</h2>
-<div class="flex flex-wrap items-center justify-between gap-3 mb-2">
-  <p class="text-sm text-stone-500 mt-0.5 flex-1 min-w-[240px]">{% if vertical_ui.uses_production %}{{ vertical_ui.recipe_item_label }}s, {{ vertical_ui.production_inputs_label|lower }} and operational supplies — all procured through the same material form and procurement chain.{% else %}Packaging, handling, storage and operational supplies used around product procurement and sales.{% endif %}</p>
-  <div class="flex items-center gap-2 shrink-0">
+<div class="mb-4">
+  <h2 class="text-xl font-semibold font-display text-[#8f172d]">{% if vertical_ui.uses_production %}Raw Materials{% else %}Supporting Supplies{% endif %}</h2>
+  <p class="text-sm text-stone-500 mt-0.5 flex-1 min-w-[240px] mb-2">{% if vertical_ui.uses_production %}{{ vertical_ui.recipe_item_label }}s, {{ vertical_ui.production_inputs_label|lower }} and operational supplies — all procured through the same material form and procurement chain.{% else %}Packaging, handling, storage and operational supplies used around product procurement and sales.{% endif %}</p>
+  <div class="flex flex-wrap items-center gap-2 shrink-0">
     {% if module_permissions.inventory.edit %}<a data-button-surface href="{% url 'inventory_alert_settings' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-white text-stone-700 border border-stone-300 hover:bg-stone-50">Alert settings</a>{% endif %}
     <a data-button-surface href="{% url 'raw_material_inventory_pdf' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-white text-[#8f172d] border border-[#8f172d]/30 hover:bg-[#FFF4F6]" title="Export current raw-material stock and reorder status as PDF">Export PDF</a>
     {% if sample_available and module_permissions.inventory.edit %}<a data-button-surface href="{% url 'inventory_sample_setup' %}" class="px-3.5 py-2 text-sm rounded-md border border-[#D9CFB4] text-[#8f172d]">Try a sample recipe</a>{% endif %}{% if module_permissions.inventory.edit %}<a data-button-surface href="{% url 'raw_material_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ Add {% if vertical_ui.uses_production %}Material{% else %}Supply{% endif %}</a>{% endif %}
   </div>
 </div>
+
 <div id="material-category-tabs" class="flex flex-wrap gap-1.5 mb-4" role="tablist" aria-label="Inventory material categories">
   <button type="button" role="tab" data-material-tab="ingredient" aria-selected="true" class="material-tab px-3 py-1.5 rounded-md text-xs font-medium border">{% if vertical_ui.uses_production %}{{ vertical_ui.recipe_item_label }}s{% else %}Consumable Supplies{% endif %} <span data-material-count="ingredient" class="ml-1 text-[10px] opacity-70"></span></button>
   <button type="button" role="tab" data-material-tab="packaging" aria-selected="false" class="material-tab px-3 py-1.5 rounded-md text-xs font-medium border">Packaging <span data-material-count="packaging" class="ml-1 text-[10px] opacity-70"></span></button>
@@ -119,12 +119,10 @@
 
 <div id="finished-panel" class="transition-all duration-300 transform opacity-0 translate-y-2 pointer-events-none hidden">
 
-<div class="flex flex-wrap items-end justify-between gap-3 mb-4">
-  <div>
-    <h2 class="text-xl font-semibold font-display text-[#8f172d]">{{ vertical_ui.product_label }}</h2>
-    <p class="text-sm text-stone-500 mt-0.5">{% if vertical_ui.uses_production %}Items you sell, with their {{ vertical_ui.recipe_label|lower }} and batch size{% else %}Items you procure, receive into {{ vertical_ui.stock_location }}, and sell{% endif %}</p>
-  </div>
-  <div class="flex flex-wrap gap-2">{% if vertical_ui.uses_production %}<a data-button-surface href="{% url 'market_stock' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100">Distribution Market Stock</a>{% endif %}{% if module_permissions.inventory.edit %}<a data-button-surface href="{% url 'operational_supply_dispense' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100">Dispense Operational Supply</a><a data-button-surface href="{% url 'product_categories' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-white text-[#8f172d] border border-[#D9CFB4] hover:bg-[#F0EAD9]">Product Categories</a><a data-button-surface href="{% url 'finished_good_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ Add Product</a>{% endif %}</div>
+<div class="mb-4">
+  <h2 class="text-xl font-semibold font-display text-[#8f172d]">{{ vertical_ui.product_label }}</h2>
+  <p class="text-sm text-stone-500 mt-0.5 mb-2">{% if vertical_ui.uses_production %}Items you sell, with their {{ vertical_ui.recipe_label|lower }} and batch size{% else %}Items you procure, receive into {{ vertical_ui.stock_location }}, and sell{% endif %}</p>
+  <div class="flex flex-wrap gap-2">{% if vertical_ui.uses_production %}<a data-button-surface href="{% url 'market_stock' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100">Distribution Market Stock</a>{% endif %}{% if module_permissions.inventory.edit %}<a data-button-surface href="{% url 'physical_stock_issue' %}" class="workspace-action">Staff / gifting</a><a data-button-surface href="{% url 'operational_supply_dispense' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100">Dispense Operational Supply</a><a data-button-surface href="{% url 'product_categories' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-white text-[#8f172d] border border-[#D9CFB4] hover:bg-[#F0EAD9]">Product Categories</a><a data-button-surface href="{% url 'finished_good_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ Add Product</a>{% endif %}</div>
 </div>
 
 {% if not finished_goods %}
@@ -139,6 +137,7 @@
       <th class="px-3 py-2" title="Traceable planned-offcut pool currently represented in live finished-goods stock.">Uncommitted Offcut*</th>
       <th class="px-3 py-2">Customer Orders</th>
       <th class="px-3 py-2">Total Made</th>{% endif %}
+      <th class="px-3 py-2">Staff / gifting {% include "_help_tip.html" with label="Staff and gifting quantities" help_text="Recorded stock issues from Market Stock and Physical Store in the active ledger, excluding reversed issues." portal_bubble=True %}</th>
       <!--<th class="px-3 py-2">Reorder at</th>-->
       <th class="px-3 py-2">Price</th>
       {% if vertical_ui.uses_production %}<th class="px-3 py-2">{{ vertical_ui.recipe_label }} / {{ vertical_ui.production_inputs_label }}</th>{% else %}<th class="px-3 py-2">Latest Purchase Cost</th>{% endif %}
@@ -189,11 +188,12 @@
         </td>
         <td class="px-3 py-2 text-right font-mono text-sky-700">{{ g.total_delivered_to_customers|product_quantity:g }}</td>
         <td class="px-3 py-2 text-right font-mono text-stone-500">{{ g.total_produced|product_quantity:g }}</td>{% endif %}
+        <td class="px-3 py-2 text-right font-mono">{{ g.staff_gifting_quantity|product_quantity:g }}</td>
         <!--<td class="px-3 py-2 text-right font-mono text-stone-500">{{ g.reorder_level|num }}</td>-->
         <td class="px-3 py-2 text-right font-mono">{{ g.selling_price|money:biz.currency_symbol }}<span class="block text-[10px] text-stone-500">per {{ g|product_selling_unit }}</span></td>
         <td class="px-3 py-2 text-xs text-stone-500">{% if vertical_ui.uses_production %}{{ g.recipe_items.count }} {{ vertical_ui.recipe_item_label }}{{ g.recipe_items.count|pluralize }}{% if g.production_materials.count %}, {{ g.production_materials.count }} production input{{ g.production_materials.count|pluralize }}{% endif %}{% else %}<span class="font-mono">{{ g.est_cost|money:biz.currency_symbol }}</span> / {{ g.unit }}{% endif %}</td>
         <td class="px-3 py-2 text-right">
-          {% if module_permissions.inventory.edit and g.stock > 0 %}<a href="{% url 'physical_stock_issue' %}?product={{ g.pk }}" class="workspace-action mr-2" aria-label="Staff / gifting issue · {{ g.name }}">Staff / gifting</a>{% endif %}{% if module_permissions.inventory.edit %}<a href="{% url 'finished_good_edit' g.pk %}" class="text-stone-400 hover:text-[#8f172d] mr-2">Edit</a>{% endif %}
+          {% if module_permissions.inventory.edit %}<a href="{% url 'finished_good_edit' g.pk %}" class="text-stone-400 hover:text-[#8f172d] mr-2">Edit</a>{% endif %}
           {% if module_permissions.inventory.edit %}<form action="{% url 'finished_good_delete' g.pk %}" method="post" class="inline" onsubmit="return confirm('Remove {{ g.name }}?');">{% csrf_token %}<button class="text-stone-400 hover:text-rose-600">Delete</button></form>{% endif %}
         </td>
       </tr>

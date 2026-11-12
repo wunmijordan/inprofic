@@ -278,3 +278,33 @@ test('form dialogs fit simple content and give item tables more room', async ({p
   await expect(page.frameLocator('iframe[name="inprofic-form-dialog"]').locator('table').first()).toBeVisible();
   await expect.poll(async () => (await dialog.boundingBox()).width).toBeGreaterThan(compact.width + 200);
 });
+
+test('workspace text buttons share sizing while retaining their chosen fills',async({page})=>{
+  await admin(page);
+  await page.goto('/inventory/#finished');
+  await page.locator('main').evaluate(main=>{
+    const probe=document.createElement('section');
+    probe.id='button-style-probes';
+    probe.innerHTML=`<a id="legacy-color-action" data-button-surface class="px-3.5 py-2 text-sm rounded-md font-medium bg-sky-50 text-sky-800 border border-sky-200" href="#">Legacy action</a><a id="shared-color-action" class="workspace-action bg-sky-50 text-sky-800 border-sky-200" href="#">Shared action</a><button id="colored-submit-action" type="submit" data-button-surface class="bg-sky-50 text-sky-800 border-sky-200">Colored submit</button><button id="shared-default-action" type="button" class="workspace-action">Default action</button><button id="button-icon-probe" type="button" data-button-surface class="workspace-icon-button" aria-label="Icon action">×</button>`;
+    main.append(probe);
+  });
+  const styles=locator=>locator.evaluate(el=>{const s=getComputedStyle(el);return {font:s.fontSize,height:s.height,padding:s.padding,radius:s.borderRadius,fill:s.backgroundColor,color:s.color};});
+  for(const mode of ['light','dark']) {
+    await theme(page,mode);
+    const legacy=await styles(page.locator('#legacy-color-action'));
+    const shared=await styles(page.locator('#shared-color-action'));
+    expect(shared).toEqual(legacy);
+    expect(await styles(page.locator('#colored-submit-action'))).toEqual(legacy);
+    expect(shared.font).toBe('14px');
+    expect((await styles(page.locator('#shared-default-action'))).font).toBe('14px');
+    const icon=await styles(page.locator('#button-icon-probe'));
+    expect(icon.padding).not.toBe(shared.padding);
+    await page.locator('#shared-color-action').hover();
+    expect((await styles(page.locator('#shared-color-action'))).fill).toBe(legacy.fill);
+    await page.mouse.move(0,0);
+  }
+  await page.setViewportSize({width:390,height:844});
+  await expect(page.locator('#finished-panel')).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await page.screenshot({path:'/tmp/inprofic-shared-buttons-mobile.png'});
+});

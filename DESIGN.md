@@ -59,7 +59,7 @@ typography:
     lineHeight: 1.45
   workspace-action:
     fontFamily: "Sora, sans-serif"
-    fontSize: ".75rem"
+    fontSize: ".875rem"
     fontWeight: 600
   data:
     fontFamily: "IBM Plex Mono, monospace"
@@ -279,7 +279,10 @@ Avoid adding an unrelated radius scale to Tailwind utilities or component defaul
 ### Buttons
 
 Compact and explicit. Workspace actions use the frontmatter padding and a minimum
-height of 2.25rem; their neutral variant mixes 5% accent into the current surface,
+height of 2.25rem, 14px labels and the same spacing as marked legacy text buttons.
+Explicit action background and text colors take precedence over the neutral
+workspace default. Icon buttons, tabs and switches keep their own sizing.
+The neutral variant mixes 5% accent into the current surface,
 8% on hover. Primary actions use live accent/contrast tokens. The public `ui-button` pattern uses .85rem text, weight 600, line-height 1.4 and
 its recorded padding; restored hero actions retain template utility spacing and
 weight. Navigation actions resolve to the shared control radius. The sidecar

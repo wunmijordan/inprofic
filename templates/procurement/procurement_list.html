@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load core_extras %}
+{% load core_extras static %}
 {% block content %}
 <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
   <div>
@@ -9,10 +9,10 @@
   <div class="flex flex-wrap items-center gap-2">
     {% if period_valid %}<a data-button-surface href="{% url 'spending_xlsx' %}{% if spending_query %}?{{ spending_query }}{% endif %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export Excel</a>
     <a data-button-surface href="{% url 'spending_csv' %}{% if spending_query %}?{{ spending_query }}{% endif %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#F0EAD9] text-[#8f172d] hover:bg-[#E7DFCC] border border-[#D9CFB4]">Export CSV</a>{% endif %}
-    {% if module_permissions.expenses.edit %}<a href="{% url 'expense_add' %}" aria-label="Record general-use expenses" class="workspace-action">+ General-use expense</a>{% endif %}
+    {% if module_permissions.expenses.edit %}<a href="{% url 'expense_request_add' %}" class="workspace-action">+ Expense request</a><a href="{% url 'expense_add' %}" aria-label="Record general-use expenses" class="workspace-action">+ Record expenses</a>{% endif %}
     {% if period_valid %}{% include "partials/_snapshot_share.html" with snapshot_dropdown=True snapshot_id="spending-share" snapshot_text=spending_share_text snapshot_image_url=spending_image_url snapshot_filename="purchases-and-expenses" snapshot_label="Share period" %}{% endif %}
     {% if module_permissions.procurement.edit %}<a data-button-surface href="{% url 'supplier_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-white text-[#8f172d] hover:bg-[#FFFCF5] border border-[#D9CFB4]">+ Add supplier</a>{% endif %}
-    {% if module_permissions.procurement.edit %}<a data-button-surface href="{% url 'po_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ Purchase request</a>{% endif %}
+    {% if module_permissions.procurement.edit %}<a href="{% url 'po_direct_add' %}" class="workspace-action">+ Record purchase</a><a data-button-surface href="{% url 'po_add' %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">+ Purchase request</a>{% endif %}
   </div>
 </div>
 
@@ -45,6 +45,7 @@
 </details>
 {% endif %}
 
+{% if expense_requests %}<section class="workspace-card mb-4 p-4"><h3 class="font-display text-lg">General-use expense requests</h3><div class="mt-3 space-y-3">{% for expense_request in expense_requests %}<div class="flex flex-wrap items-center justify-between gap-2 border-b pb-3"><a href="{% url 'expense_request_detail' expense_request.pk %}" class="font-semibold underline">{{ expense_request.date|date:'j M Y' }}</a><span>{{ expense_request.get_status_display }}</span><span class="font-mono">{{ expense_request.total|money:biz.currency_symbol }}</span><a href="{% url 'expense_request_detail' expense_request.pk %}" class="workspace-action">Review</a></div>{% endfor %}</div></section>{% endif %}
 {% if not spending_activity %}
   <div class="text-center py-10 text-sm text-stone-400 italic">No purchases or expenses in this period.</div>
 {% else %}
@@ -109,6 +110,6 @@
 
 {% for p in orders %}{% if p.request_items|length > 1 %}{% include "partials/_items_dialog.html" with items=p.request_items purchase=True currency=biz.currency_symbol width="44rem" dialog_prefix="po-items-" row_pk=p.pk title_prefix="Purchase order #" title_ref=p.pk subtitle=p.request_supplier|default:"Unnamed supplier" total_label="Order total" total_value=p.request_total|money:biz.currency_symbol %}{% endif %}{% endfor %}
 {% if module_permissions.procurement.edit %}{% for p in orders %}{% if p.request_receivable_orders %}{% include "procurement/_receive_dialog.html" %}{% endif %}{% endfor %}{% endif %}
-{% include "partials/_items_dialog_assets.html" %}
+{% include "partials/_items_dialog_assets.html" %}<script src="{% static 'core/js/procurement-receiving.js' %}" defer></script>
 {% endif %}
 {% endblock %}

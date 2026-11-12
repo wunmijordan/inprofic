@@ -179,6 +179,12 @@ def operational_supply_dispense(request):
 
 @login_required
 def inventory(request):
+    from datetime import date
+    from .product_use import product_issues
+
+    issue_totals = dict(product_issues(request.business, date.min, timezone.localdate())
+        .order_by().values("finished_good_id").annotate(total=Sum("quantity"))
+        .values_list("finished_good_id", "total"))
     finished_goods = FinishedGood.objects.select_related("business", "product_category", "portion_profile")
     if request.business.uses_production:
         finished_goods = finished_goods.prefetch_related(
@@ -206,6 +212,10 @@ def inventory(request):
             Prefetch("recipe_items", queryset=RecipeItem.objects.select_related("raw_material")),
             Prefetch("production_materials", queryset=ProductionMaterial.objects.select_related("raw_material")),
         )
+
+    finished_goods = list(finished_goods)
+    for good in finished_goods:
+        good.staff_gifting_quantity = -issue_totals.get(good.pk, Decimal("0"))
 
     from .sample_setup import available_for
     return render(request, "inventory/inventory.html", {

@@ -128,5 +128,7 @@ def workspace_records(request):
                   'vendor': expense.vendor or 'Vendor not named', 'description': expense.description,
                   'payment': expense.settlement_label} for expense in expenses]
     activity.sort(key=lambda row: (row['date'], row.get('order', row.get('expense')).pk), reverse=True)
+    from expenses.models import ExpenseRequest
+    context["expense_requests"] = list(in_period(ExpenseRequest.objects.filter(business=request.business), context.get("period_start"), context.get("period_end")).prefetch_related("lines")) if allowed["expenses"] and context["period_valid"] else []
     context.update(orders=orders, spending_activity=activity)
     return context

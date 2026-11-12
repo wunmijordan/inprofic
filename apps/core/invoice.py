@@ -130,7 +130,7 @@ def purchase_request_pdf(summary):
     """One business-scoped document covering every vendor order in a request."""
     business, symbol = summary['business'], summary['symbol']
     story, styles = [], _styles()
-    _header(story, business, 'PURCHASE REQUEST', f"Request #{summary['number']}",
+    _header(story, business, summary.get('document_label', 'Purchase request').upper(), f"#{summary['number']}",
             summary['date'], 'Vendors', escape(summary['supplier']))
     story.append(Paragraph(escape(summary['status_label']), styles['body']))
     for group in summary['vendor_groups']:
@@ -143,7 +143,7 @@ def purchase_request_pdf(summary):
             if line['group_id'] != group['id']:
                 continue
             name = escape(line['name'])
-            if line['reduced'] or line['removed']:
+            if line.get('adjusted', line['reduced']) or line['removed']:
                 name += f"<br/>Requested: {line['requested']} · Approved: {line['approved']}"
             if line['reason']:
                 name += '<br/>' + escape(line['reason'])

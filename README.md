@@ -15,16 +15,25 @@ what was borrowed and what was deliberately left out).
   from sellable Market Stock or available Physical Store stock. Each issue records
   its recipient, purpose, date, quantity and inventory cost, reduces only its stock
   source, and creates an audited stock adjustment without a sale or cash payment.
+  The product inventory toolbar opens the issue form; a Staff / gifting column
+  shows recorded issue quantities per product in selling units.
   Finance identifies that cost separately within stock costs; it is counted once.
   Period reports and shared summaries include the issues and recipients, with
   concise quantity/cost highlights on snapshots.
 - **Procurement** — submit a purchase request, have a business administrator
   approve quantities, then receive approved goods. Reductions and removals
-  retain requested quantities and reasons. Group items by optional saved or freely
+  retain requested quantities and reasons; increases at approval require a reason too.
+  Alternatively, record a direct purchase and receive it immediately without approval.
+  One receiving confirmation records selected vendors with separate arrival dates. Group items by optional saved or freely
   typed vendor names, with independent payment status, method, account and
   advances per group. Shared snapshots and text retain each group’s payment
   breakdown. Receipt converts units and updates
   stock/cost once. Advance payments remain separate from stock receipt.
+  General-use expenses can be recorded directly or grouped by day in a request.
+  Admins review amounts, record reasons for changes/removals, and approve the
+  request before its expenses and payments enter the operational records.
+  Production forms retain a separate pack-based production target and show the
+  planned offcut; completion continues to distinguish it from unexpected excess.
 - **Wholesale & retail** — stock-first workspaces procure sellable products
   directly, track every supplier arrival per product, and sell from warehouse
   or shop stock without forcing those products through Production. Their product
@@ -59,7 +68,8 @@ what was borrowed and what was deliberately left out).
   yield, and completion adds finished stock inside a database transaction.
   Explicit shortage overrides remain auditable. For stock production
   sized by a shared base-material pool, output weight divides the exact pool
-  across products in the live allocation check and approval releases those
+  across products in the live allocation check; stock production uses one editable
+  production target per product, and approval releases those
   shares. The material is selected explicitly on the order, and its measured
   finished-output yield maps combined product weight to pool use and excess.
   Enter that measured yield on the Raw Material form; the product form's

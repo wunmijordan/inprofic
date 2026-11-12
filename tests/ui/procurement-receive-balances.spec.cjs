@@ -11,19 +11,23 @@ test('one Receive button opens vendor dates in the shared modal',async({page})=>
  await page.getByRole('button',{name:'Receive',exact:true}).click();
  const modal=page.locator('.ui-legacy-dialog');
  await expect(modal).toBeVisible();
- await expect(modal.locator('input[name="event_date"]')).toHaveCount(2);
+ await expect(modal.locator('[data-receive-date]')).toHaveCount(2);
  await expect(modal.getByRole('button',{name:'Close',exact:true})).toHaveCount(1);
  const alpha=modal.locator('section').filter({has:page.getByRole('heading',{name:'Receipt Vendor Alpha',exact:true})});
- const input=alpha.locator('input[name="event_date"]');
+ const input=alpha.locator('[data-receive-date]');
  const max=await input.getAttribute('max');
  const yesterday=new Date(`${max}T12:00:00Z`);yesterday.setUTCDate(yesterday.getUTCDate()-1);
  await input.fill(yesterday.toISOString().slice(0,10));
  await page.setViewportSize({width:390,height:844});
  expect(await modal.evaluate(el=>el.getBoundingClientRect().width<=innerWidth)).toBe(true);
- await alpha.getByRole('button',{name:'Receive vendor items',exact:true}).click();
+ const beta=modal.locator('section').filter({has:page.getByRole('heading',{name:'Receipt Vendor Beta',exact:true})});
+ await beta.locator('[data-receive-vendor]').uncheck();
+ await expect(beta.locator('[data-receive-date]')).toBeDisabled();
+ await expect(modal.getByRole('button',{name:'Receive selected purchases',exact:true})).toHaveCount(1);
+ await modal.getByRole('button',{name:'Receive selected purchases',exact:true}).click();
  await expect(modal).not.toBeVisible();
  await page.getByRole('button',{name:'Receive',exact:true}).click();
- await expect(modal.locator('input[name="event_date"]')).toHaveCount(1);
+ await expect(modal.locator('[data-receive-date]')).toHaveCount(1);
  await expect(modal.locator('section').filter({has:page.getByRole('heading',{name:'Receipt Vendor Alpha',exact:true})})).toContainText('Received');
 });
 test('distribution report and snapshot use date opening and closing balances',async({page})=>{

@@ -4,7 +4,7 @@
 <div class="mx-auto max-w-4xl" data-request-preview>
   <header data-snapshot-heading class="mb-5 flex items-start justify-between gap-3">
     <div class="min-w-0">
-      <h2 class="text-2xl font-semibold font-display">Purchase request #{{ obj.pk }}</h2>
+      <h2 class="text-2xl font-semibold font-display">{{ summary.document_label|default:"Purchase request" }} #{{ obj.pk }}</h2>
       <p class="mt-1 text-sm text-stone-500">{{ summary.supplier }} · {{ obj.date|date:"j M Y" }}</p>
     </div>
     {% include "partials/_snapshot_share.html" with snapshot_image_url=share_image_url snapshot_id="purchase-share" snapshot_text=share_text snapshot_filename="purchase-request" snapshot_dropdown=True snapshot_label="Share request" %}

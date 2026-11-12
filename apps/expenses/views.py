@@ -101,8 +101,8 @@ def expense_form(request, pk=None):
 def expense_delete(request, pk):
     obj = get_object_or_404(Expense.objects.select_for_update(), pk=pk)
     if request.method == "POST":
-        if obj.payment_status == "paid" or obj.payments.exists() or FinancialTransaction.raw_objects.filter(business=request.business, reference=f"EXP-{obj.pk}").exists():
-            messages.error(request, "This expense has payment history and cannot be deleted. Correct the expense to preserve its cash and audit history.")
+        if hasattr(obj, "request_line") or obj.payment_status == "paid" or obj.payments.exists() or FinancialTransaction.raw_objects.filter(business=request.business, reference=f"EXP-{obj.pk}").exists():
+            messages.error(request, "This expense has approval or payment history and cannot be deleted. Correct it to preserve its audit history.")
         else:
             audit(request.business, request.user, "delete", obj, f"Unpaid expense #{obj.pk} removed")
             obj.delete()

@@ -1,0 +1,14 @@
+{% load core_extras %}
+<div class="workspace-card p-3 space-y-3" data-expense-request-line>
+  {% for field in row.hidden_fields %}{{ field }}{% endfor %}{{ row.non_field_errors }}
+  <p hidden data-expense-request-removal-note class="text-sm font-semibold">Item removed · give the reason below</p>
+  <div data-expense-request-fields>
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {% include '_field.html' with field=row.description %}{% include '_field.html' with field=row.category %}{% include '_field.html' with field=row.amount %}{% include '_field.html' with field=row.vendor %}
+    </div>
+    <details class="mt-3" {% if row.payment_status.value == 'paid' or row.account.errors or row.notes.errors %}open{% endif %}><summary class="cursor-pointer text-sm font-semibold">Payment &amp; notes</summary><div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">{% include '_field.html' with field=row.payment_status %}{% include '_field.html' with field=row.payment_method %}{% include '_field.html' with field=row.account %}{% include '_field.html' with field=row.notes %}</div></details>
+  </div>
+  {% if expense_request.pk %}{% if row.instance.pk %}<p class="text-xs">Originally requested: <span class="font-mono">{{ row.instance.requested_amount|money:biz.currency_symbol }}</span></p>{% endif %}{% include '_field.html' with field=row.approval_reason %}{% endif %}
+  <input type="hidden" name="{{ row.DELETE.html_name }}" id="{{ row.DELETE.id_for_label }}" value="{% if row.DELETE.value %}on{% endif %}" data-expense-request-delete>
+  {% if pending and can_edit %}<button type="button" class="workspace-action" data-expense-request-remove>Remove item</button>{% endif %}
+</div>

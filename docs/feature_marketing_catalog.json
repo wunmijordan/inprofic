@@ -49,7 +49,7 @@
     "name": "Multi-vendor purchase requests, approval and sharing",
     "group": "operations",
     "audience": "procurement and store teams",
-    "proof": "Group items by optional saved or typed vendor names in one request, with separate payment status, method, account and advances for each group. Approve once, receive each vendor through a shared modal with separate arrival dates, settle each vendor independently, and share grouped items and payment breakdowns in the combined preview, PDF, paper snapshot and detailed text. Paid drafts require confirmation and preserve audited payment history through edits or deletion. Share request-date general-use expenses with their own subtotal and a combined grand total, while approval and vendor payables retain purchase-only values. The dated purchasing workspace combines purchases and general-use expenses, CSV/Excel exports and a period snapshot/text; actual cash-out counts ledger payments once, including later settlements and corrections, subject to each module’s access. Purchase-request sharing text focuses on items, vendors, payments, expenses and totals; it omits stock positions and reorder information.",
+    "proof": "Group items by optional saved or typed vendor names in one request, with separate payment status, method, account and advances for each group. Approve once, receive each vendor through a shared modal with separate arrival dates, settle each vendor independently, and share grouped items and payment breakdowns in the combined preview, PDF, paper snapshot and detailed text. Paid drafts require confirmation and preserve audited payment history through edits or deletion. Share request-date general-use expenses with their own subtotal and a combined grand total, while approval and vendor payables retain purchase-only values. The dated purchasing workspace combines purchases and general-use expenses, CSV/Excel exports and a period snapshot/text; actual cash-out counts ledger payments once, including later settlements and corrections, subject to each module’s access. Purchase-request sharing text focuses on items, vendors, payments, expenses and totals; it omits stock positions and reorder information. Choose a purchase request or record a direct purchase with immediate stock receipt. A single confirmation receives selected vendors on their own dates. Approval may increase or reduce quantities with a recorded reason; paid amounts stay recorded and any increase becomes a payable balance.",
     "highlight": "NEW",
     "added_on": "2026-11-06"
   },
@@ -103,7 +103,7 @@
     "name": "Output-weighted base-material production",
     "group": "production",
     "audience": "bakery and production teams",
-    "proof": "Record finished unit weight on products, apportion a shared base-material pool across outputs by weight, release those shares at approval, and warn when planned output exceeds recipe capacity.",
+    "proof": "Record finished unit weight on products, apportion a shared base-material pool across outputs by weight, release those shares at approval, and warn when planned output exceeds recipe capacity. Base-material stock production uses one editable production target per product.",
     "highlight": "NEW",
     "added_on": "2026-10-19"
   },
@@ -157,7 +157,7 @@
     "name": "General-use expenses inside purchasing",
     "group": "finance",
     "audience": "owners and finance teams",
-    "proof": "Record and settle general-use spending from the Purchases & expenses workspace, alongside material/stock requests. Share combined period totals while keeping actual cash-out separate from unpaid values. Track remaining obligations, prevent overpayment, and correct paid expenses through linked compensating cash entries. Existing permissions and entitlements still scope each record type.",
+    "proof": "Record and settle general-use spending from the Purchases & expenses workspace, alongside material/stock requests. Share combined period totals while keeping actual cash-out separate from unpaid values. Track remaining obligations, prevent overpayment, and correct paid expenses through linked compensating cash entries. Existing permissions and entitlements still scope each record type. Record general-use expenses directly or group them in one pending request per day. A business administrator can revise amounts or remove items with a reason before approval creates expense/payment records; pending requests stay outside spending totals. Share the daily request as full text or an image.",
     "highlight": "NEW",
     "added_on": "2026-11-06"
   },
@@ -553,7 +553,7 @@
     "name": "Staff and gifting issues from existing product stock",
     "group": "operations",
     "audience": "owners, storekeepers and distribution teams",
-    "proof": "Issue products directly from sellable Market Stock or available Physical Store stock. Record recipient, purpose, quantity, date and inventory cost with an audit trail. Market issues follow batch expiry rules; no sale, customer balance or cash payment is created. Finance identifies the cost once, while period reports and shared snapshots/text retain the withdrawals and recipients.",
+    "proof": "Issue products directly from sellable Market Stock or available Physical Store stock. Record recipient, purpose, quantity, date and inventory cost with an audit trail. Market issues follow batch expiry rules; no sale, customer balance or cash payment is created. Finance identifies the cost once, while period reports and shared snapshots/text retain the withdrawals and recipients. Open the issue form from the inventory toolbar and review per-product issued quantities in the Staff / gifting column.",
     "highlight": "NEW",
     "added_on": "2026-11-07"
   }

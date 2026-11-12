@@ -35,9 +35,23 @@ class LedgerStockMixin:
             from core.ledger import item_balance
             kind = "raw" if type(self)._meta.model_name == "rawmaterial" else "fg"
             derived = item_balance(business_id, kind, pk, scope)
-            return value if derived is None else derived
+            if derived is None:
+                return value
+            precision = Decimal("0.001") if kind == "raw" else Decimal("0.01")
+            return derived.quantize(precision)
         except (AttributeError, TypeError, KeyError):
             return value
+
+    def full_clean(self, *args, **kwargs):
+        # Validate assigned fields, rather than replacing submitted stock with
+        # the read-only ledger balance during ModelForm validation.
+        from core.context import raw_stock_reads_active, set_raw_stock_reads
+        previous = raw_stock_reads_active()
+        set_raw_stock_reads(True)
+        try:
+            return super().full_clean(*args, **kwargs)
+        finally:
+            set_raw_stock_reads(previous)
 
     def save(self, *args, **kwargs):
         from core.context import raw_stock_reads_active, set_raw_stock_reads

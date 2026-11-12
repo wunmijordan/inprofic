@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 
-from core.quantities import product_price_fields, set_product_price, product_portion, product_choice_label
+from core.quantities import product_price_fields, set_product_price, product_portion, product_choice_label, plural_unit
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -104,6 +104,7 @@ def _price_map():
             "choice_label": product_choice_label(g),
             "portion_factor": str(product_portion(g)[1]),
             "portion_unit": product_portion(g)[0],
+            "portion_unit_plural": plural_unit(product_portion(g)[0], 2),
             "base_material": ({
                 "id": g.base_material_id,
                 "name": g.base_material.name,

@@ -44,7 +44,7 @@
 <div class="pa" id="pa" data-symbol="{{ biz.currency_symbol }}">
   <header class="pa-head">
     <div>
-      <p class="pa-eyebrow">Purchase request #{{ po.pk }}</p>
+      <p class="pa-eyebrow">{{ summary.document_label|default:"Purchase request" }} #{{ po.pk }}</p>
       <h1 class="pa-title">{{ summary.supplier }}</h1>
       <p class="pa-sub">{{ po.date|date:"j M Y" }}{% if summary.payment %} · Payment: {{ summary.payment }}{% endif %}{% if po.approved_at %} · Approved by {{ po.approved_by|default:"a former user" }}, {{ po.approved_at|date:"j M Y" }}{% endif %}</p>
     </div>
@@ -54,7 +54,7 @@
   <form method="post" id="pa-form">
     {% csrf_token %}
     {% if approval_error %}<div role="alert" class="pa-alert">{{ approval_error }}</div>{% endif %}
-    {% if can_approve %}<p class="pa-note">Check the quantities, then approve. Lower a quantity or tap Remove to cut an item; a reason is needed for every change. Approval does not move stock or money.</p>
+    {% if can_approve %}<p class="pa-note">Check the quantities, then approve. Increase or reduce a quantity, or tap Remove; a reason is needed for every change. Approval does not move stock or money.</p>
     {% else %}<p class="pa-note">{% if po.approved_at %}Approved quantities are final. Removed items stay listed for the audit trail.{% elif po.status == 'received' %}This request has already been received.{% else %}A business administrator must approve this request before it can be received.{% endif %}</p>{% endif %}
 
     <div class="pa-card">
@@ -117,7 +117,7 @@
     rows.forEach(row => {
       const input = row.querySelector('.pa-input'); if (!input) return;
       const cost = parseFloat(row.dataset.cost) || 0, asked = parseFloat(row.dataset.requested) || 0;
-      const qty = Math.max(0, Math.min(parseFloat(input.value) || 0, asked));
+      const qty = Math.max(0, parseFloat(input.value) || 0);
       total += qty * cost; requested += asked * cost;
       const amount = row.querySelector('[data-line-total]');
       amount.textContent = money(qty * cost); amount.classList.toggle('is-removed', qty === 0);
@@ -127,7 +127,8 @@
         after.textContent = qty > 0 ? '→ ' + qtyFmt.format(projected) + ' ' + row.dataset.unit + ' once received' : '→ unchanged (nothing approved)';
       }
       const reason = row.querySelector('[data-reason]');
-      const changed = (parseFloat(input.value) || 0) < asked;
+      const changed = Math.abs((parseFloat(input.value) || 0) - asked) > 0.000001;
+      reason.querySelector('textarea').required = changed;
       if (changed) reason.removeAttribute('data-collapsed');
       else if (!reason.querySelector('textarea').value && !reason.querySelector('.pa-error')) reason.setAttribute('data-collapsed', '');
     });

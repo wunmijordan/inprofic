@@ -209,23 +209,21 @@ PurchaseOrderItemFormSet = inlineformset_factory(PurchaseOrder, PurchaseOrderIte
 
 class PurchaseApprovalLineForm(forms.Form):
     qty = forms.DecimalField(label="Approved quantity", min_value=Decimal("0"), max_digits=12, decimal_places=2)
-    reason = forms.CharField(label="Reason for reduction or removal", required=False, max_length=2000, widget=forms.Textarea(attrs={"rows": 2}))
+    reason = forms.CharField(label="Reason for change or removal", required=False, max_length=2000, widget=forms.Textarea(attrs={"rows": 2}))
 
     def __init__(self, *args, item, **kwargs):
         self.item = item
         self.requested = item.requested_qty if item.requested_qty is not None else item.qty
         super().__init__(*args, **kwargs)
-        self.fields["qty"].widget.attrs.update({"max": str(self.requested), "step": "0.01", "class": "pa-input", "inputmode": "decimal"})
-        self.fields["reason"].widget.attrs.update({"class": "pa-reason-input", "placeholder": "Why is this reduced or removed?"})
+        self.fields["qty"].widget.attrs.update({"step": "0.01", "class": "pa-input", "inputmode": "decimal"})
+        self.fields["reason"].widget.attrs.update({"class": "pa-reason-input", "placeholder": "Why is this changed or removed?"})
 
     def clean(self):
         data = super().clean()
         qty = data.get("qty")
         if qty is not None:
-            if qty > self.requested:
-                self.add_error("qty", "Approval cannot increase the requested quantity. Edit the request first.")
-            if qty < self.requested and not data.get("reason", "").strip():
-                self.add_error("reason", "Give a reason for reducing or removing this item.")
+            if qty != self.requested and not data.get("reason", "").strip():
+                self.add_error("reason", "Give a reason for changing or removing this item.")
         return data
 
 

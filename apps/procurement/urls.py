@@ -9,6 +9,7 @@ urlpatterns = [
     path("", views.procurement_list, name="procurement_list"),
     path("suppliers/add/", views.supplier_add, name="supplier_add"),
     path("suppliers/<int:pk>/edit/", views.supplier_edit, name="supplier_edit"),
+    path("direct/add/", views.po_form, {"direct": True}, name="po_direct_add"),
     path("add/", views.po_form, name="po_add"),
     path("<int:pk>/edit/", views.po_form, name="po_edit"),
     path("<int:pk>/approve/", views.po_approve, name="po_approve"),

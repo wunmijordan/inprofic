@@ -138,15 +138,20 @@ main .workspace-action {
   padding: .5rem .8rem;
   border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius);
-  background: color-mix(in srgb, var(--ui-accent) 5%, var(--ui-surface));
-  color: var(--ui-surface-text);
-  font-size: .75rem;
+  font-size: .875rem;
   font-weight: 600;
 }
 
-main .workspace-action:hover,
-main .workspace-action:is([aria-current="page"], [aria-current="location"]) {
-  background: color-mix(in srgb, var(--ui-accent) 8%, var(--ui-surface));
+/* Defaults have lower specificity than a chosen fill/text utility. This lets
+   workspace-action share geometry without erasing an action's own colors. */
+main :where(.workspace-action) {
+  background-color: color-mix(in srgb, var(--ui-accent) 5%, var(--ui-surface));
+  color: var(--ui-surface-text);
+}
+
+main :where(.workspace-action:hover,
+  .workspace-action:is([aria-current="page"], [aria-current="location"])) {
+  background-color: color-mix(in srgb, var(--ui-accent) 8%, var(--ui-surface));
   color: var(--ui-surface-text);
 }
 
@@ -588,9 +593,10 @@ main :is(button, a)[class*="border-[#8F172D]"] {
   color: var(--ui-local-text, var(--ui-text)) !important;
 }
 
-main button[type="submit"]:not([class*="rose"]):not([class*="red"]),
-main button:not([type]):not([class*="rose"]):not([class*="red"]),
-main input[type="submit"]:not([class*="rose"]):not([class*="red"]) {
+/* Only uncolored submit actions receive the default accent. Explicit semantic
+   fills stay authoritative, just as they do on action links. */
+main :is(button[type="submit"], button:not([type]), input[type="submit"]):not(
+  [class*="rose"], [class*="red"], [class*="bg-"], [style*="background"]) {
   background-color: var(--ui-accent) !important;
   border-color: var(--ui-accent) !important;
   color: var(--ui-accent-contrast) !important;

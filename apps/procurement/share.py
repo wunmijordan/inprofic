@@ -58,7 +58,7 @@ def summarize(po, business, url="", *, user=None):
         lines.append({
             "group_id": vendor.pk, "vendor": vendor.supplier or "Vendor unnamed", "name": item.item_name, "unit": item.stock_unit, "requested": requested, "approved": item.qty,
             "unit_cost": item.unit_cost, "total": item.qty * item.unit_cost, "removed": removed,
-            "reduced": item.qty < requested, "reason": (item.approval_reason or "").strip(),
+            "adjusted": item.qty != requested, "reduced": item.qty < requested, "reason": (item.approval_reason or "").strip(),
             "stock": stock_status(item.stock_item),
         })
         requested_total += requested * item.unit_cost
@@ -77,6 +77,7 @@ def summarize(po, business, url="", *, user=None):
     expense_rows = [{'description':e.description,'amount':e.amount,'vendor':e.vendor,'payment':e.get_payment_status_display()} for e in miscellaneous]
     miscellaneous_total = sum((e.amount for e in miscellaneous), Decimal("0"))
     return {
+        "document_label": "Purchase" if all(v.entry_mode == "direct" for v in vendors) else "Purchase request",
         "grand_total": approved_total + miscellaneous_total,
         "miscellaneous": expense_rows, "miscellaneous_total": miscellaneous_total,
         "vendor_groups": vendor_groups, "po": po, "business": business, "symbol": symbol, "lines": lines, "number": po.pk,
@@ -92,7 +93,7 @@ def summarize(po, business, url="", *, user=None):
 
 
 def link_prompt(summary):
-    verb = "approve this purchase request" if summary["status"] == "pending" else "view this purchase request"
+    verb = "approve this purchase request" if summary["status"] == "pending" else "view this " + summary.get("document_label", "Purchase request").lower()
     return f"Open INPROFIC to {verb} (sign-in required)"
 
 
@@ -100,7 +101,7 @@ def share_text(summary, url=None):
     """WhatsApp-formatted message (``*bold*``) describing the request."""
     s, symbol = summary, summary["symbol"]
     url = s.get("url", "") if url is None else url
-    out = [f"*Purchase request #{s['number']}*", f"{s['business'].name} · {s['date']:%d %b %Y}",
+    out = [f"*{s.get('document_label', 'Purchase request')} #{s['number']}*", f"{s['business'].name} · {s['date']:%d %b %Y}",
            f"Supplier: {s['supplier']}", f"Status: {s['status_label']}", ""]
     group_lookup = {group['id']: group for group in s['vendor_groups']}
     current_group = None
@@ -116,9 +117,11 @@ def share_text(summary, url=None):
         if line["removed"]:
             out.append(f"  • {line['name']}: removed (was {format_quantity(line['requested'],line['unit'])})")
         else:
-            note = f" (requested {_qty(line['requested'])})" if line["reduced"] else ""
+            note = f" (requested {_qty(line['requested'])})" if line["adjusted"] else ""
             out.append(f"  • {line['name']}: {format_quantity(line['approved'],line['unit'])} × {_money(line['unit_cost'], symbol)} "
                        f"= {_money(line['total'], symbol)}{note}")
+        if line.get('reason'):
+            out.append(f"    Reason: {line['reason']}")
     out.append("")
     if s["changed"]:
         out.append(f"Requested total: {_money(s['requested_total'], symbol)}")
@@ -163,7 +166,7 @@ def render_snapshot(summary):
     inner = WIDTH - 2 * PAD
     d.rectangle([0, 0, WIDTH, 14], fill=ACCENT)
     d.text((PAD, 48), _fit(d, s["business"].name, f_small, inner - 300), font=f_small, fill=MUTED)
-    d.text((PAD, 86), f"Purchase request #{s['number']}", font=f_title, fill=INK)
+    d.text((PAD, 86), f"{s.get('document_label', 'Purchase request')} #{s['number']}", font=f_title, fill=INK)
     chip_bg, chip_fg = CHIPS.get(s["status"], CHIPS["pending"])
     chip_w = int(d.textlength(s["status_label"], font=f_small)) + 40
     d.rounded_rectangle([WIDTH - PAD - chip_w, 54, WIDTH - PAD, 98], radius=22, fill=chip_bg)
@@ -192,7 +195,7 @@ def render_snapshot(summary):
             detail = f"Removed · was {format_quantity(line['requested'],line['unit'])}"
         else:
             detail = f"{format_quantity(line['approved'],line['unit'])} × {_money(line['unit_cost'], symbol)}"
-            if line["reduced"]:
+            if line["adjusted"]:
                 detail += f"  ·  requested {_qty(line['requested'])}"
         d.text((PAD, y + 56), _fit(d, detail, f_small, inner), font=f_small, fill=MUTED)
         stock = line["stock"]

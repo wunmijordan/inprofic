@@ -359,11 +359,10 @@ class BackdatedWorkflowTests(LedgerBase):
     def test_future_and_pre_document_dates_are_refused_with_a_friendly_page(self):
         po = self.make_po(TODAY - timedelta(days=3))
         self.client.force_login(self.admin)
-        future = self.client.post(reverse("po_receive", args=[po.pk]), {"event_date": (TODAY + timedelta(days=1)).isoformat()})
-        self.assertEqual(future.status_code, 400)
-        self.assertContains(future, "cannot be in the future", status_code=400)
-        early = self.client.post(reverse("po_receive", args=[po.pk]), {"event_date": (TODAY - timedelta(days=9)).isoformat()})
-        self.assertContains(early, "earlier than the document date", status_code=400)
+        future = self.client.post(reverse("po_receive", args=[po.pk]), {"event_date": (TODAY + timedelta(days=1)).isoformat()}, follow=True)
+        self.assertContains(future, "cannot be in the future")
+        early = self.client.post(reverse("po_receive", args=[po.pk]), {"event_date": (TODAY - timedelta(days=9)).isoformat()}, follow=True)
+        self.assertContains(early, "earlier than the document date")
         po.refresh_from_db()
         self.assertEqual(po.status, "approved")  # nothing was received; the approved request is untouched
 
@@ -395,10 +394,10 @@ class BackdatedWorkflowTests(LedgerBase):
                    "expenses-0-payment_method": "Cash"}
         self.client.post(reverse("expense_add"), payload)
         self.assertEqual(Expense.raw_objects.count(), 1)
-        listing = self.client.get(reverse("expenses_list"))
+        listing = self.client.get(reverse("expenses_list"), follow=True)
         self.assertContains(listing, "Old power bill")
         self.client.post(reverse("ledger_mode"), {"mode": "live"})
-        self.assertNotContains(self.client.get(reverse("expenses_list")), "Old power bill")
+        self.assertNotContains(self.client.get(reverse("expenses_list"), follow=True), "Old power bill")
 
 
 class MarketLotTests(LedgerBase):

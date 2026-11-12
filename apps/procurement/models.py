@@ -36,6 +36,7 @@ class PurchaseRequest(BusinessOwnedModel):
 
 class PurchaseOrder(BusinessOwnedModel):
     ledger_date_field = "date"
+    entry_mode = models.CharField(max_length=10, choices=[('request', 'Purchase request'), ('direct', 'Direct purchase')], default='request')
     STATUS_CHOICES = [("draft", "Requested"), ("ordered", "Requested (legacy)"), ("approved", "Approved"), ("received", "Received")]
     PAYMENT_STATUS_CHOICES = [("paid", "Paid"), ("partial", "Partially Paid"), ("unpaid", "Unpaid")]
     PAYMENT_METHOD_CHOICES = [("Cash", "Cash"), ("Card", "Card"), ("Transfer", "Transfer")]
