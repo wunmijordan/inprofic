@@ -12,6 +12,7 @@ from .context import get_request_cache
 from .models import Business
 from .onboarding import CURRENT_TOUR_VERSION
 from .verticals import vertical_config
+from .vocabulary import labels
 
 
 def _static_asset_version():
@@ -20,6 +21,9 @@ def _static_asset_version():
         return configured[:20]
 
     asset_paths = [
+        Path(settings.BASE_DIR) / "apps/core/static/core/js/promotion-form.js",
+        Path(settings.BASE_DIR) / "apps/core/static/core/css/product-ribbons.css",
+        Path(settings.BASE_DIR) / "apps/core/static/core/js/product-ribbons.js",
         Path(settings.BASE_DIR) / "apps/core/static/core/css/inprofic.css",
         Path(settings.BASE_DIR) / "apps/core/static/core/css/form-experience.css",
         Path(settings.BASE_DIR) / "apps/core/static/core/js/form-experience.js",
@@ -34,6 +38,9 @@ def _static_asset_version():
         Path(settings.BASE_DIR) / "apps/core/static/core/js/workspace.js",
         Path(settings.BASE_DIR) / "apps/core/static/core/js/brand-assets.js",
         Path(settings.BASE_DIR) / "apps/core/static/core/js/marketing-demos.js",
+        Path(settings.BASE_DIR) / "apps/core/static/core/js/retail-pos.js",
+        Path(settings.BASE_DIR) / "apps/core/static/core/js/quotation-form.js",
+        Path(settings.BASE_DIR) / "apps/core/static/core/js/offline-workspace.js",
     ]
     mtimes = []
     for path in asset_paths:
@@ -65,10 +72,8 @@ def business(request):
         elif request.user.is_superuser:
             available_businesses = list(Business.objects.order_by("name", "id"))
         else:
-            available_businesses = list(Business.objects.filter(
-                user_memberships__user=request.user,
-                user_memberships__active=True,
-            ).distinct().order_by("name", "id"))
+            from accounts.services import accessible_businesses
+            available_businesses = list(accessible_businesses(request.user).order_by("name", "id"))
         if request_cache is not None:
             request_cache[businesses_key] = available_businesses
         can_manage_business = bool(biz and is_business_admin(request.user, biz))
@@ -104,6 +109,7 @@ def business(request):
         "can_use_storefront_pos": bool(biz and getattr(request.user, "is_authenticated", False) and can_use_commerce_storefront(request.user, biz)),
         "is_live_tester": bool(biz and getattr(request.user, "is_authenticated", False) and is_live_tester(request.user, biz)),
         "vertical_ui": vertical_config(biz),
+        "ui_names": labels(biz),
         "subscription": subscription,
         # Purpose-built, single-workspace roles (for example External Auditor,
         # POS-only staff, and riders) should not be sent "back" into an app

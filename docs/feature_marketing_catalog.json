@@ -13,9 +13,9 @@
     "name": "Dashboard search and operating insights",
     "group": "experience",
     "audience": "owners and managers",
-    "proof": "Search key business records and open the same product workspace from Inventory, dashboard search and linked operational lists. Choose a period to compare saved selling prices, costs, gross profit and margin on fully settled sales, inspect current customer/channel agreements and estimated margins, and review permitted sales, production, supplier arrivals, stock history and workflow. Compact Basic dashboard cards keep filters in a title-row dropdown with dynamic titles and ranges. Sales collections offer day/week/month/quarter/year selection; Insights provides period-selectable paid-sales revenue and Finance profit & loss, plus cumulative product/customer revenue through today with searchable record selectors and no date controls. Current periods stop at today, respect ledger scope and module permissions, and retain saved invoice prices. Monthly/yearly financial-summary charts distinguish categories in both themes.",
+    "proof": "Search key business records and open the same product workspace from Inventory, dashboard search and linked operational lists. Choose a period to compare saved selling prices, costs, gross profit and margin on fully settled sales, inspect current customer/channel agreements and estimated margins, and review permitted sales, production, supplier arrivals, stock history and workflow. Compact Basic dashboard cards keep filters in a title-row dropdown with dynamic titles and ranges. Sales collections offer day/week/month/quarter/year selection; Insights provides period-selectable paid-sales revenue and Finance profit & loss, plus cumulative product/customer revenue through today with searchable record selectors and no date controls. Current periods stop at today, respect ledger scope and module permissions, and retain saved invoice prices. Monthly/yearly financial-summary charts distinguish categories in both themes. Prepared offline packages retain permission-filtered daily dashboard totals and identify pending offline sales separately.",
     "highlight": "NEW",
-    "added_on": "2026-11-06"
+    "added_on": "2026-11-18"
   },
   {
     "id": "stock-alerts",
@@ -184,7 +184,7 @@
     "name": "Headless Commerce API",
     "group": "commerce",
     "audience": "businesses with custom websites or apps",
-    "proof": "External websites consume authoritative catalogue, fulfilment-choice/readiness, checkout, payment, API-native receipt, delivery conversation/reporting and tracking endpoints without redirecting customers into the hosted storefront.",
+    "proof": "Connect once to discover business-driven commerce capabilities, branding, vertical labels, opening hours, delivery, payment methods and endpoint links. Product responses include variants, choices, active prices and offer terms; server-priced quotes, checkout and verified receipts keep external websites aligned with INPROFIC. Promotion modes, qualifying/reward portion selections and optional rule wording and server-generated free reward lines travel with the product contract and canonical basket pricing.",
     "highlight": "",
     "added_on": ""
   },
@@ -211,9 +211,9 @@
     "name": "In-premise POS",
     "group": "commerce",
     "audience": "cashiers, stores, restaurants and walk-in operations",
-    "proof": "Staff can complete counter sales with Cash, direct Transfer or supported terminal payment only when the tenant plan includes Commerce and Commerce is explicitly enabled; POS still keeps its dedicated user permission.",
+    "proof": "Cashiers sell only when Commerce is entitled and enabled, under their own POS permission. Open a branch drawer with an opening float, track verified cash receipts and pending payments, count and close with an explanation for variance, and obtain manager review. Cash plus staff-verified transfer tenders remain separate. Park unfinished baskets and restore them through the shared modal/table. Optional product barcodes support printed labels, keyboard scanners and supported camera scanning. Prepared offline cash receipts require explicit sync confirmation and live validation.",
     "highlight": "NEW",
-    "added_on": "2026-09-24"
+    "added_on": "2026-11-18"
   },
   {
     "id": "delivery",
@@ -292,16 +292,16 @@
     "name": "Role and per-user permissions",
     "group": "governance",
     "audience": "growing teams",
-    "proof": "Give staff only the workspaces and actions they need while business-level entitlements remain the ceiling.",
-    "highlight": "",
-    "added_on": ""
+    "proof": "Give staff only the workspaces and actions they need while business-level entitlements remain the ceiling. Staff can maintain their personal profile and photo; business administrators approve or revoke registered browsers and optionally require device approval for operational access.",
+    "highlight": "NEW",
+    "added_on": "2026-11-18"
   },
   {
     "id": "workspace-theming",
     "name": "Tenant branding and workspace appearance",
     "group": "experience",
     "audience": "business owners and teams",
-    "proof": "Business accent/background branding and light/dark workspace preferences keep each tenant recognizable without changing operational data.",
+    "proof": "Business accent/background branding and light/dark workspace preferences keep each tenant recognizable without changing operational data. SVG navigation links and accordion headings retain permission-aware access; the desktop menu collapses to an icon rail with a single logo mark. Dashboards greet the signed-in user according to local time. Module and menu names are configurable per business vertical through Business Settings.",
     "highlight": "",
     "added_on": ""
   },
@@ -310,9 +310,9 @@
     "name": "Founder-controlled subscription plans & trial policy",
     "group": "governance",
     "audience": "INPROFIC operators and plan-managed tenants",
-    "proof": "Control plan pricing, module entitlements, the general free-trial duration and per-business founder trial extensions without deleting tenant history or overlapping active paid/lifetime access.",
+    "proof": "Control plan pricing, module entitlements, the general free-trial duration and per-business founder trial extensions without deleting tenant history or overlapping active paid/lifetime access. Every plan supports branches, with an optional Founder-configured branch count limit.",
     "highlight": "NEW",
-    "added_on": "2026-09-21"
+    "added_on": "2026-11-18"
   },
   {
     "id": "founder-integration-gates",
@@ -388,10 +388,10 @@
   },
   {
     "id": "form-experience-v2",
-    "name": "Animated, consistent form validation across INPROFIC",
+    "name": "Consistent forms and modal workflows across INPROFIC",
     "group": "experience",
     "audience": "staff and hosted-storefront customers",
-    "proof": "HTML5 and Django validation share animated field states, contextual SVG affordances, accessible feedback and consistent toggle switches; dynamic rows inherit the same behavior.",
+    "proof": "HTML5 and Django validation share accessible field feedback, SVG affordances and consistent toggles; dynamic rows inherit the same behavior. Staff operational forms open in shared dialogs with one header and close control, predetermined dimensions and compact or full-height phone layouts. Embedded forms become interactive at DOM readiness without a loading message. Native date and local date-time fields show the full weekday/date above the picker. Distribution return and customer payment choices include short invoice dates. Staff profiles use a standalone editable page with replaceable or removable photos. Quotation titles are entered by staff; module/menu vocabulary can be customised per business vertical. Shared help tips use system typography and structured lists, with viewport-clamped portals for long offer terms.",
     "highlight": "NEW",
     "added_on": "2026-09-20"
   },
@@ -556,5 +556,59 @@
     "proof": "Issue products directly from sellable Market Stock or available Physical Store stock. Record recipient, purpose, quantity, date and inventory cost with an audit trail. Market issues follow batch expiry rules; no sale, customer balance or cash payment is created. Finance identifies the cost once, while period reports and shared snapshots/text retain the withdrawals and recipients. Open the issue form from the inventory toolbar and review per-product issued quantities in the Staff / gifting column.",
     "highlight": "NEW",
     "added_on": "2026-11-07"
+  },
+  {
+    "id": "branch-operations",
+    "name": "Branch inventory and audited transfers",
+    "group": "operations",
+    "audience": "multi-branch owners, storekeepers and managers",
+    "proof": "Create full location workspaces beneath one business, with assigned managers and branch staff. Headquarters admins can enter every branch; module/feature access follows the headquarters plan without another service subscription. Choose a shared headquarters product/recipe/price catalogue or an independent branch catalogue. Stock and operating records remain local. Dispatch and confirm audited headquarters stock transfers, including explained shortages; legacy allocated locations retain their existing stock ledger.",
+    "highlight": "NEW",
+    "added_on": "2026-11-18"
+  },
+  {
+    "id": "advisory-expiration",
+    "name": "Optional expiration review",
+    "group": "operations",
+    "audience": "storekeepers and managers",
+    "proof": "Open Expiration check under Operations, review blank or expired Market Stock lots and record advisory flags online or offline. Expiry does not automatically block sales or write stock off.",
+    "highlight": "NEW",
+    "added_on": "2026-11-18"
+  },
+  {
+    "id": "customer-quotations",
+    "name": "Accepted customer quotations before payment",
+    "group": "commerce",
+    "audience": "sales teams and customer-facing staff",
+    "proof": "Enter a quotation title, share the business-branded document for acceptance, and convert a valid accepted quotation to an unpaid checkout at agreed prices. Stock and money follow normal verified-payment processing. Product selection fills channel prices while allowing edits; saved price baselines and adjustment audits remain internal.",
+    "highlight": "NEW",
+    "added_on": "2026-11-18"
+  },
+  {
+    "id": "product-promotions",
+    "name": "Scheduled product and product-set promotions",
+    "group": "commerce",
+    "audience": "retail owners and sales teams",
+    "proof": "Select all or multiple channels and set scheduled product/portion prices for buy/get or bundle offers without rewriting master prices. Qualifying and reward products can use registered packs or units independently. Earned rewards are added as separate free lines; customer-added quantities stay paid and shared rewards accumulate within available stock. POS, storefront and headless checkout retain each product’s scheduled price through receipts and let distinct qualifying quantities earn their offers together; prepared offline POS syncs after confirmation. Persistent card ribbons show every offer in counted, scrollable structured help, with optional eligibility/pricing wording. Expiry restores normal prices.",
+    "highlight": "NEW",
+    "added_on": "2026-11-18"
+  },
+  {
+    "id": "offline-packages",
+    "name": "Prepared offline packages with confirmed sync",
+    "group": "experience",
+    "audience": "cashiers, dispatchers and storekeepers",
+    "proof": "Use the live page templates and shared navigation in encrypted device packages for the Basic dashboard, Inventory reference, expiry flags, cash POS receipts and prepared-order dispatch assignment. Returning connection does not post entries; confirmed replay checks current permissions, stock, prices and delivery versions and prevents duplicate receipts. Connection loss opens the familiar INPROFIC offline card automatically, with a global Offline mode switch; device preparation is available from My profile without an added sidebar control. Unprepared actions are unavailable; cash POS retains the live cart, review and receipt flow.",
+    "highlight": "NEW",
+    "added_on": "2026-11-18"
+  },
+  {
+    "id": "product-csv-onboarding",
+    "name": "Previewed product CSV onboarding and barcodes",
+    "group": "operations",
+    "audience": "retail owners and storekeepers",
+    "proof": "Preview validated product names, units, prices, barcodes and opening stock before importing new products through audited stock services. POS accepts keyboard scanner input and supported browser camera scanning; print barcode labels without changing stock.",
+    "highlight": "NEW",
+    "added_on": "2026-11-18"
   }
 ]

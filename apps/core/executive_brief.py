@@ -203,7 +203,7 @@ def enrich(brief, start, end, *, user=None, selected_sections=None):
                 if market:
                     lines.append(f'🟢 OK · {item.name} · Market Stock: {format_product_quantity(market,item)}')
                 if expired:
-                    lines.append(f'🔴 EXPIRED · {item.name} · Market Stock: {format_product_quantity(expired,item)}')
+                    lines.append(f'🔴 EXPIRED · {item.name} · Market Stock: {format_product_quantity(expired,item)} (included above; review flag)')
                     if status not in {'OUT OF STOCK','LOW'}:
                         risks.append(f'{item.name}: {format_product_quantity(expired,item)} expired')
                 if item.stock is None:
@@ -369,12 +369,12 @@ def _finance(brief, business, start, end, section, highlight, money):
         owing[name] = owing.get(name, ZERO) + row['balance']
     brief['top_debtors'] = sorted(owing.items(), key=lambda item: -item[1])[:3]
     lines = [f'Cash on hand: {money(cash)}', f"Owed to you: {money(opened['receivables'])}",
-             f"You owe: {money(opened['payables'])}", f"Working position (cash + receivables - payables): {money(cash+opened['receivables']-opened['payables'])}"]
+             f"You owe: {money(opened['payables'])}", f"Working position (cash + owed to you − you owe): {money(cash+opened['receivables']-opened['payables'])}"]
     lines += [f'Account · {a.name}: {money(a._calculated_balance)}' for a in accounts]
-    lines += [f"Customer balance · {r['sale'].customer or 'Walk-in'} · sale #{r['sale'].pk} · {r['sale'].date}: {money(r['balance'])}" for r in opened['outstanding_sales']]
-    lines += [f"Supplier balance · {payee(r['po'])} · request #{r['po'].pk}: {money(r['balance'])}" for r in opened['outstanding_pos']]
+    lines += [f"Customer due · {r['sale'].customer or 'Walk-in'} · sale #{r['sale'].pk} · {r['sale'].date}: {money(r['balance'])}" for r in opened['outstanding_sales']]
+    lines += [f"Supplier due · {payee(r['po'])} · request #{r['po'].pk}: {money(r['balance'])}" for r in opened['outstanding_pos']]
     lines += [f"Unpaid expense · {r['expense'].description} · vendor {r['expense'].vendor or 'Vendor not recorded'}: {money(r['balance'])}" for r in opened['outstanding_expenses']]
-    lines += [f"Unpaid walk-in issue (not a receivable) · sale #{r['sale'].pk} · {r['sale'].customer or 'Walk-in'}: {money(r['balance'])}" for r in opened['unpaid_invoice_sales']]
+    lines += [f"Unpaid walk-in (not receivable) · sale #{r['sale'].pk} · {r['sale'].customer or 'Walk-in'}: {money(r['balance'])}" for r in opened['unpaid_invoice_sales']]
     creditors = {}
     for row in opened['outstanding_pos']:
         name = payee(row['po'])
@@ -399,8 +399,8 @@ def _finance(brief, business, start, end, section, highlight, money):
 
 
 def full_text(brief):
-    lines = [f"{brief['report_start']:%d %b %Y} – {brief['report_through']:%d %b %Y}",
-             f"Stock and outstanding balances as of {brief['generated_at']:%d %b %Y %H:%M %Z}."]
+    lines = [f"{brief['report_start']:%a %d %b %Y} – {brief['report_through']:%a %d %b %Y}",
+             f"Stock / balances at {brief['generated_at']:%d %b %Y %H:%M %Z}."]
     scope = ledger.report_scope_label(brief['business'])
     if scope:
         lines.append(f'Ledger scope: {scope}.')

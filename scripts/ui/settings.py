@@ -17,6 +17,7 @@ CSRF_COOKIE_SECURE = False
 CSRF_TRUSTED_ORIGINS = ['http://127.0.0.1:8765']
 PWA_BUILD_VERSION = 'ui-fixture'
 MIGRATION_MODULES = {name: None for name in ['admin','auth','contenttypes','sessions','accounts','core','inventory','procurement','production','sales','expenses','commerce','whatsapp_storefront','assistant']}
+MIGRATION_MODULES['retail'] = None
 
 ASSISTANT_ENABLED = True
 

@@ -5,6 +5,9 @@ from . import notification_views
 from . import delivery_views
 
 urlpatterns = [
+    path("api/v1/storefronts/<slug:business_slug>/experience", views.api_experience, name="commerce_api_experience"),
+    path("shop/<slug:business_slug>/basket-quote/", views.storefront_basket_quote, name="storefront_basket_quote"),
+    path("api/v1/storefronts/<slug:business_slug>/basket-quote", views.api_basket_quote, name="commerce_api_basket_quote"),
     path("attribution/export.csv", views.commerce_attribution_export, name="commerce_attribution_export"),
     path("qr-code.png", views.commerce_qr_code, name="commerce_qr_code"),
     path("delivery/", delivery_views.delivery_dashboard, name="delivery_dashboard"),

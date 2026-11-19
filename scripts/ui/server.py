@@ -25,6 +25,9 @@ with tempfile.TemporaryDirectory(prefix='inprofic-ui-') as directory:
     admin = CustomUser.objects.create_user(username='ui-admin', password='ui-fixture-only', fullname='UI Admin')
     viewer = CustomUser.objects.create_user(username='ui-viewer', password='ui-fixture-only', fullname='UI Viewer')
     UserBusiness.objects.create(user=admin, business=business, role=roles[CustomUser.ROLE_BUSINESS_ADMIN], onboarding_tour_version=CURRENT_TOUR_VERSION)
+    if os.environ.get('INPROFIC_UI_FOUNDER_FIXTURE') == '1':
+        founder=CustomUser.objects.create_superuser(username='ui-founder',password='ui-fixture-only',fullname='UI Founder',email='founder@example.test')
+        UserBusiness.objects.create(user=founder,business=business,role=roles[CustomUser.ROLE_BUSINESS_ADMIN],onboarding_tour_version=CURRENT_TOUR_VERSION)
     # Explicit read-only permission overrides keep the fixture independent of
     # the set of built-in operational roles.
     from accounts.models import Role, RoleModulePermission
@@ -94,6 +97,43 @@ with tempfile.TemporaryDirectory(prefix='inprofic-ui-') as directory:
     outsider = Business.objects.create(name='Other UI Tenant',slug='other-ui')
     CashAccount.raw_objects.create(business=outsider,name='PRIVATE OTHER TENANT',opening_balance=500)
     ensure_default_plans()
+    if os.environ.get('INPROFIC_UI_ALL_MODULES_FIXTURE') == '1':
+        from accounts.models import BusinessModuleAccess
+        from accounts.services import seed_business_modules
+        from production.models import Order, OrderItem
+        seed_business_modules(business)
+        BusinessModuleAccess.objects.filter(business=business).update(enabled=True)
+        RoleModulePermission.objects.filter(role=roles[CustomUser.ROLE_BUSINESS_ADMIN]).update(can_view=True, can_edit=True)
+        RecipeItem.objects.filter(finished_good=good).update(flexible_usage=True)
+        approval = Order.raw_objects.create(pk=87001,business=business,created_by=admin,date=day,
+            order_type='physical_store',notes='Modal approval fixture')
+        OrderItem.objects.create(order=approval,finished_good=good,piece_qty=10)
+    if os.environ.get('INPROFIC_UI_RETAIL_FIXTURE') == '1':
+        from inventory.models import FinishedGoodChannelPrice
+        FinishedGoodChannelPrice.objects.create(finished_good=good,channel='online',price=300)
+        from commerce.models import (CommerceSettings, StorefrontProduct, CommercePaymentConfiguration,
+            CommerceIntake, DeliveryAssignment, DeliveryOrigin, DeliveryDriver)
+        good.stock = 30
+        good.reorder_level = 2
+        good.save(update_fields=['stock','reorder_level'])
+        CommerceSettings.raw_objects.update_or_create(business=business, defaults={'enabled':True})
+        StorefrontProduct.raw_objects.create(business=business,finished_good=good,published=True,allow_stock_order=True)
+        CommercePaymentConfiguration.raw_objects.create(business=business,cash_enabled=True,
+            cash_account=CashAccount.raw_objects.get(business=business,name='Fixture Till'))
+        intake=CommerceIntake.raw_objects.create(business=business,customer_name='Dispatch fixture',
+            customer_address='Lagos destination',idempotency_key='offline-delivery-fixture')
+        origin=DeliveryOrigin.raw_objects.create(business=business,name='Fixture dispatch base',address='Lagos store')
+        DeliveryDriver.raw_objects.create(business=business,name='Fixture rider',provider='inhouse')
+        DeliveryAssignment.raw_objects.create(business=business,intake=intake,origin=origin,provider='inhouse')
+    if os.environ.get('INPROFIC_UI_RETAIL_FIXTURE') == '1' and os.environ.get('INPROFIC_UI_RELEASE_FIXTURE') == '1':
+        StorefrontProduct.raw_objects.get_or_create(business=business,finished_good=cake,defaults={'published':True,'allow_stock_order':False,'allow_preorder':True})
+    if os.environ.get('INPROFIC_UI_PROMOTION_PORTIONS_FIXTURE') == '1':
+        from inventory.models import BulkPackProfile, IndividualSaleOption
+        BulkPackProfile.raw_objects.create(business=business, finished_good=good,
+            name='Pack of four', base_quantity=4, price=1000)
+        IndividualSaleOption.raw_objects.create(business=business, finished_good=good,
+            name='Single loaf', customer_unit='loaf', base_quantity=1,
+            physical_store_price=80, online_price=90, distribution_enabled=True, distribution_price=90)
     port = os.environ.get('INPROFIC_UI_PORT', '8765')
     print(f'UI fixture ready on http://127.0.0.1:{port}', flush=True)
     call_command('runserver', f'127.0.0.1:{port}', use_reloader=False, verbosity=0)

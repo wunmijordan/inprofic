@@ -2,12 +2,15 @@
 <!doctype html>
 <html lang="en" data-tenant="{{ biz.pk|default:'global' }}" data-tenant-accent="{{ biz.accent_color|default:'#D14900' }}" data-tenant-background="{{ biz.background_color|default:'#050733' }}" style="--tenant-background:{{ biz.background_color|default:'#050733' }};--tenant-background-contrast:{{ biz.background_text_color|default:'#FFFFFF' }};--tenant-button:{{ biz.accent_color|default:'#D14900' }};--tenant-button-contrast:{{ biz.button_text_color|default:'#FFFFFF' }}">
 <head>
+{% if offline_mode %}<script>window.INPROFICOfflinePOS=window.parent.INPROFICOfflinePOS;</script>{% endif %}
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ pos_ui.title }} · {{ biz.name }} · INPROFIC</title>
   {% include "_brand_icons.html" %}
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
   <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}?v={{ static_asset_version }}">
+  <link rel="stylesheet" href="{% static 'core/css/product-ribbons.css' %}?v={{ static_asset_version }}">
+  <script src="{% static 'core/js/product-ribbons.js' %}?v={{ static_asset_version }}" defer></script>
   <link rel="stylesheet" href="{% static 'core/css/workspace.css' %}?v={{ static_asset_version }}">
   <link rel="stylesheet" href="{% static 'core/css/button-surfaces.css' %}?v={{ static_asset_version }}">
   <link rel="stylesheet" href="{% static 'core/css/interactions.css' %}?v={{ static_asset_version }}">
@@ -54,7 +57,7 @@
             {% include "_appearance_controls.html" %}
           </div>
         </div>
-        {% if module_permissions.commerce.view %}<a data-button-surface href="{% url 'commerce_dashboard' %}" class="pos-theme-control hidden rounded-xl border px-3 py-2 text-xs font-semibold transition hover:brightness-95 sm:block">Commerce</a>{% endif %}
+        {% if module_permissions.commerce.view %}<a data-button-surface href="{% url 'commerce_dashboard' %}" class="pos-theme-control hidden rounded-xl border px-3 py-2 text-xs font-semibold transition hover:brightness-95 sm:block">{% business_label "Commerce" %}</a>{% endif %}
         {% if module_permissions.dashboard.view %}<a data-button-surface href="{% url 'dashboard' %}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate-900 transition hover:bg-stone-100">Main App</a>{% else %}<a data-button-surface href="{% url 'logout' %}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate-900 transition hover:bg-stone-100">Log Out</a>{% endif %}
       </div>
     </div>
@@ -90,14 +93,16 @@
         <div class="pos-scroll min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
           <div id="product-grid" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-2">
             {% for product in products %}
-              <article class="product-card group rounded-2xl border border-stone-200 bg-[#FFFDF8] p-4 transition hover:border-stone-400 shadow-sm " data-name="{{ product.display_name|lower }}" data-category="{% if product.finished_good.product_category_id %}{{ product.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-product="{{ product.public_id }}" data-unit="{{ product.pos_unit }}" data-direct-channel="{{ product.pos_direct_channel }}" data-direct-allowed="{% if product.pos_direct_allowed %}1{% else %}0{% endif %}" data-distribution-allowed="{% if product.pos_distribution_allowed %}1{% else %}0{% endif %}" data-price-direct="{{ product.pos_direct_price }}" data-price-distribution="{{ product.pos_distribution_price|default_if_none:'' }}" data-min-direct="{{ product.pos_direct_min_quantity }}" data-min-distribution="{{ product.pos_distribution_min_quantity }}" data-stock-available="{{ product.pos_available }}" data-stock-backed="{% if product.finished_good.is_purchased_for_resale %}1{% else %}0{% endif %}">
+              <article class="product-card group rounded-2xl border border-stone-200 bg-[#FFFDF8] p-4 transition hover:border-stone-400 shadow-sm " data-name="{{ product.display_name|lower }} {{ product.finished_good.barcode }}" data-barcode="{{ product.finished_good.barcode }}" data-category="{% if product.finished_good.product_category_id %}{{ product.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-product="{{ product.public_id }}" data-unit="{{ product.pos_unit }}" data-direct-channel="{{ product.pos_direct_channel }}" data-direct-allowed="{% if product.pos_direct_allowed %}1{% else %}0{% endif %}" data-distribution-allowed="{% if product.pos_distribution_allowed %}1{% else %}0{% endif %}" data-price-direct="{{ product.pos_direct_price }}" data-price-distribution="{{ product.pos_distribution_price|default_if_none:'' }}" data-min-direct="{{ product.pos_direct_min_quantity }}" data-min-distribution="{{ product.pos_distribution_min_quantity }}" data-stock-available="{{ product.pos_available }}" data-stock-backed="{% if product.finished_good.is_purchased_for_resale %}1{% else %}0{% endif %}">
+                {% include "commerce/_product_ribbons.html" %}
                 <div class="flex gap-3">{% if product.public_image_url %}<img src="{{ product.public_image_url }}" alt="" class="h-20 w-20 shrink-0 rounded-xl object-cover">{% else %}<div class="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-2xl font-semibold text-stone-300">{{ product.display_name|slice:':1' }}</div>{% endif %}<div class="min-w-0 flex-1"><span class="mb-1 inline-block rounded-full bg-stone-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-stone-500">{% if product.finished_good.product_category %}{{ product.finished_good.product_category.name }}{% else %}Uncategorised{% endif %}</span><h3 class="text-sm font-semibold text-stone-900">{{ product.display_name }}</h3>{% if product.portion_label %}<p class="mt-0.5 text-[11px] font-semibold text-stone-500" data-portion-label>{{ product.portion_label }}</p>{% endif %}<p data-pos-price-label class="mt-1 font-mono text-base font-semibold text-[#8f172d]"></p><p data-pos-stock-label class="mt-1 text-[11px] text-stone-500">Stock: {{ product.pos_available|floatformat:-2 }} {{ product.pos_unit }}</p></div></div>
                 {% if product.pos_contents|length > 1 or product.pos_bulk_packs %}<details class="relative mt-2"><summary class="cursor-pointer list-none text-[11px] font-semibold text-[#8f172d] underline underline-offset-4">What's included? ⓘ</summary><div class="absolute left-0 top-6 z-20 w-64 rounded-xl border border-stone-200 bg-white p-3 text-xs shadow-xl"><p class="font-semibold text-stone-800">Standard portion</p><ul class="mt-1.5 space-y-1 text-stone-600">{% for item in product.pos_contents %}<li>{{ item.name }}{% if item.quantity_label %} · {{ item.quantity_label }}{% endif %}</li>{% endfor %}</ul></div></details>{% endif %}
-                {% if product.pos_distribution_allowed and product.pos_bulk_packs %}<label data-pos-bulk-wrap class="mt-2 hidden block text-[10px] font-bold uppercase tracking-wide text-stone-400">Bulk option<select name="bulk_pack_{{ product.public_id }}" data-pos-bulk-select class="mt-1 w-full rounded-lg border border-stone-200 bg-white px-2.5 py-2 text-xs font-semibold normal-case tracking-normal">{% for pack in product.pos_bulk_packs %}<option value="{{ pack.public_id }}" data-name="{{ pack.name }}" data-unit="{{ pack.name }}" data-price="{{ pack.price }}" data-min="{{ pack.min_order_quantity }}">{{ pack.name }} · {{ pack.price|money:biz.currency_symbol }}</option>{% endfor %}</select></label>{% endif %}
+                {% if product.pos_distribution_allowed and product.pos_bulk_packs %}<label data-pos-bulk-wrap class="mt-2 hidden block text-[10px] font-bold uppercase tracking-wide text-stone-400">Bulk option<select name="bulk_pack_{{ product.public_id }}" data-pos-bulk-select class="mt-1 w-full rounded-lg border border-stone-200 bg-white px-2.5 py-2 text-xs font-semibold normal-case tracking-normal">{% for pack in product.pos_bulk_packs %}<option value="{{ pack.public_id }}" data-name="{{ pack.name }}" data-unit="{{ pack.name }}" data-price="{{ pack.promotion_distribution_price }}" data-min="{{ pack.min_order_quantity }}">{{ pack.name }} · {{ pack.promotion_distribution_price|money:biz.currency_symbol }}</option>{% endfor %}</select></label>{% endif %}
                 <div class="mt-3 flex items-center gap-2"><button data-button-surface type="button" data-add="{{ product.public_id }}" class="flex-1 rounded-xl bg-stone-800 px-3 py-2.5 text-sm font-semibold text-white transition  focus:outline-none focus:ring-2 ">Add</button><input aria-label="Quantity for {{ product.display_name }}" name="qty_{{ product.public_id }}" data-qty="{{ product.public_id }}" type="number" min="0" step="0.01" value="0" class="h-10 w-20 rounded-xl border border-stone-300 bg-white px-2 text-right font-mono text-sm outline-none focus:border-stone-500"></div>
               </article>
               {% for option in product.pos_individual_options %}
-              <article class="product-card group rounded-2xl border border-stone-200 bg-[#FFFDF8] p-4 shadow-sm transition hover:border-stone-400" data-name="{{ option.name|lower }} {{ product.finished_good.name|lower }}" data-category="{% if product.finished_good.product_category_id %}{{ product.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-product="option:{{ option.public_id }}" data-unit="{{ option.customer_unit|default:product.finished_good.unit }}" data-direct-channel="{{ product.pos_direct_channel }}" data-direct-allowed="{% if product.pos_direct_channel == 'online' %}{% if option.online_enabled and option.online_price != None %}1{% else %}0{% endif %}{% else %}{% if option.physical_store_enabled and option.physical_store_price != None %}1{% else %}0{% endif %}{% endif %}" data-distribution-allowed="{% if option.distribution_enabled and option.distribution_price != None %}1{% else %}0{% endif %}" data-price-direct="{% if product.pos_direct_channel == 'online' %}{{ option.online_price|default_if_none:'' }}{% else %}{{ option.physical_store_price|default_if_none:'' }}{% endif %}" data-price-distribution="{{ option.distribution_price|default_if_none:'' }}" data-min-direct="{% if product.pos_direct_channel == 'online' %}{{ option.online_min_quantity }}{% else %}{{ option.physical_store_min_quantity }}{% endif %}" data-min-distribution="{{ option.distribution_min_quantity }}" data-stock-available="{{ product.pos_available }}" data-stock-backed="{% if product.finished_good.is_purchased_for_resale %}1{% else %}0{% endif %}">
+              <article class="product-card group rounded-2xl border border-stone-200 bg-[#FFFDF8] p-4 shadow-sm transition hover:border-stone-400" data-name="{{ option.name|lower }} {{ product.finished_good.name|lower }}" data-category="{% if product.finished_good.product_category_id %}{{ product.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-product="option:{{ option.public_id }}" data-promotion-selection="individual:{{ option.public_id }}" data-unit="{{ option.customer_unit|default:product.finished_good.unit }}" data-direct-channel="{{ product.pos_direct_channel }}" data-direct-allowed="{% if product.pos_direct_channel == 'online' %}{% if option.online_enabled and option.online_price != None %}1{% else %}0{% endif %}{% else %}{% if option.physical_store_enabled and option.physical_store_price != None %}1{% else %}0{% endif %}{% endif %}" data-distribution-allowed="{% if option.distribution_enabled and option.distribution_price != None %}1{% else %}0{% endif %}" data-price-direct="{% if product.pos_direct_channel == 'online' %}{{ option.promotion_online_price|default_if_none:'' }}{% else %}{{ option.promotion_physical_store_price|default_if_none:'' }}{% endif %}" data-price-distribution="{{ option.promotion_distribution_price|default_if_none:'' }}" data-min-direct="{% if product.pos_direct_channel == 'online' %}{{ option.online_min_quantity }}{% else %}{{ option.physical_store_min_quantity }}{% endif %}" data-min-distribution="{{ option.distribution_min_quantity }}" data-stock-available="{{ product.pos_available }}" data-stock-backed="{% if product.finished_good.is_purchased_for_resale %}1{% else %}0{% endif %}">
+                {% include "commerce/_product_ribbons.html" with individual_option=True %}
                 <div class="flex gap-3">{% if product.public_image_url %}<img src="{{ product.public_image_url }}" alt="" class="h-20 w-20 shrink-0 rounded-xl object-cover">{% else %}<div class="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-2xl font-semibold text-stone-300">{{ option.name|slice:':1' }}</div>{% endif %}<div class="min-w-0 flex-1"><div class="mb-1 flex flex-wrap gap-1"><span class="inline-block rounded-full bg-stone-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-stone-500">{% if product.finished_good.product_category %}{{ product.finished_good.product_category.name }}{% else %}Uncategorised{% endif %}</span><span class="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-700">Individual</span></div><h3 class="text-sm font-semibold text-stone-900">{{ option.name }}</h3><p data-pos-price-label class="mt-1 font-mono text-base font-semibold text-[#8f172d]"></p><p data-pos-stock-label class="mt-1 text-[11px] text-stone-500">Stock from {{ product.finished_good.name }}</p></div></div>
                 <details class="relative mt-2"><summary class="cursor-pointer list-none text-[11px] font-semibold text-[#8f172d] underline underline-offset-4">What's included? ⓘ</summary><div class="absolute left-0 top-6 z-20 w-64 rounded-xl border border-stone-200 bg-white p-3 text-xs shadow-xl"><p class="font-semibold text-stone-800">Plain individual option</p><ul class="mt-1.5 space-y-1 text-stone-600"><li>{{ product.finished_good.name }}{% if option.public_note %} · {{ option.public_note }}{% endif %}</li></ul></div></details>
                 <div class="mt-3 flex items-center gap-2"><button data-button-surface type="button" data-add="option:{{ option.public_id }}" class="flex-1 rounded-xl bg-stone-800 px-3 py-2.5 text-sm font-semibold text-white transition focus:outline-none focus:ring-2">Add</button><input aria-label="Quantity for {{ option.name }}" name="qty_option_{{ option.public_id }}" data-qty="option:{{ option.public_id }}" type="number" min="0" step="0.01" value="0" class="h-10 w-20 rounded-xl border border-stone-300 bg-white px-2 text-right font-mono text-sm outline-none focus:border-stone-500"></div>
@@ -111,8 +116,8 @@
       <aside class="pos-scroll min-h-0 overflow-y-auto rounded-2xl border border-stone-200 bg-white shadow-sm pos-fill">
         <div class="sticky top-0 z-10 border-b border-stone-200 bg-white/95 p-4 backdrop-blur"><div class="flex items-center justify-between"><div><p class="text-[10px] font-bold uppercase tracking-wider text-stone-400">{{ pos_ui.basket_label }}</p><h2 class="font-display text-xl font-semibold">Checkout</h2></div><button type="button" id="clear-cart" class="rounded-lg px-2 py-1 text-xs font-semibold text-stone-500 hover:bg-stone-100">Clear</button></div><div class="mt-3 flex items-end justify-between"><span class="text-xs text-stone-500"><span id="cart-count">0</span> line item(s)</span><strong id="cart-total" class="font-mono text-2xl text-[#8f172d]">{{ biz.currency_symbol }}0.00</strong></div></div>
         <div class="p-4">
-          <div id="cart-empty" class="rounded-xl border border-dashed border-stone-300 bg-stone-50 px-4 py-6 text-center text-sm text-stone-500">Select a product to start the sale.</div>
-          <div id="cart-lines" class="space-y-2"></div>
+          <p id="cart-promotion" class="mb-3 text-xs text-stone-600" role="status" hidden></p><div id="cart-empty" class="rounded-xl border border-dashed border-stone-300 bg-stone-50 px-4 py-6 text-center text-sm text-stone-500">Select a product to start the sale.</div>
+          <div id="cart-lines" class="space-y-2"></div><div data-promotion-rewards role="status" hidden></div>
 
           <div class="mt-5 grid gap-3 border-t border-stone-200 pt-4">
             {% if pos_ui.show_service_mode %}<fieldset><legend class="text-xs font-semibold text-stone-600">{{ pos_ui.service_mode_label }}</legend><div class="mt-2 grid grid-cols-3 gap-2">{% for code,label in pos_ui.service_modes %}{% if code != "delivery" or delivery_enabled %}<label class="cursor-pointer"><input type="radio" name="service_mode" value="{{ code }}" class="peer sr-only" {% if request.POST.service_mode == code or not request.POST.service_mode and forloop.first %}checked{% endif %}><span class="block rounded-xl border border-stone-200 px-2 py-2 text-center text-xs font-semibold transition peer-checked:border-[#8f172d] peer-checked:bg-[#8f172d] peer-checked:text-white">{{ label }}</span></label>{% endif %}{% endfor %}</div></fieldset>{% endif %}
@@ -154,6 +159,13 @@
                 <div id="pos-delivery-switch-policy" class="hidden rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] leading-4 text-sky-900"></div>
               </div>
             </section>{% endif %}
+            {% if not offline_mode %}<section class="rounded-lg border p-3 space-y-2" aria-label="Cashier drawer">
+              <p class="text-xs">{{ retail_branch.name }} · {{ user.fullname|default:user.username }}</p>
+              {% if cashier_session %}<p class="text-sm font-semibold">Drawer open · Session #{{ cashier_session.pk }}</p><div class="flex flex-wrap gap-2"><a class="workspace-action" href="{% url 'retail_cashier_detail' cashier_session.pk %}">View drawer</a><a class="workspace-action" data-form-dialog href="{% url 'retail_cashier_close' cashier_session.pk %}">Count & close</a></div>
+              {% else %}<p class="text-xs">{% if cashier_session_required %}Open a cashier session before selling.{% else %}Open a session to track your float and reconcile cash at the end of your shift.{% endif %}</p><a class="workspace-action" data-form-dialog href="{% url 'retail_cashier_open' %}">Open cashier session</a>{% endif %}
+              <a class="text-xs" href="{% url 'retail_profile' %}">{% business_label "My profile" %}</a>
+            </section>{% endif %}
+            <label class="block text-xs">Cash portion for split cash + verified transfer (optional)<input name="split_cash" type="number" min="0.01" step="0.01"><span>Leave blank for a single payment. Confirm both portions have been received.</span></label>
             <fieldset><legend class="text-xs font-semibold text-stone-600">Payment method</legend><div class="mt-2 grid gap-2">{% for method in payment_methods %}<label class="cursor-pointer"><input type="radio" name="method" value="{{ method.code }}" {% if request.POST.method %}{% if request.POST.method == method.code %}checked{% endif %}{% elif forloop.first %}checked{% endif %} class="peer sr-only"><span class="flex items-center justify-between rounded-xl border border-stone-200 p-3 text-sm transition peer-checked:border-[#8f172d] peer-checked:bg-[#8f172d] peer-checked:text-white"><span class="font-medium">{{ method.label }}</span><span class="h-2.5 w-2.5 rounded-full bg-stone-300 peer-checked:bg-[#8f172d]"></span></span></label>{% empty %}<div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Configure cash, Transfer, or a supported terminal in Commerce payment settings.</div>{% endfor %}</div></fieldset>
             <div id="pos-transfer-account" class="hidden rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-950">
               <p class="font-semibold">Transfer destination</p>
@@ -211,13 +223,19 @@
     </form>
   </main>
 
+<dialog id="pos-parked-dialog" data-form-size="standard" aria-label="Parked baskets" style="max-width:48rem" class="p-5">
+  <header class="flex items-center justify-between gap-4 mb-4"><h2 class="font-semibold text-xl">Parked baskets</h2><button type="button" class="workspace-icon-button" aria-label="Close" data-parked-close>×</button></header>
+  <p class="text-sm mb-4">Restore a saved basket to continue checkout. Current stock and prices are checked before selling.</p>
+  <p role="status" class="text-sm mb-3" data-parked-status></p>
+  <div class="workspace-table"><table class="w-full text-sm"><thead><tr><th>Customer / basket</th><th>Saved</th><th>Products</th><th></th></tr></thead><tbody data-parked-rows></tbody></table></div>
+</dialog>
 <dialog id="pos-review-dialog" class="m-auto w-[min(96vw,46rem)] overflow-hidden rounded-3xl border-0 bg-white p-0 shadow-2xl">
   <div class="flex items-center justify-between border-b border-stone-200 px-5 py-4"><div><p class="text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">Before anything is recorded</p><h2 class="font-display text-xl font-semibold text-stone-900">Review order</h2></div><button type="button" id="pos-review-close" class="flex h-9 w-9 items-center justify-center rounded-full border border-stone-200 bg-white text-xl text-stone-500" aria-label="Close order preview">×</button></div>
   <div class="max-h-[72dvh] overflow-y-auto px-5 py-4">
     <div id="pos-review-items" class="divide-y divide-stone-100 rounded-2xl border border-stone-200"></div>
     <div class="mt-4 grid gap-3 rounded-2xl bg-stone-50 p-4 text-sm sm:grid-cols-2"><div><p class="text-xs text-stone-400">Customer</p><p id="pos-review-customer" class="mt-1 font-semibold text-stone-800"></p></div><div><p class="text-xs text-stone-400">Payment</p><p id="pos-review-payment" class="mt-1 font-semibold text-stone-800"></p></div><div><p class="text-xs text-stone-400">Service</p><p id="pos-review-service" class="mt-1 font-semibold text-stone-800"></p></div><div id="pos-review-address-wrap" class="hidden"><p class="text-xs text-stone-400">Delivery address</p><p id="pos-review-address" class="mt-1 font-semibold text-stone-800"></p></div></div>
-    <div class="mt-4 space-y-2 rounded-2xl border border-stone-200 p-4 text-sm"><div class="flex justify-between gap-4"><span class="text-stone-500">Products subtotal</span><strong id="pos-review-subtotal"></strong></div><div id="pos-review-delivery-row" class="hidden flex justify-between gap-4"><span class="text-stone-500">Delivery fee</span><strong id="pos-review-delivery"></strong></div><div class="flex justify-between gap-4 border-t border-stone-200 pt-3 text-base"><span class="font-semibold">Total to collect</span><strong id="pos-review-total" class="text-[#8f172d]"></strong></div></div>
-    <p class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">Confirming will create the checkout and start/record the selected payment flow. Use Back if anything needs correcting.</p>
+    <p id="pos-review-promotion" class="mt-3 text-sm text-stone-600" hidden></p><div class="mt-4 space-y-2 rounded-2xl border border-stone-200 p-4 text-sm"><div class="flex justify-between gap-4"><span class="text-stone-500">Products subtotal</span><strong id="pos-review-subtotal"></strong></div><div id="pos-review-delivery-row" class="hidden flex justify-between gap-4"><span class="text-stone-500">Delivery fee</span><strong id="pos-review-delivery"></strong></div><div class="flex justify-between gap-4 border-t border-stone-200 pt-3 text-base"><span class="font-semibold">Total to collect</span><strong id="pos-review-total" class="text-[#8f172d]"></strong></div></div>
+    <p class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">{% if offline_mode %}Confirming saves this cash sale on this device. It stays pending until you review and confirm synchronization.{% else %}Confirming will create the checkout and start/record the selected payment flow. Use Back if anything needs correcting.{% endif %}</p>
   </div>
   <div class="flex gap-2 border-t border-stone-200 bg-white px-5 py-4"><button data-button-surface type="button" id="pos-review-back" class="flex-1 rounded-xl border border-stone-300 px-4 py-3 text-sm font-semibold text-stone-700">Back</button><button data-button-surface type="button" id="pos-review-confirm" class="flex-1 rounded-xl bg-[#D14900] px-4 py-3 text-sm font-bold text-white">Confirm order</button></div>
 </dialog>
@@ -225,10 +243,10 @@
 <dialog id="pos-receipt-dialog" class="m-auto w-[min(96vw,46rem)] overflow-hidden rounded-3xl border-0 bg-white p-0 shadow-2xl">
   <div class="flex items-center justify-between border-b border-stone-200 bg-white px-5 py-4"><div><p class="text-[10px] font-bold uppercase tracking-[.16em] text-stone-400">Completed sale</p><h2 class="font-display text-xl font-semibold text-stone-900">Receipt</h2></div><button type="button" id="pos-receipt-close" class="flex h-9 w-9 items-center justify-center rounded-full border border-stone-200 bg-white text-xl text-stone-500" aria-label="Close receipt">×</button></div>
   <div class="max-h-[72dvh] overflow-y-auto px-5 py-5" id="pos-receipt-print-area">
-    <div class="flex flex-wrap items-start justify-between gap-4 border-b border-stone-100 pb-4"><div><p class="text-[10px] font-bold uppercase tracking-[.18em] text-stone-400">Payment receipt</p><h3 class="mt-1 font-display text-2xl font-semibold">{{ biz.name }}</h3><p id="pos-receipt-id" class="mt-1 text-xs text-stone-500"></p></div><span class="rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-bold text-emerald-700">Payment confirmed</span></div>
-    <div class="grid gap-3 border-b border-stone-100 py-4 text-sm sm:grid-cols-2"><div><p class="text-xs text-stone-400">Customer</p><p id="pos-receipt-customer" class="mt-1 font-semibold"></p><p id="pos-receipt-contact" class="text-xs text-stone-500"></p></div><div class="sm:text-right"><p class="text-xs text-stone-400">Verified</p><p id="pos-receipt-verified" class="mt-1 font-semibold"></p><p id="pos-receipt-method" class="text-xs text-stone-500"></p></div></div>
+    <div class="flex flex-wrap items-start justify-between gap-4 border-b border-stone-100 pb-4"><div><p class="text-[10px] font-bold uppercase tracking-[.18em] text-stone-400">Payment receipt</p><h3 class="mt-1 font-display text-2xl font-semibold">{{ biz.name }}</h3><p id="pos-receipt-id" class="mt-1 text-xs text-stone-500"></p></div><span class="rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-bold text-emerald-700">{% if offline_mode %}Pending sync{% else %}Payment confirmed{% endif %}</span></div>
+    <div class="grid gap-3 border-b border-stone-100 py-4 text-sm sm:grid-cols-2"><div><p class="text-xs text-stone-400">Customer</p><p id="pos-receipt-customer" class="mt-1 font-semibold"></p><p id="pos-receipt-contact" class="text-xs text-stone-500"></p></div><div class="sm:text-right"><p class="text-xs text-stone-400">{% if offline_mode %}Recorded offline{% else %}Verified{% endif %}</p><p id="pos-receipt-verified" class="mt-1 font-semibold"></p><p id="pos-receipt-method" class="text-xs text-stone-500"></p></div></div>
     <div id="pos-receipt-items" class="divide-y divide-stone-100"></div>
-    <div class="border-t border-stone-100 pt-4"><div class="space-y-2 rounded-2xl bg-stone-50 p-4 text-sm"><div class="flex justify-between gap-4"><span class="text-stone-500">Products subtotal</span><strong id="pos-receipt-subtotal"></strong></div><div id="pos-receipt-delivery-row" class="hidden flex justify-between gap-4"><span class="text-stone-500">Delivery fee</span><strong id="pos-receipt-delivery"></strong></div><div class="flex justify-between gap-4 border-t border-stone-200 pt-3 text-base"><span class="font-semibold">Amount received</span><strong id="pos-receipt-total"></strong></div></div><div class="mt-4"><p class="text-xs text-stone-400">Payment reference</p><p id="pos-receipt-reference" class="mt-1 break-all text-sm font-semibold text-stone-700"></p></div></div>
+    <p id="pos-receipt-promotion" class="text-sm text-stone-600" hidden></p><div class="border-t border-stone-100 pt-4"><div class="space-y-2 rounded-2xl bg-stone-50 p-4 text-sm"><div class="flex justify-between gap-4"><span class="text-stone-500">Products subtotal</span><strong id="pos-receipt-subtotal"></strong></div><div id="pos-receipt-delivery-row" class="hidden flex justify-between gap-4"><span class="text-stone-500">Delivery fee</span><strong id="pos-receipt-delivery"></strong></div><div class="flex justify-between gap-4 border-t border-stone-200 pt-3 text-base"><span class="font-semibold">Amount received</span><strong id="pos-receipt-total"></strong></div></div><div class="mt-4"><p class="text-xs text-stone-400">Payment reference</p><p id="pos-receipt-reference" class="mt-1 break-all text-sm font-semibold text-stone-700"></p></div></div>
   </div>
   <div class="pos-receipt-actions flex gap-2 border-t border-stone-200 bg-white px-5 py-4"><button data-button-surface type="button" id="pos-receipt-done" class="flex-1 rounded-xl border border-stone-300 px-4 py-3 text-sm font-semibold text-stone-700">Done</button><button data-button-surface type="button" id="pos-receipt-print" class="flex-1 rounded-xl bg-[#D14900] px-4 py-3 text-sm font-bold text-white">Print receipt</button></div>
 </dialog>
@@ -266,6 +284,45 @@
   const reviewDialog = document.getElementById('pos-review-dialog');
   const receiptDialog = document.getElementById('pos-receipt-dialog');
   let basketSubtotal = 0;
+  let campaignPreviewTimer, campaignPreviewKey = '';
+  function scheduleCampaignPreview() {
+    window.INPROFICRenderPromotionRewards?.(document.querySelector("[data-promotion-rewards]"), []);
+    if (!document.querySelector('[data-product-offers]')) return;
+    if (window.INPROFICOfflinePOS) {
+      const note = document.getElementById('cart-promotion'); note.hidden = true;
+      try {
+        const quote = window.INPROFICOfflinePOS.preview(new FormData(form));
+        const changed = basketSubtotal !== Number(quote.subtotal);
+        basketSubtotal = Number(quote.subtotal);
+        window.INPROFICRenderPromotionRewards?.(document.querySelector("[data-promotion-rewards]"), quote.promotion?.rewards || []);
+        if (changed && deliveryQuoteId?.value) invalidateDeliveryQuote("Offer pricing updated. Refresh the delivery quote before payment.");
+        totalNode.textContent = money(basketSubtotal + deliveryFee);
+        note.hidden = !(Number(quote.promotion?.saving)>0);
+        note.textContent = Number(quote.promotion?.saving)>0 ? `${quote.promotion.name} · Saved {{ biz.currency_symbol|escapejs }}${quote.promotion.saving}` : '';
+      } catch (_) { /* Empty and invalid baskets are handled by the checkout flow. */ }
+      return;
+    }
+    const payload = new FormData(form); payload.set('preview','1'); payload.delete('delivery_quote_id'); payload.delete('request_delivery');
+    if (!payload.get('method')) payload.set('method', form.querySelector('[name="method"]')?.value || 'cash');
+    const key = JSON.stringify([...payload].filter(([name]) => name.startsWith('qty_') || name.startsWith('bulk_pack_') || name === 'order_mode'));
+    campaignPreviewKey = key; clearTimeout(campaignPreviewTimer);
+    const note = document.getElementById('cart-promotion'); note.hidden = true;
+    if (![...payload].some(([name,value]) => name.startsWith('qty_') && Number(value)>0)) return;
+    campaignPreviewTimer = setTimeout(async () => {
+      try {
+        const response = await fetch(form.action || location.href, {method:'POST', body:payload, headers:{Accept:'application/json'}});
+        const quote = await response.json();
+        if (key !== campaignPreviewKey || !response.ok) return;
+        const changed = basketSubtotal !== Number(quote.subtotal);
+        basketSubtotal = Number(quote.subtotal);
+        window.INPROFICRenderPromotionRewards?.(document.querySelector("[data-promotion-rewards]"), quote.promotion?.rewards || []);
+        if (changed && deliveryQuoteId?.value) invalidateDeliveryQuote("Offer pricing updated. Refresh the delivery quote before payment.");
+        totalNode.textContent = money(basketSubtotal + deliveryFee);
+        note.hidden = !(Number(quote.promotion?.saving)>0);
+        note.textContent = Number(quote.promotion?.saving)>0 ? `${quote.promotion.name} · Saved {{ biz.currency_symbol|escapejs }}${quote.promotion.saving}` : '';
+      } catch (_) { /* Review order always validates the price again. */ }
+    }, 300);
+  }
   let deliveryFee = 0;
   let deliveryQuoteSignature = '';
   let deliveryLocationSource = '';
@@ -274,6 +331,7 @@
   const manualConfirmTitle = document.getElementById('manual-confirm-title');
   const manualConfirmCopy = document.getElementById('manual-confirm-copy');
   const manualConfirmInput = form?.elements.manual_payment_received;
+  const splitCashInput = form?.elements.split_cash;
   const transferAccount = document.getElementById('pos-transfer-account');
   const transferBank = document.getElementById('pos-transfer-bank');
   const transferAccountName = document.getElementById('pos-transfer-account-name');
@@ -297,55 +355,69 @@
     if(transferRoute){transferRoute.required=method==='transfer';transferRoute.disabled=method!=='transfer';}
     if(method==='transfer')syncTransferRoute();
     if(manualConfirmInput){manualConfirmInput.required=needsManual;if(!needsManual)manualConfirmInput.checked=false;}
-    if(method==='transfer'){manualConfirmTitle.textContent='Transfer received';manualConfirmCopy.textContent='Turn this on only after staff has verified the transfer in the business bank account.';}
+    if(splitCashInput?.value && method==='transfer'){manualConfirmTitle.textContent='Cash and transfer received';manualConfirmCopy.textContent='Confirm the cash portion is physically in hand and the remaining transfer is verified in the business bank account.';}
+    else if(method==='transfer'){manualConfirmTitle.textContent='Transfer received';manualConfirmCopy.textContent='Turn this on only after staff has verified the transfer in the business bank account.';}
     else {manualConfirmTitle.textContent='Cash received';manualConfirmCopy.textContent='Turn this on only after the cash is physically in hand.';}
   }
   form?.querySelectorAll('[name="method"]').forEach(input=>input.addEventListener('change',syncManualConfirmation));
   transferRoute?.addEventListener('change',syncTransferRoute);
+  splitCashInput?.addEventListener('input',()=>{if(splitCashInput.value){const transfer=form.querySelector('[name=method][value=transfer]');if(transfer)transfer.checked=true;}if(manualConfirmInput)manualConfirmInput.checked=false;syncManualConfirmation();});
   syncManualConfirmation();
 
-  const selectedItems = () => cards.map(card => {
-    const qty = Number(card.querySelector('[data-qty]')?.value || 0);
-    if(qty <= 0) return null;
-    const price = Number(card.dataset.price || 0);
-    return {name:card.querySelector('h3')?.textContent.trim() || 'Product', quantity:qty, unit_price:price, line_total:qty*price};
-  }).filter(Boolean);
+  function renderReview(preview){
+    const offer = document.getElementById('pos-review-promotion');
+    offer.hidden = !(Number(preview.promotion?.saving)>0);
+    offer.textContent = Number(preview.promotion?.saving)>0 ? `${preview.promotion.name} · Saved {{ biz.currency_symbol|escapejs }}${preview.promotion.saving}` : '';
 
-  function renderReview(){
-    const items=selectedItems(), list=document.getElementById('pos-review-items');list.replaceChildren();
-    items.forEach(item=>{const row=document.createElement('div');row.className='flex items-start justify-between gap-4 px-4 py-3 text-sm';const left=document.createElement('div');const name=document.createElement('p');name.className='font-semibold text-stone-800';name.textContent=item.name;const meta=document.createElement('p');meta.className='mt-1 text-xs text-stone-500';meta.textContent=`${item.quantity} × ${money(item.unit_price)}`;left.append(name,meta);const total=document.createElement('strong');total.textContent=money(item.line_total);row.append(left,total);list.append(row);});
+    const items=preview.items, list=document.getElementById('pos-review-items');list.replaceChildren();
+    items.forEach(item=>{const row=document.createElement('div');row.className='flex items-start justify-between gap-4 px-4 py-3 text-sm';const left=document.createElement('div');const name=document.createElement('p');name.className='font-semibold text-stone-800';name.textContent=(item.is_promotion_reward ? "Free promotion reward · " : "") + item.name;const meta=document.createElement('p');meta.className='mt-1 text-xs text-stone-500';meta.textContent=`${item.quantity} × ${money(item.unit_price)}`;left.append(name,meta);const total=document.createElement('strong');total.textContent=money(item.line_total);row.append(left,total);list.append(row);});
     const customer=form.elements.customer_name?.value?.trim()||'Walk-in Customer';const phone=form.elements.customer_phone?.value?.trim()||'';const email=form.elements.customer_email?.value?.trim()||'';document.getElementById('pos-review-customer').textContent=[customer,phone,email].filter(Boolean).join(' · ');
     const payment=form.querySelector('[name="method"]:checked');let paymentLabel=payment?.closest('label')?.querySelector('.font-medium')?.textContent?.trim()||payment?.value||'—';if(payment?.value==='transfer'&&transferRoute?.selectedOptions?.[0])paymentLabel+=` · ${transferRoute.selectedOptions[0].textContent.trim()}`;document.getElementById('pos-review-payment').textContent=paymentLabel;
     const service=form.querySelector('[name="service_mode"]:checked');const reference=form.elements.table_reference?.value?.trim()||'';document.getElementById('pos-review-service').textContent=[deliveryToggle?.checked?'Delivery':(service?.closest('label')?.textContent?.trim()||service?.value||'Counter sale'),reference].filter(Boolean).join(' · ');
     const addressWrap=document.getElementById('pos-review-address-wrap');addressWrap.classList.toggle('hidden',!deliveryToggle?.checked);const zone=deliveryArea?.selectedOptions?.[0]?.value?deliveryArea.selectedOptions[0].textContent.trim():'';document.getElementById('pos-review-address').textContent=[zone,deliveryAddress?.value.trim()||''].filter(Boolean).join(' · ')||'—';
-    document.getElementById('pos-review-subtotal').textContent=money(basketSubtotal);const deliveryRow=document.getElementById('pos-review-delivery-row');deliveryRow.classList.toggle('hidden',!deliveryToggle?.checked);document.getElementById('pos-review-delivery').textContent=money(deliveryFee);document.getElementById('pos-review-total').textContent=money(basketSubtotal+deliveryFee);
+    document.getElementById('pos-review-subtotal').textContent=money(preview.subtotal);const deliveryRow=document.getElementById('pos-review-delivery-row');deliveryRow.classList.toggle('hidden',!deliveryToggle?.checked);document.getElementById('pos-review-delivery').textContent=money(preview.delivery_fee);document.getElementById('pos-review-total').textContent=money(preview.total);
   }
-  function openReview(){if(!reviewDialog)return;renderReview();if(!reviewDialog.open)reviewDialog.showModal();}
+  async function openReview(){
+    if(!reviewDialog)return;
+    checkoutButton.disabled=true;
+    try{
+      const payload=new FormData(form);payload.set('preview','1');
+      let preview;
+      if(window.INPROFICOfflinePOS)preview=window.INPROFICOfflinePOS.preview(payload);
+      else {const response=await fetch(form.action||location.href,{method:'POST',body:payload,headers:{Accept:'application/json'}});preview=await response.json();if(!response.ok)throw Error(preview.detail||'Could not review this sale.');}
+      renderReview(preview);if(!reviewDialog.open)reviewDialog.showModal();
+    }catch(error){window.alert(error.message);}
+    finally{checkoutButton.disabled=false;}
+  }
   function closeReview(){if(reviewDialog?.open)reviewDialog.close();}
   document.getElementById('pos-review-close')?.addEventListener('click',closeReview);document.getElementById('pos-review-back')?.addEventListener('click',closeReview);reviewDialog?.addEventListener('click',event=>{if(event.target===reviewDialog)closeReview();});
   document.getElementById('pos-review-confirm')?.addEventListener('click',()=>{if(!form.reportValidity()){finalSubmit=false;closeReview();return;}finalSubmit=true;closeReview();checkoutButton.disabled=true;form.requestSubmit(checkoutButton);});
 
   function renderReceipt(data){
+    const offer = document.getElementById('pos-receipt-promotion');
+    offer.hidden = !(Number(data.promotion?.saving)>0);
+    offer.textContent = Number(data.promotion?.saving)>0 ? `Order offer · ${data.promotion.name} · Saved {{ biz.currency_symbol|escapejs }}${data.promotion.saving}` : '';
+
     if(!data||!receiptDialog)return;
     document.getElementById('pos-receipt-id').textContent=`Receipt ${data.receipt_id||''}`;
     document.getElementById('pos-receipt-customer').textContent=data.customer?.name||'Customer';
     document.getElementById('pos-receipt-contact').textContent=[data.customer?.phone,data.customer?.email].filter(Boolean).join(' · ');
     document.getElementById('pos-receipt-verified').textContent=data.verified_at?new Date(data.verified_at).toLocaleString():'—';
     document.getElementById('pos-receipt-method').textContent=data.payment?.method_label||data.payment?.method||'';
-    const items=document.getElementById('pos-receipt-items');items.replaceChildren();(data.items||[]).forEach(item=>{const row=document.createElement('div');row.className='flex items-start justify-between gap-4 py-3 text-sm';const left=document.createElement('div');const name=document.createElement('p');name.className='font-semibold text-stone-800';name.textContent=item.name;const meta=document.createElement('p');meta.className='mt-1 text-xs text-stone-500';meta.textContent=`${item.quantity} × ${money(item.unit_price)}`;left.append(name,meta);const total=document.createElement('strong');total.textContent=money(item.line_total);row.append(left,total);items.append(row);});
+    const items=document.getElementById('pos-receipt-items');items.replaceChildren();(data.items||[]).forEach(item=>{const row=document.createElement('div');row.className='flex items-start justify-between gap-4 py-3 text-sm';const left=document.createElement('div');const name=document.createElement('p');name.className='font-semibold text-stone-800';name.textContent=(item.is_promotion_reward ? "Free promotion reward · " : "") + item.name;const meta=document.createElement('p');meta.className='mt-1 text-xs text-stone-500';meta.textContent=`${item.quantity} × ${money(item.unit_price)}`;left.append(name,meta);const total=document.createElement('strong');total.textContent=money(item.line_total);row.append(left,total);items.append(row);});
     if(!(data.items||[]).length){const empty=document.createElement('p');empty.className='py-4 text-sm text-stone-500';empty.textContent='No line-item detail is attached to this receipt.';items.append(empty);}
     document.getElementById('pos-receipt-subtotal').textContent=money(data.subtotal);const fee=Number(data.delivery_fee||0);const feeRow=document.getElementById('pos-receipt-delivery-row');feeRow.classList.toggle('hidden',fee<=0);document.getElementById('pos-receipt-delivery').textContent=money(fee);document.getElementById('pos-receipt-total').textContent=money(data.total||data.payment?.amount);document.getElementById('pos-receipt-reference').textContent=data.payment?.reference||'—';
     if(!receiptDialog.open)receiptDialog.showModal();
   }
   window.INPROFICOpenPosReceipt=renderReceipt;
-  function closeReceipt(){if(receiptDialog?.open)receiptDialog.close();const url=new URL(window.location.href);url.searchParams.delete('receipt');url.searchParams.delete('checkout');history.replaceState({},'',url.pathname+url.search);document.getElementById('active-pos-payment')?.remove();}
+  function closeReceipt(){if(receiptDialog?.open)receiptDialog.close();if(window.INPROFICOfflinePOS){window.INPROFICOfflinePOS.refresh();return;}const url=new URL(window.location.href);url.searchParams.delete('receipt');url.searchParams.delete('checkout');history.replaceState({},'',url.pathname+url.search);document.getElementById('active-pos-payment')?.remove();}
   document.getElementById('pos-receipt-close')?.addEventListener('click',closeReceipt);document.getElementById('pos-receipt-done')?.addEventListener('click',closeReceipt);receiptDialog?.addEventListener('click',event=>{if(event.target===receiptDialog)closeReceipt();});
   document.getElementById('pos-receipt-print')?.addEventListener('click',()=>{document.body.classList.add('printing-pos-receipt');window.print();setTimeout(()=>document.body.classList.remove('printing-pos-receipt'),250);});window.addEventListener('afterprint',()=>document.body.classList.remove('printing-pos-receipt'));
 
   function setDeliveryStatus(message,isError=false){if(!deliveryQuoteStatus)return;deliveryQuoteStatus.textContent=message||'';deliveryQuoteStatus.classList.toggle('border-rose-200',isError);deliveryQuoteStatus.classList.toggle('bg-rose-50',isError);deliveryQuoteStatus.classList.toggle('text-rose-700',isError);deliveryQuoteStatus.classList.toggle('font-semibold',isError);deliveryQuoteStatus.classList.toggle('border-transparent',!isError);deliveryQuoteStatus.classList.toggle('bg-white',!isError);deliveryQuoteStatus.classList.toggle('text-stone-500',!isError);}
   function invalidateDeliveryQuote(message){if(deliveryQuoteId)deliveryQuoteId.value='';deliveryQuoteSignature='';deliveryFee=0;if(deliveryMethodOptions){deliveryMethodOptions.replaceChildren();deliveryMethodOptions.classList.add('hidden');}if(deliverySwitchPolicy){deliverySwitchPolicy.textContent='';deliverySwitchPolicy.classList.add('hidden');}if(deliveryQuoteStatus&&deliveryToggle?.checked)setDeliveryStatus(message||'Basket or destination changed. The live quote will refresh before payment.');totalNode.textContent=money(basketSubtotal);}
   function cardPricing(card){const distribution=activeSalesChannel==='distribution';const select=distribution?card.querySelector('[data-pos-bulk-select]'):null;const option=select?.selectedOptions?.[0];if(option?.value)return{price:Number(option.dataset.price||0),min:Number(option.dataset.min||1),unit:option.dataset.unit||option.dataset.name||'pack',pack:option.dataset.name||option.textContent.trim()};return{price:Number(card.dataset.price||0),min:Number(card.dataset.min||0),unit:card.dataset.unit||'unit',pack:''};}
-  function renderCart(){cartLines.innerHTML='';let total=0,count=0;cards.forEach(card=>{const input=card.querySelector('[data-qty]');const qty=Number(input.value||0);if(qty<=0)return;const pricing=cardPricing(card);const price=pricing.price;const name=card.querySelector('h3').textContent.trim();const id=card.dataset.product;count++;total+=qty*price;const row=document.createElement('div');row.className='flex items-center gap-2 rounded-xl border border-stone-200 p-2.5';row.innerHTML=`<div class="min-w-0 flex-1"><div class="truncate text-xs font-semibold"></div><div class="mt-0.5 text-[11px] text-stone-500">${money(price)} / ${pricing.unit}${pricing.pack?` · ${pricing.pack}`:''}</div></div><button type="button" class="h-8 w-8 rounded-lg border text-sm" data-cart-dec="${id}" aria-label="Reduce quantity">−</button><span class="w-10 text-center font-mono text-xs">${qty}</span><button type="button" class="h-8 w-8 rounded-lg border text-sm" data-cart-inc="${id}" aria-label="Increase quantity">+</button>`;row.querySelector('.truncate').textContent=name;cartLines.appendChild(row);});basketSubtotal=total;empty.hidden=count>0;countNode.textContent=count;invalidateDeliveryQuote();totalNode.textContent=money(total);}
+  function renderCart(){cartLines.innerHTML='';let total=0,count=0;cards.forEach(card=>{const input=card.querySelector('[data-qty]');const qty=Number(input.value||0);if(qty<=0)return;const pricing=cardPricing(card);const price=pricing.price;const name=card.querySelector('h3').textContent.trim();const id=card.dataset.product;count++;total+=qty*price;const row=document.createElement('div');row.className='flex items-center gap-2 rounded-xl border border-stone-200 p-2.5';row.innerHTML=`<div class="min-w-0 flex-1"><div class="truncate text-xs font-semibold"></div><div class="mt-0.5 text-[11px] text-stone-500">${money(price)} / ${pricing.unit}${pricing.pack?` · ${pricing.pack}`:''}</div></div><button type="button" class="h-8 w-8 rounded-lg border text-sm" data-cart-dec="${id}" aria-label="Reduce quantity">−</button><span class="w-10 text-center font-mono text-xs">${qty}</span><button type="button" class="h-8 w-8 rounded-lg border text-sm" data-cart-inc="${id}" aria-label="Increase quantity">+</button>`;row.querySelector('.truncate').textContent=name;cartLines.appendChild(row);});basketSubtotal=total;empty.hidden=count>0;countNode.textContent=count;invalidateDeliveryQuote();totalNode.textContent=money(total);scheduleCampaignPreview();}
   function change(id,direction){const input=document.querySelector(`[data-qty="${id}"]`);if(!input)return;const card=input.closest('.product-card');const min=Math.max(Number(cardPricing(card).min||1),0.01);const current=Number(input.value||0);input.value=direction>0?(current>0?current+1:min):(current<=min?0:Math.max(min,current-1));input.dispatchEvent(new Event('change',{bubbles:true}));}
   document.addEventListener('click',e=>{const add=e.target.closest('[data-add]');if(add){change(add.dataset.add,1);return;}const inc=e.target.closest('[data-cart-inc]');if(inc){change(inc.dataset.cartInc,1);return;}const dec=e.target.closest('[data-cart-dec]');if(dec)change(dec.dataset.cartDec,-1);});
   document.querySelectorAll('[data-qty]').forEach(i=>i.addEventListener('change',renderCart));document.querySelectorAll('[data-pos-bulk-select]').forEach(select=>select.addEventListener('change',()=>{const card=select.closest('.product-card');const input=card.querySelector('[data-qty]');const min=cardPricing(card).min||1;if(Number(input.value||0)>0&&Number(input.value)<min)input.value=min;renderCart();syncSalesChannel(false);}));document.getElementById('clear-cart')?.addEventListener('click',()=>{document.querySelectorAll('[data-qty]').forEach(i=>i.value=0);renderCart();});
@@ -378,6 +450,13 @@
   document.querySelectorAll('[name="service_mode"]').forEach(input=>input.addEventListener('change',()=>{if(input.checked&&input.value==='delivery'&&deliveryToggle&&!deliveryToggle.checked){deliveryToggle.checked=true;deliveryToggle.dispatchEvent(new Event('change'));}}));deliveryArea?.addEventListener('change',()=>invalidateDeliveryQuote());deliveryAddress?.addEventListener('input',()=>invalidateDeliveryQuote());deliveryLatitude?.addEventListener('change',()=>invalidateDeliveryQuote());deliveryLongitude?.addEventListener('change',()=>invalidateDeliveryQuote());document.querySelector('[data-location-picker]')?.addEventListener('locationpicker:resolved',event=>{if(event.detail?.error){invalidateDeliveryQuote();setDeliveryStatus(event.detail.detail||'Location could not be validated.',true);return;}deliveryLocationSource=event.detail?.location_source||event.detail?.validated_by||'';invalidateDeliveryQuote();});
   function deliverySignature(){return JSON.stringify({subtotal:basketSubtotal.toFixed(2),area:deliveryArea?.value||'',address:deliveryAddress?.value.trim()||'',latitude:deliveryLatitude?.value||'',longitude:deliveryLongitude?.value||''});}
   form.addEventListener('submit',async event=>{
+    if(finalSubmit&&window.INPROFICOfflinePOS){
+      event.preventDefault();
+      try{const receipt=await window.INPROFICOfflinePOS.complete(new FormData(form));renderReceipt(receipt);}
+      catch(error){window.alert(error.message);}
+      finally{finalSubmit=false;checkoutButton.disabled=false;}
+      return;
+    }
     if(finalSubmit)return;
     event.preventDefault();
     if(basketSubtotal<=0){setDeliveryStatus('Add at least one product before completing the sale.',true);return;}
@@ -396,5 +475,5 @@
 </script>
 {% if delivery_enabled %}<script src="{% static 'core/js/location-picker.js' %}" defer></script>{% endif %}
 {% if active_checkout and active_payment and active_payment.status != 'paid' %}<script>(function(){const box=document.getElementById('active-pos-payment');if(!box)return;const url=box.dataset.statusUrl;let stop=false;async function poll(){if(stop||document.hidden)return;try{const r=await fetch(url,{headers:{Accept:'application/json'},cache:'no-store'});if(!r.ok)return;const d=await r.json();if(d.receipt){stop=true;window.INPROFICOpenPosReceipt?.(d.receipt);return;}if(d.payment&&['failed','cancelled','refunded'].includes(d.payment.status)){stop=true;window.location.reload();}}catch(e){}}setInterval(poll,5000);})();</script>{% endif %}
-</body>
+{% if not offline_mode %}{% include 'pwa/_connection_dialog.html' %}<script defer src="{% static 'core/js/offline-workspace.js' %}"></script><script defer src="{% static 'core/js/retail-pos.js' %}?v={{ static_asset_version }}"></script>{% endif %}</body>
 </html>

@@ -260,6 +260,8 @@ class SubscriptionPlan(models.Model):
         null=True, blank=True,
         help_text="Maximum additional business/service profiles beyond the primary business. Leave blank for unlimited.",
     )
+    branch_limit = models.PositiveIntegerField(null=True, blank=True,
+        help_text="Branches per business, available on every plan. Leave blank for unlimited.")
     active = models.BooleanField(default=True)
 
     class Meta:

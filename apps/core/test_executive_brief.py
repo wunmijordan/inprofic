@@ -35,7 +35,7 @@ class ExecutiveReportTests(BriefBase):
             self.assertIn('Bread: 5 loaves', text)
             self.assertNotIn('reorder at', text)
             self.assertNotIn('PRIVATE PRODUCT', text)
-            self.assertIn('Stock and outstanding balances as of', text)
+            self.assertIn('Stock / balances at', text)
             self.assertIn('current position', text)
             self.assertLessEqual(len(report['brief']['snapshot_highlights']), 8)
 
@@ -69,7 +69,7 @@ class ExecutiveReportTests(BriefBase):
         for i in range(32):
             self.sell(1, 5, paid=False, customer=f'Debtor {i:02}')
         text = self.report()['text']
-        self.assertEqual(text.count('Customer balance · Debtor'), 32)
+        self.assertEqual(text.count('Customer due · Debtor'), 32)
         from .finance_views import _finance_open_items
         capped = _finance_open_items(self.business)
         complete = _finance_open_items(self.business, detail_limit=None)

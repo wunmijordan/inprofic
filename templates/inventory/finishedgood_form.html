@@ -11,7 +11,7 @@
       <div class="cf-form-section-title mb-3">Product details</div>
       {% if form.source_type %}<div class="rounded-xl border border-[#E7DFCC] bg-[#FAF8F1] p-3 mb-3">{% include "_field.html" with field=form.source_type %}<p data-form-help-text data-form-help-for="{{ form.source_type.id_for_label }}" class="text-[11px] leading-5 text-stone-500">{{ vertical_ui.product_sources.purchased_for_resale }} items are received through Procurement and can be sold from both storefronts without entering production.</p></div>{% endif %}
       <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-        {% include "_field.html" with field=form.name %}
+        {% include "_field.html" with field=form.name %}{% if form.barcode %}{% include "_field.html" with field=form.barcode %}{% endif %}
         {% include "_field.html" with field=form.product_category %}
       </div>
       {% include "_field.html" with field=form.description %}

@@ -136,7 +136,7 @@ class CommerceSettingsForm(forms.ModelForm):
 class StorefrontProductForm(forms.ModelForm):
     class Meta:
         model = StorefrontProduct
-        fields = ["published", "public_name", "description", "image", "allow_stock_order", "allow_online_order", "allow_distribution_order", "min_quantity", "preorder_min_quantity", "distribution_min_quantity", "max_quantity", "preorder_lead_time", "estimated_ready_minutes"]
+        fields = ["published", "merchandising_badge", "public_name", "description", "image", "allow_stock_order", "allow_online_order", "allow_distribution_order", "min_quantity", "preorder_min_quantity", "distribution_min_quantity", "max_quantity", "preorder_lead_time", "estimated_ready_minutes"]
         widgets = {
             "description": forms.Textarea(attrs={"rows": 3}),
             "image": forms.ClearableFileInput(attrs={"accept": "image/avif,image/gif,image/jpeg,image/png,image/webp"}),

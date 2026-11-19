@@ -1,0 +1,54 @@
+/* Corner overlays keep the card's image, spacing and controls intact. */
+.product-card {
+  position: relative;
+}
+.product-ribbon {
+  position: absolute;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 2rem;
+  padding: 0.25rem 0.45rem;
+  background: var(--tenant-button, var(--brand, #d14900));
+  color: var(--tenant-button-contrast, #fff);
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1.2;
+  box-shadow: 0 2px 5px #0002;
+}
+.product-ribbon--offer {
+  left: 0;
+  border-radius: 0 0 0.55rem 0;
+  max-width: 58%;
+}
+.product-ribbon--merchandising {
+  right: 0;
+  border-radius: 0 0 0 0.55rem;
+  background: var(--tenant-background, var(--brand-dark, #050733));
+  color: var(--tenant-background-contrast, var(--brand-dark-contrast, #fff));
+}
+.product-ribbon__icon,
+.product-ribbon__icon svg {
+  display: block;
+  width: 1.1rem;
+  height: 1.1rem;
+}
+.product-ribbon .form-help-tip {
+  display: inline-flex;
+  margin: 0;
+}
+.product-ribbon .form-help-tip__trigger {
+  color: inherit !important;
+  background: transparent !important;
+  border: 0 !important;
+  width: 1.5rem;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  min-height: 1.5rem;
+}
+.product-ribbon[hidden],
+.product-ribbon [hidden] {
+  display: none !important;
+}

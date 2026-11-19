@@ -1,0 +1,10 @@
+<fieldset class="cf-form-section" data-quote-line>
+  {{ row.non_field_errors }}{% for hidden in row.hidden_fields %}{{ hidden }}{% endfor %}
+  <div class="grid gap-4 md:grid-cols-[minmax(0,2fr)_1fr_1fr_auto] items-start">
+    {% include '_field.html' with field=row.product %}
+    {% include '_field.html' with field=row.quantity %}
+    {% include '_field.html' with field=row.unit_price %}
+    <div class="pt-6"><span hidden>{{ row.DELETE }}</span><button type="button" class="workspace-action" data-quote-remove aria-label="Delete product">Delete</button></div>
+  </div>
+  <p class="text-xs mt-2" data-quote-price-note aria-live="polite"></p>
+</fieldset>

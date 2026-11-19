@@ -211,6 +211,8 @@ def record_finished_good_movement(good, quantity, movement_type, *, note="", aff
         )
         if locked_good.stock is None:
             raise ValueError(f"{locked_good.name} is not in physical-store stock.")
+        from retail.services import adjust_branch_stock
+        adjust_branch_stock(locked_good, location or default_location(good.business), quantity)
         new_stock = (locked_good.stock + quantity).quantize(Decimal("0.01"))
         locked_good.stock = new_stock
         locked_good.save(update_fields=["stock"])
@@ -230,8 +232,6 @@ def sellable_market_lot_queryset(business, on_date):
     queryset = MarketStockLot.objects.filter(
         business=business,
         received_date__lte=on_date,
-    ).filter(
-        models.Q(expiry_date__isnull=True) | models.Q(expiry_date__gte=on_date)
     )
     from core.ledger import segment_for
     if segment_for(business, on_date) != "backlog":
@@ -617,8 +617,6 @@ def record_distribution_return(*, business, sale_item, quantity, date, condition
     if quantity <= 0 or quantity > returnable:
         raise ValidationError(f"Only {returnable:.2f} units remain returnable on this sale line.")
     expiry_date = item.production_batch.expiry_date if item.production_batch else None
-    if condition == DistributionReturn.REDISTRIBUTABLE and expiry_date and expiry_date < date:
-        raise ValidationError("This batch is already expired and cannot return to sellable Market Stock.")
     unit_value = item.unit_cost or (
         item.production_batch.unit_cost if item.production_batch else item.finished_good.est_cost
     )

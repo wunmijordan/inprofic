@@ -6,6 +6,7 @@ from django import forms
 from django.forms import BaseFormSet, formset_factory, inlineformset_factory
 from django.db.models import Q
 from django.utils import timezone
+from django.utils.formats import date_format
 from core.models import CashAccount
 from core.forms import ExistingAwareInlineFormSet
 from core.verticals import vertical_config, bulk_package_type_choices
@@ -305,7 +306,18 @@ class RawMaterialForm(StyledModelForm):
 class FinishedGoodForm(StyledModelForm):
     class Meta:
         model = FinishedGood
-        fields = ["source_type", "name", "description", "variant_of", "storefront_option_label", "storefront_option_values", "product_category", "unit", "units_per_batch", "output_weight_grams", "base_material", "stock", "reorder_level", "selling_price"]
+        fields = ["source_type", "name", "barcode", "description", "variant_of", "storefront_option_label", "storefront_option_values", "product_category", "unit", "units_per_batch", "output_weight_grams", "base_material", "stock", "reorder_level", "selling_price"]
+
+    def clean_barcode(self):
+        value = (self.cleaned_data.get("barcode") or "").strip()
+        business = self.business or getattr(self.instance, "business", None)
+        if value and business:
+            matches = FinishedGood.raw_objects.filter(business=business, barcode=value)
+            if self.instance.pk:
+                matches = matches.exclude(pk=self.instance.pk)
+            if matches.exists():
+                raise forms.ValidationError("This barcode is already assigned to another product.")
+        return value
 
     def clean(self):
         cleaned = super().clean()
@@ -1064,7 +1076,7 @@ class DistributionReturnForm(SellingQuantityMixin, StyledModelForm):
         self.fields["sale_item"].queryset = queryset
         self.fields["sale_item"].label = "Original Distribution sale line"
         self.fields["sale_item"].label_from_instance = lambda item: (
-            f"Sale #{item.sale_id} · {item.sale.customer} · {item.finished_good.name} · "
+            f"Sale #{item.sale_id} · {date_format(item.sale.date, 'j M Y')} · {item.sale.customer} · {item.finished_good.name} · "
             + format_product_quantity(item.total_units,item.finished_good)
         )
 

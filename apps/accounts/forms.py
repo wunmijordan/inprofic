@@ -228,7 +228,9 @@ class PermissionMatrixForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.membership = membership
         ensure_permissions(membership)
+        from core.vocabulary import label_text
         for module, label in USER_OVERRIDE_MODULES:
+            label = label_text(label, membership.business)
             p = membership.module_permissions.get(module=module)
             role_p = membership.role.module_permissions.filter(module=module).first()
             self.fields[f"{module}_view"] = forms.BooleanField(required=False, label=f"{label}: View", initial=p.can_view if p.can_view is not None else (role_p.can_view if role_p else False))
@@ -277,7 +279,9 @@ class RolePermissionForm(forms.Form):
     def __init__(self, *args, role, **kwargs):
         super().__init__(*args, **kwargs)
         self.role = role
+        from core.vocabulary import label_text
         for module, label in RoleModulePermission.MODULE_CHOICES:
+            label = label_text(label, role.business)
             p = role.module_permissions.filter(module=module).first()
             self.fields[f"{module}_view"] = forms.BooleanField(required=False, label=f"{label}: View", initial=p.can_view if p else False)
             self.fields[f"{module}_edit"] = forms.BooleanField(required=False, label=f"{label}: Edit", initial=p.can_edit if p else False)

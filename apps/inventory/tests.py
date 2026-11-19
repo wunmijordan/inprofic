@@ -21,6 +21,7 @@ from .models import (
 )
 from .services import (
     reconcile_expired_market_lot,
+    market_stock_available,
     consume_transferred_physical_stock,
     record_distribution_return,
     record_finished_good_movement,
@@ -371,24 +372,13 @@ class DistributionMarketStockTests(TestCase):
             ).exists()
         )
 
-    def test_expired_lot_is_unsellable_then_reconciled_at_frozen_cost(self):
+    def test_expired_lot_remains_available_until_explicit_writeoff(self):
         lot = self.make_lot(
             quantity="4",
             expiry=date(2026, 9, 2),
             cost="350",
         )
-        with self.assertRaises(ValidationError):
-            release_market_stock(
-                business=self.business,
-                good=self.good,
-                customer=self.customer,
-                quantity=Decimal("1"),
-                date=date(2026, 9, 3),
-                payment_status="unpaid",
-                payment_method="Transfer",
-                account=None,
-                user=self.user,
-            )
+        self.assertEqual(market_stock_available(self.good, date(2026, 9, 3)), Decimal("4"))
 
         reconciled = reconcile_expired_market_lot(
             business=self.business,

@@ -1,4 +1,4 @@
-{% if help_text or help_items or help_hours %}
+{% if help_text or help_items or help_hours or help_sections %}
 <span
   class="form-help-tip normal-case tracking-normal{% if portal_bubble %} form-help-tip--portal{% endif %}"
   data-form-help-tip
@@ -21,28 +21,27 @@
 
   <span
     {% if help_id %}id="{{ help_id }}"{% endif %}
-    class="form-help-tip__bubble normal-case tracking-normal{% if portal_bubble %} form-help-tip__bubble--portal{% endif %}"
+    class="form-help-tip__bubble font-sans normal-case tracking-normal{% if portal_bubble %} form-help-tip__bubble--portal{% endif %}"
     data-form-help-bubble
     role="tooltip"
     hidden
   >
+    {% if help_title %}<strong class="form-help-tip__heading font-display">{{ help_title }}</strong>{% endif %}
     {% if help_hours %}
       <ul class="form-help-tip__list">
         {% for day in help_hours %}
-          <li class="form-help-tip__list-item {% if day.today %}bg-emerald-100{% else %}bg-stone-50{% endif %}"><strong class="form-help-tip__list-title">{{ day.name }}{% if day.today %}<span class="italic"> (today)</span>{% endif %}</strong><span class="form-help-tip__list-detail">{% if day.closed %}Closed{% else %}{{ day.open_label }} – {{ day.close_label }}{% endif %}</span></li>
+          <li class="form-help-tip__list-item {% if day.today %}bg-emerald-100{% else %}bg-stone-50{% endif %}"><strong class="form-help-tip__list-title font-subheading">{{ day.name }}{% if day.today %}<span class="italic"> (today)</span>{% endif %}</strong><span class="form-help-tip__list-detail">{% if day.closed %}Closed{% else %}{{ day.open_label }} – {{ day.close_label }}{% endif %}</span></li>
         {% endfor %}
       </ul>
+    {% elif help_sections %}
+      {% for section in help_sections %}
+        <span class="form-help-tip__detail{% if not forloop.first %} form-help-tip__detail--continued{% endif %}" data-help-section>
+          <strong class="form-help-tip__heading font-display">{{ section.title }}</strong>
+          {% include "_help_tip_items.html" with help_items=section.items only %}
+        </span>
+      {% endfor %}
     {% elif help_items %}
-      <ul class="form-help-tip__list">
-        {% for item in help_items %}
-          <li class="form-help-tip__list-item">
-            <strong class="form-help-tip__list-title">{{ item.name }}</strong>
-            {% if item.quantity_label %}<span class="form-help-tip__list-detail">{{ item.quantity_label }}</span>{% endif %}
-            {% if item.preorder_lead_time %}<span class="form-help-tip__list-detail">Pre-order lead time: {{ item.preorder_lead_time }}</span>{% endif %}
-            {% if item.estimated_ready_minutes %}<span class="form-help-tip__list-detail">Made to order: about {{ item.estimated_ready_minutes }} minutes</span>{% endif %}
-          </li>
-        {% endfor %}
-      </ul>
+      {% include "_help_tip_items.html" with help_items=help_items only %}
     {% else %}
       {{ help_text }}
     {% endif %}

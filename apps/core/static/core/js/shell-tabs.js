@@ -1,7 +1,8 @@
+function inproficShellReady(callback){if(document.readyState === "loading")document.addEventListener("DOMContentLoaded",callback);else callback();}
 /* Inventory-tab persistence script, moved out of base.html (cached by the browser).
    The business key arrives via window.INPROFIC_SHELL.bizKey. */
 function shellBizKey(){var c=window.INPROFIC_SHELL||{};return c.bizKey||'anonymous';}
-    document.addEventListener("DOMContentLoaded", function () {
+    inproficShellReady(function () {
       const shell = document.getElementById('mobile-nav-shell');
       const button = document.getElementById('mobile-nav-button');
       const panel = document.getElementById('mobile-nav-panel');
@@ -31,7 +32,7 @@ function shellBizKey(){var c=window.INPROFIC_SHELL||{};return c.bizKey||'anonymo
       panel.querySelectorAll('a, [data-open-assistant]').forEach((link) => link.addEventListener('click', () => setOpen(false)));
     });
 
-    document.addEventListener("DOMContentLoaded", function () {
+    inproficShellReady(function () {
       // 1. Get DOM references (only executable on the inventory page)
       const rawRadio = document.getElementById('radio-raw');
       const finishedRadio = document.getElementById('radio-finished');
@@ -126,7 +127,7 @@ function shellBizKey(){var c=window.INPROFIC_SHELL||{};return c.bizKey||'anonymo
     // or otherwise invalid fields instead of silently leaving the user to
     // guess why a form did not save. Server-side Django validation remains
     // authoritative; this is a visual/UX layer only.
-    document.addEventListener("DOMContentLoaded", function () {
+    inproficShellReady(function () {
       const forms = document.querySelectorAll('form[method="post"]');
       forms.forEach((form) => {
         form.addEventListener("submit", function (event) {

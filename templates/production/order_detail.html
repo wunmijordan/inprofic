@@ -114,7 +114,7 @@
 {% endif %}
 
 {% if order.status == 'pending' and flexible_usages %}
-<div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4 max-w-3xl">
+<div data-form-fields-for="{% if kitchen_view %}flexible-save-form{% else %}approve-order-form{% endif %}" class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4 max-w-3xl">
   <h3 class="text-sm font-semibold text-amber-900">Flexible {{ vertical_ui.recipe_label|lower }} usage</h3>
   <p class="text-xs text-amber-700 mt-1 mb-3">Only {{ vertical_ui.recipe_item_label|lower }} quantities marked Flexible on the product {{ vertical_ui.recipe_label|lower }} can be changed here.{% if order.production_basis == 'base_material' %} This order is sized from one shared {{ vertical_ui.base_material_label|lower }}, so enter the <b>total</b> actually used across all products. It is allotted to each product in proportion to its planned amount.{% else %} Enter the actual quantity per batch to release for this order.{% endif %}</p>
   <div class="space-y-3">

@@ -428,6 +428,8 @@ def ensure_default_plans(*, general_trial_days=None):
 def business_has_feature(business, feature):
     if not business:
         return False
+    if business.headquarters_id:
+        business = business.headquarters
     from core.context import get_request_cache
 
     cache = get_request_cache()
@@ -436,7 +438,9 @@ def business_has_feature(business, feature):
         feature_access = cache[key]
     else:
         feature_access = dict(
-            BusinessFeatureAccess.objects.filter(business=business).values_list("feature", "enabled")
+            BusinessFeatureAccess.objects.filter(business=business).values_list(
+                "feature", "enabled"
+            )
         )
         if cache is not None:
             cache[key] = feature_access
@@ -661,23 +665,42 @@ def cancel_paid_plan_trial(subscription):
 
 
 def subscription_for_business(business):
+    if business.headquarters_id:
+        business = business.headquarters
     service = getattr(business, "subscription_service", None)
     if service:
         return service.subscription
-    return BusinessSubscription.objects.filter(primary_business=business).select_related("plan").first()
+    return (
+        BusinessSubscription.objects.filter(primary_business=business)
+        .select_related("plan")
+        .first()
+    )
 
 
 def assert_user_capacity(business, user=None):
     subscription = subscription_for_business(business)
     if not subscription or subscription.plan.user_limit is None:
         return
-    business_ids = subscription.services.values_list("business_id", flat=True)
-    active_user_ids = UserBusiness.objects.filter(
-        business_id__in=business_ids, active=True, user__is_active=True
-    ).values_list("user_id", flat=True).distinct()
-    if user and UserBusiness.objects.filter(
-        business_id__in=business_ids, active=True, user=user, user__is_active=True
-    ).exists():
+    from core.models import Business
+
+    service_ids = list(subscription.services.values_list("business_id", flat=True))
+    service_ids.append(subscription.primary_business_id)
+    business_ids = Business.objects.filter(
+        Q(pk__in=service_ids) | Q(headquarters_id__in=service_ids)
+    ).values_list("pk", flat=True)
+    active_user_ids = (
+        UserBusiness.objects.filter(
+            business_id__in=business_ids, active=True, user__is_active=True
+        )
+        .values_list("user_id", flat=True)
+        .distinct()
+    )
+    if (
+        user
+        and UserBusiness.objects.filter(
+            business_id__in=business_ids, active=True, user=user, user__is_active=True
+        ).exists()
+    ):
         return
     if active_user_ids.count() >= subscription.plan.user_limit:
         raise ValidationError(

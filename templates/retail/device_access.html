@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% load core_extras %}{% block content %}<h1 class="text-2xl font-semibold mb-4">Device approval required</h1><p>Your business administrator controls staff access on this device. Register it from your profile, then ask for approval.</p><a class="workspace-action mt-4" href="{% url 'retail_profile' %}">{% business_label "My profile" %}</a>{% endblock %}

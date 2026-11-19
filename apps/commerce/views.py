@@ -16,6 +16,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
+from django.db import transaction
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, OuterRef, Q, Subquery, Sum, Value
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -480,6 +481,8 @@ def _public_catalog_data(business):
     visible_products = []
     sold_out = []
     products = list(_public_products(business))
+    from .merchandising import attach_merchandising
+    attach_merchandising(business, products, "online")
     stock_by_good = available_physical_stock_for_goods(
         [product.finished_good for product in products]
     )
@@ -1148,6 +1151,12 @@ def api_products(request, business_slug):
     )
 
     products = list(products_qs)
+    from .merchandising import attach_merchandising, selection_price
+    attach_merchandising(business, products)
+    for product in products:
+        product.card_promotions = [offer for offer in product.card_promotions if "all" in offer["channels"] or set(offer["channels"]) & {"online", "distribution"}]
+        for offer in product.card_promotions:
+            offer["unit_prices"] = {product_id:{code:price for code,price in prices.items() if code in ("online","distribution")} for product_id,prices in offer["unit_prices"].items()}
     stock_by_good = available_physical_stock_for_goods([product.finished_good for product in products])
     product_id_by_good = {product.finished_good_id: str(product.public_id) for product in products}
     for p in products:
@@ -1191,11 +1200,11 @@ def api_products(request, business_slug):
                 order_modes.append({
                     "code": "online",
                     "label": channel_labels["online"],
-                    "price": str(p.finished_good.selling_price_for("online")),
+                    "price": str(p.preorder_price),
                     "unit": p.customer_unit,
                     "min_quantity": str(p.preorder_min_quantity),
                     "max_quantity": str(p.max_quantity) if p.max_quantity is not None else None,
-                    "pricing_source": "channel_price_or_standard",
+                    "pricing_source": "promotion" if "online" in getattr(p, "_promotion_prices", {}) else "channel_price_or_standard",
                     "requires_bulk_pack": False,
                     "fulfilment_mode": "choice",
                     "available_now": str(stock_available) if stock_available > 0 else None,
@@ -1224,7 +1233,7 @@ def api_products(request, business_slug):
                 "package_type": pack.package_type,
                 "customer_quantity": str(pack.customer_quantity),
                 "customer_unit": pack.customer_unit or pack.name,
-                "price": str(pack.price),
+                "price": str(selection_price(p, "online", pack.profile_key, pack.price)),
                 "min_order_quantity": str(pack.min_order_quantity),
                 # Order it with order_mode "online" and this bulk_pack_id; always made to order.
                 "order_mode": "online",
@@ -1238,7 +1247,7 @@ def api_products(request, business_slug):
         for option in p.individual_sale_options:
             option_modes = []
             for code, enabled in (("online", option.online_enabled),):
-                price = option.price_for(code)
+                price = selection_price(p, code, option.profile_key, option.price_for(code))
                 if not enabled or price is None:
                     continue
                 option_available = (
@@ -1297,7 +1306,7 @@ def api_products(request, business_slug):
                     "note": option.public_note,
                     "contents": [{"name": p.finished_good.name, "quantity_label": option.public_note or "", "kind": "base_product", "scope": "all"}],
                     "order_modes": option_modes,
-                    "online_price": str(option.online_price) if option.online_enabled and option.online_price is not None else None,
+                    "online_price": str(selection_price(p, "online", option.profile_key, option.online_price)) if option.online_enabled and option.online_price is not None else None,
                     "online_min_quantity": str(option.online_min_quantity),
                 })
 
@@ -1317,7 +1326,13 @@ def api_products(request, business_slug):
                 "name": p.finished_good.product_category.name,
                 "slug": p.finished_good.product_category.slug,
             } if p.finished_good.product_category_id and p.finished_good.product_category.active else None),
+            "option": {"label":p.finished_good.storefront_option_label,"choices":p.finished_good.storefront_option_choices,"required":bool(p.finished_good.storefront_option_choices)},
             "description": p.description,
+            "promotions": p.card_promotions,
+            "promotion_help": [group for group in p.card_offer_groups if group["channel"] in ("online", "distribution")],
+            "price_details": {"online":{"unit_price":str(p.preorder_price),"standard_unit_price":str(p.finished_good.selling_price_for("online")),"source":"promotion" if "online" in getattr(p,"_promotion_prices",{}) else "channel_price_or_standard"}},
+            "merchandising_badge": p.card_badge,
+            "ribbon_positions": {"promotions": "top_left", "merchandising_badge": "top_right"},
             "image": image_url,
             "image_url": image_url,
             "unit": p.customer_unit,
@@ -1333,8 +1348,8 @@ def api_products(request, business_slug):
             "max_quantity": str(p.max_quantity) if p.max_quantity is not None else None,
             "preorder_lead_time": p.preorder_lead_time,
             "estimated_ready_minutes": p.estimated_ready_minutes,
-            "online_price": str(p.finished_good.selling_price_for("online")) if p.allow_online_order else None,
-            "preorder_price": str(p.finished_good.selling_price_for("online")) if p.allow_online_order else None,
+            "online_price": str(p.preorder_price) if p.allow_online_order else None,
+            "preorder_price": str(p.preorder_price) if p.allow_online_order else None,
         })
 
     # A variant is itself an orderable product row (order it by its own id). Link each to its parent card so
@@ -1373,6 +1388,10 @@ def api_products(request, business_slug):
             catalogue_items.append({
                 "id": f"individual:{option['id']}",
                 "kind": "individual_option",
+                "promotions": product.get("promotions", []),
+                "promotion_help": product.get("promotion_help", []),
+                "merchandising_badge": product.get("merchandising_badge"),
+                "ribbon_positions": product.get("ribbon_positions"),
                 "product_id": product["id"],
                 "individual_option_id": option["id"],
                 "name": option["name"],
@@ -1389,7 +1408,9 @@ def api_products(request, business_slug):
                 "distribution_min_quantity": option.get("distribution_min_quantity"),
             })
 
-    return JsonResponse({
+    from .experience import commerce_experience
+    response = JsonResponse({
+        "experience": commerce_experience(request, business, _settings_for(business), delivery=delivery),
         "business": business.name,
         "business_slug": business.slug,
         "service": business.get_vertical_display(),
@@ -1422,6 +1443,8 @@ def api_products(request, business_slug):
         "products": rows,
         "catalogue_items": catalogue_items,
     })
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @csrf_exempt
@@ -1432,6 +1455,8 @@ def api_checkouts(request, business_slug):
         return JsonResponse({"detail": "Invalid or disabled commerce API credential."}, status=403)
     try:
         data = json.loads(request.body or b"{}")
+        from .experience import validate_checkout_payload
+        validate_checkout_payload(data)
         customer = data.get("customer") or {}
         if not isinstance(customer, dict):
             raise ValidationError("Customer details are not in the expected format.")
@@ -1465,6 +1490,7 @@ def api_checkouts(request, business_slug):
                 "bulk_pack_id": row.get("bulk_pack_id") or None,
                 "individual_option_id": row.get("individual_option_id") or None,
                 "fulfilment_source": row.get("fulfilment_source") or None,
+                "product_option_value": str(row.get("product_option_value") or ""),
             })
         checkout, created = create_checkout(
             business=business,
@@ -1483,6 +1509,7 @@ def api_checkouts(request, business_slug):
             customer_note=str(data.get("customer_note") or "")[:500],
         )
         payload = serialize_checkout(checkout)
+        payload["hosted_checkout_url"] = request.build_absolute_uri(reverse("storefront_checkout", args=[business.slug, checkout.public_id]))
         payload["created"] = created
         payload["payment_methods_url"] = f"/api/v1/storefronts/{business.slug}/payment-methods"
         payload["payment_url"] = f"/api/v1/storefronts/{business.slug}/checkouts/{checkout.public_id}/payments"
@@ -1517,7 +1544,11 @@ def api_checkout_detail(request, business_slug, checkout_id):
         business=business,
         public_id=checkout_id,
     )
-    return JsonResponse(serialize_checkout(checkout))
+    payload = serialize_checkout(checkout)
+    payload["hosted_checkout_url"] = request.build_absolute_uri(reverse("storefront_checkout",args=[business.slug,checkout.public_id]))
+    response = JsonResponse(payload)
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @csrf_exempt
@@ -1569,6 +1600,7 @@ def api_order_detail(request,business_slug,public_id):
         }
     return JsonResponse({"id":str(intake.public_id),"number":intake.public_number,"status":intake.status,"order_mode":intake.sales_channel,"fulfilment_mode":intake.ordering_mode,"ordering_mode":intake.ordering_mode,"payment_state":intake.payment_state,"payment":compact_payment,"fulfilment_state":intake.fulfilment_state,"estimated_ready_at":intake.estimated_ready_at.isoformat() if intake.estimated_ready_at else None,"requested_delivery_at":intake.requested_delivery_at.isoformat() if intake.requested_delivery_at else None,"attribution":{"source":intake.attribution_source or "direct","medium":intake.attribution_medium,"campaign":intake.attribution_campaign,"content":intake.attribution_content,"term":intake.attribution_term,"referrer":intake.attribution_referrer},"subtotal":str(intake.total - intake.delivery_fee),"delivery_fee":str(intake.delivery_fee),"delivery":_delivery_payload(intake),"total":str(intake.total),"items":[{
         "product": row.finished_good.name,
+        "is_promotion_reward": row.is_promotion_reward,
         "requested": str(row.requested_quantity),
         "unit": row.customer_unit or row.finished_good.unit,
         "bulk_pack_id": str(row.bulk_pack.public_id) if row.bulk_pack_id else None,
@@ -1723,6 +1755,7 @@ def _receipt_details(receipt):
         items = [
             {
                 "name": f"Add-on · {row.individual_option.name}" if row.individual_option_id else row.storefront_product.display_name,
+                "is_promotion_reward": row.is_promotion_reward,
                 "product_option_label": row.product_option_label,
                 "product_option_value": row.product_option_value,
                 "quantity": f"{row.payable_quantity}",
@@ -1749,6 +1782,7 @@ def _receipt_details(receipt):
         items = [
             {
                 "name": f"Add-on · {row.individual_option.name}" if row.individual_option_id else row.finished_good.name,
+                "is_promotion_reward": row.is_promotion_reward,
                 "product_option_label": row.product_option_label,
                 "product_option_value": row.product_option_value,
                 "quantity": f"{row.requested_quantity}",
@@ -1779,6 +1813,12 @@ def _receipt_details(receipt):
         customer_note = ""
     subtotal = sum((Decimal(row["line_total"]) for row in items), Decimal("0.00"))
     business = receipt.business
+    pricing_checkout = checkout
+    if pricing_checkout is None and intake is not None:
+        pricing_checkout = CommerceCheckoutSession.raw_objects.filter(
+            business=receipt.business, materialized_intake=intake
+        ).only("promotion_snapshot").first()
+    promotion = pricing_checkout.promotion_snapshot if pricing_checkout else {}
     return {
         "receipt_id": str(receipt.public_id),
         "business_name": receipt.business.name,
@@ -1808,6 +1848,7 @@ def _receipt_details(receipt):
             "amount": f"{receipt.amount:.2f}",
         },
         "items": items,
+        "promotion": promotion,
         "requested_at": requested_at.isoformat() if requested_at else None,
         "ready_at": ready_at.isoformat() if ready_at else None,
         "customer_note": customer_note or "",
@@ -1845,6 +1886,7 @@ def storefront_receipt(request, business_slug, receipt_id):
         "receipt": receipt,
         "payment": payment,
         "receipt_items": details["items"],
+        "receipt_promotion": details["promotion"],
         "delivery_fee": Decimal(details["delivery_fee"]),
         "receipt_subtotal": Decimal(details["subtotal"]),
         "customer_name": details["customer"]["name"],
@@ -1864,7 +1906,7 @@ def storefront_receipt(request, business_slug, receipt_id):
     return response
 
 
-def _staff_pos_products(business):
+def _staff_pos_products(business, branch=None):
     vocabulary = vertical_config(business)
     direct_channel = vocabulary.get("direct_sale_channel") or CommerceIntake.CHANNEL_PHYSICAL_STORE
     direct_filter = {
@@ -1894,7 +1936,7 @@ def _staff_pos_products(business):
         )
         .order_by("public_name", "finished_good__name")
     )
-    stock_by_good = available_physical_stock_for_goods([row.finished_good for row in products])
+    stock_by_good = available_physical_stock_for_goods([row.finished_good for row in products], branch=branch)
     for product in products:
         multiplier = standard_multiplier(product.finished_good)
         product.pos_available = (
@@ -1927,6 +1969,7 @@ def _staff_pos_products(business):
 @login_required
 @require_http_methods(["GET", "POST"])
 def storefront_pos(request):
+    offline_mode = bool(getattr(request, "offline_package_capture", False))
     pos_action = "edit" if request.method == "POST" else "view"
     if not can_use_commerce_storefront(request.user, request.business, pos_action):
         return render(request, "403.html", status=403)
@@ -1938,18 +1981,31 @@ def storefront_pos(request):
     allowed_pos_channels = [pos_channel]
     if CommerceIntake.CHANNEL_DISTRIBUTION not in allowed_pos_channels:
         allowed_pos_channels.append(CommerceIntake.CHANNEL_DISTRIBUTION)
+    if offline_mode:
+        pos_channel = CommerceIntake.CHANNEL_PHYSICAL_STORE
+        allowed_pos_channels = [pos_channel]
     selected_pos_channel = (request.POST.get("order_mode") or pos_channel).strip().lower()
     if selected_pos_channel not in allowed_pos_channels:
         selected_pos_channel = pos_channel
-    products = list(_staff_pos_products(request.business))
+    from retail.services import pos_context
+    from retail.models import CashierCheckout, CashierSession, RetailSettings
+    branch, registered_device, cashier_session = pos_context(request, require_session=False)
+    products = list(_staff_pos_products(request.business, branch=branch))
+    from .merchandising import attach_merchandising
+    attach_merchandising(request.business, products)
+    for product in products:
+        product.pos_direct_price = product.preorder_price if product.pos_direct_channel == "online" else product.stock_price
+        product.pos_distribution_price = product.distribution_price
     methods = eligible_payment_methods(request.business, surface="pos")
+    if offline_mode:
+        methods = [row for row in methods if row["code"] == CommercePayment.METHOD_CASH]
     transfer_method = next(
         (method for method in methods if method["code"] == CommercePayment.METHOD_TRANSFER),
         None,
     )
     pos_transfer_routes = transfer_method.get("routes", []) if transfer_method else []
     from .delivery_services import delivery_available
-    delivery_enabled = delivery_available(request.business)
+    delivery_enabled = not offline_mode and delivery_available(request.business)
     delivery_areas = list(
         DeliveryArea.raw_objects.filter(business=request.business, active=True)
         .select_related("rate_band").order_by("name", "id")
@@ -1967,15 +2023,19 @@ def storefront_pos(request):
     if request.method == "POST":
         checkout = None
         try:
+            preview = request.POST.get("preview") == "1"
+            pos_context(request)
             method = (request.POST.get("method") or "").strip().lower()
             if method not in {row["code"] for row in methods}:
                 raise ValidationError("Choose an enabled in-premise payment method.")
+            if request.POST.get("split_cash") and method != CommercePayment.METHOD_TRANSFER:
+                raise ValidationError("Choose Transfer for a cash plus verified-transfer payment.")
             manual_received = request.POST.get("manual_payment_received") == "on"
             # Keep the previous cash-only POST contract working for any saved
             # kiosk integration while the UI moves to the generic confirmation.
             if method == CommercePayment.METHOD_CASH and request.POST.get("cash_received") == "on":
                 manual_received = True
-            if method in {CommercePayment.METHOD_CASH, CommercePayment.METHOD_TRANSFER} and not manual_received:
+            if method in {CommercePayment.METHOD_CASH, CommercePayment.METHOD_TRANSFER} and not manual_received and not preview:
                 label = "cash has physically been received" if method == CommercePayment.METHOD_CASH else "transfer has been received and verified"
                 raise ValidationError(f"Confirm that the {label} before completing this sale.")
             by_id = {str(product.public_id): product for product in products}
@@ -2024,22 +2084,51 @@ def storefront_pos(request):
             delivery_quote_id = (request.POST.get("delivery_quote_id") or "").strip() or None
             if delivery_requested and not delivery_quote_id:
                 raise ValidationError("Get a current delivery quote before completing this sale.")
-            checkout, _ = create_checkout(
-                business=request.business,
-                source=CommerceIntake.SOURCE_STAFF_POS,
-                order_mode=selected_pos_channel,
-                service_mode="delivery" if delivery_quote_id else ((request.POST.get("service_mode") or "") if pos_ui.get("show_service_mode") else ""),
-                table_reference=(request.POST.get("table_reference") or "") if pos_ui.get("show_reference") else "",
-                customer={
-                    "name": customer_name,
-                    "phone": (request.POST.get("customer_phone") or "").strip(),
-                    "email": customer_email,
-                    "address": (request.POST.get("customer_address") or "").strip(),
-                },
-                items=items,
-                idempotency_key=(request.POST.get("pos_key") or f"staff-pos-{uuid4().hex}")[:120],
-                delivery_quote_id=delivery_quote_id,
-            )
+            with transaction.atomic():
+                if cashier_session:
+                    cashier_session = CashierSession.raw_objects.select_for_update().get(pk=cashier_session.pk, business=request.business, user=request.user, branch=branch)
+                    if cashier_session.closed_at:
+                        raise ValidationError("This cashier session was closed. Open a new session before selling.")
+                checkout, _ = create_checkout(
+                    business=request.business,
+                    source=CommerceIntake.SOURCE_STAFF_POS,
+                    order_mode=selected_pos_channel,
+                    service_mode="delivery" if delivery_quote_id else ((request.POST.get("service_mode") or "") if pos_ui.get("show_service_mode") else ""),
+                    table_reference=(request.POST.get("table_reference") or "") if pos_ui.get("show_reference") else "",
+                    customer={
+                        "name": customer_name,
+                        "phone": (request.POST.get("customer_phone") or "").strip(),
+                        "email": customer_email,
+                        "address": (request.POST.get("customer_address") or "").strip(),
+                    },
+                    items=items,
+                    idempotency_key=(request.POST.get("pos_key") or f"staff-pos-{uuid4().hex}")[:120],
+                    delivery_quote_id=delivery_quote_id, branch=branch,
+                )
+                if preview:
+                    payload = {
+                        "items": [
+                            {"name": row.individual_option.name if row.individual_option_id else row.storefront_product.display_name,
+                             "is_promotion_reward": row.is_promotion_reward,
+                             "quantity": str(row.payable_quantity),
+                             "unit_price": str(row.unit_price),
+                             "line_total": str(row.line_total)}
+                            for row in checkout.items.select_related("storefront_product")
+                        ],
+                        "promotion": checkout.promotion_snapshot,
+                        "subtotal": str(checkout.amount - checkout.delivery_fee),
+                        "delivery_fee": str(checkout.delivery_fee),
+                        "total": str(checkout.amount),
+                    }
+                    transaction.set_rollback(True)
+                    return JsonResponse(payload)
+                if cashier_session:
+                    CashierCheckout.objects.get_or_create(checkout=checkout, defaults={"session":cashier_session})
+            split_cash = (request.POST.get("split_cash") or "").strip()
+            if split_cash:
+                from retail.payments import settle_split_checkout
+                receipt = settle_split_checkout(checkout, request.user, split_cash, request.POST.get("transfer_route_id"))
+                return redirect(f"{reverse('commerce_storefront_pos')}?receipt={receipt.public_id}")
             payment = initiate_payment(
                 checkout=checkout,
                 method=method,
@@ -2065,6 +2154,8 @@ def storefront_pos(request):
             if checkout is not None:
                 cancel_unpaid_checkout(checkout, reason=f"Staff POS payment initiation failed: {_validation_message(exc)}")
             error = _validation_message(exc)
+            if request.POST.get("preview") == "1":
+                return JsonResponse({"detail": error}, status=400)
     # Keep the POS category filter stable even when a category currently has no
     # sellable card in the selected channel.  The UI filters the visible card
     # set client-side, but the category controls themselves come from the
@@ -2084,6 +2175,7 @@ def storefront_pos(request):
             if source == CommerceIntake.SOURCE_STAFF_POS:
                 completed_receipt = _receipt_details(receipt)
     return render(request, "commerce/storefront_pos.html", {
+        "offline_mode": offline_mode,
         "products": products,
         "product_categories": pos_categories,
         "payment_methods": methods,
@@ -2097,6 +2189,8 @@ def storefront_pos(request):
         "pos_channel": pos_channel,
         "pos_channel_label": vertical_config(request.business)["commerce_channels"].get(selected_pos_channel, selected_pos_channel.replace("_", " ").title()),
         "pos_selected_channel": selected_pos_channel,
+        "retail_branch": branch, "cashier_session": cashier_session,
+        "cashier_session_required": RetailSettings.raw_objects.filter(business=request.business, require_cashier_session=True).exists(),
         "pos_channels": [
             {"code": code, "label": vertical_config(request.business)["commerce_channels"].get(code, code.replace("_", " ").title())}
             for code in allowed_pos_channels
@@ -2130,3 +2224,47 @@ def storefront_pos_status(request, checkout_id):
         "payment": serialize_payment(payment) if payment else None,
         "receipt": receipt_data,
     })
+
+
+@require_http_methods(["POST"])
+def storefront_basket_quote(request, business_slug):
+    business = get_object_or_404(Business, slug=business_slug)
+    settings = _settings_for(business)
+    if not _commerce_enabled(business) or not (settings.hosted_storefront_enabled or settings.order_now_link_enabled):
+        return JsonResponse({"detail": "Storefront unavailable."}, status=404)
+    return _basket_quote_response(request, business)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_basket_quote(request, business_slug):
+    business, ok = _api_business_and_auth(request, business_slug, write=True)
+    if not ok:
+        return JsonResponse({"detail": "Invalid or disabled commerce API credential."}, status=403)
+    return _basket_quote_response(request, business)
+
+
+def _basket_quote_response(request, business):
+    from .merchandising import basket_quote
+    try:
+        data = json.loads(request.body or b"{}")
+        if not isinstance(data, dict):
+            raise ValidationError("Basket details must be an object.")
+        return JsonResponse(basket_quote(business, data))
+    except ChannelMinimumError as exc:
+        return JsonResponse({"detail":"; ".join(exc.messages),"code":"minimum_not_met","suggested_order_modes":exc.alternatives},status=400)
+    except CheckoutAvailabilityError as exc:
+        return JsonResponse({"detail":"; ".join(exc.messages),"code":exc.code,"suggested_order_modes":exc.suggested_order_modes,"items":exc.details},status=409)
+    except (json.JSONDecodeError, ValidationError, InvalidOperation, TypeError, ValueError) as exc:
+        return JsonResponse({"detail": "; ".join(getattr(exc, "messages", [str(exc)]))}, status=400)
+
+
+@require_http_methods(["GET"])
+def api_experience(request, business_slug):
+    business, ok = _api_business_and_auth(request, business_slug, write=True)
+    if not ok:
+        return JsonResponse({"detail":"Invalid or disabled commerce API credential."}, status=403)
+    from .experience import commerce_experience
+    response = JsonResponse(commerce_experience(request, business, _settings_for(business), include_methods=True))
+    response["Cache-Control"] = "no-store"
+    return response

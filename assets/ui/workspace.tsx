@@ -7,9 +7,19 @@ import { Popover, PopoverContent, PopoverTrigger } from './components/popover';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from './components/dropdown-menu';
 import { Command, CommandInput, CommandList, CommandEmpty, CommandItem } from './components/command';
 
-// The server remains the authorization and save boundary. Only contained edits
-// belong here. Procurement approval retains its full review inside the dialog.
-const FORM_PATH = /^\/(?:inventory\/(?:(?:raw-material|product)\/(?:add|\d+\/edit)|product-use\/(?:market|physical)|market-stock\/(?:releases\/\d+\/(?:edit|payments)|sell-online))|procurement\/(?:suppliers\/)?(?:add|\d+\/(?:edit|approve))|sales\/(?:customers\/)?(?:add|\d+\/edit)|expenses\/(?:add|\d+\/edit|payments\/add)|finance\/(?:accounts\/(?:add|\d+\/edit)|(?:supplier-payment|customer-payment|expense-payment|stock-adjustment)\/add)|(?:orders|runs)\/(?:add|\d+\/edit))\/$/;
+// Workspace forms keep their existing server validation, CSRF and review steps.
+// Match form actions across modules, excluding public/authentication surfaces.
+const FORM_PATH = /^\/(?:inventory|procurement|sales|expenses|finance|orders|runs|batches|users|delivery|commerce|business|assistant|founder|platform|retail)(?:\/[^?#]*)?\/(?:add|new|edit|create|settings|payment-settings|permissions|approve|reject|complete|reverse|recreate|split|quality-check|reconcile|release|sell|sell-online|transfer|return|payments|dispense|use|receive|open|close)\/$/;
+const SPECIAL_FORM_PATH = /^\/(?:settings|ledger\/count|inventory\/(?:alert-settings|sample-setup|product-categories|product-use\/(?:market|physical))|sales\/customers\/\d+\/reprice|expenses\/requests\/\d+|commerce\/(?:products\/\d+|notifications\/device|whatsapp)|finance\/reconcile\/\d+|users\/(?:payroll\/addon|plans\/payment(?:\/[^/]+)?|founder\/platform\/(?:business|user)\/\d+(?:\/(?:delete|reset)(?:\/\d+\/(?:restore|delete))?)?))\/$/;
+const isFormPath = (path: string) => !['/retail/profile/', '/business/settings/'].includes(path) && (FORM_PATH.test(path) || SPECIAL_FORM_PATH.test(path));
+const formDialogUrl = (href: string) => { const url = new URL(href, location.href); url.searchParams.set('ui_dialog','1'); return url.href; };
+const formProfile = (path: string) => {
+  if (/^\/finance\/accounts\/(?:add|\d+\/edit)\/$/.test(path)) return {size:'compact', width:42, height:40};
+  if (/^\/procurement\/suppliers\/(?:add|\d+\/edit)\/$/.test(path)) return {size:'compact', width:42, height:32};
+  if (/^\/users\/roles\/(?:add|\d+\/edit)\/$/.test(path)) return {size:'compact', width:42, height:28};
+  if (/^\/(?:orders|runs|procurement\/(?!suppliers)|expenses\/(?:add|\d+\/edit|requests)|sales\/add|inventory\/(?:product\/|market-stock\/|product-use\/)|users\/.*permissions|finance\/books\/)/.test(path)) return {size:'wide', width:76, height:48};
+  return {size:'standard', width:56, height:42};
+};
 const PRODUCT_DETAIL_PATH = /^\/inventory\/product\/\d+\/detail\/$/;
 const CUSTOMER_ACTIVITY_PATH = /^\/sales\/customers\/\d+\/activity\/$/;
 const embedded = window.parent !== window && window.name === 'inprofic-form-dialog';
@@ -21,10 +31,36 @@ const dialogTitleText = (element: Element | null) => {
   heading.querySelectorAll('[data-form-help-tip],.form-help-tip,[role="tooltip"],[hidden],.sr-only,button,svg').forEach(node => node.remove());
   return (heading.textContent || '').replace(/\s+/g, ' ').trim();
 };
+// Flatten only the outer page shell; meaningful field groups and notices stay.
+function prepareDialogBody(root: HTMLElement) {
+  const heading = root.querySelector<HTMLElement>('[data-dialog-title],h1,h2,h3');
+  if (heading) {
+    const title = dialogTitleText(heading);
+    root.querySelectorAll<HTMLElement>('h1,h2,h3').forEach(node => {
+      if (dialogTitleText(node) === title) node.dataset.uiDialogDuplicate = '';
+    });
+    const kicker = heading.previousElementSibling as HTMLElement | null;
+    if (kicker?.tagName === 'P' && kicker.classList.contains('uppercase')) kicker.dataset.uiDialogDuplicate = '';
+  }
+  root.querySelectorAll<HTMLFormElement>('form[method="post" i]').forEach(form => {
+    if (form.closest('.workspace-utility-bar') || (form.closest('dialog') && form.closest('dialog') !== root)) return;
+    let panel: HTMLElement | null = form;
+    while (panel && panel !== root) { panel.dataset.uiFormPanel = ''; panel = panel.parentElement; }
+  });
+  root.querySelectorAll<HTMLElement>('a,button[type="button"],button:not([type])').forEach(control => {
+    if (control.closest('dialog') && control.closest('dialog') !== root) return;
+    if (control.closest('[data-ui-portal], [role="combobox"]')) return;
+    const label = (control.getAttribute('aria-label') || control.textContent || '').trim();
+    const button = control as HTMLButtonElement;
+    const isSubmit = control.tagName === 'BUTTON' && !!button.form && button.type === 'submit' && button.form.method !== 'dialog';
+    if (!isSubmit && /^(?:cancel|close(?: .*)?|back|return to .*)$/i.test(label)) control.dataset.uiDialogDuplicate = '';
+  });
+}
 let confirmRequest: (message: string, destructive?: boolean, purpose?: string) => Promise<boolean>;
 let openForm: (url: string, label: string, trigger: HTMLElement) => void;
 let openLegacy: (dialog: HTMLDialogElement) => void;
 let closeLegacy: (dialog: HTMLDialogElement, value?: string) => void;
+let pendingLegacy: HTMLDialogElement | null = null;
 
 function ConfirmHost() {
   const [request, setRequest] = useState<any>(null);
@@ -67,13 +103,11 @@ function FormHost() {
   const [loaded, setLoaded] = useState(false);
   const [shareSource, setShareSource] = useState<HTMLElement | null>(null);
   const frame = useRef<HTMLIFrameElement>(null);
-  const sizing = useRef<ResizeObserver | null>(null);
-  useEffect(() => () => sizing.current?.disconnect(), []);
+  const preparedDocument = useRef<Document | null>(null);
   const dirty = useRef(false), submitted = useRef(false), changed = useRef(false), stayOpen = useRef(false);
   const close = async (saved = false) => {
     if (!saved && dirty.current && !(await confirmRequest('Your changes have not been saved. Discard them and return to the list?', false))) return;
     const trigger = model?.trigger;
-    sizing.current?.disconnect();
     setModel(null); dirty.current = false;
     requestAnimationFrame(() => trigger?.isConnected && trigger.focus());
     if (saved || changed.current) window.location.reload();
@@ -81,9 +115,9 @@ function FormHost() {
   useEffect(() => {
     openForm = (url, title, trigger) => {
       dirty.current = false; submitted.current = false; changed.current = false;
-      const compact = /^\/(?:finance\/accounts|procurement\/suppliers)\//.test(new URL(url).pathname);
-      sizing.current?.disconnect();
-      setLoaded(false); setShareSource(null); setModel({ url, title, trigger, compact, width: compact ? 42 : 56 });
+      stayOpen.current = false;
+      preparedDocument.current = null;
+      setLoaded(false); setShareSource(null); setModel({ url:formDialogUrl(url), title, trigger, ...formProfile(new URL(url).pathname) });
     };
   }, []);
   useEffect(() => {
@@ -92,51 +126,23 @@ function FormHost() {
       if (event.data.type === 'dirty') dirty.current = true;
       if (event.data.type === 'submit') { submitted.current = true; stayOpen.current = !!event.data.stayOpen; }
       if (event.data.type === 'cancel') void close();
+      if (event.data.type === 'ready') ready();
     };
     const beforeUnload = (event: BeforeUnloadEvent) => { if (model && dirty.current) event.preventDefault(); };
     window.addEventListener('message', listener); window.addEventListener('beforeunload', beforeUnload);
     return () => { window.removeEventListener('message', listener); window.removeEventListener('beforeunload', beforeUnload); };
   }, [model]);
   const ready = () => {
-    setLoaded(true);
     try {
       const doc = frame.current!.contentDocument!;
+      if (!doc || preparedDocument.current === doc) return;
+      preparedDocument.current = doc;
       setShareSource(doc.querySelector<HTMLElement>('[data-snapshot-heading] [data-snapshot-share]'));
-      const form = doc.querySelector<HTMLFormElement>('.workspace-content form[method="post"]');
-      if (form) {
-        // Mark the enclosing page panel, never interior grouped cards.
-        let panel: HTMLElement | null = form;
-        const boundary = form.closest('.workspace-content,[data-ui-workspace]');
-        while (panel && panel !== boundary) {
-          const style = doc.defaultView!.getComputedStyle(panel);
-          if (style.borderStyle !== 'none' || style.boxShadow !== 'none') panel.dataset.uiFormPanel = '';
-          panel = panel.parentElement;
-        }
-      }
-      sizing.current?.disconnect();
       const content = doc.querySelector<HTMLElement>('.workspace-content');
-      const dialog = frame.current?.closest<HTMLElement>('.ui-form-dialog');
-      if (content && dialog) {
-        const heading = dialog.querySelector<HTMLElement>('.ui-dialog-heading');
-        const measure = () => {
-          const view = doc.defaultView;
-          if (!view || !content.isConnected || !dialog.isConnected) return;
-          const main = content.closest('main');
-          const style = main ? view.getComputedStyle(main) : null;
-          const padding = style ? parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) : 32;
-          const height = Math.ceil(content.getBoundingClientRect().height + padding + (heading?.getBoundingClientRect().height || 64) + 2);
-          dialog.style.setProperty('--ui-form-height', `${height}px`);
-        };
-        // Tables and item grids need room; simple record forms stay compact.
-        const wide = !!content.querySelector('table,[data-formset]') || /^\/(?:orders|runs|procurement)\/(?:add|\d+\/(?:edit|approve))\//.test(new URL(model.url).pathname);
-        setModel((previous: any) => previous ? { ...previous, width: wide ? 76 : previous.compact ? 42 : 56 } : previous);
-        sizing.current = new ResizeObserver(measure);
-        sizing.current.observe(content);
-        if (heading) sizing.current.observe(heading);
-        measure();
-      }
+      if (content) prepareDialogBody(content);
+      setLoaded(true);
       const url = new URL(frame.current!.contentWindow!.location.href);
-      const hasError = !!doc.querySelector('[data-message-level~="error"],.errorlist,.field-has-error,[role="alert"][data-error]');
+      const hasError = !!doc.querySelector('[data-message-level~="error"],.errorlist,.field-has-error,.pa-error,.pa-alert,.expense-field-error,[role="alert"][data-error]');
       const success = !!doc.querySelector('[data-message-level~="success"]');
       // Never treat an expired session or permission page as a successful save.
       const isWorkspace = !!doc.querySelector('[data-ui-workspace]');
@@ -154,12 +160,11 @@ function FormHost() {
     } catch (_) { /* Keep the dialog available so the user can close a redirected session. */ }
   };
   return <Dialog open={!!model} onOpenChange={value => { if (!value) void close(); }}>
-    <DialogContent style={{ "--ui-form-width": `${model?.width || 56}rem` } as React.CSSProperties} className="ui-form-dialog" onOpenAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => frame.current?.focus()); }} onCloseAutoFocus={event => event.preventDefault()}>
-      <div className="ui-dialog-heading"><DialogTitle>{model?.title || 'Edit record'}</DialogTitle><DialogDescription className="sr-only">{model?.url && (CUSTOMER_ACTIVITY_PATH.test(new URL(model.url).pathname) || PRODUCT_DETAIL_PATH.test(new URL(model.url).pathname)) ? "Review activity, costs and special prices. Date filters do not change records." : "Complete the form. Validation and saving follow the same business rules as the full page."}</DialogDescription>
+    <DialogContent style={{ "--ui-form-width": `${model?.width || 56}rem`, "--ui-form-height": `${model?.height || 42}rem` } as React.CSSProperties} data-dialog-size={model?.size} className="ui-form-dialog" onOpenAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => frame.current?.closest<HTMLElement>('[role="dialog"]')?.querySelector<HTMLElement>('.ui-dialog-heading')?.focus()); }} onCloseAutoFocus={event => event.preventDefault()}>
+      <div className="ui-dialog-heading" tabIndex={-1}><DialogTitle>{model?.title || 'Edit record'}</DialogTitle><DialogDescription className="sr-only">{model?.url && (CUSTOMER_ACTIVITY_PATH.test(new URL(model.url).pathname) || PRODUCT_DETAIL_PATH.test(new URL(model.url).pathname)) ? "Review activity, costs and special prices. Date filters do not change records." : "Complete the form. Validation and saving follow the same business rules as the full page."}</DialogDescription>
       {loaded && shareSource && <SnapshotMenu source={shareSource}/>}
       </div>
-      {!loaded && <p role="status" className="ui-form-loading">Loading form…</p>}
-      {model && <iframe ref={frame} src={model.url} name="inprofic-form-dialog" title={model.title || 'Record form'} onLoad={ready} className="ui-form-frame"/>}
+      {model && <iframe ref={frame} src={model.url} name="inprofic-form-dialog" title={model.title || 'Record form'} onLoad={ready} className="ui-form-frame" style={{visibility:loaded ? 'visible' : 'hidden'}}/>}
     </DialogContent>
   </Dialog>;
 }
@@ -177,20 +182,23 @@ function LegacyHost() {
   useEffect(() => {
     openLegacy = node => {
       if (node.open) return;
+      window.dispatchEvent(new Event('inprofic:dialog-opening'));
       trigger.current = document.activeElement as HTMLElement;
+      prepareDialogBody(node);
       node.dataset.uiDialogWidth = getComputedStyle(node).maxWidth === 'none' ? '68rem' : getComputedStyle(node).maxWidth;
       placeholder.current = document.createComment('dialog location'); node.before(placeholder.current);
       node.setAttribute('open',''); setDialog(node);
     };
+    if (pendingLegacy) { const node = pendingLegacy; pendingLegacy = null; openLegacy(node); }
   }, []);
   useEffect(() => {
     closeLegacy = (node, value) => { if (node === dialog) finish(value); };
     if (dialog && content.current) content.current.append(dialog);
   }, [dialog]);
   return <Dialog open={!!dialog} onOpenChange={value => { if (!value) { const event = new Event('cancel', {cancelable:true}); if (dialog?.dispatchEvent(event)) finish(); } }}>
-    <DialogContent style={{"--ui-legacy-width":dialog?.dataset.uiDialogWidth || "68rem"} as React.CSSProperties} className="ui-legacy-dialog" onCloseAutoFocus={event => event.preventDefault()}>
-      <DialogTitle className="sr-only">{dialogTitleText(dialog?.querySelector('h1,h2,h3') || null) || dialog?.getAttribute('aria-label') || 'Details'}</DialogTitle>
-      <DialogDescription className="sr-only">Review the details and available actions.</DialogDescription>
+    <DialogContent portalContainer={placeholder.current?.parentElement} data-dialog-size={dialog?.dataset.formSize} style={{"--ui-legacy-width":dialog?.dataset.uiDialogWidth || "68rem", "--ui-form-height":dialog?.dataset.formSize === 'compact' ? '30rem' : '48rem'} as React.CSSProperties} className="ui-legacy-dialog" onOpenAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => content.current?.closest<HTMLElement>('[role="dialog"]')?.querySelector<HTMLElement>('.ui-dialog-heading')?.focus()); }} onCloseAutoFocus={event => event.preventDefault()}>
+      <div className="ui-dialog-heading" tabIndex={-1}><DialogTitle>{dialogTitleText(dialog?.querySelector('h1,h2,h3') || null) || dialog?.getAttribute('aria-label') || 'Details'}</DialogTitle>
+      <DialogDescription className="sr-only">Review the details and available actions.</DialogDescription></div>
       <div ref={node => { content.current = node; if (node && dialog) { node.append(dialog); dialog.removeAttribute("aria-hidden"); } }} data-ui-legacy/>
     </DialogContent>
   </Dialog>;
@@ -310,7 +318,111 @@ function enhanceSelections(root: ParentNode = document) {
   selectRoots.forEach((value,select) => { if (!select.isConnected) { value.root.unmount(); value.mount.remove(); selectRoots.delete(select); } });
 }
 
+// List workspaces also contain inline editors (Books, Tax, mailing, delivery).
+// Keep their actual forms and listeners; expose them through the same dialog.
+const inlineForms = new WeakSet<HTMLFormElement>();
+const inlineRetryKey = 'inprofic:inline-form-retry';
+let inlineRetry: {path:string,index:number,at:number} | null | undefined;
+function enhanceInlineForms() {
+  if (embedded || !document.querySelector('.desktop-sidebar') || isFormPath(location.pathname)) return;
+  if (inlineRetry === undefined) {
+    try { inlineRetry = JSON.parse(sessionStorage.getItem(inlineRetryKey) || 'null'); sessionStorage.removeItem(inlineRetryKey); } catch (_) { inlineRetry = null; }
+  }
+  document.querySelectorAll<HTMLFormElement>('.workspace-content form[method="post" i]').forEach((form,index) => {
+    if (inlineForms.has(form) || form.closest('dialog,[role="dialog"],.workspace-utility-bar,[data-no-dialog],[data-standalone-profile]')) return;
+    const fields = [...form.elements].filter(field => field.matches('input:not([type="hidden"]):not([type="submit"]):not([type="button"]),select,textarea')) as HTMLInputElement[];
+    if (!fields.some(field => !field.matches(':disabled') && !field.readOnly && !!field.getClientRects().length)) return;
+    const submit = form.querySelector<HTMLButtonElement>('button:not([type]),button[type="submit"],input[type="submit"]');
+    if (!submit || submit.matches(':disabled')) return;
+    inlineForms.add(form);
+    const action = dialogTitleText(submit) || submit.value || 'Open form';
+    const label = /^(?:add|save|create|update|apply)$/i.test(action)
+      ? dialogTitleText(form.querySelector('h1,h2,h3')) || action
+      : action.replace(/^save /i, 'Edit ');
+    const external = fields.filter(field => !form.contains(field));
+    if (external.length) {
+      // Production approvals associate flexible amounts with form="…". Keep
+      // their complete stock/review context together in an embedded workspace.
+      const groups = form.id ? [...document.querySelectorAll<HTMLElement>(`[data-form-fields-for="${CSS.escape(form.id)}"]`)] : [];
+      const entry = groups.find(group => group.contains(form)) || form;
+      const trigger = document.createElement('button');
+      trigger.type = 'button'; trigger.className = 'workspace-action ui-inline-form-trigger'; trigger.textContent = label;
+      trigger.setAttribute('aria-haspopup','dialog'); entry.before(trigger);
+      const hide = (node: HTMLElement) => { node.hidden = true; node.dataset.uiInlineSource = ''; };
+      hide(form); groups.forEach(hide);
+      external.filter(field => !groups.some(group => group.contains(field))).forEach(field => hide(field.closest<HTMLElement>('label,.inprofic-control-wrap') || field));
+      trigger.addEventListener('click', () => openForm?.(location.href,label,trigger));
+      return;
+    }
+    const dialog = document.createElement('dialog');
+    const title = document.createElement('h2'); title.textContent = label;
+    const wide = form.dataset.formSize === 'wide' || !!form.querySelector('table,[data-formset]') || fields.length > 8;
+    dialog.style.maxWidth = wide ? '76rem' : fields.length > 4 ? '56rem' : '42rem';
+    dialog.dataset.formSize = wide ? 'wide' : fields.length > 4 ? 'standard' : 'compact';
+    dialog.dataset.inlineFormDialog = '';
+    const trigger = document.createElement('button');
+    trigger.type = 'button'; trigger.className = 'workspace-action ui-inline-form-trigger'; trigger.textContent = label;
+    trigger.setAttribute('aria-haspopup','dialog');
+    trigger.addEventListener('click', () => dialog.showModal());
+    // Row editors must continue to show the record's current name/value.
+    if (form.closest('td') && fields.length === 1 && fields[0].value) {
+      const value = document.createElement('span'); value.textContent = fields[0].value;
+      value.className = 'ui-inline-form-value'; form.before(value);
+      trigger.setAttribute('aria-label', `${label}: ${fields[0].value}`);
+    }
+    form.before(trigger, dialog); dialog.append(title, form);
+    form.addEventListener('submit', event => queueMicrotask(() => {
+      if (event.defaultPrevented) return;
+      // Remember only the entry point, never passwords, payment details or files.
+      try { sessionStorage.setItem(inlineRetryKey, JSON.stringify({path:location.pathname,index,at:Date.now()})); } catch (_) { /* Field errors still reopen the editor. */ }
+    }));
+    const errors = [...document.querySelectorAll<HTMLElement>('[data-message-level~="error"]')];
+    const retry = inlineRetry?.path === location.pathname && inlineRetry.index === index && Date.now() - inlineRetry.at < 300000 && errors.length;
+    if (retry || form.querySelector('.errorlist,.field-has-error,[aria-invalid="true"]')) {
+      errors.forEach(error => {
+        const copy = error.cloneNode(true) as HTMLElement;
+        copy.removeAttribute('id'); copy.querySelectorAll('[id]').forEach(node => node.removeAttribute('id'));
+        copy.setAttribute('role','alert'); form.before(copy);
+      });
+      requestAnimationFrame(() => dialog.showModal());
+    }
+  });
+}
+
+function initializeSidebar() {
+  const sidebarToggle = document.querySelector<HTMLButtonElement>('#sidebar-toggle');
+  if (sidebarToggle) {
+    const root = document.documentElement;
+    const categories = [...document.querySelectorAll<HTMLDetailsElement>('.desktop-sidebar [data-nav-category]')];
+    const expandedCategories = new Set(categories.filter(category => category.open));
+    const apply = () => {
+      const collapsed = root.dataset.sidebar === 'collapsed';
+      sidebarToggle.setAttribute('aria-expanded', String(!collapsed));
+      sidebarToggle.setAttribute('aria-label', collapsed ? 'Expand navigation' : 'Collapse navigation');
+      sidebarToggle.title = collapsed ? 'Expand navigation' : 'Collapse navigation';
+      categories.forEach(category => {
+        // Closed native details hide descendants from keyboard and screen readers.
+        // Open all groups in the icon rail and restore their state on expansion.
+        if (collapsed) { category.removeAttribute('name'); category.open = true; }
+        else { category.open = expandedCategories.has(category); category.name = 'desktop-sidebar-nav'; }
+      });
+    };
+    document.querySelectorAll<HTMLElement>('.desktop-sidebar nav a,.desktop-sidebar nav button').forEach(link => {
+      const label = link.querySelector('.nav-label')?.textContent?.trim();
+      if (label) { link.title = label; link.setAttribute('aria-label', label); }
+    });
+    sidebarToggle.addEventListener('click', () => {
+      if (root.dataset.sidebar !== 'collapsed') { expandedCategories.clear(); categories.filter(category => category.open).forEach(category => expandedCategories.add(category)); }
+      root.dataset.sidebar = root.dataset.sidebar === 'collapsed' ? 'expanded' : 'collapsed';
+      try { localStorage.setItem('inprofic:sidebar', root.dataset.sidebar); } catch (_) { /* Navigation remains usable without storage. */ }
+      apply();
+    });
+    apply();
+  }
+}
+
 function boot() {
+  initializeSidebar();
   const mount = document.createElement('div'); mount.dataset.uiRoot=''; document.body.append(mount);
   createRoot(mount).render(<><ConfirmHost/>{!embedded && <><FormHost/><LegacyHost/></>}</>);
   document.querySelectorAll<HTMLElement>('[data-ui-snapshot-menu]').forEach(node => {
@@ -332,8 +444,9 @@ function boot() {
     createRoot(slot).render(<FilterPopover panel={panel} button={button}/>);
   });
   enhanceSelections();
+  enhanceInlineForms();
   let queued = false;
-  new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; enhanceSelections(); bridgeDialogs(); }); } }).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['hidden','style']});
+  new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; enhanceSelections(); enhanceInlineForms(); bridgeDialogs(); }); } }).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['hidden','style']});
   const approved = new WeakSet<HTMLFormElement>();
   document.addEventListener('submit', async event => {
     const form = event.target as HTMLFormElement;
@@ -353,13 +466,15 @@ function boot() {
       if (/^(cancel|back|return)\b/i.test(link.textContent?.trim() || '')) { event.preventDefault(); postParent('cancel'); }
       return;
     }
-    if (url.origin !== location.origin || !(FORM_PATH.test(url.pathname) || CUSTOMER_ACTIVITY_PATH.test(url.pathname) || PRODUCT_DETAIL_PATH.test(url.pathname)) || !openForm) return;
+    if (url.origin !== location.origin || !(link.hasAttribute('data-form-dialog') || isFormPath(url.pathname) || CUSTOMER_ACTIVITY_PATH.test(url.pathname) || PRODUCT_DETAIL_PATH.test(url.pathname)) || !openForm) return;
     event.preventDefault();
     if (link.dataset.confirm && !(await confirmRequest(link.dataset.confirm, false, 'edit-payment'))) return;
     openForm(url.href,link.getAttribute('aria-label') || dialogTitleText(link).replace(/^\+\s*/,'') || 'Record form',link);
   });
   if (embedded) {
     document.documentElement.dataset.uiEmbedded='true';
+    const content = document.querySelector<HTMLElement>('.workspace-content');
+    if (content) prepareDialogBody(content);
     // Embedded forms share the active palette, including changes made while open.
     const syncAppearance = () => {
       const source = window.parent.document.documentElement, root = document.documentElement;
@@ -382,12 +497,18 @@ function boot() {
     document.addEventListener('submit',event => { queueMicrotask(() => { if (!event.defaultPrevented) postParent('submit', {stayOpen: ((event as SubmitEvent).submitter?.getAttribute('name') === 'save_add_new' || (event as SubmitEvent).submitter?.hasAttribute('data-stay-open'))}); }); });
   }
   bridgeDialogs(); document.documentElement.dataset.uiReady='true';
+  if (embedded) {
+    // DOM readiness includes the form's deferred scripts; don't wait for logos,
+    // fonts or unrelated page assets before presenting an interactive form.
+    if (document.readyState === 'complete') postParent('ready');
+    else document.addEventListener('DOMContentLoaded', () => postParent('ready'), {once:true});
+  }
 }
 function bridgeDialogs() {
   if (embedded) return;
   document.querySelectorAll<HTMLDialogElement>('dialog:not([data-native-dialog])').forEach(dialog => {
     if (dialog.dataset.uiDialog) return; dialog.dataset.uiDialog='true';
-    Object.defineProperty(dialog,'showModal',{configurable:true,value:() => openLegacy?.(dialog)});
+    Object.defineProperty(dialog,'showModal',{configurable:true,value:() => { if (openLegacy) openLegacy(dialog); else pendingLegacy = dialog; }});
     Object.defineProperty(dialog,'close',{configurable:true,value:(value='') => closeLegacy?.(dialog,value)});
   });
 }

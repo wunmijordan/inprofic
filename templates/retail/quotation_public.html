@@ -1,0 +1,10 @@
+{% extends 'commerce/storefront_page_base.html' %}{% block title %}Quotation · {{ store_business.name }}{% endblock %}
+{% block extra_head %}{% include "commerce/_receipt_print_styles.html" %}<meta name="robots" content="noindex,nofollow">{% endblock %}
+{% block content %}<main class="receipt-shell mx-auto max-w-3xl px-4 py-10 sm:px-8">
+{% include 'commerce/_receipt_document.html' %}
+<section class="mt-5 space-y-4">
+{% if error %}<p role="alert">{{ error }}</p>{% endif %}
+{% if quote.status == 'sent' %}<form method="post" class="space-y-4">{% csrf_token %}<label class="flex items-center gap-3"><span>I accept this quotation</span><span class="cf-switch"><input name="accept" type="checkbox" class="peer sr-only" required><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label><button class="ui-button ui-button-primary">Accept quotation</button></form>{% endif %}
+{% if quote.checkout_id %}<a class="ui-button" href="{% url 'storefront_checkout' quote.business.slug quote.checkout.public_id %}">Continue to payment</a>{% endif %}
+<p class="text-sm">Acceptance does not confirm payment or reserve stock.</p>
+</section></main>{% endblock %}

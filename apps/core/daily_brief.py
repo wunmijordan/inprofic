@@ -181,7 +181,7 @@ def render_text(brief, today=None, *, now=None):
     greeting = f"*{time_greeting(now)}, {b.name}*" if is_yesterday else f"*{b.name}: daily brief*"
     if 'executive_sections' in brief:
         from .executive_brief import full_text
-        return f"{greeting}\n{brief['day']:%a %d %b %Y}\n\n" + full_text(brief)
+        return f"{greeting}\n" + full_text(brief)
     label = day_label(brief["day"], today)
     heading = f"{label}, {brief['day']:%a %d %b}" if label in {"Yesterday", "Today so far"} else f"{brief['day']:%a %d %b %Y}"
     lines = [greeting, heading, ""]

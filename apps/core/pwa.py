@@ -18,6 +18,9 @@ from .models import Business
 
 def _pwa_build_version():
     raw = str(getattr(settings, "PWA_BUILD_VERSION", "current") or "current")
+    if raw in {"dev", "current"}:
+        from .context_processors import _static_asset_version
+        raw = f"dev-{_static_asset_version()}"
     return re.sub(r"[^A-Za-z0-9._-]", "-", raw)[:40] or "current"
 
 
@@ -161,6 +164,26 @@ def favicon(request):
 @require_GET
 def service_worker(request):
     static_assets = [
+        static("core/css/product-ribbons.css"),
+        static("core/js/product-ribbons.js"),
+        static("core/js/offline-workspace.js"),
+        static("core/css/interactions.css"),
+        static("core/css/dashboard.css"),
+        static("core/js/workspace.js"),
+        static("core/js/shell-tabs.js"),
+        static("core/js/interactions.js"),
+        static("core/js/brand-assets.js"),
+        static("core/brand/inprofic-mark.png"),
+        static("core/brand/inprofic-mark-on-dark.png"),
+        static("core/fonts/Sora-Variable.woff2"),
+        static("core/fonts/Fraunces-SemiBold.woff2"),
+        static("core/fonts/IBMPlexMono-Regular.woff2"),
+        static("core/fonts/IBMPlexMono-Medium.woff2"),
+        static("core/css/offline-workspace.css"),
+        static("core/js/form-experience.js"),
+        static("core/css/inprofic.css"),
+        static("core/css/workspace.css"),
+        static("core/css/form-experience.css"),
         static("core/css/button-surfaces.css"),
         static("core/pwa/icon-mark-180.png"),
         static("core/pwa/icon-mark-on-dark-180.png"),
@@ -352,7 +375,7 @@ self.addEventListener('fetch', (event) => {{
         }}
         return response;
       }} catch (_) {{
-        const cached = await caches.match(request);
+        const cached = await caches.match(request, {{ ignoreSearch: true }});
         return cached || Response.error();
       }}
     }})());

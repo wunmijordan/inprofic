@@ -1,10 +1,10 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% load core_extras %}
 {% block content %}
 {% include "core/_finance_tools_nav.html" %}
 <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
   <div>
-    <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">Finance</p>
-    <h1 class="mt-1 text-2xl font-semibold font-display text-stone-800">Books</h1>
+    <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">{% business_label "Finance" %}</p>
+    <h1 class="mt-1 text-2xl font-semibold font-display text-stone-800">{% business_label "Books" %}</h1>
     <p class="mt-1 max-w-2xl text-xs text-stone-500">A double-entry view of your records: every entry balances, and it is checked against your operational figures below. It spans both ledger periods.</p>
   </div>
   <div class="flex flex-wrap gap-2 text-xs font-semibold">
@@ -47,7 +47,7 @@
 <section class="mb-8 overflow-hidden rounded-2xl border border-[#E7DFCC] bg-white">
   <div class="border-b border-[#E7DFCC] px-4 py-3"><h2 class="text-sm font-semibold text-stone-800">Checked against your records</h2><p class="mt-0.5 text-[11px] text-stone-500">Each line compares a books balance with the figure your operations show. Differences are explained, not hidden.</p></div>
   <div class="overflow-x-auto"><table class="min-w-[640px] w-full text-xs">
-    <thead class="bg-[#FAF6EA] text-left text-[10px] uppercase tracking-wider text-stone-500"><tr><th class="px-4 py-2">Item</th><th class="px-2 py-2 text-right">Books</th><th class="px-2 py-2 text-right">Your records</th><th class="px-2 py-2 text-right">Difference</th><th class="px-4 py-2">Note</th></tr></thead>
+    <thead class="bg-[#FAF6EA] text-left text-[10px] uppercase tracking-wider text-stone-500"><tr><th class="px-4 py-2">Item</th><th class="px-2 py-2 text-right">{% business_label "Books" %}</th><th class="px-2 py-2 text-right">Your records</th><th class="px-2 py-2 text-right">Difference</th><th class="px-4 py-2">Note</th></tr></thead>
     <tbody class="divide-y divide-[#E7DFCC]">
     {% for r in tie %}<tr class="{% if not r.ties %}bg-amber-50{% endif %}"><td class="px-4 py-2 font-medium text-stone-800">{{ r.name }}</td><td class="px-2 py-2 text-right font-mono">{{ r.ledger|floatformat:"2g" }}</td><td class="px-2 py-2 text-right font-mono">{{ r.operational|floatformat:"2g" }}</td><td class="px-2 py-2 text-right font-mono {% if r.ties %}text-emerald-700{% else %}text-rose-700{% endif %}">{{ r.difference|floatformat:"2g" }}</td><td class="px-4 py-2 text-[11px] text-stone-500">{% if r.ties %}Ties.{% else %}{{ r.note }}{% endif %}</td></tr>{% endfor %}
     </tbody></table></div>

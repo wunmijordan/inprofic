@@ -8,6 +8,20 @@ what was borrowed and what was deliberately left out).
 
 ## What it does
 
+- **Branches and offline retail** — full branch workspaces with assigned managers, headquarters access, inherited plan entitlements and shared or independent catalogues; branch stock transfers and receipt confirmation,
+  branch-connected opening floats, live drawer review, closing counts and manager sign-off; cash/verified-transfer split tenders, accepted customer quotations,
+  multi-channel product-set promotions with separate qualifying/reward selling portions, optional eligibility/pricing wording, scrollable offer lists and automatically added reward lines and scheduled per-product prices retained through receipts, with independent qualifying products earning their shared rewards, staff-entered quotation titles, configurable module/menu names per vertical, removable photos in standalone editable
+  profiles and device approval. Prepared offline packages reuse the live templates and
+  include the Basic dashboard, stock reference, expiry flags, cash POS receipts and
+  delivery assignment. Queued work requires explicit confirmation before live sync.
+  See [setup, scope and synchronization](docs/RETAIL_AND_OFFLINE.md).
+
+- **Consistent workspace forms** — operational forms share a modal with one
+  header and close control, fixed content-appropriate dimensions, and compact or
+  full-height phone layouts. Native date fields show the weekday and full date
+  above the picker; customer sale choices include short invoice dates. SVG menus
+  collapse to an icon rail, and dashboards greet the signed-in user by local time.
+  See [the frontend behavior guide](docs/FRONTEND_CONSISTENCY.md).
 - **Inventory** — raw materials (with a real purchase→package→usage unit
   chain: buy in bags, track in kg, dispense in grams/spoons/caps — see
   "Units" below) and finished goods, each with a recipe (bill of materials)
@@ -466,3 +480,15 @@ inside an `overflow-x-auto` wrapper. The first column stays pinned on mobile at
 `clamp(6.1rem, 38vw, 10.8rem)`, including read-only tables; full-width `colspan`
 rows do not pin horizontally. Keep this global rule instead of giving new list
 templates their own sticky widths. Scroll frames also support keyboard focus.
+
+Commerce product offers now share corner ribbons and structured help tips across
+POS and hosted storefronts, with additive headless catalogue/basket-quote metadata.
+Product publishing settings support merchandising badges; Bestseller is based on
+recent paid commerce orders. Offline cash POS packages preserve campaign totals
+and still require confirmed, revalidated sync. See
+[Commerce integration](docs/COMMERCE_INTEGRATION.md#product-offer-ribbons-and-merchandising).
+
+Connected websites can discover their commerce contract at
+`GET /api/v1/storefronts/{slug}/experience` using the existing connection key.
+Business configuration drives capabilities, labels, prices, checkout rules and
+endpoint links; see [integration discovery](docs/COMMERCE_INTEGRATION.md#multi-channel-campaigns-and-automatic-experience-discovery).

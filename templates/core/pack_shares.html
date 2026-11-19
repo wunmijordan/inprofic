@@ -1,8 +1,8 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% load core_extras %}
 {% block content %}
 {% include "core/_finance_tools_nav.html" %}
 <div class="mb-5">
-  <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">Finance</p>
+  <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">{% business_label "Finance" %}</p>
   <h1 class="mt-1 text-2xl font-semibold font-display text-stone-800">Share the Financial Pack</h1>
   <p class="mt-1 max-w-2xl text-xs text-stone-500">Create a read-only link for a lender, investor or auditor. It expires on its own, shows nothing but the pack, and you can revoke it at any time.</p>
 </div>

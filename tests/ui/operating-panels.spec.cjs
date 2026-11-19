@@ -104,6 +104,8 @@ test('procurement review stays in a modal and shows rejected quantities', async 
   await expect(frame.getByRole('button',{name:'Approve request',exact:true})).toBeVisible();
   await expect(frame.locator('[data-snapshot-share]')).toHaveCount(0);
   await frame.locator('.pa-input').first().fill('1');
+  // Bypass the browser's required check to exercise Django's rejection too.
+  await frame.locator('#pa-form textarea').evaluateAll(fields => fields.forEach(field => { field.required = false; }));
   await frame.getByRole('button',{name:'Approve request',exact:true}).click();
   await expect(frame.locator('.pa-error').first()).toContainText('reason');
   await expect(page.locator('.ui-form-dialog')).toBeVisible();

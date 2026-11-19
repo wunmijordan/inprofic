@@ -110,21 +110,21 @@ def distribution_text(*, business, title, day, intro, rows, allocations, settlem
     if settlement is not None and any(settlement['totals'].values()):
         totals = settlement['totals']
         lines += ['*Money summary*']
-        for key,label in [('gross','Customer sales' if any(row.get('channel') == 'Online' for row in settlement['rows']) else 'Customer distributions'),('returned','Returns'),('net','Expected value after returns'),
+        for key,label in [('gross','Customer sales' if any(row.get('channel') == 'Online' for row in settlement['rows']) else 'Customer distributions'),('returned','Returns'),('net','Net value after returns'),
             ('paid','Collected'),('net_due','Balance due'),('refund_review','Refund review')]:
             if totals[key]: lines.append(f"• {label}: {money(totals[key])}")
         lines.append('')
     if rows:
         lines += ['*Stock by product*']
     for row in rows:
-        lines.append(f"• *{row['product']}*")
-        for key, label in [('opening','Opening balance'),('received','Received'),('returned','Returned to stock'),
-            ('distributed','To customers'),('online_sold','Sold online'),('physical_sold','Sold in Physical Store'),('physical','Transferred to Physical Store'),
+        stock_details = []
+        for key, label in [('opening','Opening'),('received','Received'),('returned','Stock returns'),
+            ('distributed','To customers'),('online_sold','Sold online'),('physical_sold','Physical Store sales'),('physical','To Physical Store'),
             ('issued','Staff / gifting'),('write_off','Written off'),('reversal','Production reversed'),('closing','Closing balance'),('expired','Expired stock')]:
-            if row.get(key): lines.append(f"  • {label}: {quantity(row[key],row)}")
+            if row.get(key): stock_details.append(f"{label}: {quantity(row[key],row)}")
         adjustment = row['other_change'] + row.get('write_off',ZERO) - row.get('reversal',ZERO)
-        if adjustment: lines.append(f"  • {'Other stock out' if adjustment < 0 else 'Other stock in'}: {quantity(abs(adjustment),row)}")
-        lines.append('')
+        if adjustment: stock_details.append(f"{'Other stock out' if adjustment < 0 else 'Other stock in'}: {quantity(abs(adjustment),row)}")
+        lines.append(f"• *{row['product']}* · " + " · ".join(stock_details))
     customers, physical = {}, []
     for allocation in allocations:
         if allocation['kind'] == 'non_stock':
@@ -351,7 +351,7 @@ def distribution_summaries(request, *, lots=None, directory=None):
     } for r in returns]
     for row in returned_rows:
         row['quantity_label'] = format_product_quantity(row['quantity'],row['finished_good'])
-    column_specs = [('opening','Opening balance'),('received','Received'),('distributed','To customers'),
+    column_specs = [('opening','Opening'),('received','Received'),('distributed','To customers'),
         ('online_sold','Online sales'),('physical_sold','Store sales'),('physical','To store'),('issued','Staff / gifting'),('closing','Closing')]
     columns = [(key,label) for key,label in column_specs if key in {'opening','closing'} or any(row[key] for row in rows)]
     for row in rows:

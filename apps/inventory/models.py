@@ -232,6 +232,7 @@ class FinishedGood(LedgerStockMixin, BusinessOwnedModel):
         max_length=24, choices=SOURCE_CHOICES, default=SOURCE_MADE_IN_HOUSE,
         help_text="Whether this sellable product is made by the business or bought from a supplier for resale.",
     )
+    barcode = models.CharField(max_length=80, blank=True, default="", db_index=True)
     name = models.CharField(max_length=120)
     description = models.TextField(blank=True, default="")
     storefront_option_label = models.CharField(max_length=60, blank=True, default="")
@@ -291,7 +292,8 @@ class FinishedGood(LedgerStockMixin, BusinessOwnedModel):
 
     class Meta:
         ordering = ["name"]
-        constraints = [models.UniqueConstraint(fields=["business", "name"], name="unique_finished_good_per_business")]
+        constraints = [models.UniqueConstraint(fields=["business", "name"], name="unique_finished_good_per_business"),
+                       models.UniqueConstraint(fields=["business", "barcode"], condition=~models.Q(barcode=""), name="unique_product_barcode_per_business")]
         indexes = [
             models.Index(fields=["business", "source_type", "name"], name="fg_biz_source_name_idx"),
         ]
@@ -364,7 +366,7 @@ class FinishedGood(LedgerStockMixin, BusinessOwnedModel):
             (
                 Decimal(lot.quantity_available or 0)
                 for lot in self._market_lots()
-                if lot.active and (lot.expiry_date is None or lot.expiry_date >= today)
+                if lot.active
             ),
             Decimal("0"),
         )
@@ -1131,6 +1133,8 @@ class StockMovement(BusinessOwnedModel):
     FG_MARKET_RELEASE = "fg_market_release"
     FG_MARKET_RETURN = "fg_market_return"
     FG_MARKET_TRANSFER = "fg_market_transfer"
+    FG_BRANCH_DISPATCH = "fg_branch_dispatch"
+    FG_BRANCH_RECEIPT = "fg_branch_receipt"
     FG_MARKET_EXPIRY = "fg_market_expiry"
     FG_DISTRIBUTION_DAMAGE = "fg_distribution_damage"
     OPERATIONAL_DISPENSE = "operational_dispense"
@@ -1148,6 +1152,8 @@ class StockMovement(BusinessOwnedModel):
         (FG_MARKET_RELEASE, "Market Stock released to distributor"),
         (FG_MARKET_RETURN, "Redistributable Distribution return"),
         (FG_MARKET_TRANSFER, "Market Stock transferred to Physical Store"),
+        (FG_BRANCH_DISPATCH, "Branch stock dispatched"),
+        (FG_BRANCH_RECEIPT, "Branch stock received"),
         (FG_MARKET_EXPIRY, "Expired Market Stock write-off"),
         (FG_DISTRIBUTION_DAMAGE, "Damaged Distribution return"),
         (OPERATIONAL_DISPENSE, "Operational supply dispense"),

@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">{{ title }}</h1>
+<form method="post" enctype="multipart/form-data" class="max-w-4xl space-y-4">
+{% csrf_token %}{{ form.non_field_errors }}
+{% for field in form %}{% include '_field.html' %}{% endfor %}
+{% if formset %}{{ formset.management_form }}{{ formset.non_form_errors }}
+{% for row in formset %}<fieldset class="border rounded-lg p-3"><legend>Product {{ forloop.counter }}</legend>{{ row.non_field_errors }}{% for field in row %}{% if field.is_hidden %}{{ field }}{% else %}{% include '_field.html' %}{% endif %}{% endfor %}</fieldset>{% endfor %}{% endif %}
+<button class="workspace-action workspace-action-primary" data-button-surface>Save</button>
+</form>
+{% endblock %}

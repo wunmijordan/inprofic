@@ -1,3 +1,4 @@
+{% load core_extras %}
 <div
   id="stock-history-modal"
   class="{% if history_inline %}min-w-0{% else %}fixed inset-0 z-50 hidden items-end sm:items-center justify-center p-0 sm:p-4 bg-stone-950/55 backdrop-blur-sm{% endif %}"
@@ -89,7 +90,7 @@
             <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-[#8f172d]"></span>Closing Stock</span>
             <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-emerald-300"></span>Stock In</span>
             <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-rose-300"></span>Stock Out</span>
-            <span data-production-legend class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-sky-300"></span>Production</span>
+            <span data-production-legend class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-sky-300"></span>{% business_label "Production" %}</span>
           </div>
         </div>
 
@@ -106,7 +107,7 @@
                 <tr>
                   <th class="px-4 py-2 text-left">Date</th>
                   <th class="px-4 py-2 text-right">Opening</th>
-                  <th id="production-header" class="px-4 py-2 text-right">Production</th>
+                  <th id="production-header" class="px-4 py-2 text-right">{% business_label "Production" %}</th>
                   <th class="px-4 py-2 text-right">Stock In</th>
                   <th class="px-4 py-2 text-right">Stock Out</th>
                   <th class="px-4 py-2 text-right">Closing</th>

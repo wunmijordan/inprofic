@@ -105,7 +105,7 @@
       {% if subscription.status == 'trial' and subscription.is_effectively_active and subscription.plan_id != selected_plan.id %}
       <button data-button-surface name="action" value="switch_trial" class="mt-4 w-full border border-[#8f172d] text-[#8f172d] rounded-md py-2 text-sm">Switch trial to {{ selected_plan.name }} without paying yet</button>
       {% endif %}
-      <button data-button-surface {% if not available_payment_providers or payment_locked %}disabled{% endif %} class="mt-3 w-full bg-[#8f172d] text-white rounded-md py-2.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50">Continue to secure checkout</button>
+      <button data-button-surface formtarget="_top" {% if not available_payment_providers or payment_locked %}disabled{% endif %} class="mt-3 w-full bg-[#8f172d] text-white rounded-md py-2.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50">Continue to secure checkout</button>
       <p class="text-xs text-stone-500 mt-3">The amount shown above is a preview. INPROFIC checks the final amount again before opening the selected payment provider.</p>
     </form>
   </div>

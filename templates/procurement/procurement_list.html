@@ -1,9 +1,9 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% load core_extras %}
 {% load core_extras static %}
 {% block content %}
 <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
   <div>
-    <h2 class="text-xl font-semibold font-display text-[#8f172d]">Purchases &amp; expenses</h2>
+    <h2 class="text-xl font-semibold font-display text-[#8f172d]">{% business_label "Purchases & expenses" %}</h2>
     <p class="text-sm text-stone-500 mt-0.5">Manage materials, stock purchases and general-use spending in one place.</p>
   </div>
   <div class="flex flex-wrap items-center gap-2">

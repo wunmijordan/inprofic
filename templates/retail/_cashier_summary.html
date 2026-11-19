@@ -1,0 +1,9 @@
+{% load core_extras %}
+<dl class="grid gap-4 sm:grid-cols-3 mb-5">
+  <div><dt class="text-sm text-stone-500">Opening float</dt><dd class="font-semibold font-mono">{{ cashier.opening_float|money:biz.currency_symbol }}</dd></div>
+  <div><dt class="text-sm text-stone-500">Verified cash receipts</dt><dd class="font-semibold font-mono">{{ summary.cash_receipts|money:biz.currency_symbol }}</dd></div>
+  <div><dt class="text-sm text-stone-500">{% if cashier.closed_at %}Expected at close{% else %}Expected in drawer{% endif %}</dt><dd class="font-semibold font-mono">{% if cashier.closed_at %}{{ cashier.expected_cash|money:biz.currency_symbol }}{% else %}{{ summary.expected_cash|money:biz.currency_symbol }}{% endif %}</dd></div>
+</dl>
+{% if cashier.closed_at %}<dl class="grid gap-4 sm:grid-cols-3 mb-5"><div><dt class="text-sm text-stone-500">Cash counted</dt><dd class="font-semibold font-mono">{{ cashier.counted_cash|money:biz.currency_symbol }}</dd></div><div><dt class="text-sm text-stone-500">Variance</dt><dd class="font-semibold font-mono">{{ cashier.variance|money:biz.currency_symbol }}</dd></div><div><dt class="text-sm text-stone-500">Explanation</dt><dd>{{ cashier.close_note|default:'—' }}</dd></div></dl>{% endif %}
+<p class="text-sm mb-4">Bank transfers and other electronic payments stay outside the cash drawer total. Count and close records a reconciliation; Finance balances are adjusted only through their normal workflows.</p>
+{% if summary.pending_count %}<p role="status" class="text-sm mb-4">{{ summary.pending_count }} payment{{ summary.pending_count|pluralize }} must be resolved before closing.</p>{% endif %}

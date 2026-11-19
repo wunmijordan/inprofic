@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django import forms
 from django.db.models import Prefetch, Sum
+from django.utils.formats import date_format
 from .models import CashAccount
 from inventory.models import StockAdjustment, RawMaterial, FinishedGood, InventoryLocation
 from procurement.models import SupplierPayment, PurchaseOrder
@@ -67,6 +68,7 @@ class CustomerPaymentForm(Base):
         )
         sales = [s for s in sales if s.net_total > sum((p.amount for p in s.payments.all()), Decimal("0"))]
         self.fields["sale"].queryset=sale_query.filter(pk__in=[s.pk for s in sales])
+        self.fields["sale"].label_from_instance = lambda sale: f"Sale #{sale.pk} · {date_format(sale.date, 'j M Y')} — {sale.customer}"
         customers=sorted({s.customer for s in sales if s.customer})
         self.fields["customer"].choices=[("","Select customer…")]+[(c,c) for c in customers]
         if 'account' in self.fields:
@@ -77,7 +79,7 @@ class CustomerPaymentForm(Base):
             # Payments are already prefetched above; aggregating here would
             # issue one extra SQL query for every open sale on form load.
             paid = sum((payment.amount for payment in s.payments.all()), Decimal("0"))
-            self.sales_payload.setdefault(s.customer,[]).append({"id":s.pk,"label":f"Sale #{s.pk} — {s.display_source} — outstanding {s.net_total-paid:,.2f}","outstanding":float(s.net_total-paid)})
+            self.sales_payload.setdefault(s.customer,[]).append({"id":s.pk,"label":f"Sale #{s.pk} · {date_format(s.date, 'j M Y')} — {s.display_source} — outstanding {s.net_total-paid:,.2f}","outstanding":float(s.net_total-paid)})
         self.fields["customer"].widget.attrs["data-customer-sales"]="1"
     def clean(self):
         c=super().clean(); sale=c.get("sale"); amount=c.get("amount")

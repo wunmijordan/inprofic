@@ -364,7 +364,7 @@ def _target_amount(target):
     return Decimal(target.total).quantize(Decimal("0.01"))
 
 
-def initiate_payment(*, intake=None, checkout=None, method, idempotency_key, return_url="", surface="public", transfer_route_id=None):
+def initiate_payment(*, intake=None, checkout=None, method, idempotency_key, return_url="", surface="public", transfer_route_id=None, tender_amount=None):
     """Initialize payment for either an existing intake or a checkout."""
     if (intake is None) == (checkout is None):
         raise ValidationError("Choose exactly one payment target.")
@@ -429,6 +429,14 @@ def initiate_payment(*, intake=None, checkout=None, method, idempotency_key, ret
             target_filter = {"intake": locked}
 
         amount = _target_amount(locked)
+        if tender_amount is not None:
+            if checkout is None or surface != "pos" or method not in {CommercePayment.METHOD_CASH, CommercePayment.METHOD_TRANSFER}:
+                raise ValidationError("Split tenders require an authorized cash/verified-transfer POS checkout.")
+            from .checkout_services import checkout_total_paid
+            remaining = amount - checkout_total_paid(locked)
+            amount = Decimal(str(tender_amount)).quantize(Decimal("0.01"))
+            if not amount.is_finite() or amount <= 0 or amount > remaining:
+                raise ValidationError("Tender amount exceeds the checkout balance.")
         if amount <= 0:
             raise ValidationError("This checkout/order has no payable balance.")
         existing = CommercePayment.raw_objects.filter(
@@ -792,9 +800,10 @@ def record_verified_payment(
             from .services import attempt_auto_process_paid_intake
             attempt_auto_process_paid_intake(payment.intake, user=actor)
     elif payment.checkout_id and payment.status == CommercePayment.STATUS_PAID:
-        from .checkout_services import attempt_materialize_paid_checkout
-        attempt_materialize_paid_checkout(payment.checkout, actor=actor)
-        payment.refresh_from_db(fields=["intake", "checkout"])
+        from .checkout_services import attempt_materialize_paid_checkout, checkout_total_paid
+        if checkout_total_paid(payment.checkout) >= payment.checkout.amount:
+            attempt_materialize_paid_checkout(payment.checkout, actor=actor)
+            payment.refresh_from_db(fields=["intake", "checkout"])
     audit(
         payment.business, actor, "payment_verify", receipt,
         f"Payment verified for {_payment_display_reference(payment)}",

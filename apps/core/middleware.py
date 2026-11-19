@@ -23,15 +23,23 @@ class BusinessMiddleware:
 
     def process_exception(self, request, exception):
         from .ledger import LedgerDateError
+
         if not isinstance(exception, LedgerDateError):
             return None
         from . import ledger
-        return render(request, "core/ledger_date_error.html", {
-            "error": exception,
-            "backlog_entry_allowed": bool(
-                getattr(request, "business", None) and ledger.can_enter_backlog(request.user, request.business)
-            ),
-        }, status=400)
+
+        return render(
+            request,
+            "core/ledger_date_error.html",
+            {
+                "error": exception,
+                "backlog_entry_allowed": bool(
+                    getattr(request, "business", None)
+                    and ledger.can_enter_backlog(request.user, request.business)
+                ),
+            },
+            status=400,
+        )
 
     def __call__(self, request):
         # Render probes this endpoint frequently. Keep it completely outside
@@ -61,6 +69,67 @@ class BusinessMiddleware:
             request.ledger_cutover = None
             if business:
                 self._apply_ledger_scope(request, business)
+                if business.headquarters_id:
+                    from retail.models import Branch
+                    from retail.catalogue import synchronize_catalogue
+                    from django.core.exceptions import ValidationError
+
+                    branch = Branch.raw_objects.filter(
+                        workspace=business, active=True
+                    ).first()
+                    if branch is None:
+                        return render(request, "403.html", status=403)
+                    request.branch_workspace = branch
+                    if (
+                        request.path.startswith("/users/plans/")
+                        and request.path != "/users/plans/"
+                    ):
+                        from django.contrib import messages
+
+                        messages.info(
+                            request,
+                            "Manage this branch's subscription from its headquarters workspace.",
+                        )
+                        return redirect("subscription_plans")
+                    if branch.catalogue_mode == "shared" and request.path not in {
+                        "/business/switch/",
+                        "/accounts/logout/",
+                    }:
+                        try:
+                            synchronize_catalogue(branch)
+                        except ValidationError as exc:
+                            from django.http import HttpResponse
+                            from django.utils.html import format_html
+
+                            return HttpResponse(
+                                format_html(
+                                    "<p>Shared catalogue needs headquarters review: {}</p>",
+                                    "; ".join(exc.messages),
+                                ),
+                                status=409,
+                            )
+                        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+                            from django.urls import resolve
+
+                            if resolve(request.path_info).url_name in {
+                                "raw_material_add",
+                                "raw_material_edit",
+                                "raw_material_delete",
+                                "finished_good_add",
+                                "finished_good_edit",
+                                "finished_good_delete",
+                                "product_categories",
+                                "product_category_edit",
+                                "product_category_toggle",
+                                "storefront_product_edit",
+                                "retail_product_import",
+                                "inventory_sample_setup",
+                            }:
+                                from django.http import HttpResponseForbidden
+
+                                return HttpResponseForbidden(
+                                    "This branch shares the headquarters catalogue. Edit products, recipes and prices at headquarters."
+                                )
             return self.get_response(request)
         finally:
             set_current_business(None)
@@ -72,6 +141,7 @@ class BusinessMiddleware:
         """Live / Backlog / Combined scope for this request (see core.ledger)."""
         from . import ledger
         from .models import LedgerCutover
+
         cutover = ledger.latest_cutover(business)
         request.ledger_cutover = cutover
         if not cutover or cutover.status == LedgerCutover.STATUS_REVERTED:
@@ -93,7 +163,11 @@ class BusinessMiddleware:
                 scope = "backlog"
         # Only touch the session when the stored mode is no longer valid so
         # ordinary requests never trigger a session write.
-        if status != LedgerCutover.STATUS_MERGED and wanted != scope and wanted in {"all", "backlog"}:
+        if (
+            status != LedgerCutover.STATUS_MERGED
+            and wanted != scope
+            and wanted in {"all", "backlog"}
+        ):
             request.session["ledger_mode"] = scope
         request.ledger_scope = scope
         set_ledger_context(scope, cutover.cutover_date, status)
@@ -114,8 +188,13 @@ class BusinessMiddleware:
                     "subscription_service__subscription__plan",
                 ).order_by("id")
             )
-            selected = next((business for business in businesses if business.pk == selected_id), None)
-            main = next((business for business in businesses if business.slug == "main"), None)
+            selected = next(
+                (business for business in businesses if business.pk == selected_id),
+                None,
+            )
+            main = next(
+                (business for business in businesses if business.slug == "main"), None
+            )
             business = selected or main or (businesses[0] if businesses else None)
             if request_cache is not None:
                 request_cache[("available_businesses", request.user.pk)] = sorted(
@@ -137,7 +216,11 @@ class BusinessMiddleware:
                 .order_by("business__name", "business_id")
             )
             selected = next(
-                (membership for membership in memberships if membership.business_id == selected_id),
+                (
+                    membership
+                    for membership in memberships
+                    if membership.business_id == selected_id
+                ),
                 None,
             )
             membership = selected or (memberships[0] if memberships else None)
@@ -146,8 +229,10 @@ class BusinessMiddleware:
                 request_cache[("available_businesses", request.user.pk)] = [
                     item.business for item in memberships
                 ]
-                if membership:
-                    request_cache[("permission_snapshot", request.user.pk, business.pk)] = (
+                if membership and not business.headquarters_id:
+                    request_cache[
+                        ("permission_snapshot", request.user.pk, business.pk)
+                    ] = (
                         membership,
                         {
                             permission.module: permission
@@ -158,6 +243,30 @@ class BusinessMiddleware:
                             for permission in membership.role.module_permissions.all()
                         },
                     )
+        if not request.user.is_superuser:
+            from accounts.models import CustomUser
+
+            headquarters_ids = [
+                item.business_id
+                for item in memberships
+                if item.role.key == CustomUser.ROLE_BUSINESS_ADMIN
+            ]
+            available = [item.business for item in memberships]
+            if headquarters_ids:
+                own_ids = {item.business_id for item in memberships}
+                available += list(
+                    Business.objects.filter(headquarters_id__in=headquarters_ids)
+                    .exclude(pk__in=own_ids)
+                    .select_related("headquarters")
+                )
+            if not business or business.pk != selected_id:
+                business = next(
+                    (item for item in available if item.pk == selected_id), business
+                )
+            if request_cache is not None:
+                request_cache[("available_businesses", request.user.pk)] = sorted(
+                    available, key=lambda item: (item.name.casefold(), item.pk)
+                )
         if business and request_cache is not None:
             # The tenant query above already joins both possible subscription
             # paths. Prime the request cache from those joined objects so the
@@ -166,7 +275,8 @@ class BusinessMiddleware:
             service = business._state.fields_cache.get("subscription_service")
             primary = business._state.fields_cache.get("subscription")
             subscription = service.subscription if service else primary
-            request_cache[("business_subscription", business.pk)] = subscription
+            if not business.headquarters_id:
+                request_cache[("business_subscription", business.pk)] = subscription
         if business:
             if selected_id != business.pk:
                 request.session["active_business_id"] = business.pk
@@ -195,6 +305,7 @@ def _live_tester_mutation_blocked(request):
 
 EXEMPT_PREFIXES = (
     "/marketing/location-enrich/",
+    "/shared/quotations/",
     "/accounts/login", "/accounts/logout", "/accounts/signup", "/privacy-policy", "/robots.txt", "/sitemap.xml", "/favicon.ico", "/llms.txt",
     "/business/settings", "/business/switch", "/admin", "/static", "/media/", "/shop/", "/shared/pack/",
     "/health/", "/ops/", "/manifest.webmanifest", "/service-worker.js", "/pwa/",
@@ -297,6 +408,9 @@ class LoginRequiredMiddleware:
                 if request.method in {'GET', 'HEAD'} and any(user_has_permission(request.user, request.business, name, 'view') for name in ('procurement', 'expenses')):
                     # The shared hub/export scopes each domain independently.
                     return self.get_response(request)
+            if request.path.startswith("/retail/"):
+                # Each retail surface checks its own domain or self-service permission.
+                return self.get_response(request)
             module = _module_for_path(request.path)
             action = _action_for_request(request)
             if module == "production" and _KITCHEN_FLOOR_PATH.match(request.path):

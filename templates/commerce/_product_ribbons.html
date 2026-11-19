@@ -1,0 +1,17 @@
+{% if product.card_promotions %}
+<div class="product-ribbon product-ribbon--offer" data-product-offers data-offer-product="{{ product.public_id }}">
+  <span>Offer</span>
+  {% for group in product.card_offer_groups %}<span data-offer-channel="{{ group.channel }}" {% if pos_selected_channel and group.channel != pos_selected_channel %}hidden{% endif %}>{% include "_help_tip.html" with help_items=group.items help_sections=group.sections help_title=group.title label=group.title portal_bubble=True %}</span>{% endfor %}
+</div>
+{% endif %}
+{% if product.card_badge %}
+<div class="product-ribbon product-ribbon--merchandising" data-merchandising-badge="{{ product.card_badge.code }}">
+  <span class="product-ribbon__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    {% if product.card_badge.code == 'bestseller' %}<path d="m7 3 2 5h6l2-5M8 8H5v3a7 7 0 0 0 14 0V8h-3M9 21h6m-3-3v3M9 8h6v4a3 3 0 0 1-6 0z"/>
+    {% elif product.card_badge.code == 'new_arrival' %}<path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z"/>
+    {% elif product.card_badge.code == 'staff_pick' %}<path d="m8 11 4-8c3 0 2 5 2 6h5a2 2 0 0 1 2 2l-2 8a2 2 0 0 1-2 2H8M3 10h5v11H3z"/>
+    {% else %}<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/>{% endif %}
+  </svg></span>
+  {% include "_help_tip.html" with help_text=product.card_badge.description label=product.card_badge.label portal_bubble=True %}
+</div>
+{% endif %}

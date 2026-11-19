@@ -9,6 +9,8 @@
   <title>{{ store_business.name }} · {% if order_now_mode %}Order Now{% else %}Catalogue{% endif %}</title>
   <link rel="stylesheet" href="{% static 'core/css/inprofic.css' %}">
   <link rel="stylesheet" href="{% static 'core/css/form-experience.css' %}?v={{ static_asset_version }}">
+  <link rel="stylesheet" href="{% static 'core/css/product-ribbons.css' %}?v={{ static_asset_version }}">
+  <script src="{% static 'core/js/product-ribbons.js' %}?v={{ static_asset_version }}" defer></script>
   <link rel="stylesheet" href="{% static 'core/css/button-surfaces.css' %}?v={{ static_asset_version }}">
   <link rel="stylesheet" href="{% static 'core/css/interactions.css' %}?v={{ static_asset_version }}">
   <script src="{% static 'core/js/interactions.js' %}?v={{ static_asset_version }}" data-inprofic-ui defer></script>
@@ -103,6 +105,9 @@
       <div id="catalogue-grid" class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {% for p in products %}
         {% if p.public_online_available %}<article class="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white" data-product-card data-basket-key="{{ p.public_id }}" data-product-id="{{ p.public_id }}" data-individual-option-id="" data-product-name="{{ p.display_name }}" data-category="{% if p.finished_good.product_category_id %}{{ p.finished_good.product_category_id }}{% else %}uncategorised{% endif %}" data-unit="{{ p.customer_unit }}" data-search="{{ p.display_name|lower }} {{ p.public_description|lower }} {% for variant in p.public_variants %}{{ variant.display_name|lower }} {% endfor %}" data-modes="{% if p.public_online_available %} online{% endif %}" data-min-online="{{ p.preorder_min_quantity }}" data-price-online="{{ p.preorder_price }}" data-unit-online="{{ p.customer_unit }}" data-max="{% if p.max_quantity %}{{ p.max_quantity }}{% endif %}" data-stock-available="{{ p.public_stock_available }}" data-stock-source="{% if p.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if p.public_made_source_available %}1{% else %}0{% endif %}" data-procured-source="{% if p.public_procured_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ p.estimated_ready_minutes }}">
+          <div data-product-ribbon-slot data-ribbon-product="{{ p.public_id }}">{% include "commerce/_product_ribbons.html" with product=p %}</div>
+          <template data-ribbon-config="{{ p.public_id }}">{% include "commerce/_product_ribbons.html" with product=p %}</template>
+          {% for variant in p.public_variants %}<template data-ribbon-config="{{ variant.public_id }}">{% include "commerce/_product_ribbons.html" with product=variant %}</template>{% endfor %}
           <div class="relative aspect-[16/10] overflow-hidden bg-stone-100">
             {% if p.public_image_url %}<img src="{{ p.public_image_url }}" alt="{{ p.display_name }}" class="h-full w-full object-cover" loading="lazy">
             {% else %}<div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-stone-100 via-[#efe8dc] to-stone-200"><div class="flex h-20 w-20 items-center justify-center rounded-full border border-white/80 bg-white/55 shadow-inner backdrop-blur"><svg viewBox="0 0 24 24" class="h-8 w-8 fill-none stroke-stone-400" stroke-width="1.35"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg></div></div>{% endif %}
@@ -128,14 +133,14 @@
               <select data-product-choice class="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold normal-case tracking-normal text-stone-700"><option value="">Choose {{ p.finished_good.storefront_option_label|lower }}</option>{% for choice in p.finished_good.storefront_option_choices %}<option value="{{ choice }}">{{ choice }}</option>{% endfor %}</select>
             </label>
             <label data-product-addon-wrap class="block min-w-0 text-[10px] font-bold uppercase tracking-[.14em] text-stone-400 {% if not p.public_individual_options %}hidden{% endif %}">Add-on
-              <select data-product-addon class="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold normal-case tracking-normal text-stone-700"><option value="">Choose an add-on</option>{% for option in p.public_individual_options %}<option value="{{ option.public_id }}" data-name="{{ option.name }}" data-unit="{{ option.customer_unit|default:p.customer_unit }}" data-price="{{ option.online_price }}" data-min="{{ option.online_min_quantity }}">{{ option.name }} · {{ option.online_price|money:store_business.currency_symbol }}</option>{% endfor %}</select>
+              <select data-product-addon class="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold normal-case tracking-normal text-stone-700"><option value="">Choose an add-on</option>{% for option in p.public_individual_options %}<option value="{{ option.public_id }}" data-name="{{ option.name }}" data-unit="{{ option.customer_unit|default:p.customer_unit }}" data-price="{{ option.promotion_online_price }}" data-min="{{ option.online_min_quantity }}">{{ option.name }} · {{ option.promotion_online_price|money:store_business.currency_symbol }}</option>{% endfor %}</select>
             </label>
             </div>
             {% if p.public_bulk_online_available and not p.public_variants %}
             <label class="mt-3 block text-[10px] font-bold uppercase tracking-[.14em] text-stone-400">Bulk option <span class="font-medium normal-case tracking-normal">(made to order)</span>
               <select data-bulk-pack-select class="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold normal-case tracking-normal text-stone-700 outline-none focus:border-stone-400">
                 <option value="">Standard · {{ p.customer_unit }}</option>
-                {% for pack in p.public_bulk_packs %}<option value="{{ pack.public_id }}" data-name="{{ pack.name }}" data-unit="{{ pack.name }}" data-price="{{ pack.price }}" data-min="{{ pack.min_order_quantity }}">{{ pack.name }} · {{ pack.price|money:store_business.currency_symbol }}{% if pack.min_order_quantity > 1 %} · min {{ pack.min_order_quantity }}{% endif %}</option>{% endfor %}
+                {% for pack in p.public_bulk_packs %}<option value="{{ pack.public_id }}" data-name="{{ pack.name }}" data-unit="{{ pack.name }}" data-price="{{ pack.promotion_online_price }}" data-min="{{ pack.min_order_quantity }}">{{ pack.name }} · {{ pack.promotion_online_price|money:store_business.currency_symbol }}{% if pack.min_order_quantity > 1 %} · min {{ pack.min_order_quantity }}{% endif %}</option>{% endfor %}
               </select>
             </label>
             {% endif %}
@@ -143,17 +148,17 @@
             <label class="mt-3 mb-3 block text-[10px] font-bold uppercase tracking-[.14em] text-stone-400">Available sizes / variants
               <select data-product-variant-select autocomplete="off" class="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold normal-case tracking-normal text-stone-700 outline-none focus:border-stone-400">
                 <option value="">{{ p.display_name }} · Standard · {{ p.preorder_price|money:store_business.currency_symbol }} / {{ p.customer_unit }}</option>
-                {% if p.public_bulk_online_available %}{% for pack in p.public_bulk_packs %}<option value="bulk:{{ p.public_id }}:{{ pack.public_id }}" data-product-id="{{ p.public_id }}" data-bulk-pack-id="{{ pack.public_id }}" data-bulk-pack-name="{{ pack.name }}" data-name="{{ p.display_name }} · {{ pack.name }}" data-unit="{{ pack.name }}" data-price="{{ pack.price }}" data-min="{{ pack.min_order_quantity }}" data-stock-source="{% if p.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if p.public_made_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ p.estimated_ready_minutes }}">{{ p.display_name }} · {{ pack.name }} · {{ pack.price|money:store_business.currency_symbol }} / {{ pack.name }}{% if pack.min_order_quantity > 1 %} · min {{ pack.min_order_quantity }}{% endif %}</option>{% endfor %}{% endif %}
+                {% if p.public_bulk_online_available %}{% for pack in p.public_bulk_packs %}<option value="bulk:{{ p.public_id }}:{{ pack.public_id }}" data-product-id="{{ p.public_id }}" data-bulk-pack-id="{{ pack.public_id }}" data-bulk-pack-name="{{ pack.name }}" data-name="{{ p.display_name }} · {{ pack.name }}" data-unit="{{ pack.name }}" data-price="{{ pack.promotion_online_price }}" data-min="{{ pack.min_order_quantity }}" data-stock-source="{% if p.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if p.public_made_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ p.estimated_ready_minutes }}">{{ p.display_name }} · {{ pack.name }} · {{ pack.promotion_online_price|money:store_business.currency_symbol }} / {{ pack.name }}{% if pack.min_order_quantity > 1 %} · min {{ pack.min_order_quantity }}{% endif %}</option>{% endfor %}{% endif %}
                 {% for variant in p.public_variants %}
                   <option value="{{ variant.public_id }}" data-name="{{ variant.display_name }}" data-unit="{{ variant.customer_unit }}" data-price="{{ variant.preorder_price }}" data-min="{{ variant.preorder_min_quantity }}" data-max="{% if variant.max_quantity %}{{ variant.max_quantity }}{% endif %}" data-option-label="{{ variant.finished_good.storefront_option_label }}" data-stock-available="{{ variant.public_stock_available }}" data-stock-source="{% if variant.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if variant.public_made_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ variant.estimated_ready_minutes }}">{{ variant.display_name }} · Standard · {{ variant.preorder_price|money:store_business.currency_symbol }} / {{ variant.customer_unit }}</option>
-                  {% if variant.public_bulk_online_available %}{% for pack in variant.public_bulk_packs %}<option value="bulk:{{ variant.public_id }}:{{ pack.public_id }}" data-product-id="{{ variant.public_id }}" data-basket-key="bulk:{{ variant.public_id }}:{{ pack.public_id }}" data-bulk-pack-id="{{ pack.public_id }}" data-bulk-pack-name="{{ pack.name }}" data-name="{{ variant.display_name }} · {{ pack.name }}" data-unit="{{ pack.name }}" data-price="{{ pack.price }}" data-min="{{ pack.min_order_quantity }}" data-max="{% if variant.max_quantity %}{{ variant.max_quantity }}{% endif %}" data-stock-source="{% if variant.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if variant.public_made_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ variant.estimated_ready_minutes }}">{{ variant.display_name }} · {{ pack.name }} · {{ pack.price|money:store_business.currency_symbol }} / {{ pack.name }}{% if pack.min_order_quantity > 1 %} · min {{ pack.min_order_quantity }}{% endif %}</option>{% endfor %}{% endif %}
+                  {% if variant.public_bulk_online_available %}{% for pack in variant.public_bulk_packs %}<option value="bulk:{{ variant.public_id }}:{{ pack.public_id }}" data-product-id="{{ variant.public_id }}" data-basket-key="bulk:{{ variant.public_id }}:{{ pack.public_id }}" data-bulk-pack-id="{{ pack.public_id }}" data-bulk-pack-name="{{ pack.name }}" data-name="{{ variant.display_name }} · {{ pack.name }}" data-unit="{{ pack.name }}" data-price="{{ pack.promotion_online_price }}" data-min="{{ pack.min_order_quantity }}" data-max="{% if variant.max_quantity %}{{ variant.max_quantity }}{% endif %}" data-stock-source="{% if variant.public_stock_source_available %}1{% else %}0{% endif %}" data-made-source="{% if variant.public_made_source_available %}1{% else %}0{% endif %}" data-ready-minutes="{{ variant.estimated_ready_minutes }}">{{ variant.display_name }} · {{ pack.name }} · {{ pack.promotion_online_price|money:store_business.currency_symbol }} / {{ pack.name }}{% if pack.min_order_quantity > 1 %} · min {{ pack.min_order_quantity }}{% endif %}</option>{% endfor %}{% endif %}
                 {% endfor %}
               </select>
             </label>
             {% endif %}
             <div class="mt-auto pt-3"><button type="button" class="add-product flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-semibold text-white transition hover:brightness-90 focus:outline-none focus:ring-4 focus:ring-stone-200" style="background:var(--brand)"><span class="add-product-label">Add to basket</span><span aria-hidden="true">+</span></button></div>
-            <template data-product-config="{{ p.public_id }}"><select data-choice-source data-option-label="{{ p.finished_good.storefront_option_label }}"><option value="">Choose {{ p.finished_good.storefront_option_label|lower }}</option>{% for choice in p.finished_good.storefront_option_choices %}<option value="{{ choice }}">{{ choice }}</option>{% endfor %}</select><select data-addon-source><option value="">Choose an add-on</option>{% for option in p.public_individual_options %}<option value="{{ option.public_id }}" data-name="{{ option.name }}" data-unit="{{ option.customer_unit|default:p.customer_unit }}" data-price="{{ option.online_price }}" data-min="{{ option.online_min_quantity }}">{{ option.name }} · {{ option.online_price|money:store_business.currency_symbol }}</option>{% endfor %}</select></template>
-            {% for variant in p.public_variants %}<template data-product-config="{{ variant.public_id }}"><select data-choice-source data-option-label="{{ variant.finished_good.storefront_option_label }}"><option value="">Choose {{ variant.finished_good.storefront_option_label|lower }}</option>{% for choice in variant.finished_good.storefront_option_choices %}<option value="{{ choice }}">{{ choice }}</option>{% endfor %}</select><select data-addon-source><option value="">Choose an add-on</option>{% for option in variant.public_individual_options %}<option value="{{ option.public_id }}" data-name="{{ option.name }}" data-unit="{{ option.customer_unit|default:variant.customer_unit }}" data-price="{{ option.online_price }}" data-min="{{ option.online_min_quantity }}">{{ option.name }} · {{ option.online_price|money:store_business.currency_symbol }}</option>{% endfor %}</select></template>{% endfor %}
+            <template data-product-config="{{ p.public_id }}"><select data-choice-source data-option-label="{{ p.finished_good.storefront_option_label }}"><option value="">Choose {{ p.finished_good.storefront_option_label|lower }}</option>{% for choice in p.finished_good.storefront_option_choices %}<option value="{{ choice }}">{{ choice }}</option>{% endfor %}</select><select data-addon-source><option value="">Choose an add-on</option>{% for option in p.public_individual_options %}<option value="{{ option.public_id }}" data-name="{{ option.name }}" data-unit="{{ option.customer_unit|default:p.customer_unit }}" data-price="{{ option.promotion_online_price }}" data-min="{{ option.online_min_quantity }}">{{ option.name }} · {{ option.promotion_online_price|money:store_business.currency_symbol }}</option>{% endfor %}</select></template>
+            {% for variant in p.public_variants %}<template data-product-config="{{ variant.public_id }}"><select data-choice-source data-option-label="{{ variant.finished_good.storefront_option_label }}"><option value="">Choose {{ variant.finished_good.storefront_option_label|lower }}</option>{% for choice in variant.finished_good.storefront_option_choices %}<option value="{{ choice }}">{{ choice }}</option>{% endfor %}</select><select data-addon-source><option value="">Choose an add-on</option>{% for option in variant.public_individual_options %}<option value="{{ option.public_id }}" data-name="{{ option.name }}" data-unit="{{ option.customer_unit|default:variant.customer_unit }}" data-price="{{ option.promotion_online_price }}" data-min="{{ option.online_min_quantity }}">{{ option.name }} · {{ option.promotion_online_price|money:store_business.currency_symbol }}</option>{% endfor %}</select></template>{% endfor %}
           </div>
         </article>{% endif %}
         {% empty %}
@@ -179,6 +184,7 @@
     </div>
     <form id="basket-form" method="post" action="{% url 'storefront_order' store_business.slug %}" class="px-5 pb-7 pt-5 sm:px-7 sm:pb-8">{% csrf_token %}
       <input type="hidden" name="checkout_key" value="{{ checkout_key }}"><input type="hidden" name="delivery_quote_id" id="delivery-quote-id" value=""><input type="hidden" name="delivery_latitude" id="delivery-latitude" value=""><input type="hidden" name="delivery_longitude" id="delivery-longitude" value=""><input type="hidden" name="catalog_mode" value="{% if order_now_mode %}order_now{% else %}storefront{% endif %}"><input type="hidden" name="source" value="{{ attribution.source|default:'direct' }}"><input type="hidden" name="medium" value="{{ attribution.medium|default:'' }}"><input type="hidden" name="campaign" value="{{ attribution.campaign|default:'' }}"><input type="hidden" name="content" value="{{ attribution.content|default:'' }}"><input type="hidden" name="term" value="{{ attribution.term|default:'' }}"><input type="hidden" name="referrer" value="{{ attribution.referrer|default:'' }}">
+      <div data-promotion-rewards role="status" hidden></div>
       <div id="basket-items" class="divide-y divide-stone-100 rounded-2xl border border-stone-200 bg-white"></div>
       <p id="basket-mode-error" class="mt-3 hidden rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold leading-5 text-rose-700" role="alert"></p>
       <div class="mt-6 grid gap-3 sm:grid-cols-2">
@@ -271,7 +277,7 @@
         </div>
       </section>
       {% endif %}
-      <div class="mt-6"><p class="text-xs font-semibold text-stone-600">Choose one ordering option for this basket</p><div class="mt-2 grid gap-2">
+      <p id="basket-promotion" class="mt-3 text-xs text-stone-600" role="status" hidden></p><div class="mt-6"><p class="text-xs font-semibold text-stone-600">Choose one ordering option for this basket</p><div class="mt-2 grid gap-2">
         <button data-button-surface type="submit" name="order_mode" value="online" data-checkout-mode="online" class="channel-submit flex items-center justify-between rounded-xl border px-3.5 py-3 text-left text-sm shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-45" style="background:var(--tenant-button);color:var(--tenant-button-contrast);border-color:var(--tenant-button)"><span><strong class="block" data-order-label>Place order</strong><small class="mode-note opacity-90">{% if store_business.uses_production and not p.finished_good.is_purchased_for_resale %}{{ storefront_copy.prepared_order }}{% else %}{{ storefront_copy.immediate_order }}{% endif %}</small></span><strong class="mode-total shrink-0"></strong></button>
       </div></div>
       <p class="mt-4 text-xs leading-5 text-stone-400">Prices and availability are checked again by {{ store_business.name }} before payment. An order is created only after full payment is verified.</p>
@@ -620,7 +626,36 @@
         });
         renderBasket();
       }
+      let campaignQuote = null, campaignQuoteKey = '', campaignQuoteTimer;
+      function campaignItems() {
+        return Array.from(basket.values()).map(p => ({product_id:p.productId, quantity:p.quantity, bulk_pack_id:p.bulkPack?.id || '', individual_option_id:p.individualOptionId || '', fulfilment_source:p.fulfilmentSource || '', product_option_value:p.productOptionValue || ''}));
+      }
+      function scheduleCampaignQuote() {
+        if (!document.querySelector('[data-product-offers]')) return;
+        const items = campaignItems(), key = JSON.stringify(items);
+        if (key === campaignQuoteKey) return;
+        window.INPROFICRenderPromotionRewards?.(document.querySelector("[data-promotion-rewards]"), []);
+        campaignQuoteKey = key; campaignQuote = null; clearTimeout(campaignQuoteTimer);
+        const note = document.getElementById('basket-promotion');
+        note.hidden = !items.length; note.textContent = items.length ? 'Offer eligibility is checked before payment.' : '';
+        if (!items.length) return;
+        campaignQuoteTimer = setTimeout(async () => {
+          try {
+            const response = await fetch('{% url "storefront_basket_quote" store_business.slug %}', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':basketForm.querySelector('[name="csrfmiddlewaretoken"]').value}, body:JSON.stringify({order_mode:'online',items})});
+            const quote = await response.json();
+            if (key !== campaignQuoteKey) return;
+            if (!response.ok) throw Error(quote.detail || 'Offer eligibility is checked before payment.');
+            campaignQuote = quote;
+            window.INPROFICRenderPromotionRewards?.(document.querySelector("[data-promotion-rewards]"), quote.promotion?.rewards || []);
+            if (deliveryQuoteId?.value) invalidateDeliveryQuote('Offer pricing updated. Refresh the delivery quote before payment.');
+            note.hidden = !(Number(quote.promotion?.saving)>0);
+            note.textContent = Number(quote.promotion?.saving)>0 ? `${quote.promotion.name} · Saved {{ store_business.currency_symbol|escapejs }}${quote.promotion.saving}` : '';
+            refreshModes();
+          } catch (error) { if (key === campaignQuoteKey) { note.hidden=false; note.textContent=error.message; } }
+        }, 250);
+      }
       function refreshModes() {
+        scheduleCampaignQuote();
         let anyAvailable = false;
         modeButtons.forEach(button => {
           const mode = button.dataset.checkoutMode;
@@ -634,6 +669,7 @@
             if (product.quantity < pricing.minimum) short.push(`${product.name}: minimum ${pricing.minimum} ${pricing.unit}`);
             if (product.max && product.quantity > product.max) short.push(`${product.name}: maximum ${product.max} ${pricing.unit}`);
           });
+          if (mode === "online" && campaignQuote) total = Number(campaignQuote.subtotal);
           button.disabled = short.length > 0;
           button.querySelector('.mode-total').textContent = `{{ store_business.currency_symbol }}${total.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
           const modeNote=button.querySelector('.mode-note'); modeNote.textContent = short.length ? short.join(' · ') : '{% if store_business.uses_production %}{{ storefront_copy.prepared_order|escapejs }}{% else %}{{ storefront_copy.immediate_order|escapejs }}{% endif %}'; modeNote.classList.toggle('text-rose-700',short.length>0); modeNote.classList.toggle('font-semibold',short.length>0); modeNote.classList.toggle('text-stone-500',short.length===0);
@@ -641,7 +677,7 @@
         modeError.textContent = anyAvailable ? '' : 'These products do not share an ordering option. Remove one item or create separate checkouts.';
         modeError.classList.toggle('hidden', anyAvailable);
       }
-      function basketSubtotal(mode) { let total = 0; basket.forEach(product => { total += product.quantity * modePricing(product, mode).price; }); return total; }
+      function basketSubtotal(mode) { if (mode === "online" && campaignQuote) return Number(campaignQuote.subtotal); let total = 0; basket.forEach(product => { total += product.quantity * modePricing(product, mode).price; }); return total; }
       function deliverySignature(mode) { return JSON.stringify({mode, area: deliveryArea?.value || '', address: deliveryAddress?.value.trim() || '', latitude: deliveryLatitude?.value || '', longitude: deliveryLongitude?.value || '', items: Array.from(basket.values()).map(p => [p.id, p.quantity, modePricing(p, mode).price, p.bulkPack?.id || ''])}); }
       function setDeliveryStatus(message, isError=false) { if (!deliveryQuoteStatus) return; deliveryQuoteStatus.textContent=message||''; deliveryQuoteStatus.classList.toggle('border-rose-200',isError); deliveryQuoteStatus.classList.toggle('bg-rose-50',isError); deliveryQuoteStatus.classList.toggle('text-rose-700',isError); deliveryQuoteStatus.classList.toggle('font-semibold',isError); deliveryQuoteStatus.classList.toggle('border-transparent',!isError); deliveryQuoteStatus.classList.toggle('bg-stone-50',!isError); deliveryQuoteStatus.classList.toggle('text-stone-500',!isError); }
       function invalidateDeliveryQuote(message, isError=false) { if (deliveryQuoteId) deliveryQuoteId.value = ''; deliveryQuoteSignature = ''; deliveryChoiceSignature = ''; if (deliveryMethodOptions) { deliveryMethodOptions.replaceChildren(); deliveryMethodOptions.classList.add('hidden'); } if (deliverySwitchPolicy) { deliverySwitchPolicy.textContent=''; deliverySwitchPolicy.classList.add('hidden'); } if (deliveryQuoteStatus && deliveryToggle?.checked) setDeliveryStatus(message || 'Basket or destination changed. A fresh quote will be calculated at checkout.', isError); syncOrderLabel(); }

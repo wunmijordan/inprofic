@@ -1,0 +1,14 @@
+{% load static %}
+<link rel="stylesheet" href="{% static 'core/css/offline-workspace.css' %}">
+<dialog id="connection-availability-dialog" class="connection-dialog" data-native-dialog aria-label="Connection availability" aria-labelledby="connection-title" aria-describedby="connection-copy">
+  <img class="connection-logo connection-logo-light" src="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" alt="INPROFIC" width="230" height="45">
+  <img class="connection-logo connection-logo-dark" src="{% static 'core/brand/inprofic-wordmark-on-dark.png' %}" alt="INPROFIC" width="230" height="45">
+  <p class="connection-eyebrow" data-connection-state>Connection unavailable</p>
+  <h2 id="connection-title">INPROFIC is offline</h2>
+  <p id="connection-copy">Reconnect to continue with live inventory, finance, permissions and orders, or use the offline packages prepared on this device.</p>
+  <button type="button" class="workspace-action workspace-action-primary connection-retry" data-connection-retry>Try again</button>
+  <div class="connection-offline">
+    <label class="connection-offline-toggle"><span>Offline mode</span><span class="cf-switch"><input type="checkbox" class="peer sr-only" data-offline-toggle><span class="cf-switch-track"><span class="cf-switch-thumb"></span></span></span></label>
+    <div class="connection-access" data-offline-access hidden></div>
+  </div>
+</dialog>

@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% load core_extras %}
 {% load core_extras static %}
 {% block head_scripts %}
 <link rel="stylesheet" href="{% static 'core/css/dashboard.css' %}?v={{ static_asset_version }}">
@@ -13,9 +13,9 @@
 
 <span hidden data-stock-ticker-url="{% url 'dashboard_stock_ticker' %}"></span>
 <div x-data="{ dashboardView: new URLSearchParams(window.location.search).has('stock_item') ? 'stock' : 'overview' }">
-<header data-tour-target="dashboard" class="mb-4 flex items-end justify-between gap-4">
+<header data-tour-target="dashboard" class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
   <div>
-    <h1 class="text-2xl md:text-3xl font-semibold font-display text-[#8f172d]">Basic dashboard</h1>
+    <h1 class="text-2xl md:text-3xl font-semibold font-display text-[#8f172d]">{% include "core/_dashboard_greeting.html" %}</h1>
     <p class="text-xs text-stone-500 mt-1">{{ biz.name }} · {% now "l, j F Y" %}</p>
   </div>
   <div class="flex items-center gap-2">
@@ -372,7 +372,7 @@
         <button type="button" class="financial-period-btn px-2.5 py-1 text-[10px] rounded-md text-stone-600 hover:bg-[#4D1C25] hover:text-white" data-period="fiscal" aria-pressed="false" title="{{ fiscal_meta.label }}">{{ fiscal_meta.short }} · business period</button>
       </div>
       <div class="grid grid-cols-3 gap-2 mb-3" aria-live="polite">
-        <div class="rounded-md border border-[#E7DFCC] bg-white px-2.5 py-2"><div id="financial-kpi-in-label" class="text-[10px] uppercase tracking-wider font-bold text-stone-400">Sales</div><div id="financial-kpi-in" class="font-mono text-sm font-bold text-emerald-700 mt-0.5">—</div></div>
+        <div class="rounded-md border border-[#E7DFCC] bg-white px-2.5 py-2"><div id="financial-kpi-in-label" class="text-[10px] uppercase tracking-wider font-bold text-stone-400">{% business_label "Sales" %}</div><div id="financial-kpi-in" class="font-mono text-sm font-bold text-emerald-700 mt-0.5">—</div></div>
         <div class="rounded-md border border-[#E7DFCC] bg-white px-2.5 py-2"><div id="financial-kpi-out-label" class="text-[10px] uppercase tracking-wider font-bold text-stone-400">Spend</div><div id="financial-kpi-out" class="font-mono text-sm font-bold text-rose-700 mt-0.5">—</div></div>
         <div id="financial-kpi-net-card" class="rounded-md border border-[#E7DFCC] bg-white px-2.5 py-2"><div id="financial-kpi-net-label" class="text-[10px] uppercase tracking-wider font-bold text-stone-400">Net cash flow</div><div id="financial-kpi-net" class="font-mono text-sm font-bold mt-0.5">—</div><div id="financial-kpi-margin" class="text-[10px] text-stone-400"></div></div>
       </div>
@@ -517,7 +517,7 @@
                 <tr>
                   <th class="text-left px-3 py-2">Region</th>
                   <th class="text-left px-3 py-2">Area</th>
-                  <th class="text-right px-3 py-2">Sales</th>
+                  <th class="text-right px-3 py-2">{% business_label "Sales" %}</th>
                 </tr>
               </thead>
 
@@ -562,7 +562,7 @@
                 <tr>
                   <th class="text-left px-3 py-2">Region</th>
                   <th class="text-left px-3 py-2">Area</th>
-                  <th class="text-right px-3 py-2">Sales</th>
+                  <th class="text-right px-3 py-2">{% business_label "Sales" %}</th>
                 </tr>
               </thead>
 
@@ -878,7 +878,7 @@
             <p><strong>Operational Materials</strong> = Supplies used outside {% if vertical_ui.uses_production %}a production {{ vertical_ui.recipe_label }}{% else %}sellable-product receipts and sales{% endif %}.</p>
             <p><strong>Products for Resale</strong> = Sellable stock received directly from a supplier rather than made through Production.</p>
             <p><strong>Misc Expenses</strong> = Rent, Utilities, Labour, Transport, Marketing, Bank Fees and other recorded expenses.</p>
-            <!--<p><strong>Production</strong> moves value through stock and is not subtracted again as another Cash Outflow.</p>-->
+            <!--<p><strong>{% business_label "Production" %}</strong> moves value through stock and is not subtracted again as another Cash Outflow.</p>-->
           </div>
         </div>
       </div>

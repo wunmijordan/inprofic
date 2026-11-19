@@ -1,0 +1,15 @@
+{% extends 'base.html' %}{% load core_extras %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-3">Cashier session #{{ cashier.pk }}</h1>
+<p class="mb-4">{{ biz.name }} · {{ cashier.branch.name }} · {{ cashier.user.fullname|default:cashier.user.username }}</p>
+<p class="text-sm mb-5">Opened {{ cashier.created_at|date:'l, j F Y, g:i A' }}{% if cashier.device %} · {{ cashier.device.name }}{% endif %}{% if cashier.closed_at %} · Closed {{ cashier.closed_at|date:'j M Y, g:i A' }}{% else %} · Open{% endif %}</p>
+{% include 'retail/_cashier_summary.html' %}
+<div class="flex flex-wrap gap-3 mb-6">
+{% if not cashier.closed_at %}{% if cashier.user_id == user.pk %}<a class="workspace-action workspace-action-primary" href="{% url 'commerce_storefront_pos' %}">Continue selling</a>{% endif %}<a class="workspace-action" data-form-dialog href="{% url 'retail_cashier_close' cashier.pk %}">Count & close</a>
+{% elif cashier.reviewed_at %}<p class="text-sm">Reviewed by {{ cashier.reviewed_by.fullname|default:cashier.reviewed_by.username }} · {{ cashier.reviewed_at|date:'j M Y, g:i A' }}</p>
+{% elif can_manage_business %}<form method="post" action="{% url 'retail_cashier_review' cashier.pk %}" data-no-dialog>{% csrf_token %}<button class="workspace-action">Mark reviewed</button></form>{% else %}<p class="text-sm">Awaiting branch manager review.</p>{% endif %}
+<a class="workspace-action" href="{% url 'retail_workspace' %}">Branch & cashier workspace</a>
+</div>
+{% if pending_checkouts %}<section class="mb-6"><h2 class="font-semibold mb-3">Payments to resolve</h2><div class="workspace-table"><table class="w-full text-sm"><thead><tr><th>Checkout</th><th>Customer</th><th>Amount</th><th>Status</th><th></th></tr></thead><tbody>{% for row in pending_checkouts %}<tr><td>{{ row.checkout.public_id }}</td><td>{{ row.checkout.customer_name }}</td><td>{{ row.checkout.amount|money:biz.currency_symbol }}</td><td>{{ row.checkout.get_status_display }}</td><td><a class="workspace-action" href="{% url 'commerce_storefront_pos' %}?checkout={{ row.checkout.public_id }}">Review payment</a></td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
+<h2 class="font-semibold mb-3">Verified payment receipts</h2><div class="workspace-table"><table class="w-full text-sm"><thead><tr><th>Recorded</th><th>Reference</th><th>Method</th><th>Amount</th><th>Status</th></tr></thead><tbody>{% for row in receipts %}<tr><td>{{ row.verified_at|date:'j M Y, g:i A' }}</td><td>{{ row.payment.reference }}</td><td>{{ row.payment.get_method_display }}</td><td>{{ row.amount|money:biz.currency_symbol }}</td><td>{% if row.reversed_at %}Reversed · excluded{% else %}Verified{% endif %}</td></tr>{% empty %}<tr><td colspan="5">No verified payments in this session yet.</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}

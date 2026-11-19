@@ -93,10 +93,30 @@ def invalidate_business_access_cache(business):
         cache.pop((namespace, business.pk), None)
 
 
+def accessible_businesses(user):
+    """Own memberships plus branches of businesses the user administers."""
+    from core.models import Business
+
+    if not getattr(user, "is_authenticated", False):
+        return Business.objects.none()
+    if user.is_superuser:
+        return Business.objects.all()
+    memberships = UserBusiness.objects.filter(user=user, active=True)
+    headquarters = memberships.filter(role__key=CustomUser.ROLE_BUSINESS_ADMIN).values(
+        "business_id"
+    )
+    return Business.objects.filter(
+        Q(pk__in=memberships.values("business_id"))
+        | Q(headquarters_id__in=headquarters)
+    ).distinct()
+
+
 def business_subscription_for(business):
     """Resolve a primary or additional service's subscription once per request."""
     if not business:
         return None
+    if business.headquarters_id:
+        business = business.headquarters
     cache = _request_cache()
     key = ("business_subscription", business.pk)
     if cache is not None and key in cache:
@@ -107,10 +127,14 @@ def business_subscription_for(business):
         .select_related("subscription__plan")
         .first()
     )
-    subscription = service.subscription if service else (
-        BusinessSubscription.objects.filter(primary_business=business)
-        .select_related("plan")
-        .first()
+    subscription = (
+        service.subscription
+        if service
+        else (
+            BusinessSubscription.objects.filter(primary_business=business)
+            .select_related("plan")
+            .first()
+        )
     )
     if cache is not None:
         cache[key] = subscription
@@ -130,9 +154,28 @@ def _permission_snapshot(user, business):
         .prefetch_related("module_permissions", "role__module_permissions")
         .first()
     )
+    if business.headquarters_id:
+        headquarters_membership = (
+            UserBusiness.objects.filter(
+                user=user,
+                business_id=business.headquarters_id,
+                active=True,
+                role__key=CustomUser.ROLE_BUSINESS_ADMIN,
+            )
+            .select_related("role")
+            .prefetch_related("module_permissions", "role__module_permissions")
+            .first()
+        )
+        membership = headquarters_membership or membership
     if membership:
-        user_permissions = {permission.module: permission for permission in membership.module_permissions.all()}
-        role_permissions = {permission.module: permission for permission in membership.role.module_permissions.all()}
+        user_permissions = {
+            permission.module: permission
+            for permission in membership.module_permissions.all()
+        }
+        role_permissions = {
+            permission.module: permission
+            for permission in membership.role.module_permissions.all()
+        }
     else:
         user_permissions = {}
         role_permissions = {}
@@ -333,12 +376,20 @@ def business_has_module(business, module):
     """
     if not business:
         return False
+    if business.headquarters_id:
+        business = business.headquarters
     # Rider access is a purpose-specific surface inside the plan-gated Delivery
     # module, not a separate commercial entitlement.
     # Purpose-specific workspaces follow the entitlement of the module they sit in.
-    entitlement_module = {"delivery_rider": "delivery", "kitchen": "production"}.get(module, module)
+    entitlement_module = {"delivery_rider": "delivery", "kitchen": "production"}.get(
+        module, module
+    )
     subscription = business_subscription_for(business)
-    if subscription and not subscription.is_effectively_active and entitlement_module != "dashboard":
+    if (
+        subscription
+        and not subscription.is_effectively_active
+        and entitlement_module != "dashboard"
+    ):
         return False
     # Production is a vertical capability as well as a plan entitlement.
     # Wholesale and retail keep any historical production data intact, but do
@@ -352,7 +403,9 @@ def business_has_module(business, module):
         module_access = cache[access_key]
     else:
         module_access = dict(
-            BusinessModuleAccess.objects.filter(business=business).values_list("module", "enabled")
+            BusinessModuleAccess.objects.filter(business=business).values_list(
+                "module", "enabled"
+            )
         )
         if cache is not None:
             cache[access_key] = module_access

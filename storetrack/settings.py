@@ -93,6 +93,7 @@ INSTALLED_APPS = [
     'commerce',
     'whatsapp_storefront',
     'assistant',
+    'retail',
 ]
 
 META_WHATSAPP_APP_ID = os.environ.get('META_WHATSAPP_APP_ID', '').strip()
@@ -128,6 +129,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'core.middleware.BusinessMiddleware',
     'core.middleware.LoginRequiredMiddleware',
+    'retail.middleware.DeviceAccessMiddleware',
     'core.middleware.PlatformAnalyticsMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',

@@ -129,7 +129,7 @@
     if ((stored(themeKey) || 'system') === 'system') applyTheme('system');
   });
 
-  document.addEventListener('DOMContentLoaded', () => {
+  const initializeWorkspace = () => {
     // The first application happens in <head> to avoid a theme flash; repeat
     // after parsing so controls expose the current selection accessibly.
     applyTheme(stored(themeKey) || 'system');
@@ -182,5 +182,7 @@
       if (eligible(link) && progress) progress.dataset.active = 'true';
     });
     addEventListener('pageshow', () => { if (progress) progress.dataset.active = 'false'; });
-  });
+  };
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initializeWorkspace);
+  else initializeWorkspace();
 })();

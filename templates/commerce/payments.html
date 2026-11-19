@@ -1,9 +1,9 @@
-{% extends "base.html" %}{% load core_extras %}{% block content %}
+{% extends "base.html" %}{% load core_extras %}{% load core_extras %}{% block content %}
 <style>.commerce-payment-scroll{height:min(70vh,44rem);min-height:18rem;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;touch-action:pan-y;scrollbar-gutter:stable;scroll-padding-block:1rem}</style>
 <div id="commerce-payment-live-root" class="max-w-6xl">
   <div class="flex flex-wrap items-end justify-between gap-3 mb-5">
     <div><h1 class="text-2xl font-semibold font-display text-[#8f172d]">Commerce payments</h1><p class="text-sm text-stone-500">Payment confirmations, customer transfer claims, cash receipts and receipt history.</p></div>
-    <div class="flex gap-2"><a data-button-surface href="{% url 'finance_dashboard' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">Finance</a>{% if can_manage_payment_settings %}<a data-button-surface href="{% url 'commerce_payment_settings' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">Payment settings</a>{% endif %}</div>
+    <div class="flex gap-2"><a data-button-surface href="{% url 'finance_dashboard' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">{% business_label "Finance" %}</a>{% if can_manage_payment_settings %}<a data-button-surface href="{% url 'commerce_payment_settings' %}" class="px-3 py-2 border border-[#D9CFB4] rounded-md text-sm">Payment settings</a>{% endif %}</div>
   </div>
   <div class="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><strong>Gateway payments stay automatic; direct Transfer stays evidence-based.</strong> Paystack/Monnify checkout, gateway instant transfer and POS terminal payments settle only after provider verification. Direct Transfer requires customer proof plus staff verification; staff-operated POS Transfer/Cash are confirmed at the counter.</div>
   <div class="commerce-payment-scroll space-y-3 p-4 sm:p-5">

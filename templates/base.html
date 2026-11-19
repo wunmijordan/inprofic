@@ -3,6 +3,7 @@
 <html lang="en" data-tenant="{{ biz.pk|default:'global' }}" data-tenant-accent="{{ biz.accent_color|default:'#D14900' }}" data-tenant-background="{{ biz.background_color|default:'#050733' }}" style="--tenant-background:{{ biz.background_color|default:'#050733' }};--tenant-background-contrast:{{ biz.background_text_color|default:'#FFFFFF' }};--tenant-button:{{ biz.accent_color|default:'#D14900' }};--tenant-button-contrast:{{ biz.button_text_color|default:'#FFFFFF' }}">
 <head>
   <script>if(window.parent!==window&&window.name==='inprofic-form-dialog')document.documentElement.dataset.uiEmbedded='true';</script>
+  <script>try{document.documentElement.dataset.sidebar=localStorage.getItem('inprofic:sidebar')||'expanded'}catch(e){}</script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% if biz %}{{ biz.name }} · {% endif %}INPROFIC</title>
@@ -15,7 +16,7 @@
   <link rel="stylesheet" href="{% static 'core/css/interactions.css' %}?v={{ static_asset_version }}">
   <script src="{% static 'core/js/interactions.js' %}?v={{ static_asset_version }}" data-inprofic-ui defer></script>
   <script src="{% static 'core/js/workspace.js' %}?v={{ static_asset_version }}"></script>
-  {% include "pwa/head.html" %}
+  {% if not request.GET.ui_dialog %}{% include "pwa/head.html" %}{% endif %}
   {% block head_scripts %}{% endblock %}
   <style>
     @font-face{font-family:Inter;src:url('{% static "core/fonts/Inter-Regular.ttf" %}') format('truetype');font-weight:400;font-display:swap}
@@ -53,36 +54,6 @@
     main :where([class~="fixed"][class~="inset-0"]) > :where(div)[class~="border"] {
       box-shadow: var(--st-modal-shadow) !important;
     }
-    .tenant-sidebar { background: var(--tenant-background); color: var(--tenant-background-contrast); }
-    .text-\[\#8f172d\], .text-\[\#8F172D\], .text-\[\#d14900\], .text-\[\#D14900\], .text-\[\#b94300\], .text-\[\#B94300\], .text-\[\#050733\], .text-\[\#4D1C25\], .text-\[\#4d1c25\], .text-\[\#1E4536\], .text-\[\#208d63\] { color: var(--ui-local-text, var(--ui-text)) !important; }
-    [class~="hover:text-[#8f172d]"]:hover, [class~="hover:text-[#8F172D]"]:hover, [class~="hover:text-[#d14900]"]:hover, [class~="hover:text-[#D14900]"]:hover, [class~="hover:text-[#b94300]"]:hover, [class~="hover:text-[#B94300]"]:hover, [class~="hover:text-[#4D1C25]"]:hover, [class~="hover:text-[#4d1c25]"]:hover, [class~="hover:text-[#208d63]"]:hover { color: var(--ui-local-text, var(--ui-text)) !important; }
-    .bg-\[\#8f172d\], .bg-\[\#8F172D\], .bg-\[\#d14900\], .bg-\[\#D14900\] { background-color: var(--tenant-button) !important; color: var(--tenant-button-contrast) !important; }
-    .border-\[\#8f172d\], .border-\[\#8F172D\] { border-color: var(--tenant-button) !important; }
-    .accent-\[\#8f172d\] { accent-color: var(--tenant-button) !important; }
-    .focus\:border-\[\#8f172d\]:focus { border-color: var(--tenant-button) !important; }
-    .peer:checked ~ .peer-checked\:bg-\[\#8f172d\] { background-color: var(--tenant-button) !important; color: var(--tenant-button-contrast) !important; }
-    .peer:checked ~ .peer-checked\:border-\[\#8f172d\] { border-color: var(--tenant-button) !important; }
-    .hover\:bg-\[\#4D1C25\]:hover { background-color: color-mix(in srgb, var(--tenant-button) 70%, #211D1A) !important; }
-    .sidebar-nav-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; -ms-overflow-style: none; }
-    .sidebar-nav-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
-    .mobile-nav-panel {
-      position: absolute;
-      inset: 100% 0 auto;
-      max-height: 50dvh;
-      overflow: hidden;
-      opacity: 0;
-      pointer-events: none;
-      transform: translateY(-100%);
-      transition: transform 180ms ease-out, opacity 120ms ease-out;
-    }
-    .mobile-nav-panel[data-open="true"] { opacity: 1; pointer-events: auto; transform: translateY(0); }
-    @media (prefers-reduced-motion: reduce) {
-      .mobile-nav-panel { transition: none; }
-    }
-    @media (min-width: 768px) {
-      .desktop-sidebar { position: fixed; inset: 0 auto 0 0; width: 14rem; height: 100dvh; overflow: hidden; z-index: 50; }
-      .desktop-main { margin-left: 14rem; min-height: 100vh; }
-    }
     #commerce-notification-dock { width:min(28rem,calc(100vw - 1.5rem)); transition:width 180ms ease; will-change:left,transform; }
     .notification-tray-handle { touch-action:none; }
     #notification-tray-body [data-alert-channel] { flex:0 0 auto; min-width:max-content; }
@@ -102,64 +73,11 @@
 
   {% if is_live_tester %}<div class="fixed right-3 top-3 z-[120] rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-900 shadow-lg" title="Demo access can browse and open forms, but cannot save changes.">Demo · Read Only</div>{% endif %}
 
-  {% if user.is_authenticated %}
-  <aside class="desktop-sidebar tenant-sidebar hidden md:flex flex-col">
-    <div class="shrink-0 px-5 py-5 border-b border-white/10">
-      <a href="{% if not biz %}{% url 'platform_mailing_workspace' %}{% else %}{% url 'dashboard' %}{% endif %}" aria-label="INPROFIC dashboard" class="block">
-        <img data-brand-logo-light="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" data-brand-logo-dark="{% static 'core/brand/inprofic-wordmark-on-dark.png' %}" src="{% if not biz or biz.background_text_color == '#FFFFFF' %}{% static 'core/brand/inprofic-wordmark-on-dark.png' %}{% else %}{% static 'core/brand/inprofic-wordmark-on-light.png' %}{% endif %}" alt="INPROFIC" class="max-w-full" style="width:10.5rem;height:auto" width="1827" height="290">
-      </a>
-      <div class="mt-3 min-w-0 truncate font-display font-semibold">{% if biz %}{{ biz.name }}{% else %}Project Mailing{% endif %}</div>
-      <div class="tenant-tagline text-[10px] tracking-[0.2em]">{% if biz %}{{ biz.tagline|default:vertical_ui.platform_label }}{% else %}Project-wide communications{% endif %}</div>
-      {% if subscription %}<a href="{% url 'subscription_payment' %}" class="inline-flex mt-2 items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold {% if subscription.is_expiring_soon %}bg-rose-500 text-white{% else %}tenant-soft-chip{% endif %}">{{ subscription.plan.name }}{% if subscription.founder_lifetime %} · Lifetime access{% elif subscription.status == 'trial' and subscription.is_effectively_active %} · Trial{% elif subscription.plan.is_free_forever and subscription.status == 'active' %} · Free{% elif subscription.status == 'active' %} · Paid{% else %} · {{ subscription.effective_status_label }}{% endif %}</a>{% else %}{% if can_manage_business %}<a href="{% url 'subscription_plans' %}" class="tenant-soft-chip inline-flex mt-2 rounded-full px-2 py-1 text-[10px] font-semibold">Choose plan</a>{% endif %}{% endif %}
-      {% if available_businesses|length > 1 %}
-      <form action="{% url 'switch_business' %}" method="post" class="mt-3">
-        {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
-        <select name="business_id" onchange="this.form.submit()" aria-label="Current business" class="w-full rounded-full border border-white/20 bg-white/10 px-2 py-1 text-[11px]">
-          {% for business in available_businesses %}<option class="text-stone-900" value="{{ business.pk }}" {% if business.pk == biz.pk %}selected{% endif %}>{{ business.name }}</option>{% endfor %}
-        </select>
-      </form>
-      {% endif %}
-    </div>
-    <nav class="desktop-sidebar-nav sidebar-nav-scroll flex-1 min-h-0 py-3 text-sm">
-      {% include "_nav_links.html" with row_class="block px-5 py-2.5" accordion_name="desktop-sidebar-nav" %}
-    </nav>
-    <form action="{% url 'logout' %}" method="post" class="shrink-0 px-5 py-3 border-t border-white/10">
-      {% csrf_token %}
-      <button class="tenant-muted-control text-[11px] hover:opacity-100">Log Out ({{ user.fullname|default:user.username }})</button>
-    </form>
-  </aside>
-
-  <div id="mobile-nav-shell" class="tenant-sidebar md:hidden fixed top-0 inset-x-0 z-40">
-    <div class="relative z-10 flex items-center justify-between px-4 py-3 tenant-sidebar">
-      <a href="{% if not biz %}{% url 'platform_mailing_workspace' %}{% else %}{% url 'dashboard' %}{% endif %}" class="flex min-w-0 items-center gap-2 font-semibold font-display">
-        <img data-brand-logo-light="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" data-brand-logo-dark="{% static 'core/brand/inprofic-wordmark-on-dark.png' %}" src="{% if not biz or biz.background_text_color == '#FFFFFF' %}{% static 'core/brand/inprofic-wordmark-on-dark.png' %}{% else %}{% static 'core/brand/inprofic-wordmark-on-light.png' %}{% endif %}" alt="INPROFIC" class="max-w-32 shrink-0" style="width:7.5rem;height:auto" width="1827" height="290">
-        <span class="truncate">{% if biz %}{{ biz.name }}{% else %}Project Mailing{% endif %}</span>
-      </a>
-      <button type="button" id="mobile-nav-button" aria-controls="mobile-nav-panel" aria-expanded="false" aria-label="Toggle navigation" class="cursor-pointer p-1 text-xl leading-none"><span aria-hidden="true">☰</span></button>
-    </div>
-    <div id="mobile-nav-panel" class="tenant-sidebar mobile-nav-panel flex flex-col text-sm border-t border-white/10" data-open="false" aria-hidden="true" inert>
-      {% if available_businesses|length > 1 %}
-      <form action="{% url 'switch_business' %}" method="post" class="shrink-0 px-4 py-3">
-        {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
-        <select name="business_id" onchange="this.form.submit()" aria-label="Current business" class="w-full rounded-full border border-white/20 bg-white/10 px-2 py-1 text-xs">
-          {% for business in available_businesses %}<option class="text-stone-900" value="{{ business.pk }}" {% if business.pk == biz.pk %}selected{% endif %}>{{ business.name }}</option>{% endfor %}
-        </select>
-      </form>
-      {% endif %}
-      <nav class="mobile-sidebar-nav sidebar-nav-scroll flex-1 min-h-0">
-        {% include "_nav_links.html" with row_class="block px-5 py-3 border-t border-white/10" accordion_name="mobile-sidebar-nav" %}
-      </nav>
-      <form action="{% url 'logout' %}" method="post" class="shrink-0 px-5 py-3 border-t border-white/10">
-        {% csrf_token %}
-        <button class="tenant-muted-control text-[11px] hover:opacity-100">Log Out ({{ user.fullname|default:user.username }})</button>
-      </form>
-    </div>
-  </div>
-  {% endif %}
+  {% include "_workspace_navigation.html" %}
 
   <main id="main-content" class="workspace-main desktop-main flex-1 min-w-0 p-4 md:p-6 {% if user.is_authenticated %}mt-14 md:mt-0{% endif %}" data-route="{{ request.resolver_match.url_name|default:'' }}">
-    <div class="workspace-content">
-    {% if user.is_authenticated %}
+    <div class="workspace-content">{% if request.branch_workspace %}<p class="mb-4 text-sm">{{ request.branch_workspace.name }} · {{ request.branch_workspace.get_catalogue_mode_display }} · Headquarters: {{ biz.headquarters.name }}</p>{% endif %}
+    {% if user.is_authenticated and not request.GET.ui_dialog %}
       <div class="workspace-utility-bar mb-3 flex flex-wrap items-center justify-between gap-3{% if show_workspace_back %} has-workspace-back{% endif %}">
         {% if show_workspace_back %}<div>
           <button type="button" class="workspace-back" onclick="if(history.length > 1){history.back()}else{location.href='{% url 'dashboard' %}'}" aria-label="Go back">
@@ -219,6 +137,7 @@
     </div>
   </main>
 
+  {% if not request.GET.ui_dialog %}
   {% if user.is_authenticated and module_permissions.commerce.view or user.is_authenticated and module_permissions.delivery.view or user.is_authenticated and module_permissions.delivery_rider.view or user.is_authenticated and module_permissions.inventory.view or user.is_authenticated and module_permissions.finance.view or user.is_authenticated and assistant_available %}
   <aside id="commerce-notification-dock"
          class="fixed bottom-3 z-[80] hidden overflow-hidden rounded-2xl border border-stone-200 bg-[#FFFDF8] shadow-[0_20px_55px_rgba(33,29,26,.32)]"
@@ -259,13 +178,13 @@
         {% endif %}
         {% if module_permissions.inventory.view %}
         <button type="button" id="notification-channel-inventory" data-alert-channel="inventory" class="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-stone-600 transition hover:bg-white">
-          <span class="truncate">Inventory</span>
+          <span class="truncate">{% business_label "Inventory" %}</span>
           <span id="inventory-alert-count" class="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-black text-rose-800">0</span>
         </button>
         {% endif %}
         {% if module_permissions.finance.view %}
         <button type="button" id="notification-channel-finance" data-alert-channel="finance" class="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-stone-600 transition hover:bg-white">
-          <span class="truncate">Finance</span>
+          <span class="truncate">{% business_label "Finance" %}</span>
           <span id="finance-alert-count" class="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-black text-sky-900">0</span>
         </button>
         {% endif %}
@@ -325,8 +244,9 @@
   </aside>
   <script>window.INPROFIC_SHELL=Object.assign(window.INPROFIC_SHELL||{},{assets:{"core/audio/alerts/chime1.mp3":"{% static 'core/audio/alerts/chime1.mp3' %}","core/audio/alerts/chime2.mp3":"{% static 'core/audio/alerts/chime2.mp3' %}","core/audio/alerts/chime3.mp3":"{% static 'core/audio/alerts/chime3.mp3' %}","core/audio/alerts/chime4.mp3":"{% static 'core/audio/alerts/chime4.mp3' %}","core/audio/alerts/chime5.mp3":"{% static 'core/audio/alerts/chime5.mp3' %}","core/audio/alerts/chime6.wav":"{% static 'core/audio/alerts/chime6.wav' %}","core/audio/alerts/chime7.wav":"{% static 'core/audio/alerts/chime7.wav' %}","core/audio/alerts/chime8.wav":"{% static 'core/audio/alerts/chime8.wav' %}","core/pwa/icon-mark-192.png":"{% static 'core/pwa/icon-mark-192.png' %}","core/pwa/icon-mark-monochrome-192.png":"{% static 'core/pwa/icon-mark-monochrome-192.png' %}"}});</script>
   <script src="{% static 'core/js/shell-alerts.js' %}?v={{ static_asset_version }}"></script>
-  <script defer src="{% static 'core/js/snapshot-share.js' %}?v={{ static_asset_version }}"></script>
   {% endif %}
+  {% endif %}
+  <script defer src="{% static 'core/js/snapshot-share.js' %}?v={{ static_asset_version }}"></script>
 
 
   <script>window.INPROFIC_SHELL=Object.assign(window.INPROFIC_SHELL||{},{bizKey:"{{ biz.pk|default:'anonymous'|escapejs }}"});</script>
@@ -357,7 +277,10 @@
   </script>
   {% endif %}
 
+  {% if not request.GET.ui_dialog %}
+  {% if user.is_authenticated %}{% include 'pwa/_connection_dialog.html' %}<script defer src="{% static 'core/js/offline-workspace.js' %}"></script>{% endif %}
   {% include "pwa/install_prompt.html" %}
   {% include "_privacy_notice.html" %}
+  {% endif %}
 </body>
 </html>

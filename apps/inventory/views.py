@@ -256,7 +256,7 @@ def market_stock(request):
     )
     active_lots = [lot for lot in lots if lot.active and lot.quantity_available > 0]
     sellable_units = sum(
-        (lot.quantity_available for lot in active_lots if not lot.is_expired), Decimal("0")
+        (lot.quantity_available for lot in active_lots), Decimal("0")
     )
     expired_units = sum(
         (lot.quantity_available for lot in active_lots if lot.current_expiry_alert), Decimal("0")
@@ -283,7 +283,7 @@ def market_stock(request):
         "lots": lots,
         "movements": movements,
         "sellable_units": sellable_units,
-        "live_product_count": len({lot.finished_good_id for lot in active_lots if not lot.is_expired}),
+        "live_product_count": len({lot.finished_good_id for lot in active_lots}),
         "expiring_lot_count": sum(1 for lot in active_lots if lot.current_expiring_alert),
         "expired_lot_count": sum(1 for lot in active_lots if lot.current_expiry_alert),
         "expired_units": expired_units,

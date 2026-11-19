@@ -92,6 +92,6 @@ class SummaryReadabilityTests(TestCase):
                 expiry_date=expiry,quantity_received=quantity,quantity_available=quantity)
         brief=enrich(build_brief(self.business,day),day,day,user=self.user)
         text=full_text(brief)
-        self.assertIn('Market Bread · Market Stock: 12 loaves',text)
+        self.assertIn('Market Bread · Market Stock: 15 loaves',text)
         self.assertIn('EXPIRED · Market Bread · Market Stock: 3 loaves',text)
         self.assertFalse(any(row['key']=='distribution' for row in brief['executive_sections']))

@@ -1,0 +1,19 @@
+{% extends 'base.html' %}{% load static %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Product promotion</h1>
+<form method="post" class="max-w-4xl space-y-4" data-promotion-form>
+{% csrf_token %}{{ form.non_field_errors }}
+{% for field in form.regular_fields %}{% include '_field.html' %}{% endfor %}
+<fieldset class="space-y-4"><legend class="font-semibold">Selling portions</legend>
+<p class="text-sm">Choose the portion counted for each Buy X and Get Y product. Standard uses the product’s registered selling portion. To offer single units separately, register an individual selling option on the product.</p>
+<div data-promotion-portions class="space-y-4">{% for field in form.portion_fields %}<div data-portion-field="{{ field.name }}">{% include '_field.html' %}</div>{% endfor %}</div>
+</fieldset>
+<fieldset class="space-y-4"><legend class="font-semibold">Offer prices</legend>
+<p class="text-sm">Select the Buy X products and channels to see their current prices. Edits apply while this promotion is active; normal prices return when it ends. Prices are per selected selling portion; only channels where that portion is sold appear.</p>
+<div data-promotion-prices class="space-y-4">{% for field in form.price_fields %}<div data-price-field="{{ field.name }}">{% include '_field.html' %}</div>{% endfor %}</div>
+</fieldset>
+<button class="workspace-action workspace-action-primary" data-button-surface>Save</button>
+</form>
+{{ price_catalog|json_script:'promotion-price-catalog' }}
+<script src="{% static 'core/js/promotion-form.js' %}?v={{ static_asset_version }}" defer></script>
+{% endblock %}

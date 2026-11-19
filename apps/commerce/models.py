@@ -811,6 +811,11 @@ class CommerceIntegration(BusinessOwnedModel):
 
 
 class StorefrontProduct(BusinessOwnedModel):
+    merchandising_badge = models.CharField(
+        max_length=20, blank=True, default="",
+        choices=[("featured", "Featured"), ("new_arrival", "New arrival"), ("staff_pick", "Staff pick")],
+        help_text="Optional card ribbon. Otherwise, recent paid sales determine Bestseller automatically.",
+    )
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     finished_good = models.OneToOneField("inventory.FinishedGood", on_delete=models.CASCADE, related_name="storefront_product")
     published = models.BooleanField(default=False)
@@ -862,15 +867,16 @@ class StorefrontProduct(BusinessOwnedModel):
 
     @property
     def stock_price(self):
-        return self.finished_good.selling_price_for("physical_store")
+        return getattr(self, "_promotion_prices", {}).get("physical_store", self.finished_good.selling_price_for("physical_store"))
 
     @property
     def preorder_price(self):
-        return self.finished_good.selling_price_for("online")
+        return getattr(self, "_promotion_prices", {}).get("online", self.finished_good.selling_price_for("online"))
 
     @property
     def distribution_price(self):
-        return self.finished_good.explicit_selling_price_for("distribution")
+        base = self.finished_good.explicit_selling_price_for("distribution")
+        return getattr(self, "_promotion_prices", {}).get("distribution", base) if base is not None else None
 
     @property
     def customer_unit(self):
@@ -1080,6 +1086,8 @@ class CommerceIntakeItem(models.Model):
     intake = models.ForeignKey(CommerceIntake, on_delete=models.CASCADE, related_name="items")
     storefront_product = models.ForeignKey(StorefrontProduct, on_delete=models.PROTECT)
     finished_good = models.ForeignKey("inventory.FinishedGood", on_delete=models.PROTECT)
+    is_promotion_reward = models.BooleanField(default=False, editable=False)
+
     requested_quantity = models.DecimalField(max_digits=14, decimal_places=2)
     accepted_stock_quantity = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     production_quantity = models.DecimalField(max_digits=14, decimal_places=2, default=0)
@@ -1141,6 +1149,9 @@ class CommerceCheckoutSession(BusinessOwnedModel):
         (STATUS_CANCELLED, "Cancelled"),
     ]
 
+    branch = models.ForeignKey('retail.Branch', null=True, blank=True, on_delete=models.PROTECT)
+    recorded_at = models.DateTimeField(null=True, blank=True)
+    promotion_snapshot = models.JSONField(default=dict, blank=True)
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     source = models.CharField(max_length=12, choices=SOURCE_CHOICES, default=SOURCE_API)
     attribution_source = models.CharField(max_length=80, blank=True, default="direct")
@@ -1211,6 +1222,8 @@ class CommerceCheckoutItem(models.Model):
     checkout = models.ForeignKey(CommerceCheckoutSession, on_delete=models.CASCADE, related_name="items")
     storefront_product = models.ForeignKey(StorefrontProduct, on_delete=models.PROTECT)
     finished_good = models.ForeignKey("inventory.FinishedGood", on_delete=models.PROTECT)
+    is_promotion_reward = models.BooleanField(default=False, editable=False)
+
     requested_quantity = models.DecimalField(max_digits=14, decimal_places=2)
     payable_quantity = models.DecimalField(max_digits=14, decimal_places=2)
     reserved_stock_quantity = models.DecimalField(max_digits=14, decimal_places=2, default=0)

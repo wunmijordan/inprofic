@@ -88,7 +88,7 @@ test('native details dialog uses Radix and keeps its close contract', async ({pa
   await page.getByText('See the connected controls',{exact:true}).click();
   await page.getByRole('button',{name:/See what happens next/}).click();
   await expect(page.locator('.ui-legacy-dialog')).toBeVisible();
-  await page.getByRole('button',{name:'Close example',exact:true}).click();
+  await page.locator('.ui-legacy-dialog').getByRole('button',{name:'Close',exact:true}).click();
   await expect(page.locator('.ui-legacy-dialog')).not.toBeVisible();
   await expect(page.getByRole('button',{name:/See what happens next/})).toBeFocused();
 });
@@ -110,7 +110,7 @@ test('glass belongs to explicit visual buttons, never to clickability or status 
 });
 
 test('logos follow actual backgrounds in desktop, mobile, auth and install prompts',async({page})=>{
-  await admin(page);const desktop=page.locator('.desktop-sidebar img[alt="INPROFIC"]');
+  await admin(page);const desktop=page.locator('.desktop-sidebar .sidebar-wordmark');
   await expect(desktop).toHaveAttribute('src',/wordmark-on-dark/);
   await page.evaluate(()=>document.documentElement.style.setProperty('--tenant-background','#fff4da'));
   await expect(desktop).toHaveAttribute('src',/wordmark-on-light/);
@@ -231,6 +231,7 @@ test('workspace preserves the authored Appearance icon and typography after enha
 test('Live and Backlog actions stay inside the period card on mobile and desktop', async ({page}) => {
   await admin(page);
   await page.goto('/ledger/');
+  await page.getByRole('button', {name:'Start cut-over', exact:true}).click();
   const date = page.locator('input[name="cutover_date"]');
   await date.fill(await date.getAttribute('max'));
   await page.getByRole('button', {name:'Start cut-over', exact:true}).click();
@@ -256,7 +257,7 @@ test('Live and Backlog actions stay inside the period card on mobile and desktop
   }
 });
 
-test('form dialogs fit simple content and give item tables more room', async ({page}) => {
+test('form dialogs reserve stable sizes and give item tables more room', async ({page}) => {
   await page.setViewportSize({width:1440,height:1000});
   await admin(page);
   const frame = await openAccount(page);
@@ -264,14 +265,14 @@ test('form dialogs fit simple content and give item tables more room', async ({p
   await expect.poll(async () => (await dialog.boundingBox()).height).toBeLessThan(800);
   const compact = await dialog.boundingBox();
   expect(compact.width).toBeLessThanOrEqual(673);
-  // Validation, added rows and conditional fields can change the content size.
+  // Added rows scroll inside the reserved body without moving the dialog.
   await frame.locator('.workspace-content').evaluate(content => {
     const extra = document.createElement('div');
     extra.style.height = '200px';
     extra.dataset.testSizing = '';
     content.append(extra);
   });
-  await expect.poll(async () => (await dialog.boundingBox()).height).toBeGreaterThan(compact.height + 100);
+  await expect.poll(async () => Math.round((await dialog.boundingBox()).height)).toBe(Math.round(compact.height));
   await dialog.getByRole('button',{name:'Close',exact:true}).click();
   await page.goto('/procurement/');
   await page.locator('a[href="/procurement/add/"]').first().click();

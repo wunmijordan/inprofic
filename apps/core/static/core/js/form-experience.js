@@ -1,5 +1,13 @@
 (function () {
   'use strict';
+  const dateFormat = new Intl.DateTimeFormat('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+  window.INPROFICFormatDate = value => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return '';
+    const [year, month, day] = value.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    date.setFullYear(year);
+    return Number.isNaN(date.getTime()) ? '' : dateFormat.format(date);
+  };
   const icons = {
     email: '<path data-draw d="M3.5 6.5h17v11h-17z"/><path data-draw d="m4 7 8 6 8-6"/>',
     password: '<rect data-draw x="5" y="10" width="14" height="10" rx="2"/><path data-draw d="M8 10V7a4 4 0 0 1 8 0v3"/>',
@@ -31,7 +39,7 @@
     if (type === 'password' || name.includes('password')) return 'password';
     if (type === 'tel' || name.includes('phone') || name.includes('mobile')) return 'phone';
     if (type === 'search' || name.includes('search') || ph.startsWith('search')) return 'search';
-    if (type === 'date' || name.endsWith('_date') || name === 'date') return 'calendar';
+    if (type === 'date' || type === 'datetime-local' || name.endsWith('_date') || name === 'date') return 'calendar';
     if (type === 'time' || name.includes('time')) return 'clock';
     if (name.includes('address') || name.includes('location')) return 'location';
     if (name.includes('price') || name.includes('amount') || name.includes('cost') || name.includes('revenue') || name.includes('fee') || name.includes('budget') || name.includes('total')) return 'money';
@@ -100,11 +108,40 @@
     paint();
     wrap.appendChild(btn);
   }
+  const enhancedDates = new WeakSet();
+  let dateSequence = 0;
+  function enhanceDate(el, wrap) {
+    if (!['date','datetime-local'].includes(el.type) || !wrap || enhancedDates.has(el)) return;
+    enhancedDates.add(el);
+    const previous = wrap.querySelector('.inprofic-date-display');
+    const descriptions = (el.getAttribute('aria-describedby') || '').split(/\s+/).filter(id => id && id !== previous?.id);
+    previous?.remove();
+    wrap.classList.add('inprofic-date-control');
+    wrap.dataset.dateType = el.type;
+    const display = document.createElement('span');
+    display.className = 'inprofic-date-display';
+    display.id = el.id ? `${el.id}-readable-date` : `inprofic-readable-date-${++dateSequence}`;
+    display.setAttribute('aria-live', 'polite');
+    el.setAttribute('aria-describedby', [...descriptions, display.id].join(' '));
+    wrap.appendChild(display);
+    const update = () => {
+      display.textContent = window.INPROFICFormatDate(el.value.split('T')[0]);
+      wrap.dataset.hasDate = display.textContent ? 'true' : 'false';
+    };
+    ['input','change','blur'].forEach(type => el.addEventListener(type, update));
+    // Existing filters assign value directly; keep the readable date in sync.
+    const nativeValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+    Object.defineProperty(el, 'value', {configurable:true, get() { return nativeValue.get.call(this); }, set(value) { nativeValue.set.call(this, value); update(); }});
+    el.form?.addEventListener('reset', () => queueMicrotask(update));
+    update();
+  }
   function enhance(el) {
-    if (!eligible(el) || el.dataset.inproficEnhanced === '1') return;
+    if (!eligible(el)) return;
+    if (el.dataset.inproficEnhanced === '1') { enhanceDate(el, el.closest('.inprofic-control-wrap')); return; }
     el.dataset.inproficEnhanced = '1';
     const parent = el.parentElement; const wrap = document.createElement('span'); wrap.className = 'inprofic-control-wrap';
     parent.insertBefore(wrap, el); wrap.appendChild(el);
+    enhanceDate(el, wrap);
     const key = iconFor(el); if (key) {
       wrap.dataset.icon = key;
       const iconOptions = key === 'money' ? { stroke: 'rgb(0, 209, 45)', strokeWidth: '2' } : {};
@@ -135,10 +172,11 @@
     return bubble;
   }
   function restorePortalHelpBubble(tip, bubble) {
-    if (!tip || tip.dataset.formHelpPortal !== 'true' || !bubble) return;
+    if (!tip || !tip.__inproficHelpBubble || !bubble) return;
     const marker = tip.__inproficHelpMarker;
     if (marker?.parentNode) marker.parentNode.insertBefore(bubble, marker.nextSibling);
     else bubble.remove();
+    marker?.remove();
     tip.__inproficHelpBubble = null;
     tip.__inproficHelpMarker = null;
   }
@@ -157,15 +195,17 @@
     const bubble = helpBubbleFor(tip);
     if (!trigger || !bubble) return;
     const isPortal = tip.dataset.formHelpPortal === 'true';
-    const vp = isPortal ? null : window.visualViewport;
+    const vp = window.visualViewport;
     const vw = vp ? vp.width : window.innerWidth, vh = vp ? vp.height : window.innerHeight;
     const ox = vp ? vp.offsetLeft : 0, oy = vp ? vp.offsetTop : 0, m = 8;
-    bubble.style.maxWidth = (vw - m * 2) + 'px';
+    bubble.style.maxWidth = Math.max(0, vw - m * 2) + 'px';
+    if (isPortal) bubble.style.maxHeight = Math.max(0, Math.min(vh * .7, 384, vh - m * 2)) + 'px';
     const t = trigger.getBoundingClientRect();
     const bw = bubble.offsetWidth, bh = bubble.offsetHeight;
     const left = Math.max(ox + m, Math.min(t.left + t.width / 2 - bw / 2, ox + vw - bw - m));
     let top = t.bottom + 8;
     if (top + bh > oy + vh - m && t.top - 8 - bh >= oy + m) top = t.top - 8 - bh;
+    top = Math.max(oy + m, Math.min(top, oy + vh - bh - m));
     bubble.style.left = left + 'px';
     bubble.style.top = top + 'px';
     // An ancestor with transform/filter becomes the containing block for
@@ -176,9 +216,11 @@
       bubble.style.top = (top - (r.top - top)) + 'px';
     }
   }
+  window.addEventListener('inprofic:dialog-opening', () => document.querySelectorAll('[data-form-help-tip]').forEach(closeHelpTip));
   function placeVisibleHelpTips() {
     document.querySelectorAll('[data-form-help-tip].is-open').forEach(placeHelpTip);
   }
+  document.fonts?.ready.then(placeVisibleHelpTips);
   window.addEventListener('resize', placeVisibleHelpTips);
   window.addEventListener('scroll', placeVisibleHelpTips, true);
   if (window.visualViewport) {
@@ -210,23 +252,25 @@
     if (!control.id) control.id = 'ctl_' + Math.random().toString(36).slice(2, 9);
     label.htmlFor = control.id;
   }
+  let helpTipSequence = 0;
   function enhanceHelpTip(tip) {
     if (!tip || tip.dataset.formHelpBound === '1') return;
     const trigger = tip.querySelector('[data-form-help-trigger]');
     const bubble = tip.querySelector('[data-form-help-bubble]');
     if (!trigger || !bubble) return;
+    if (!bubble.id) bubble.id = `inprofic-help-${++helpTipSequence}`;
+    trigger.setAttribute('aria-controls', bubble.id);
+    trigger.setAttribute('aria-describedby', bubble.id);
     tip.dataset.formHelpBound = '1';
+    tip.dataset.formHelpPortal = 'true';
+    tip.classList.add('form-help-tip--portal');
+    bubble.classList.add('form-help-tip__bubble--portal', 'font-sans');
     retargetWrappingLabel(tip);
-    if (tip.dataset.formHelpPortal === 'true') {
-      tip.addEventListener('mouseenter', () => openHelpTip(tip));
-      tip.addEventListener('mouseleave', event => { if (!bubble.contains(event.relatedTarget) && !trigger.matches(':focus')) closeHelpTip(tip); });
-      bubble.addEventListener('mouseleave', event => { if (!tip.contains(event.relatedTarget) && !trigger.matches(':focus')) closeHelpTip(tip); });
-      tip.addEventListener('focusin', () => openHelpTip(tip));
-      tip.addEventListener('focusout', event => { if (!tip.contains(event.relatedTarget)) closeHelpTip(tip); });
-    } else {
-      // Desktop hover/focus reveal is CSS-driven; place it once it is displayed.
-      ['mouseenter', 'focusin'].forEach(type => tip.addEventListener(type, () => requestAnimationFrame(() => placeHelpTip(tip))));
-    }
+    tip.addEventListener('mouseenter', () => openHelpTip(tip));
+    tip.addEventListener('mouseleave', event => { if (!bubble.contains(event.relatedTarget) && !trigger.matches(':focus')) closeHelpTip(tip); });
+    bubble.addEventListener('mouseleave', event => { if (!tip.contains(event.relatedTarget) && !trigger.matches(':focus')) closeHelpTip(tip); });
+    tip.addEventListener('focusin', () => openHelpTip(tip));
+    tip.addEventListener('focusout', event => { if (!tip.contains(event.relatedTarget)) closeHelpTip(tip); });
     bubble.hidden = true;
     trigger.setAttribute('aria-expanded', 'false');
     trigger.addEventListener('click', event => {
@@ -259,7 +303,7 @@
     trigger.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="8"></circle><path d="M10 9v5"></path><path d="M10 6.25h.01"></path></svg>';
 
     const bubble = document.createElement('span');
-    bubble.className = 'form-help-tip__bubble normal-case tracking-normal';
+    bubble.className = 'form-help-tip__bubble font-sans normal-case tracking-normal';
     bubble.dataset.formHelpBubble = '';
     bubble.setAttribute('role', 'tooltip');
     bubble.hidden = true;
@@ -374,6 +418,11 @@
   }
   function enhanceForms(root = document) {
     enhanceHelpTips(root);
+    root.querySelectorAll('[data-readable-date]').forEach(node => {
+      const date = window.INPROFICFormatDate(node.dataset.readableDate);
+      if (date && node.textContent !== date) node.textContent = date;
+    });
+    if (root.matches?.('input,select,textarea')) enhance(root);
     root.querySelectorAll('form input,form select,form textarea').forEach(enhance);
     root.querySelectorAll('form').forEach(form => {
       if (form.dataset.inproficValidationBound === '1') return; form.dataset.inproficValidationBound = '1';

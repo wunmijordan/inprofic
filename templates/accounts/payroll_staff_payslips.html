@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% load core_extras %}
 {% load core_extras %}
 {% block content %}
 <div class="mx-auto max-w-5xl">
@@ -15,7 +15,7 @@
   <section class="mt-5 overflow-hidden rounded-xl border border-[#E7DFCC] bg-white">
     <div class="overflow-x-auto">
       <table class="w-full min-w-[720px] text-sm">
-        <thead class="bg-[#F5EFE0] text-xs text-stone-600"><tr><th class="px-4 py-3 text-left">Pay period</th><th class="px-4 py-3 text-left">Issued</th><th class="px-4 py-3 text-right">Gross</th><th class="px-4 py-3 text-right">Net pay</th><th class="px-4 py-3 text-left">History</th><th class="px-4 py-3 text-left">Finance</th><th class="px-4 py-3"></th></tr></thead>
+        <thead class="bg-[#F5EFE0] text-xs text-stone-600"><tr><th class="px-4 py-3 text-left">Pay period</th><th class="px-4 py-3 text-left">Issued</th><th class="px-4 py-3 text-right">Gross</th><th class="px-4 py-3 text-right">Net pay</th><th class="px-4 py-3 text-left">History</th><th class="px-4 py-3 text-left">{% business_label "Finance" %}</th><th class="px-4 py-3"></th></tr></thead>
         <tbody>
           {% for payslip in payslips %}
           <tr class="border-t border-[#E7DFCC]">

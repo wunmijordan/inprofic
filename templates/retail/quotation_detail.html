@@ -1,0 +1,9 @@
+{% extends 'base.html' %}{% block head_scripts %}{% include 'commerce/_receipt_print_styles.html' %}{% endblock %}{% block content %}
+<h1 class="text-2xl font-semibold mb-4">{{ quote.title|default:"Quotation" }} · Q{{ quote.pk }}</h1>
+<div class="flex flex-wrap gap-3 mb-5"><a class="workspace-action" href="{{ share_url }}">Open customer acceptance link</a>
+{% if quote.status == 'accepted' and module_permissions.sales.edit %}<form method="post" action="{% url 'retail_quotation_convert' quote.pk %}" data-no-dialog>{% csrf_token %}<button class="workspace-action workspace-action-primary">Create payment request</button></form>{% endif %}
+{% if quote.checkout_id %}<a class="workspace-action" href="{% url 'storefront_checkout' biz.slug quote.checkout.public_id %}">Open payment request</a>{% endif %}</div>
+{% include 'commerce/_receipt_document.html' %}
+<section class="workspace-card mt-6 p-5 print-hidden"><h2 class="font-semibold mb-3">Internal price record</h2><p class="text-sm mb-4">{{ quote.get_channel_display }} · Prepared by {{ quote.created_by.fullname|default:quote.created_by.username }}. Issued {{ quote.created_at|date:"j M Y, g:i A" }}. Price adjustments remain internal.</p>
+<div class="workspace-table"><table class="min-w-full text-sm"><thead><tr><th>Product</th><th>Channel price at issue</th><th>Quoted price</th><th>Record</th></tr></thead><tbody>{% for line in quote.lines.all %}<tr><td>{{ line.product.display_name }}</td><td>{% if line.channel_unit_price != None %}{{ biz.currency_symbol }} {{ line.channel_unit_price }}{% else %}Not recorded{% endif %}</td><td>{{ biz.currency_symbol }} {{ line.unit_price }}</td><td>{% if line.channel_unit_price == None %}Historical quotation{% elif line.channel_unit_price != line.unit_price %}Adjusted from channel price{% else %}Channel price{% endif %}</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

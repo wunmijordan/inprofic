@@ -81,25 +81,30 @@ def _active_reservation_filter(now=None):
     )
 
 
-def reserved_stock_for_good(good, *, exclude_checkout=None, now=None):
+def reserved_stock_for_good(good, *, exclude_checkout=None, now=None, branch=None):
     qs = CommerceCheckoutItem.objects.filter(
         checkout__business=good.business,
         finished_good=good,
         reserved_stock_quantity__gt=0,
     ).filter(_active_reservation_filter(now))
+    if branch is not None and not branch.is_main:
+        qs = qs.filter(checkout__branch=branch)
+    else:
+        qs = qs.filter(Q(checkout__branch__isnull=True) | Q(checkout__branch__is_main=True))
     if exclude_checkout is not None:
         checkout_id = getattr(exclude_checkout, "pk", exclude_checkout)
         qs = qs.exclude(checkout_id=checkout_id)
     return qs.aggregate(total=Sum("reserved_stock_quantity"))["total"] or Decimal("0")
 
 
-def available_physical_stock(good, *, exclude_checkout=None, now=None):
-    physical = Decimal(good.physical_saleable_stock or 0)
-    reserved = reserved_stock_for_good(good, exclude_checkout=exclude_checkout, now=now)
+def available_physical_stock(good, *, exclude_checkout=None, now=None, branch=None):
+    from retail.services import branch_stock
+    physical = branch_stock(good, branch)
+    reserved = reserved_stock_for_good(good, exclude_checkout=exclude_checkout, now=now, branch=branch)
     return max(Decimal("0"), physical - reserved)
 
 
-def available_physical_stock_for_goods(goods, *, now=None):
+def available_physical_stock_for_goods(goods, *, now=None, branch=None):
     """Return available shelf stock by product without one reservation query per product."""
     goods_by_id = {good.pk: good for good in goods}
     if not goods_by_id:
@@ -113,13 +118,16 @@ def available_physical_stock_for_goods(goods, *, now=None):
             reserved_stock_quantity__gt=0,
         )
         .filter(_active_reservation_filter(now))
+        .filter(Q(checkout__branch=branch) if branch and not branch.is_main else (Q(checkout__branch__isnull=True) | Q(checkout__branch__is_main=True)))
         .values_list("finished_good_id")
         .annotate(total=Sum("reserved_stock_quantity"))
     )
+    from retail.services import branch_stocks
+    stocks = branch_stocks(goods_by_id.values(), branch)
     return {
         good_id: max(
             Decimal("0"),
-            Decimal(good.physical_saleable_stock or 0) - Decimal(totals.get(good_id) or 0),
+            stocks[good_id] - Decimal(totals.get(good_id) or 0),
         )
         for good_id, good in goods_by_id.items()
     }
@@ -200,13 +208,15 @@ def create_checkout(
     *, business, source, customer, items, idempotency_key, external_order_id="",
     order_mode=None, ordering_mode=None, service_mode="", table_reference="",
     delivery_quote_id=None, storefront_customer=None, attribution=None,
-    requested_delivery_at=None, customer_note="",
+    requested_delivery_at=None, customer_note="", branch=None, quoted_prices=None, recorded_at=None,
 ):
     """Validate and snapshot a basket without creating CommerceIntake.
 
     For stock orders, FinishedGood rows are locked while the reservation is
     calculated so concurrent INPROFIC checkouts cannot reserve the same units.
     """
+    if branch is not None and (branch.business_id != business.pk or not branch.active):
+        raise ValidationError("Choose an active branch from this business.")
     idempotency_key = (idempotency_key or "").strip()
     if not idempotency_key:
         raise ValidationError("Idempotency-Key header is required.")
@@ -245,9 +255,13 @@ def create_checkout(
     if len(product_keys) != len(set(product_keys)):
         raise ValidationError("Submit each product / selling-option combination only once per checkout.")
 
+    from .merchandising import active_promotions
+    from retail.promotion_rewards import reward_candidates
+    campaigns = [] if quoted_prices else active_promotions(business, sales_channel)
+    reward_options = reward_candidates(business, sales_channel, campaigns)
     # Lock every relevant FinishedGood in a deterministic order. All INPROFIC
     # checkout reservation writers use this same lock boundary.
-    good_ids = sorted({row["storefront_product"].finished_good_id for row in items})
+    good_ids = sorted({row["storefront_product"].finished_good_id for row in items} | {row["storefront_product"].finished_good_id for options in reward_options.values() for row in options})
     locked_goods = {
         good.pk: good
         for good in FinishedGood.raw_objects.select_for_update().filter(
@@ -265,10 +279,9 @@ def create_checkout(
     currency = (payment_config.currency or "NGN").upper()
     now = timezone.now()
     expires_at = now + timedelta(minutes=settings.checkout_reservation_minutes)
-    prepared = []
-    total = Decimal("0")
+    used_stock = {}
 
-    for row in items:
+    def prepare_row(row, *, is_reward=False):
         product = row["storefront_product"]
         qty = _decimal_quantity(row.get("quantity"))
         if product.business_id != business.pk or not product.published:
@@ -280,7 +293,7 @@ def create_checkout(
         configured_choices = good.storefront_option_choices
         if option_value and (not option_label or option_value not in configured_choices):
             raise ValidationError(f"Choose a valid {option_label or 'product'} option for {product.display_name}.")
-        if source == CommerceIntake.SOURCE_STOREFRONT and configured_choices and not option_value:
+        if source in EXTERNAL_COMMERCE_SOURCES and configured_choices and not option_value:
             raise ValidationError(f"Choose a {option_label or 'product'} option for {product.display_name} before checkout.")
         if not option_value:
             option_label = ""
@@ -321,7 +334,7 @@ def create_checkout(
             raise ValidationError(f"{product.display_name} has an invalid portion conversion.")
         customer_unit = selection["customer_unit"] or good.unit
         minimum = Decimal(selection["minimum"] if (bulk_pack is not None or individual_option is not None) else _channel_minimum(product, sales_channel))
-        if qty < minimum:
+        if qty < minimum and not is_reward:
             raise ChannelMinimumError(
                 f"{product.display_name} requires at least {minimum} {customer_unit} for this order mode.",
                 alternatives=_mode_alternatives(product, business, qty, source=source, individual_option=individual_option),
@@ -334,7 +347,7 @@ def create_checkout(
         selected_unit_price = selection.get("unit_price")
         if selected_unit_price is None:
             selected_unit_price = good.selling_price_for(sales_channel)
-        price = Decimal(selected_unit_price).quantize(Decimal("0.01"))
+        price = Decimal((quoted_prices or {}).get(str(product.pk), selected_unit_price)).quantize(Decimal("0.01"))
         payable_qty = qty
         reserve_qty = Decimal("0")
         internal_requested = (qty * multiplier).quantize(Decimal("0.01"))
@@ -383,7 +396,7 @@ def create_checkout(
         estimated_ready_at = now + timedelta(minutes=ready_minutes) if ready_minutes else now
 
         if stock_fulfilment:
-            available = available_physical_stock(good, now=now)
+            available = max(Decimal("0"), available_physical_stock(good, now=now, branch=branch) - used_stock.get(good.pk, Decimal("0")))
             customer_available = (available / multiplier).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
             reserved_customer_qty = min(qty, customer_available)
             reserve_qty = (reserved_customer_qty * multiplier).quantize(Decimal("0.01"))
@@ -398,7 +411,7 @@ def create_checkout(
                     "shortfall": str(shortage),
                     "unit": customer_unit,
                 }]
-                if policy == CommerceSettings.POLICY_REDUCE and reserved_customer_qty > 0:
+                if policy == CommerceSettings.POLICY_REDUCE and reserved_customer_qty > 0 and not is_reward:
                     payable_qty = reserved_customer_qty
                 elif policy == CommerceSettings.POLICY_INVITE:
                     suggestions = [m for m in _mode_alternatives(product, business, qty, source=source, individual_option=individual_option) if m["code"] != sales_channel]
@@ -420,8 +433,6 @@ def create_checkout(
                     details=[{"product_id": str(product.public_id), "requested": str(qty), "available_now": "0", "unit": customer_unit}],
                 )
 
-        line_total = (payable_qty * price).quantize(Decimal("0.01"))
-        total += line_total
         profile_key = selection["profile_key"]
         contents_snapshot = internal_contents_snapshot(
             good,
@@ -429,13 +440,46 @@ def create_checkout(
             base_multiplier=multiplier,
             customer_quantity=payable_qty,
         )
-        prepared.append((
+        used_stock[good.pk] = used_stock.get(good.pk, Decimal("0")) + reserve_qty
+        return (
             product, good, qty, payable_qty, reserve_qty, production_qty, price,
             bulk_pack, individual_option, customer_unit, multiplier, contents_snapshot,
             requested_source, estimated_ready_at, option_label, option_value,
-            product.preorder_lead_time or "",
-        ))
+            product.preorder_lead_time or "", is_reward,
+        )
 
+    prepared = [prepare_row(row) for row in items]
+    paid_stock = used_stock.copy()
+    reward_rows = {}
+    from retail.promotion_portions import matches_portion
+    def prepare_rewards(campaign, previous_rewards, eligible):
+        nonlocal used_stock
+        quantity = sum((prepared[i][3] for i in eligible), Decimal("0"))
+        free = int(quantity) // campaign.qualifying_quantity * campaign.free_quantity
+        if not free:
+            return []
+        for option in reward_options.get(campaign.pk, []):
+            used_stock = paid_stock.copy()
+            for previous in previous_rewards:
+                used_stock[previous[1].pk] = used_stock.get(previous[1].pk, Decimal("0")) + previous[4]
+            try:
+                return [prepare_row({**option, "quantity": free}, is_reward=True)]
+            except ValidationError:
+                continue
+        return []
+
+    for campaign in campaigns:
+        if campaign.mode != "buy_get":
+            continue
+        ids = {g.pk for g in campaign.products.all() if g.business_id == business.pk}
+        eligible = [i for i,row in enumerate(prepared) if row[1].pk in ids and matches_portion(campaign,row) and row[3] == row[3].to_integral_value()]
+        reward_rows[campaign.pk] = prepare_rewards(campaign, [], eligible)
+
+    total = sum((row[3] * row[6] for row in prepared), Decimal("0"))
+    promotion_snapshot = {}
+    if not quoted_prices:
+        from retail.services import promotion_prices
+        prepared, total, promotion_snapshot = promotion_prices(business, sales_channel, prepared, reward_rows=reward_rows, campaigns=campaigns, prepare_rewards=prepare_rewards)
     total = total.quantize(Decimal("0.01"))
     if total <= 0:
         raise ValidationError("This checkout has no payable amount.")
@@ -494,6 +538,7 @@ def create_checkout(
             ordering_mode=effective_fulfilment_mode,
             sales_channel=sales_channel,
             storefront_customer=storefront_customer,
+            branch=branch, promotion_snapshot=promotion_snapshot, recorded_at=recorded_at,
             customer_name=customer_name,
             customer_phone=(customer.get("phone") or "").strip(),
             customer_email=(customer.get("email") or "").strip(),
@@ -535,8 +580,9 @@ def create_checkout(
             fulfilment_source=fulfilment_source,
             estimated_ready_at=row_ready_at,
             preorder_lead_time=preorder_lead_time,
+            is_promotion_reward=is_reward,
         )
-        for product, good, qty, payable_qty, reserve_qty, production_qty, price, bulk_pack, individual_option, customer_unit, multiplier, contents_snapshot, fulfilment_source, row_ready_at, option_label, option_value, preorder_lead_time in prepared
+        for product, good, qty, payable_qty, reserve_qty, production_qty, price, bulk_pack, individual_option, customer_unit, multiplier, contents_snapshot, fulfilment_source, row_ready_at, option_label, option_value, preorder_lead_time, is_reward in prepared
     ])
     audit(
         business, None, "commerce_checkout_create", checkout,
@@ -595,6 +641,7 @@ def serialize_checkout(checkout):
         "fulfilment_mode": checkout.ordering_mode,
         "amount": f"{checkout.amount:.2f}",
         "subtotal": f"{(checkout.amount - checkout.delivery_fee):.2f}",
+        "promotion": checkout.promotion_snapshot,
         "delivery_fee": f"{checkout.delivery_fee:.2f}",
         "delivery_quote_id": str(checkout.delivery_quote.public_id) if checkout.delivery_quote_id else None,
         "delivery": delivery,
@@ -636,6 +683,7 @@ def serialize_checkout(checkout):
             {
                 "product_id": str(row.storefront_product.public_id),
                 "name": row.individual_option.name if row.individual_option_id else row.storefront_product.display_name,
+                "is_promotion_reward": row.is_promotion_reward,
                 "requested_quantity": str(row.requested_quantity),
                 "payable_quantity": str(row.payable_quantity),
                 "unit": row.customer_unit or row.storefront_product.customer_unit,
@@ -693,7 +741,7 @@ def materialize_paid_checkout(checkout, *, actor=None, allow_expired_recovery=Fa
         good = FinishedGood.raw_objects.select_for_update().get(
             pk=row.finished_good_id, business=checkout.business
         )
-        available = available_physical_stock(good, exclude_checkout=checkout, now=now)
+        available = available_physical_stock(good, exclude_checkout=checkout, now=now, branch=checkout.branch)
         if row.reserved_stock_quantity > available:
             checkout.status = CommerceCheckoutSession.STATUS_PAID_REVIEW
             checkout.paid_at = checkout.paid_at or now
@@ -759,6 +807,7 @@ def materialize_paid_checkout(checkout, *, actor=None, allow_expired_recovery=Fa
             fulfilment_source=row.fulfilment_source,
             estimated_ready_at=row.estimated_ready_at,
             preorder_lead_time=row.preorder_lead_time,
+            is_promotion_reward=row.is_promotion_reward,
         )
         for row in checkout.items.all()
     ])

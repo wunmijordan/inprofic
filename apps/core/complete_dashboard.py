@@ -1,4 +1,6 @@
 """Permission-filtered registry for the lazy Complete dashboard."""
+from core.vocabulary import label_text
+from core.quantities import plural_unit
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -84,11 +86,11 @@ def dashboard_manifest(user, business):
     result = []
     for group_key, group_label, raw_sections in GROUPS:
         sections = [
-            {"key": key, "label": label, "summary": True}
+            {"key": key, "label": label_text(label, business), "summary": True}
             for key, label, module, _builder in SUMMARIES.get(group_key, [])
             if user_has_permission(user, business, module, "view")
         ] + [
-            {"key": key, "label": _vertical_section_label(key, label, vertical_ui)}
+            {"key": key, "label": label_text(_vertical_section_label(key, label, vertical_ui), business)}
             for key, label, module, _model, _fields in raw_sections
             if user_has_permission(user, business, module, "view")
         ]
@@ -96,7 +98,7 @@ def dashboard_manifest(user, business):
             label = group_label
             if group_key == "production":
                 label = vertical_ui.get("kitchen_label", "Production") if vertical_ui["uses_production"] else "Stock Operations"
-            result.append({"key": group_key, "label": label, "sections": sections})
+            result.append({"key": group_key, "label": label_text(label, business), "sections": sections})
     return result
 
 
@@ -151,7 +153,7 @@ def _summary_response(request, group, section, entry):
         logger.exception("Complete dashboard section %s failed", section)
         return JsonResponse({"error": "This section could not be loaded right now. Please try again shortly."}, status=500)
     payload = {
-        "group": group, "section": section, "title": label, "currency": ctx.cur,
+        "group": group, "section": section, "title": label_text(label, request.business), "currency": ctx.cur,
         "kpis": body.get("kpis", []), "tables": body.get("tables", []), "charts": body.get("charts", []),
         "message": body.get("message", ""), "scope": getattr(request, "ledger_scope", "all"),
         "date_range": {"start": start.isoformat(), "end": end.isoformat()},
@@ -221,7 +223,7 @@ def complete_dashboard_section(request, group, section):
             ("Memo · unpaid expenses", statement["unpaid_expenses"]),
         ]
         payload = {
-            "group": group, "section": section, "title": label,
+            "group": group, "section": section, "title": label_text(label, request.business),
             "kpis": [
                 {"label": "Revenue", "value": _money_text(statement["revenue"], request.business.currency_symbol)},
                 {"label": "Gross profit", "value": _money_text(statement["gross_profit"], request.business.currency_symbol)},
@@ -265,6 +267,8 @@ def complete_dashboard_section(request, group, section):
             value = obj
             for part in field_name.split("__"):
                 value = getattr(value, part, "") if value is not None else ""
+            if field_name in {"unit", "usage_unit"}:
+                value = plural_unit(value, getattr(obj, "stock", 0))
             if value is not None and field_name in {"total", "amount", "value", "opening_balance"}:
                 value = _money_text(value, request.business.currency_symbol)
             elif isinstance(value, Decimal):
@@ -297,9 +301,9 @@ def complete_dashboard_section(request, group, section):
         chart_rows = list(queryset.order_by().values(chart_field).annotate(total=Count("pk")).order_by("-total")[:8])
         charts.append({"title": f"Records by {chart_field.replace('_', ' ')}", "type": "columns", "labels": [str(row[chart_field] or "Unspecified").replace("_", " ").title() for row in chart_rows], "series": [{"label": "Records", "values": [row["total"] for row in chart_rows]}]})
     payload = {
-        "group": group, "section": section, "title": label,
+        "group": group, "section": section, "title": label_text(label, request.business),
         "kpis": [{"label": "Records shown", "value": len(objects)}, {"label": "Total records", "value": queryset.count()}],
-        "tables": [{"title": label, "columns": [field.replace("customer_group", "customer_area").replace("__", " · ").replace("_", " ").title() for field in fields], "rows": rows}],
+        "tables": [{"title": label_text(label, request.business), "columns": [field.replace("customer_group", "customer_area").replace("__", " · ").replace("_", " ").title() for field in fields], "rows": rows}],
         "scope": getattr(request, "ledger_scope", "all"),
         "charts": charts,
     }

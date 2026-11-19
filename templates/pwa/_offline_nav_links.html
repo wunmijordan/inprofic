@@ -1,0 +1,10 @@
+{% load core_extras %}
+{% if packages.dashboard %}<a class="{{ row_class }}" href="#offline/dashboard" data-offline-package="dashboard">{% include '_nav_icon.html' with icon='dashboard' %}<span class="nav-label">{% business_label "Dashboard" %}</span></a>{% endif %}
+{% if packages.inventory %}<a class="{{ row_class }}" href="#offline/inventory" data-offline-package="inventory">{% include '_nav_icon.html' with icon='inventory' %}<span class="nav-label">{% business_label "Inventory" %}</span></a>{% endif %}
+{% if packages.expiration %}<a class="{{ row_class }}" href="#offline/expiration" data-offline-package="expiration">{% include '_nav_icon.html' with icon='retail_expiration' %}<span class="nav-label">{% business_label "Expiration check" %}</span></a>{% endif %}
+{% if packages.sales or packages.delivery %}
+{% if packages.sales %}<a class="{{ row_class }}" href="#offline/sales" data-offline-package="sales">{% include '_nav_icon.html' with icon='commerce_storefront_pos' %}<span class="nav-label">POS</span></a>{% endif %}
+{% if packages.delivery %}<a class="{{ row_class }}" href="#offline/delivery" data-offline-package="delivery">{% include '_nav_icon.html' with icon='delivery_dashboard' %}<span class="nav-label">{% business_label "Delivery" %}</span></a>{% endif %}
+<a class="{{ row_class }}" href="#offline/receipts" data-offline-package="receipts">{% include '_nav_icon.html' with icon='sales_list' %}<span class="nav-label">Offline receipts</span></a>
+{% endif %}
+<a class="{{ row_class }}" href="#offline/settings" data-offline-package="settings">{% include '_nav_icon.html' with icon='business_settings' %}<span class="nav-label">Offline settings</span></a>

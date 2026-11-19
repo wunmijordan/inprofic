@@ -1,0 +1,8 @@
+{% load core_extras %}
+<nav aria-label="Branch and retail workspaces" class="mb-4 flex flex-wrap gap-2">
+<a class="workspace-action" href="{% url 'retail_workspace' %}">Branches & cashiers</a>
+{% if module_permissions.inventory.view %}<a class="workspace-action" href="{% url 'retail_expiration' %}">{% business_label "Expiration check" %}</a>{% endif %}
+{% if module_permissions.sales.view %}<a class="workspace-action" href="{% url 'retail_quotations' %}">{% business_label "Quotations" %}</a><a class="workspace-action" href="{% url 'retail_promotions' %}">{% business_label "Product promotions" %}</a>{% endif %}
+<a class="workspace-action" href="{% url 'retail_profile' %}">{% business_label "My profile" %}</a>
+{% if can_manage_business %}<a class="workspace-action" href="{% url 'retail_devices' %}">Staff & devices</a>{% endif %}
+</nav>

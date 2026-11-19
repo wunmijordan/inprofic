@@ -1,8 +1,8 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% load core_extras %}
 {% block content %}
 {% include "core/_finance_tools_nav.html" %}
 <div class="mb-5">
-  <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">Finance</p>
+  <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">{% business_label "Finance" %}</p>
   <h1 class="mt-1 text-2xl font-semibold font-display text-stone-800">Bank Reconciliation</h1>
   <p class="mt-1 max-w-2xl text-xs text-stone-500">Load a statement, match it line by line against your cash records, and prove the balance. Your cash records are never changed by reconciling.</p>
 </div>

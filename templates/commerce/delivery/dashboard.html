@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% load core_extras %}
 {% load core_extras %}
 {% block content %}
 <style>
@@ -42,7 +42,7 @@
 <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
   <div>
     <p class="text-[11px] font-bold uppercase tracking-[.18em] text-stone-400">Last-mile operations</p>
-    <h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">Delivery</h2>
+    <h2 class="mt-1 text-2xl font-semibold font-display text-[#8f172d]">{% business_label "Delivery" %}</h2>
     <p class="mt-1 max-w-3xl text-sm text-stone-500">Coordinate in-house riders and provider plug-ins from one queue. Hybrid keeps both methods available per order while customer charges remain governed by the published switching policy.</p>
   </div>
   {% if can_manage_delivery %}<div class="flex flex-wrap gap-2"><a data-button-surface href="{% url 'delivery_settings' %}" class="rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm text-stone-600">Settings</a><a data-button-surface href="{% url 'delivery_provider_account_add' %}" class="rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm text-stone-600">+ Provider</a><a data-button-surface href="{% url 'delivery_origin_add' %}" class="rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm text-stone-600">+ Delivery base</a><a data-button-surface href="{% url 'delivery_rate_band_add' %}" class="rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm text-stone-600">+ Price band</a><a data-button-surface href="{% url 'delivery_area_add' %}" class="rounded-md border border-[#D9CFB4] bg-white px-3 py-2 text-sm text-stone-600">+ Destination</a><a data-button-surface href="{% url 'delivery_driver_add' %}" class="rounded-md bg-[#8f172d] px-3 py-2 text-sm font-semibold text-white">+ Rider / Courier</a></div>{% endif %}
@@ -88,7 +88,7 @@
     <div class="grid gap-2 rounded-lg bg-[#FAF8F1] p-2 sm:grid-cols-[4rem_1fr_8rem]">
       <input type="hidden" name="delivery_id" value="{{ d.public_id }}">
       <input type="number" min="1" name="sequence" value="{% if d.batch_stop_sequence %}{{ d.batch_stop_sequence }}{% else %}{{ forloop.counter }}{% endif %}" required class="rounded border border-stone-200 px-2 py-1.5 text-xs" title="Route position">
-      <div><div class="font-semibold">{{ d.intake.public_number }} · {{ d.intake.customer_name }}</div><div class="mt-0.5 text-stone-500">{{ d.intake.customer_address|default:d.quote.destination_address }}</div></div>
+      <div><div class="font-semibold">{{ d.intake.public_number }} · {{ d.intake.customer_name }}</div><div class="mt-0.5 text-stone-500">{% if d.intake.customer_address %}{{ d.intake.customer_address }}{% elif d.quote %}{{ d.quote.destination_address }}{% else %}—{% endif %}</div></div>
       <label class="text-[10px] text-stone-500">Extra min before stop<input type="number" min="0" name="stop_minutes" value="{{ d.batch_stop_minutes|default:0 }}" required class="mt-1 w-full rounded border border-stone-200 px-2 py-1.5 text-xs"></label>
     </div>
     {% endfor %}
@@ -124,7 +124,7 @@
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0 flex-1"><div class="flex flex-wrap items-center gap-2"><span class="font-mono text-sm font-semibold text-[#8f172d]">{{ d.intake.public_number }}</span><span class="inline-flex items-center gap-1 rounded-full bg-stone-100 text-stone-700 px-2 py-1 text-[10px] font-semibold">{% include "commerce/delivery/_vehicle_icon.html" with mode=d.vehicle_mode size="h-4 w-4" %}{{ d.vehicle_label }}</span><span class="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-stone-600">{{ d.get_status_display }}</span><span class="text-xs text-stone-400">{{ d.get_provider_display }}{% if d.provider_account %} · {{ d.provider_account.get_provider_code_display|integration_safe_text }}{% endif %}{% if d.method_switch_count %} · switched {{ d.method_switch_count }}×{% endif %}</span></div><div class="mt-1 break-words text-sm text-stone-700">{{ d.intake.customer_name }} <a href="tel:{{ d.intake.customer_phone }}" class="text-blue-500 hover:text-blue-700">{{ d.intake.customer_phone }}</a></div><div class="mt-1 break-words text-xs text-stone-500">
           <strong>Destination:</strong>
-          {{ d.intake.customer_address|default:d.quote.destination_address }}
+          {% if d.intake.customer_address %}{{ d.intake.customer_address }}{% elif d.quote %}{{ d.quote.destination_address }}{% else %}—{% endif %}
           {% if d.quote %}
             · {{ d.quote.distance_km }} km
             · customer paid {{ request.business.currency_symbol }}{{ d.intake.delivery_fee }}

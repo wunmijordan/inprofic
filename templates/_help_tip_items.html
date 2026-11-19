@@ -1,0 +1,10 @@
+      <ul class="form-help-tip__list">
+        {% for item in help_items %}
+          <li class="form-help-tip__list-item">
+            <strong class="form-help-tip__list-title font-subheading">{{ item.name }}{% if item.value %} <span class="form-help-tip__list-value font-mono">{{ item.value }}</span>{% endif %}</strong>
+            {% if item.quantity_label %}<span class="form-help-tip__list-detail">{{ item.quantity_label }}</span>{% endif %}
+            {% if item.preorder_lead_time %}<span class="form-help-tip__list-detail">Pre-order lead time: {{ item.preorder_lead_time }}</span>{% endif %}
+            {% if item.estimated_ready_minutes %}<span class="form-help-tip__list-detail">Made to order: about {{ item.estimated_ready_minutes }} minutes</span>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>

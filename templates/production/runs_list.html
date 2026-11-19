@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% load core_extras %}
 {% load core_extras %}
 {% block content %}
 <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
@@ -7,7 +7,7 @@
 </div>
 {% if not runs %}<div class="text-center py-10 text-sm text-stone-400 italic">No shared production runs yet.</div>{% else %}
 <div class="bg-[#FFFDF8] border border-[#E7DFCC] rounded-lg overflow-x-auto">
-<table class="min-w-max w-full text-sm"><thead class="bg-[#F0EAD9] text-stone-600"><tr><th class="px-3 py-2">Date</th><th class="px-3 py-2">Run</th><th class="px-3 py-2">Orders</th><th class="px-3 py-2">Products / destinations</th><th class="px-3 py-2">Status</th><th></th></tr></thead><tbody>
+<table class="min-w-max w-full text-sm"><thead class="bg-[#F0EAD9] text-stone-600"><tr><th class="px-3 py-2">Date</th><th class="px-3 py-2">Run</th><th class="px-3 py-2">{% business_label "Orders" %}</th><th class="px-3 py-2">Products / destinations</th><th class="px-3 py-2">Status</th><th></th></tr></thead><tbody>
 {% for r in runs %}<tr class="border-t border-[#E7DFCC]"><td class="px-3 py-2 font-mono text-xs">{{ r.date }}</td><td class="px-3 py-2 font-mono font-medium">{{ r.run_number }}</td><td class="px-3 py-2">{{ r.orders.count }}</td><td class="px-3 py-2 text-xs" style="min-width:11rem;max-width:20rem">{% with order_count=r.orders.all|length first_order=r.orders.all|first %}{% if first_order %}{% with first_item=first_order.items.all|first %}<div class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5"><span class="max-w-[14rem] truncate font-medium text-stone-700" title="{{ first_item.finished_good.name }}">{{ first_item.finished_good.name|default:"—" }}</span>{% if order_count > 1 or first_order.items.all|length > 1 %}<span class="text-[11px] text-stone-400">+ more</span>{% endif %}</div>{% endwith %}<button type="button" data-items-dialog-open="run-items-{{ r.pk }}" class="mt-0.5 text-xs font-medium text-[#8f172d] hover:underline">View products &amp; destinations</button>{% else %}<span class="text-stone-400">&mdash;</span>{% endif %}{% endwith %}</td><td class="px-3 py-2"><span class="px-2 py-0.5 rounded-full text-[11px] border {% if r.status == 'completed' %}bg-emerald-50 text-emerald-800 border-emerald-300{% elif r.status == 'approved' %}bg-sky-50 text-sky-800 border-sky-300{% else %}bg-amber-50 text-amber-800 border-amber-300{% endif %}">{{ r.get_status_display }}</span></td><td class="px-3 py-2"><a class="text-[#8f172d] text-xs font-medium hover:underline" href="{% url 'production_run_detail' r.pk %}">View</a></td></tr>{% endfor %}
 </tbody></table></div>
 {% for r in runs %}{% if r.orders.all %}

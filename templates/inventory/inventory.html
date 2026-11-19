@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% load core_extras %}
 {% block content %}
+{% if module_permissions.inventory.edit %}<a class="workspace-action mb-3" href="{% url 'retail_product_import' %}" data-form-dialog>Import products</a>{% endif %}
 
 {% if not vertical_ui.uses_production %}<div class="mb-3"><a class="workspace-action" href="{% url 'market_stock' %}#distribution-summary">{{ vertical_ui.commerce_channels.distribution }} stock distribution &amp; recorded returns</a></div>{% endif %}
 <div class="flex gap-2 mb-4 border-b border-[#E7DFCC]">

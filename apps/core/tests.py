@@ -377,6 +377,14 @@ class PwaEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Service-Worker-Allowed"], "/")
         script = response.content.decode()
+        import json
+        import re
+        from django.contrib.staticfiles import finders
+        precache = json.loads(re.search(r"const PRECACHE_URLS = (\[.*?\]);", script).group(1))
+        self.assertEqual(len(precache), len(set(precache)), "Duplicate assets prevent service-worker installation")
+        for asset in precache:
+            if asset.startswith("/static/"):
+                self.assertIsNotNone(finders.find(asset.removeprefix("/static/")), asset)
         self.assertIn("request.mode === 'navigate'", script)
         self.assertIn("cache: 'no-store'", script)
         self.assertIn("url.pathname.startsWith('/static/')", script)

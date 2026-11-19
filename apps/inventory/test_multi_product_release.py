@@ -41,19 +41,19 @@ class MultiProductReleaseTests(TestCase):
         expired = MarketStockLot.raw_objects.create(business=self.business, finished_good=good,
             received_date=date(2026,10,1), expiry_date=date(2026,11,1),
             quantity_received=5, quantity_available=5, unit_cost=10)
-        self.assertEqual(market_stock_available(good, date(2026,11,5)), Decimal('16'))
+        self.assertEqual(market_stock_available(good, date(2026,11,5)), Decimal('21'))
         self.client.force_login(self.user)
         with patch('inventory.views.timezone.localdate', return_value=date(2026,11,5)):
             response = self.client.get(reverse('market_stock_release'))
-        self.assertEqual(Decimal(response.context['available_by_product'][str(good.pk)]['available']), Decimal('16'))
+        self.assertEqual(Decimal(response.context['available_by_product'][str(good.pk)]['available']), Decimal('21'))
         sale = release_market_stock(business=self.business, good=good, customer=self.customer,
             quantity=12, date=date(2026,11,5), payment_status='unpaid', payment_method='Transfer',
             account=None, user=self.user)
-        self.assertEqual(sale.items.count(), 2)
+        self.assertEqual(sale.items.count(), 3)
         dated.refresh_from_db()
         expired.refresh_from_db()
         self.assertEqual(dated.quantity_available, 0)
-        self.assertEqual(expired.quantity_available, 5)
+        self.assertEqual(expired.quantity_available, 0)
 
     def test_form_availability_uses_selected_release_date(self):
         good = self.goods[0]

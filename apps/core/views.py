@@ -140,7 +140,7 @@ def marketing_home(request):
         # already cached marketing pages.
         from accounts.platform_integrations import shipbubble_platform_enabled, whatsapp_storefront_platform_enabled
         marketing_cache_key = (
-            f"marketing:home:v12:{cache.get('marketing:revision', 'initial')}:{request.get_host().lower()}:"
+            f"marketing:home:v14:{cache.get('marketing:revision', 'initial')}:{request.get_host().lower()}:"
             f"shipbubble-{int(shipbubble_platform_enabled())}-"
             f"whatsapp-{int(whatsapp_storefront_platform_enabled())}"
         )
@@ -205,7 +205,7 @@ def marketing_home(request):
         "google_site_verification": settings.GOOGLE_SITE_VERIFICATION,
         "bing_site_verification": settings.BING_SITE_VERIFICATION,
         "trust_strip_enabled": trust_strip_enabled,
-        "trust_business_count": Business.objects.count() if trust_strip_enabled else 0,
+        "trust_business_count": Business.objects.filter(headquarters__isnull=True).count() if trust_strip_enabled else 0,
         "trusted_businesses": trusted_businesses,
         "manual_trust_logos": manual_trust_logos,
         })
@@ -2299,12 +2299,8 @@ def switch_business(request):
         business_id = int(request.POST.get("business_id", ""))
     except (TypeError, ValueError):
         return render(request, "403.html", status=403)
-    if request.user.is_superuser:
-        allowed = Business.objects.filter(pk=business_id).exists()
-    else:
-        allowed = UserBusiness.objects.filter(
-            user=request.user, business_id=business_id, active=True
-        ).exists()
+    from accounts.services import accessible_businesses
+    allowed = accessible_businesses(request.user).filter(pk=business_id).exists()
     if not allowed:
         return render(request, "403.html", status=403)
     request.session["active_business_id"] = business_id

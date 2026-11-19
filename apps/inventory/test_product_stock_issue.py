@@ -68,10 +68,10 @@ class ProductStockIssueTests(TestCase):
         self.assertEqual(-issue.value, 6)
         self.assertTrue(StockMovement.objects.filter(reference=f'ADJ-{issue.pk}', affects_stock=True, quantity=-3).exists())
 
-    def test_over_issue_and_expired_stock_are_rejected_without_partial_records(self):
+    def test_over_issue_is_rejected_without_partial_records_with_advisory_expiry(self):
         self.other_lot.expiry_date = self.day-timedelta(days=1)
         self.other_lot.save(update_fields=['expiry_date'])
-        for source, quantity in [('market_stock', 6), ('physical_store', 11)]:
+        for source, quantity in [('market_stock', 16), ('physical_store', 11)]:
             with self.assertRaises(ValidationError):
                 self.issue(stock_source=source, quantity=quantity)
         self.assertFalse(StockAdjustment.objects.exists())

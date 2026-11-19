@@ -1,3 +1,4 @@
+{% load core_extras %}
 {% load static %}
 <style>
   [x-cloak] { display: none !important; }
@@ -140,7 +141,7 @@
               </div>
               <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
                 <div class="bg-white border border-[#E7DFCC] rounded-xl p-3"><div class="text-[10px] uppercase tracking-wide font-bold text-stone-400">Units sold</div><div class="font-mono font-semibold mt-1" x-text="fmt(currentProfitWindow().units)"></div></div>
-                <div class="bg-white border border-[#E7DFCC] rounded-xl p-3"><div class="text-[10px] uppercase tracking-wide font-bold text-stone-400">Sales</div><div class="font-mono font-semibold mt-1" x-text="money(currentProfitWindow().revenue)"></div></div>
+                <div class="bg-white border border-[#E7DFCC] rounded-xl p-3"><div class="text-[10px] uppercase tracking-wide font-bold text-stone-400">{% business_label "Sales" %}</div><div class="font-mono font-semibold mt-1" x-text="money(currentProfitWindow().revenue)"></div></div>
                 <div class="bg-white border border-[#E7DFCC] rounded-xl p-3"><div class="text-[10px] uppercase tracking-wide font-bold text-stone-400">Cost of goods</div><div class="font-mono font-semibold mt-1" x-text="money(currentProfitWindow().cogs)"></div></div>
                 <div class="bg-white border border-[#E7DFCC] rounded-xl p-3"><div class="text-[10px] uppercase tracking-wide font-bold text-stone-400" x-text="currentProfitWindow().profit < 0 ? 'Loss' : 'Profit'"></div><div class="font-mono font-semibold mt-1" :class="currentProfitWindow().profit < 0 ? 'text-rose-700' : 'text-emerald-700'" x-text="signedMoney(currentProfitWindow().profit)"></div><div class="text-[10px] text-stone-400" x-text="currentProfitWindow().margin !== null ? currentProfitWindow().margin + '% margin' : ''"></div></div>
               </div>

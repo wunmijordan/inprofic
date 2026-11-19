@@ -16,4 +16,8 @@ def render_lines(lines):
             result.append(bullet(stripped[2:], level=(len(line)-len(stripped))//2))
         else:
             result.append(line)
-    return '\n'.join(result)
+    compact = []
+    for line in result:
+        if line.strip() or (compact and compact[-1].strip()):
+            compact.append(line)
+    return '\n'.join(compact).strip()

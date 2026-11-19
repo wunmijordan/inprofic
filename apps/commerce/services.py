@@ -371,8 +371,10 @@ def _make_production_order(intake, quantities, *, user=None):
 
 
 def _make_physical_sale(intake, quantities, *, user=None):
+    checkout = getattr(intake, "checkout_session", None)
+    sale_date = timezone.localtime(checkout.recorded_at).date() if checkout and checkout.recorded_at else timezone.localdate()
     sale = Sale.raw_objects.create(
-        business=intake.business, created_by=user, date=timezone.localdate(), customer=intake.customer_name,
+        business=intake.business, created_by=user, date=sale_date, customer=intake.customer_name,
         transaction_type="unpaid", unpaid_description=f"Commerce {intake.public_number} — payment pending/handled externally",
         source=(f"{intake.sales_channel}_order" if intake.sales_channel in {"distribution", "online"} else "walkin"),
         service_mode=intake.service_mode, table_reference=intake.table_reference,
@@ -385,7 +387,7 @@ def _make_physical_sale(intake, quantities, *, user=None):
         locked = type(good).raw_objects.select_for_update().get(pk=good.pk, business=intake.business)
         from .checkout_services import available_physical_stock
         checkout = getattr(intake, "checkout_session", None)
-        available = available_physical_stock(locked, exclude_checkout=checkout)
+        available = available_physical_stock(locked, exclude_checkout=checkout, branch=checkout.branch if checkout else None)
         if internal_qty > available:
             customer_available = _customer_available(item, available)
             raise ValidationError(
@@ -407,7 +409,7 @@ def _make_physical_sale(intake, quantities, *, user=None):
             product_option_value=item.product_option_value,
             commerce_addon_name=item.individual_option.name if item.individual_option_id else "",
         )
-        record_finished_good_movement(good, -internal_qty, StockMovement.FG_SALE, note=f"Commerce stock order {intake.public_number}", reference=intake.public_number, affects_stock=True, unit_value=unit_cost)
+        record_finished_good_movement(good, -internal_qty, StockMovement.FG_SALE, note=f"Commerce stock order {intake.public_number}", reference=intake.public_number, affects_stock=True, unit_value=unit_cost, location=checkout.branch.location if checkout and checkout.branch_id else None, on_date=sale.date)
         consume_transferred_physical_stock(good, internal_qty)
         item.accepted_stock_quantity = internal_qty
         item.save(update_fields=["accepted_stock_quantity"])

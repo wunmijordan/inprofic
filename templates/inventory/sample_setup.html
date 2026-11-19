@@ -1,7 +1,7 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% load core_extras %}
 {% block content %}
 <div class="mx-auto max-w-xl">
-  <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">Inventory</p>
+  <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">{% business_label "Inventory" %}</p>
   <h1 class="mt-1 text-2xl font-semibold font-display text-stone-800">Try a sample recipe</h1>
   {% if sample %}
   <p class="mt-2 text-sm leading-6 text-stone-600">Add a ready-made example so you can see how a recipe, its base ingredient and the ratios between ingredients work, before you enter your own.</p>

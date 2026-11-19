@@ -1,0 +1,18 @@
+{% extends 'base.html' %}{% load static %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-5">Customer quotation</h1>
+<form method="post" class="space-y-5" data-quotation-form data-no-dialog>
+  {% csrf_token %}{{ form.non_field_errors }}
+  <div class="grid gap-4 md:grid-cols-2">{% for field in form %}{% include '_field.html' %}{% endfor %}</div>
+  <section class="space-y-4" data-formset>
+    <h2 class="font-semibold">Products</h2><p class="text-sm">Selecting a product or changing the channel fills its channel price. You can adjust it; adjustments are recorded internally.</p>
+    {{ formset.management_form }}{{ formset.non_form_errors }}
+    <div class="space-y-4" data-quote-rows>{% for row in formset %}{% include 'retail/_quotation_line.html' %}{% endfor %}</div>
+    <template data-quote-empty>{% include 'retail/_quotation_line.html' with row=formset.empty_form %}</template>
+    <button type="button" class="workspace-action" data-quote-add>Add new product</button>
+  </section>
+  <button class="workspace-action workspace-action-primary">Save quotation</button>
+</form>
+{{ quotation_prices|json_script:"quotation-channel-prices" }}
+<script src="{% static 'core/js/quotation-form.js' %}" defer></script>
+{% endblock %}

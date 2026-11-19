@@ -364,6 +364,8 @@ def vertical_config(business):
     config.setdefault("finished_output_label", "finished output")
     config.setdefault("output_weight_field_label", "Finished output weight per unit (g)")
     config.setdefault("measured_output_example", "Enter measured output per usage unit from actual production.")
+    from .vocabulary import overrides, VERTICAL_LABELS
+    config.update({key: value for key, value in overrides(business).items() if key in VERTICAL_LABELS})
     return config
 
 

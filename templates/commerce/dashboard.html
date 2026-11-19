@@ -1,9 +1,9 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% load core_extras %}
 {% load core_extras %}{% block content %}
 <div class="max-w-6xl" data-commerce-dashboard>
   <div class="flex flex-wrap justify-between items-end gap-3 mb-5">
     <div>
-      <h1 class="text-2xl font-semibold font-display text-[#8f172d]">Commerce</h1>
+      <h1 class="text-2xl font-semibold font-display text-[#8f172d]">{% business_label "Commerce" %}</h1>
       <p class="text-sm text-stone-500">Manage sales channels, paid-order handoff, storefront products and connected platforms from one workspace.</p>
     </div>
     <div class="flex flex-wrap gap-2">
@@ -23,7 +23,7 @@
 
   <div class="mb-5 flex flex-wrap gap-2 rounded-lg border border-[#E7DFCC] bg-[#FFFDF8] p-2" role="tablist" aria-label="Commerce workspace">
     <button type="button" data-commerce-tab="overview" class="rounded-md px-4 py-2 text-sm font-medium">Overview</button>
-    <button type="button" data-commerce-tab="orders" class="rounded-md px-4 py-2 text-sm font-medium">Orders</button>
+    <button type="button" data-commerce-tab="orders" class="rounded-md px-4 py-2 text-sm font-medium">{% business_label "Orders" %}</button>
     <button type="button" data-commerce-tab="products" class="rounded-md px-4 py-2 text-sm font-medium">Products</button>
     <button type="button" data-commerce-tab="connections" class="rounded-md px-4 py-2 text-sm font-medium">Connections</button>
   </div>
@@ -116,15 +116,15 @@
     <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
       <div class="bg-white border border-[#E7DFCC] rounded-lg p-4"><div class="text-xs text-stone-500">Shop visits</div><div class="mt-1 text-2xl font-semibold font-display font-mono text-[#8f172d]">{{ attribution_analytics.totals.visits }}</div></div>
       <div class="bg-white border border-[#E7DFCC] rounded-lg p-4"><div class="text-xs text-stone-500">Checkouts</div><div class="mt-1 text-2xl font-semibold font-display font-mono">{{ attribution_analytics.totals.checkouts }}</div></div>
-      <div class="bg-white border border-[#E7DFCC] rounded-lg p-4"><div class="text-xs text-stone-500">Orders</div><div class="mt-1 text-2xl font-semibold font-display font-mono">{{ attribution_analytics.totals.orders }}</div></div>
+      <div class="bg-white border border-[#E7DFCC] rounded-lg p-4"><div class="text-xs text-stone-500">{% business_label "Orders" %}</div><div class="mt-1 text-2xl font-semibold font-display font-mono">{{ attribution_analytics.totals.orders }}</div></div>
       <div class="bg-white border border-[#E7DFCC] rounded-lg p-4"><div class="text-xs text-stone-500">Sales from these visits</div><div class="mt-1 text-2xl font-semibold font-display font-mono">{{ attribution_analytics.totals.revenue|money:biz.currency_symbol }}</div></div>
     </div>
     <div class="overflow-x-auto bg-white border border-[#E7DFCC] rounded-lg mb-5">
-      <table class="w-full text-sm"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Source</th><th>Visits</th><th>Checkouts</th><th>Orders</th><th>Revenue</th><th>Visitors who checked out</th><th>Checkouts that became orders</th></tr></thead><tbody>
+      <table class="w-full text-sm"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Source</th><th>Visits</th><th>Checkouts</th><th>{% business_label "Orders" %}</th><th>Revenue</th><th>Visitors who checked out</th><th>Checkouts that became orders</th></tr></thead><tbody>
       {% for row in attribution_analytics.sources %}<tr class="border-t"><td class="p-2 font-medium capitalize">{{ row.source }}</td><td class="p-2 text-center">{{ row.visits }}</td><td class="p-2 text-center">{{ row.checkouts }}</td><td class="p-2 text-center">{{ row.orders }}</td><td class="p-2 text-center font-mono">{{ row.revenue|money:biz.currency_symbol }}</td><td class="p-2 text-center">{% if row.checkout_rate != None %}{{ row.checkout_rate }}%{% else %}—{% endif %}</td><td class="p-2 text-center">{% if row.order_rate != None %}{{ row.order_rate }}%{% else %}—{% endif %}</td></tr>{% empty %}<tr><td colspan="7" class="p-4 text-center text-stone-500">No attributed storefront activity yet.</td></tr>{% endfor %}
       </tbody></table>
     </div>
-    {% if attribution_analytics.campaigns %}<div class="overflow-x-auto bg-white border border-[#E7DFCC] rounded-lg mb-5"><div class="p-4 border-b border-[#E7DFCC]"><h3 class="font-medium">Campaign performance</h3></div><table class="w-full text-sm"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Campaign</th><th>Source</th><th>Checkouts</th><th>Orders</th><th>Revenue</th></tr></thead><tbody>{% for row in attribution_analytics.campaigns %}<tr class="border-t"><td class="p-2 font-medium">{{ row.campaign }}</td><td class="p-2 text-center capitalize">{{ row.source }}</td><td class="p-2 text-center">{{ row.checkouts }}</td><td class="p-2 text-center">{{ row.orders }}</td><td class="p-2 text-center font-mono">{{ row.revenue|money:biz.currency_symbol }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+    {% if attribution_analytics.campaigns %}<div class="overflow-x-auto bg-white border border-[#E7DFCC] rounded-lg mb-5"><div class="p-4 border-b border-[#E7DFCC]"><h3 class="font-medium">Campaign performance</h3></div><table class="w-full text-sm"><thead class="bg-[#F5EFE0]"><tr><th class="p-2 text-left">Campaign</th><th>Source</th><th>Checkouts</th><th>{% business_label "Orders" %}</th><th>Revenue</th></tr></thead><tbody>{% for row in attribution_analytics.campaigns %}<tr class="border-t"><td class="p-2 font-medium">{{ row.campaign }}</td><td class="p-2 text-center capitalize">{{ row.source }}</td><td class="p-2 text-center">{{ row.checkouts }}</td><td class="p-2 text-center">{{ row.orders }}</td><td class="p-2 text-center font-mono">{{ row.revenue|money:biz.currency_symbol }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
 
     {% if can_manage_commerce %}<div class="rounded-lg border border-[#E7DFCC] bg-[#FFFDF8] p-4" data-attribution-builder data-storefront-url="{{ storefront_url }}" data-order-now-url="{{ order_now_url }}" data-qr-url="{% url 'commerce_qr_code' %}">
       <div class="flex flex-wrap items-start justify-between gap-3"><div><h3 class="font-medium">Shareable link & QR code</h3><p class="mt-1 text-xs leading-5 text-stone-500">Create a link or QR code for WhatsApp, Instagram, email, printed material or any other place you share your shop. The optional labels help you compare what works best.</p></div><span class="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-semibold text-stone-500">No separate storefront created</span></div>

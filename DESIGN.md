@@ -205,7 +205,9 @@ headings, and IBM Plex Mono for figures on both public and workspace surfaces.
 
 ## Layout
 
-The workspace content is centered with a 96rem maximum width. At 768px and above,
+Workspace content fills its available width while the sidebar is expanded.
+With the sidebar collapsed, content is centered in the remaining space with a
+96rem maximum width. At 768px and above,
 the fixed sidebar is 14rem wide and the main area offsets by the same amount;
 main padding is 1.5rem. Narrow screens use the mobile navigation shell and 1rem
 main padding. These rules come from `templates/base.html` and `workspace.css`.

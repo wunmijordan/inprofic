@@ -11,13 +11,26 @@ class BusinessForm(forms.ModelForm):
     class Meta:
         model = Business
         fields = [
-            "name", "slug", "vertical", "currency_symbol", "background_color", "accent_color", "tagline",
-            "contact_phone", "contact_email", "contact_address", "contact_website",
+            "name",
+            "slug",
+            "vertical",
+            "currency_symbol",
+            "background_color",
+            "accent_color",
+            "tagline",
+            "contact_phone",
+            "contact_email",
+            "contact_address",
+            "contact_website",
             "storefront_logo",
-            "restaurant_table_service", "fiscal_year_start_month", "profit_period",
+            "restaurant_table_service",
+            "fiscal_year_start_month",
+            "profit_period",
         ]
         widgets = {
-            "fiscal_year_start_month": forms.Select(choices=[(m, date(2000, m, 1).strftime("%B")) for m in range(1, 13)]),
+            "fiscal_year_start_month": forms.Select(
+                choices=[(m, date(2000, m, 1).strftime("%B")) for m in range(1, 13)]
+            ),
             "background_color": forms.TextInput(attrs={"type": "color"}),
             "accent_color": forms.TextInput(attrs={"type": "color"}),
             "storefront_logo": forms.ClearableFileInput(
@@ -29,6 +42,25 @@ class BusinessForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         for f in self.fields.values():
             f.widget.attrs["class"] = INPUT_CLS
+        from .vocabulary import labels, MENU_VERTICAL
+
+        for key, default in labels(self.instance).items():
+            if key in MENU_VERTICAL:
+                continue
+            field = forms.CharField(
+                required=False,
+                max_length=60,
+                label=default,
+                widget=forms.TextInput(
+                    attrs={"class": INPUT_CLS, "placeholder": default}
+                ),
+            )
+            field.initial = (
+                (self.instance.label_overrides or {})
+                .get(self.instance.vertical, {})
+                .get(key, "")
+            )
+            self.fields["label_" + key] = field
         self.fields["fiscal_year_start_month"].label = "Business year starts in"
         self.fields["profit_period"].label = "Profit & loss period"
         # Optional so any form that does not post them keeps the saved values.
@@ -52,8 +84,43 @@ class BusinessForm(forms.ModelForm):
         self.fields["contact_address"].label = "Business address"
         self.fields["contact_website"].label = "Business website"
         self.fields["restaurant_table_service"].label = "Table service"
-        self.fields["restaurant_table_service"].help_text = "Require a table or service reference for dine-in sales."
-        self.fields["restaurant_table_service"].widget.attrs["class"] = "h-4 w-4 accent-[#8f172d]"
+        self.fields["restaurant_table_service"].help_text = (
+            "Require a table or service reference for dine-in sales."
+        )
+        self.fields["restaurant_table_service"].widget.attrs[
+            "class"
+        ] = "h-4 w-4 accent-[#8f172d]"
+
+    @property
+    def label_fields(self):
+        return [self[name] for name in self.fields if name.startswith("label_")]
+
+    def clean_vertical(self):
+        vertical = self.cleaned_data["vertical"]
+        if (
+            self.instance.headquarters_id
+            and vertical != self.instance.headquarters.vertical
+        ):
+            raise forms.ValidationError(
+                "A branch uses its headquarters' business vertical."
+            )
+        return vertical
+
+    def save(self, commit=True):
+        if any(name.startswith("label_") for name in self.data):
+            values = dict(self.instance.label_overrides or {})
+            values[self.cleaned_data["vertical"]] = {
+                key[6:]: value.strip()
+                for key, value in self.cleaned_data.items()
+                if key.startswith("label_") and value.strip()
+            }
+            self.instance.label_overrides = values
+        obj = super().save(commit=commit)
+        if commit and not obj.headquarters_id:
+            obj.branch_workspaces.update(
+                vertical=obj.vertical, currency_symbol=obj.currency_symbol
+            )
+        return obj
 
     def clean_slug(self):
         return (self.cleaned_data.get("slug") or "").strip().lower()
@@ -63,7 +130,6 @@ class BusinessForm(forms.ModelForm):
         if image and getattr(image, "size", 0) > 4 * 1024 * 1024:
             raise forms.ValidationError("Upload a storefront logo no larger than 4 MB.")
         return image
-
 
     def clean_fiscal_year_start_month(self):
         value = self.cleaned_data.get("fiscal_year_start_month")

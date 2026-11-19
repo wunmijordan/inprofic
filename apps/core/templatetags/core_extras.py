@@ -71,3 +71,9 @@ def get_item(mapping, key):
 def product_selling_unit(product):
     from core.quantities import product_portion
     return product_portion(product)[0]
+
+
+@register.simple_tag(takes_context=True)
+def business_label(context, text):
+    from core.vocabulary import label_text
+    return label_text(text, context.get("biz") or getattr(context.get("request"), "business", None))

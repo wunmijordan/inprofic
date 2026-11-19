@@ -1,0 +1,1 @@
+{% now "G" as greeting_hour %}Hello {{ request.user.get_short_name }}, Good {% if greeting_hour|add:"0" < 12 %}Morning{% elif greeting_hour|add:"0" < 17 %}Afternoon{% else %}Evening{% endif %}

@@ -1391,7 +1391,253 @@ No new API key, endpoint or configuration is needed. Refresh any cached catalogu
 The configured channel or customer price is per standard selling portion when one
 exists, including the POS Distribution channel. A 4-bun pack priced at ₦1,100
 therefore costs ₦11,000 for 10 packs and consumes 40 base units. Explicit Bulk Pack
-and Individual Option choices retain their own prices and conversions. External
+and Individual Option choices retain their registered conversions and use their
+own prices unless an active promotion targets that selection. External
 checkout modes remain unchanged. Operational releases, invoices, production forms
 and summaries use the same pricing convention. Existing exact checkout commercial
 snapshots remain intact during the legacy operational pricing correction.
+
+
+## Scheduled product promotions and quotations
+
+Checkout validates eligible scheduled product promotions on the server. Promotions apply to distinct qualifying quantities in their configured registered
+selling portions; the same paid quantity cannot receive overlapping offers twice. Buy/get automatically adds separate free reward lines. Use the returned payable total
+and item snapshots rather than recomputing the amount from catalogue prices.
+Cent allocation can split one product into two price lines. Existing unpaid
+checkouts retain their snapshot. Accepted staff quotations create unpaid
+checkouts at their agreed prices and still require verified payment before order
+materialization. The integration payload and verified-payment boundary remain
+unchanged. See [retail and offline behavior](RETAIL_AND_OFFLINE.md).
+
+Buy/get product promotions may select separate qualifying X products and reward
+Y products. Reward units do not also count as purchased qualifying units. Existing
+checkout payloads stay unchanged; the server applies the eligible campaign.
+
+## Product offer ribbons and merchandising
+
+Product records returned by `GET /api/v1/storefronts/{slug}/products` now include
+additive `promotions`, `merchandising_badge` and `ribbon_positions` fields.
+Existing prices and catalogue/card layouts stay intact. Render offers at the top
+left, with an accessible help button; render the merchandising SVG at the top
+right. Corner overlays must not move the image, name, price or order controls.
+
+Each `promotions[]` entry contains `id`, `name`, `mode`, `description`, structured
+`help_items` (`name`, optional `value`, and `quantity_label`), `channel`, inclusive ISO `starts_on` /
+`ends_on`, `qualifying_quantity`, applicable `free_quantity` / `bundle_price`,
+qualifying `product_ids`, `reward_product_ids`, `selection: "registered_portions"` and
+`stackable: false`. Product IDs are public storefront UUIDs, scoped to this
+business. The headless catalogue returns Online/Distribution campaigns, excluding POS-only offers; filter ribbons to the selected channel. Hosted cards use Online campaigns. Both
+qualifying and reward products advertise their offer. Earned rewards are added automatically as separate free lines; customer-submitted
+reward products remain billed normally. Whole quantities of the configured selling portions qualify, including registered
+standard portions, bulk packs and individual options. Refresh the ribbon when switching product variants. Keep it visible across
+portion selections: its terms identify the qualifying and reward portions. The same
+product's base price remains available when an offer is not eligible.
+
+`merchandising_badge` is null or `{code, label, description}`. Staff can choose
+`featured`, `new_arrival` or `staff_pick` in the product's Commerce publishing
+form. Otherwise `bestseller` is automatic: top three by paid POS/storefront/API
+checkout quantity during the past 30 days, each sold in at least two distinct
+orders, excluding orders with reversed receipts. Rankings are business-scoped;
+full branch workspaces rank their own orders. Badges do not alter price or stock.
+Use a star, sparkle, recommendation or trophy SVG respectively, with accessible
+text or a help tip. Keep these separate from readiness/production-time tags.
+
+For a live basket estimate, send the existing API credential to:
+
+```http
+POST /api/v1/storefronts/{slug}/basket-quote
+X-INPROFIC-KEY: <business integration key>
+Content-Type: application/json
+```
+
+```json
+{"order_mode":"online","items":[{"product_id":"<public UUID>","quantity":"3"}]}
+```
+
+Individual-option catalogue rows have empty `promotions`; their merchandising badge describes the underlying product.
+
+Items also accept `bulk_pack_id`, `individual_option_id`, `fulfilment_source` and
+`product_option_value` as applicable. The result is
+`{subtotal, currency, promotion}`; `promotion` is empty when no campaign qualifies,
+otherwise it includes the applied offer’s ID/name/mode, frozen description and
+`help_items`, plus `saving`. This endpoint uses the canonical checkout pipeline
+inside a rolled-back transaction: it creates no lasting checkout, order, payment
+or reservation. It excludes delivery fees and does not promise stock. Checkout
+revalidates availability and eligibility, applies the single best campaign and
+returns authoritative line snapshots. Never submit your own discounted price.
+The hosted storefront uses its CSRF-protected `/shop/{slug}/basket-quote/`
+equivalent. POS uses its existing authenticated preview with branch controls.
+
+Checkout create/detail responses now expose the frozen `promotion` alongside
+`subtotal`, `amount` and line prices. Use the returned totals before requesting
+payment. Existing checkouts retain their original offer snapshot even if a
+campaign is subsequently edited. Agreed quotation prices remain unchanged.
+Third-party sites must adopt these additive fields to display ribbons; INPROFIC
+cannot alter an external website's card HTML automatically.
+
+## Multi-channel campaigns and automatic experience discovery
+
+`GET /api/v1/storefronts/{slug}/experience` uses the existing `X-INPROFIC-Key`
+credential and returns the live business-driven experience contract. No additional
+per-feature website settings are required. The public products response includes
+its non-sensitive `experience` section automatically; the authenticated endpoint
+also includes eligible public `payment_methods`. Responses use `Cache-Control:
+no-store`. Fetch the contract when loading the catalogue and refresh data after
+basket changes rather than hard-coding business switches or channel names.
+
+The contract contains `version`, `configuration_source`, public business/contact
+and theme details, vertical-specific labels, capabilities, opening hours and
+scheduling windows, complete delivery settings, checkout field requirements,
+pricing/ribbon rules, and absolute endpoint URLs for catalogue, quotes, checkout,
+payment methods/initiation/status/proof, receipts, order status, privacy and
+delivery tracking/messages/reports. URL templates use `{checkout_id}`,
+`{receipt_id}`, `{order_id}` or `{delivery_id}`. Customer account links use the
+hosted account flow; this contract does not expose staff profiles, cashier
+controls or device administration as public customer APIs.
+
+Product `option` describes the configured label, choices and whether a choice is
+required. Send the chosen value as `items[].product_option_value`; external
+checkout validates it. Malformed object/list/text fields return validation errors
+rather than server errors. Basket-quote stock/minimum failures return the same
+structured `code`, alternatives and item details as checkout.
+
+Promotion metadata now includes authoritative `channels` (an array containing
+`all`, or one or more of `online`, `physical_store`, `distribution`). Retain the
+legacy `channel` for compatibility; it is `multiple` when several explicit
+channels apply. Evaluate the array when displaying offers. External product
+responses omit POS-only offers and never include Physical Store price values.
+
+`unit_prices` maps public product UUIDs to their scheduled prices by channel.
+Each Buy X product can carry a different price in every selected channel. Product
+`online_price`, `preorder_price` and standard `order_modes[].price` already resolve
+these scheduled prices automatically. `price_details.online` includes
+`standard_unit_price`, effective `unit_price` and `source`; standard mode
+`pricing_source` becomes `promotion` when appropriate. Bulk packs and individual
+options use scheduled prices only when selected as that campaign’s X portion. Scheduled prices resolve independently per product and portion. Eligible offers
+on separate qualifying quantities can apply together; overlapping offers never
+reuse the same paid quantity.
+Fractional standard quantities can use edited unit prices; reward/bundle quantity
+qualification still requires whole units. Cart quotes are authoritative when
+several campaigns overlap.
+
+Master channel prices and accepted quotation prices are preserved. Expiring,
+pausing or moving outside a campaign's selected channels restores the ordinary
+selling price automatically; existing checkouts retain their saved prices.
+Promotion snapshots include `price_changes`, applied terms and savings against
+ordinary prices. A price increase is valid and reports zero savings, never a
+negative saving. Receipts retain their authoritative line amounts.
+
+A custom headless site renders the contract once; business changes then flow
+through the same data without per-feature configuration. INPROFIC cannot rewrite
+HTML/JavaScript already deployed on another domain. `managed_experience` returns
+live storefront/order-now/account links, and checkout creation returns
+`hosted_checkout_url`, for sites that want INPROFIC to own all future UI updates.
+
+
+## Promotion modes, selling portions and custom help
+
+The promotion model and editor use `mode`: `buy_get` or `mix_match`. Existing
+promotions retain their mode through a field rename. API and prepared offline
+metadata expose `mode`; `kind` remains a compatibility alias for older clients.
+
+Each promotion selects one registered selling portion independently for every X
+product and every Y reward product. `standard` means the product’s registered
+customer portion (already a pack if configured that way), `bulk:<UUID>` selects
+an active bulk pack, and `individual:<UUID>` selects an active individual sale
+option. To sell individual units separately from a standard pack, register that
+individual selling option and its channel prices first. No unregistered unit
+conversion or inferred unit price is introduced. Existing channel, minimum and
+availability restrictions still apply.
+
+`promotions[].product_portions` and `reward_portions` map public product UUIDs to
+these selection keys. Show a ribbon for the product’s active channel regardless of its currently
+selected portion; those maps control checkout eligibility, not ribbon visibility. `unit_prices` refers to the selected X portion; the
+API’s bulk-pack and individual-option prices already include its active scheduled
+price. Use the existing `bulk_pack_id` / `individual_option_id` fields in checkout
+and basket-quote items. Quote the complete basket again after any selection change.
+The server adds earned free rewards automatically and includes their full registered
+stock quantity in reservation and fulfilment. Free portions do not count as purchased X portions, while packs and units
+of the same product remain distinct selections. Offers remain business-scoped and
+limited to one offer per qualifying paid quantity; accepted quotation prices stay unchanged.
+
+Mix-and-match combines selected X portions into groups of `qualifying_quantity`
+for `bundle_price`, with no Y reward. For example, three eligible portions priced
+600, 700 and 800 normally total 2,100; a bundle price of 1,500 charges 1,500.
+Incomplete groups retain individual pricing; when an assorted basket contains
+extra portions, bundle savings use the weighted average of eligible line prices,
+then allocate proportionally to those lines with exact cent reconciliation.
+
+`help_title` is the promotion name. Optional plain-text `eligibility_rule` and
+`pricing_rule` appear in `help_items` only when non-empty; blank rules are omitted.
+The generated When row contains only dates, without the channel list.
+Render all fields as escaped text. Historical checkout/receipt terms are frozen
+at checkout creation. Hosted cards use the shared portaled help-tip component.
+Offline POS continues to support its prepared standard-portion cash flow;
+pack/individual-only campaigns never discount its ordinary unit lines. Refresh
+prepared packages after changing promotion configuration.
+
+
+### Automatic reward basket contract
+
+Submit only the customer’s paid selections. For each complete Buy X group,
+INPROFIC adds the configured Y quantity in a separate line with
+`is_promotion_reward: true`, `unit_price: "0.00"` and `line_total: "0.00"`.
+A customer-submitted Y line remains paid, even when it matches the free reward.
+The customer must not resubmit the generated reward lines as paid selections.
+Basket quotes return canonical `items` and `promotion.rewards`; show rewards as
+read-only lines labelled “Free promotion reward · Automatically added”. Checkout,
+materialized orders and receipts preserve that distinction. Existing quotations
+retain agreed prices without added promotion rewards.
+
+When the Y set contains alternatives, the server selects the cheapest available
+registered reward portion, with a stable product-ID tie break. It checks aggregate
+paid and free stock demand under the same transaction and locks; unavailable reward
+choices cannot create stock or receive free-price overrides. Competing offers are evaluated by savings including the ordinary value of the
+additional reward, without reusing occupied qualifying quantities.
+Accepted historical checkouts retain their existing terms and totals.
+
+Offline prepared standard-portion POS mirrors separate reward lines, reserves their
+quantity from the device snapshot and queues them separately from paid items. Live
+sync recomputes rewards, checks totals and compares queued reward product/quantity
+pairs before payment; a changed reward requires review and confirmation.
+
+
+### Multiple offers on product cards
+
+A product’s ribbon remains visible across standard, pack and individual portion
+choices. Changing the product variant or channel still refreshes the applicable
+product’s offers. Portion-specific eligibility and billing remain unchanged.
+
+`promotion_help[]` supplies each public channel’s `title`, `count`, `items` and
+`sections`. A single offer retains its name and ordinary structured `items`.
+Multiple offers use a counted title such as “2 offers”; each section contains
+its own `title` and complete structured `items`. Render each section as an offer
+heading with the usual term list, within one height-limited scrollable help tip.
+Do not flatten offers into a combined description paragraph. This descriptor is
+also included on individual-option catalogue entries for their parent product.
+
+
+### Independent qualifying products and receipt prices
+
+Scheduled prices apply independently to every matching paid product/portion in
+an active channel, even when another offer supplies the basket’s rewards or a
+reward is unavailable. If schedules overlap for the same selection, the lowest
+configured active price applies, matching the catalogue. Accepted quotations and
+historical checkout snapshots retain their agreed or charged amounts.
+
+Promotions with distinct qualifying quantities can apply together. For example,
+two units of X and three units of Z each earning one Y produce five free Y units,
+including when X and Z use separate promotions. The server rechecks aggregate
+paid and free stock demand as offers are selected, and does not award overlapping
+promotions twice against the same paid quantities. In overlapping product sets,
+remaining unused qualifying lines can still qualify. Unavailable reward choices
+cannot overdraw stock; scheduled paid prices still apply.
+
+`combination_scope: "distinct_qualifying_quantities"` clarifies that
+`stackable: false` applies to each paid qualifying quantity, rather than disabling
+independent offers across the entire basket. The experience pricing strategy uses
+`distinct_qualifying_quantities`. Checkout `promotion.campaigns` lists the applied
+campaigns; `promotion.rewards` includes every earned reward and the displayed name
+counts multiple offers. Persisted paid line prices remain authoritative through
+payment, order materialization and receipt rendering. Offline prepared POS mirrors
+this selection, price and combined-stock calculation; refresh packages after edits.

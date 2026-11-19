@@ -38,7 +38,7 @@ class DistributionSummaryTests(ToolBase):
         row = next(row for row in data['distribution_rows'] if row['product_id']==self.good.pk)
         self.assertEqual((row['opening'],row['received'],row['distributed'],row['closing']),
                          (Decimal('20'),Decimal('0'),Decimal('4'),Decimal('16')))
-        self.assertIn('Opening balance: 20', data['distribution_share_text'])
+        self.assertIn('Opening: 20', data['distribution_share_text'])
         self.assertIn('Closing balance: 16', data['distribution_share_text'])
         self.assertNotIn('Remaining now', data['distribution_share_text'])
         from unittest.mock import patch
@@ -179,7 +179,7 @@ class DistributionSummaryTests(ToolBase):
         totals = data['distribution_settlement']['totals']
         self.assertEqual(totals, dict(gross=100, returned=30, net=70, paid=50,
                                      outstanding=20, net_due=20, refund_review=0))
-        self.assertIn('Expected value after returns: ₦70.00', data['distribution_share_text'])
+        self.assertIn('Net value after returns: ₦70.00', data['distribution_share_text'])
         self.assertIn('Balance due: ₦20.00', data['distribution_share_text'])
         self.assertNotIn('ledger', data['distribution_share_text'].lower())
         self.assertIn('Ada', data['distribution_share_text'])

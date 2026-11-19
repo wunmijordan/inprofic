@@ -14,6 +14,7 @@ from django.db.models import Case, Count, DecimalField, ExpressionWrapper, F, Q,
 from django.db.models.functions import Coalesce, TruncMonth
 from django.utils import timezone
 
+from .quantities import plural_unit
 from .accounting import _sale_expressions, daily_components, period_buckets, profit_and_loss
 
 ZERO = Decimal("0")
@@ -192,7 +193,7 @@ def pulse_attention(ctx):
         ],
         "tables": [
             table("Low raw materials", ["Material", "In stock", "Reorder at"],
-                  [[m.name, f"{num(m.stock, 2)} {m.usage_unit}", num(m.reorder_level, 2)] for m in low_raw]),
+                  [[m.name, f"{num(m.stock, 2)} {plural_unit(m.usage_unit, m.stock)}", num(m.reorder_level, 2)] for m in low_raw]),
             table("Orders awaiting approval", ["Order", "Date", "Type"],
                   [[f"#{o.display_number}", o.date.isoformat(), o.display_order_type] for o in pending]),
             table("Market lots expiring soon", ["Product", "Expires", "Available"],
@@ -314,7 +315,7 @@ def recipe_variance_section(ctx):
                          [("Planned", [r["planned"] for r in top]), ("Actual", [r["actual"] for r in top])])] if top else [],
         "tables": [
             table("Ingredients", ["Ingredient", "Planned", "Actual", "Variance", "Value", "Written off", "Status"],
-                  [[r["name"], f"{num(r['planned'], 2)} {r['unit']}", num(r["actual"], 2),
+                  [[r["name"], f"{num(r['planned'], 2)} {plural_unit(r['unit'], r['planned'])}", num(r["actual"], 2),
                     f"{num(r['variance'], 2)} ({pct(r['variance_pct'])})", money(ctx, r["variance_value"]),
                     num(r["shrink_qty"], 2), pretty(r["status"])] for r in report["ingredients"][:25]]),
             table("Output", ["Product", "Batches", "Planned", "Produced", "Wasted", "Yield", "Waste value"],
@@ -396,9 +397,9 @@ def inventory_summary(ctx):
                 [[issue.date, issue.finished_good.name, issue.get_reason_display(), issue.recipient or 'Not recorded',
                   issue.get_stock_source_display(), format_quantity(-issue.quantity, issue.finished_good.unit), money(ctx, -issue.value)] for issue in issues]),
             table("Highest-value raw materials", ["Material", "In stock", "Value"],
-                  [[m.name, f"{num(m.stock, 2)} {m.usage_unit}", money(ctx, m._v)] for m in top_value]),
+                  [[m.name, f"{num(m.stock, 2)} {plural_unit(m.usage_unit, m.stock)}", money(ctx, m._v)] for m in top_value]),
             table("Products at or below reorder level", ["Product", "In stock", "Reorder at"],
-                  [[g.name, f"{num(g.stock)} {g.unit}", num(g.reorder_level)] for g in low_goods]),
+                  [[g.name, f"{num(g.stock)} {plural_unit(g.unit, g.stock)}", num(g.reorder_level)] for g in low_goods]),
             table("Stock movements in period", ["Type", "Movements", "Net quantity"],
                   [[pretty(r["movement_type"]), r["n"], num(r["qty"], 2)] for r in movements]),
         ],

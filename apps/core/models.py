@@ -35,6 +35,8 @@ class Business(models.Model):
         (VERTICAL_RETAIL, "Retail Store"),
     ]
 
+    headquarters = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="branch_workspaces")
+    label_overrides = models.JSONField(default=dict, blank=True)
     name = models.CharField(max_length=120, default="My Business")
     currency_symbol = models.CharField(max_length=5, default="₦")
     slug = models.SlugField(max_length=60, unique=True, default="main")

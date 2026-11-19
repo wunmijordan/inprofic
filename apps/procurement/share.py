@@ -94,7 +94,7 @@ def summarize(po, business, url="", *, user=None):
 
 def link_prompt(summary):
     verb = "approve this purchase request" if summary["status"] == "pending" else "view this " + summary.get("document_label", "Purchase request").lower()
-    return f"Open INPROFIC to {verb} (sign-in required)"
+    return f"{verb.capitalize()} (sign-in required)"
 
 
 def share_text(summary, url=None):
@@ -102,7 +102,7 @@ def share_text(summary, url=None):
     s, symbol = summary, summary["symbol"]
     url = s.get("url", "") if url is None else url
     out = [f"*{s.get('document_label', 'Purchase request')} #{s['number']}*", f"{s['business'].name} · {s['date']:%d %b %Y}",
-           f"Supplier: {s['supplier']}", f"Status: {s['status_label']}", ""]
+           f"Supplier: {s['supplier']} · {s['status_label']}", ""]
     group_lookup = {group['id']: group for group in s['vendor_groups']}
     current_group = None
     for line in s["lines"]:
@@ -112,7 +112,7 @@ def share_text(summary, url=None):
             out += ['', f"• *{group['name']}*", f"Payment: {group['payment']}" + (f" · {group['method']}" if group['paid'] else "")]
             if group['paid'] and group['account']:
                 out.append(f"Account: {group['account']}")
-            amounts = [f"{label}: {_money(group[key],symbol)}" for key,label in [('total','Group total'),('paid','Paid'),('balance','Balance')] if group[key]]
+            amounts = [f"{label}: {_money(group[key],symbol)}" for key,label in [('total','Total'),('paid','Paid'),('balance','Balance')] if group[key]]
             if amounts: out.append(' · '.join(amounts))
         if line["removed"]:
             out.append(f"  • {line['name']}: removed (was {format_quantity(line['requested'],line['unit'])})")

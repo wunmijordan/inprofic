@@ -224,7 +224,8 @@ def user_permissions(request, pk):
             return redirect("users_permissions", pk=membership.pk)
     else:
         form = PermissionMatrixForm(membership=membership)
-    rows = [(m, label, form[f"{m}_view"], form[f"{m}_edit"]) for m, label in RoleModulePermission.MODULE_CHOICES]
+    from core.vocabulary import label_text
+    rows = [(m, label_text(label, request.business), form[f"{m}_view"], form[f"{m}_edit"]) for m, label in RoleModulePermission.MODULE_CHOICES]
     return render(request, "accounts/user_permissions.html", {"membership": membership, "form": form, "rows": rows})
 
 
@@ -293,7 +294,8 @@ def role_permissions(request, pk):
             return redirect("role_permissions", pk=role.pk)
     else:
         form = RolePermissionForm(role=role)
-    rows = [(m, label, form[f"{m}_view"], form[f"{m}_edit"]) for m, label in RoleModulePermission.MODULE_CHOICES]
+    from core.vocabulary import label_text
+    rows = [(m, label_text(label, request.business), form[f"{m}_view"], form[f"{m}_edit"]) for m, label in RoleModulePermission.MODULE_CHOICES]
     return render(request, "accounts/role_permissions.html", {"role": role, "form": form, "rows": rows})
 
 
@@ -304,8 +306,8 @@ def subscription_plans(request):
     from .models import BusinessSubscription, SubscriptionPlan
     from .subscription_services import attach_active_promotions, attach_payroll_tiers, build_plan_feature_matrix, ensure_default_plans, paid_trial_available, payment_is_locked
     ensure_default_plans()
-    service = getattr(request.business, "subscription_service", None)
-    subscription = service.subscription if service else BusinessSubscription.objects.filter(primary_business=request.business).select_related("plan").first()
+    from .services import business_subscription_for
+    subscription = business_subscription_for(request.business)
     if not subscription:
         # Existing businesses are not silently downgraded; they may choose a plan from this page.
         subscription = None
@@ -344,7 +346,7 @@ def subscription_plans(request):
         "plan_feature_matrix": build_plan_feature_matrix(plans, getattr(request.business, "currency_symbol", "\u20a6")),
         "paid_trial_available": can_start_paid_trial,
         "can_add_service": bool(
-            subscription and (
+            not request.business.headquarters_id and subscription and (
                 subscription.plan.additional_service_limit is None
                 or subscription.services.filter(is_primary=False).count() < subscription.plan.additional_service_limit
             )
@@ -569,8 +571,8 @@ def subscription_add_service(request):
     from .subscription_services import add_service_business
     if not is_business_admin(request.user, request.business):
         return render(request, "403.html", status=403)
-    service = getattr(request.business, "subscription_service", None)
-    subscription = service.subscription if service else BusinessSubscription.objects.filter(primary_business=request.business).select_related("plan").first()
+    from .services import business_subscription_for
+    subscription = business_subscription_for(request.business)
     if not subscription:
         messages.error(request, "Choose a subscription plan before adding another service.")
         return redirect("subscription_plans")
@@ -1494,6 +1496,7 @@ def founder_subscriptions(request):
             plans_to_update = list(SubscriptionPlan.objects.all().order_by("id"))
             parsed = []
             cycle_discounts = {}
+            branch_limits = {}
             try:
                 for plan in plans_to_update:
                     starter_free = bool(
@@ -1516,6 +1519,8 @@ def founder_subscriptions(request):
                     else:
                         user_limit = None if request.POST.get(f"users_unlimited_{plan.pk}") == "on" else max(1, int(request.POST.get(f"user_limit_{plan.pk}") or 1))
                         service_limit = None if request.POST.get(f"services_unlimited_{plan.pk}") == "on" else max(0, int(request.POST.get(f"service_limit_{plan.pk}") or 0))
+                    raw_branch_limit = request.POST.get(f"branch_limit_{plan.pk}")
+                    branch_limits[plan.pk] = plan.branch_limit if raw_branch_limit is None else (max(1, int(raw_branch_limit)) if raw_branch_limit.strip() else None)
                     parsed.append((
                         plan, monthly, yearly_discount, addon_discount, user_limit, service_limit,
                         plan.is_free_forever, starter_free,
@@ -1555,6 +1560,7 @@ def founder_subscriptions(request):
                     plan.yearly_discount_percent = yearly_discount
                     plan.quarterly_discount_percent, plan.biannual_discount_percent = cycle_discounts[plan.pk]
                     plan.additional_service_discount_percent = addon_discount
+                    plan.branch_limit = branch_limits[plan.pk]
                     plan.user_limit = user_limit
                     plan.additional_service_limit = service_limit
                     plan.trial_days = 0 if will_be_free else trial_policy_settings.general_trial_days
@@ -1591,7 +1597,7 @@ def founder_subscriptions(request):
                         "monthly_price", "yearly_discount_percent",
                         "quarterly_discount_percent", "biannual_discount_percent",
                         "additional_service_discount_percent", "trial_days",
-                        "user_limit", "additional_service_limit",
+                        "user_limit", "additional_service_limit", "branch_limit",
                     ],
                 )
             messages.success(request, "All plan pricing and capacity settings were saved together." + (" " + " ".join(transition_messages) if transition_messages else ""))
