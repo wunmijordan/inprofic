@@ -69,6 +69,6 @@
 
 <a href="{% url 'retail_profile' %}" class="{{ row_class }}"{% if current == 'retail_profile' %} aria-current="page"{% endif %}>{% include "_nav_icon.html" with icon="retail_profile" %}<span class="nav-label">{{ ui_names.retail_profile }}</span></a>
 {% if can_manage_business %}<a href="{% url 'business_settings' %}" data-tour-target="settings" class="{{ row_class }} {% if current == 'business_settings' %}bg-white/10 text-white font-medium{% else %}text-[#D8E3DB] hover:bg-white/5{% endif %}">{% include "_nav_icon.html" with icon="business_settings" %}<span class="nav-label">{{ ui_names.business_settings }}</span></a>{% endif %}
-{% if module_permissions.dashboard.view %}<a href="{% url 'dashboard' %}?tour=1&amp;view=simple" class="{{ row_class }} text-[#D8E3DB] hover:bg-white/5">{% include "_nav_icon.html" with icon="dashboard" %}<span class="nav-label">{{ ui_names.dashboard }}</span></a>{% endif %}
+{% if module_permissions.dashboard.view %}<a href="{% url 'dashboard' %}?tour=1&amp;view=simple" class="{{ row_class }} text-[#D8E3DB] hover:bg-white/5">{% include "_nav_icon.html" with icon="dashboard" %}<span class="nav-label">{{ ui_names.tour }}</span></a>{% endif %}
 {% if user.is_superuser %}<a href="{% url 'founder_subscriptions' %}" class="{{ row_class }} {% if current == 'founder_subscriptions' %}bg-white/10 text-white font-medium{% else %}text-[#D8E3DB] hover:bg-white/5{% endif %}">{% include "_nav_icon.html" with icon="founder_subscriptions" %}<span class="nav-label">Founder Console</span></a>{% endif %}
 {% endwith %}

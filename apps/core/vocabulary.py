@@ -2,6 +2,7 @@
 
 MENU_LABELS = {
     "dashboard": "Dashboard",
+    "tour": "Tour",
     "assistant": "Assistant",
     "daily_brief": "Daily Brief",
     "operations": "Operations",
