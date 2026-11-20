@@ -12,19 +12,19 @@ import { Command, CommandInput, CommandList, CommandEmpty, CommandItem } from '.
 const FORM_PATH = /^\/(?:inventory|procurement|sales|expenses|finance|orders|runs|batches|users|delivery|commerce|business|assistant|founder|platform|retail)(?:\/[^?#]*)?\/(?:add|new|edit|create|settings|payment-settings|permissions|approve|reject|complete|reverse|recreate|split|quality-check|reconcile|release|sell|sell-online|transfer|return|payments|dispense|use|receive|open|close)\/$/;
 const SPECIAL_FORM_PATH = /^\/(?:settings|ledger\/count|inventory\/(?:alert-settings|sample-setup|product-categories|product-use\/(?:market|physical))|sales\/customers\/\d+\/reprice|expenses\/requests\/\d+|commerce\/(?:products\/\d+|notifications\/device|whatsapp)|finance\/reconcile\/\d+|users\/(?:payroll\/addon|plans\/payment(?:\/[^/]+)?|founder\/platform\/(?:business|user)\/\d+(?:\/(?:delete|reset)(?:\/\d+\/(?:restore|delete))?)?))\/$/;
 const isFormPath = (path: string) => !['/retail/profile/', '/business/settings/'].includes(path) && (FORM_PATH.test(path) || SPECIAL_FORM_PATH.test(path));
-const formDialogUrl = (href: string) => { const url = new URL(href, location.href); url.searchParams.set('ui_dialog','1'); return url.href; };
+const formDialogUrl = (href: string) => { const url = new URL(href, location.href); url.searchParams.set('ui_dialog', '1'); return url.href; };
 const formProfile = (path: string) => {
-  if (/^\/finance\/accounts\/(?:add|\d+\/edit)\/$/.test(path)) return {size:'compact', width:42, height:40};
-  if (/^\/procurement\/suppliers\/(?:add|\d+\/edit)\/$/.test(path)) return {size:'compact', width:42, height:32};
-  if (/^\/users\/roles\/(?:add|\d+\/edit)\/$/.test(path)) return {size:'compact', width:42, height:28};
-  if (/^\/(?:orders|runs|procurement\/(?!suppliers)|expenses\/(?:add|\d+\/edit|requests)|sales\/add|inventory\/(?:product\/|market-stock\/|product-use\/)|users\/.*permissions|finance\/books\/)/.test(path)) return {size:'wide', width:76, height:48};
-  return {size:'standard', width:56, height:42};
+  if (/^\/finance\/accounts\/(?:add|\d+\/edit)\/$/.test(path)) return { size: 'compact', width: 42, height: 40 };
+  if (/^\/procurement\/suppliers\/(?:add|\d+\/edit)\/$/.test(path)) return { size: 'compact', width: 42, height: 32 };
+  if (/^\/users\/roles\/(?:add|\d+\/edit)\/$/.test(path)) return { size: 'compact', width: 42, height: 28 };
+  if (/^\/(?:orders|runs|procurement\/(?!suppliers)|expenses\/(?:add|\d+\/edit|requests)|sales\/add|inventory\/(?:product\/|market-stock\/|product-use\/)|users\/.*permissions|finance\/books\/)/.test(path)) return { size: 'wide', width: 76, height: 48 };
+  return { size: 'standard', width: 56, height: 42 };
 };
 const PRODUCT_DETAIL_PATH = /^\/inventory\/product\/\d+\/detail\/$/;
 const CUSTOMER_ACTIVITY_PATH = /^\/sales\/customers\/\d+\/activity\/$/;
 const embedded = window.parent !== window && window.name === 'inprofic-form-dialog';
 const postParent = (type: string, extra = {}) => window.parent.postMessage({ source: 'inprofic-ui', type, ...extra }, location.origin);
-const notifyNative = (el: Element) => ['input','change'].forEach(type => el.dispatchEvent(new Event(type, { bubbles: true })));
+const notifyNative = (el: Element) => ['input', 'change'].forEach(type => el.dispatchEvent(new Event(type, { bubbles: true })));
 const dialogTitleText = (element: Element | null) => {
   if (!element) return '';
   const heading = element.cloneNode(true) as HTMLElement;
@@ -75,21 +75,21 @@ function ConfirmHost() {
   </AlertDialog>;
 }
 
-function SnapshotMenu({source}: {source: HTMLElement}) {
+function SnapshotMenu({ source }: { source: HTMLElement }) {
   const [, refresh] = useState(0);
   useEffect(() => {
     const observer = new MutationObserver(() => refresh(value => value + 1));
-    observer.observe(source, {subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:['disabled']});
+    observer.observe(source, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['disabled'] });
     return () => observer.disconnect();
   }, [source]);
   const commands = [...source.querySelectorAll<HTMLButtonElement | HTMLAnchorElement>('[data-snapshot-commands] button,[data-snapshot-commands] a')];
   const status = source.querySelector('[data-snapshot-status]')?.textContent || '';
   return <div className="ui-snapshot-tools">
     <DropdownMenu>
-      <DropdownMenuTrigger asChild><button type="button" className="workspace-icon-button" aria-label={source.dataset.shareLabel || 'Share'}>Share <ChevronDown aria-hidden="true" size={14}/></button></DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild><button type="button" className="workspace-icon-button" aria-label={source.dataset.shareLabel || 'Share'}>Share <ChevronDown aria-hidden="true" size={14} /></button></DropdownMenuTrigger>
       <DropdownMenuContent className="ui-menu" align="end" sideOffset={6}>
         {commands.map((command, index) => <DropdownMenuItem key={index} disabled={command.tagName === 'BUTTON' && (command as HTMLButtonElement).disabled} onSelect={() => {
-          if (command.hasAttribute('data-snapshot-action')) document.dispatchEvent(new CustomEvent('inprofic:snapshot-action', {detail:{command}}));
+          if (command.hasAttribute('data-snapshot-action')) document.dispatchEvent(new CustomEvent('inprofic:snapshot-action', { detail: { command } }));
           else command.click();
         }}>{command.textContent}</DropdownMenuItem>)}
       </DropdownMenuContent>
@@ -117,7 +117,7 @@ function FormHost() {
       dirty.current = false; submitted.current = false; changed.current = false;
       stayOpen.current = false;
       preparedDocument.current = null;
-      setLoaded(false); setShareSource(null); setModel({ url:formDialogUrl(url), title, trigger, ...formProfile(new URL(url).pathname) });
+      setLoaded(false); setShareSource(null); setModel({ url: formDialogUrl(url), title, trigger, ...formProfile(new URL(url).pathname) });
     };
   }, []);
   useEffect(() => {
@@ -153,7 +153,7 @@ function FormHost() {
       submitted.current = false;
       if (hasError) requestAnimationFrame(() => {
         const field = doc.querySelector<HTMLElement>('.field-has-error .ui-combo-trigger,.field-has-error input:not([type=hidden]),.field-has-error textarea,.errorlist');
-        field?.focus(); field?.scrollIntoView({block:'center'});
+        field?.focus(); field?.scrollIntoView({ block: 'center' });
       });
       const title = dialogTitleText(doc.querySelector('[data-dialog-title]') || doc.querySelector('.workspace-content h1,.workspace-content h2'));
       if (title) setModel((previous: any) => previous ? { ...previous, title } : previous);
@@ -162,9 +162,9 @@ function FormHost() {
   return <Dialog open={!!model} onOpenChange={value => { if (!value) void close(); }}>
     <DialogContent style={{ "--ui-form-width": `${model?.width || 56}rem`, "--ui-form-height": `${model?.height || 42}rem` } as React.CSSProperties} data-dialog-size={model?.size} className="ui-form-dialog" onOpenAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => frame.current?.closest<HTMLElement>('[role="dialog"]')?.querySelector<HTMLElement>('.ui-dialog-heading')?.focus()); }} onCloseAutoFocus={event => event.preventDefault()}>
       <div className="ui-dialog-heading" tabIndex={-1}><DialogTitle>{model?.title || 'Edit record'}</DialogTitle><DialogDescription className="sr-only">{model?.url && (CUSTOMER_ACTIVITY_PATH.test(new URL(model.url).pathname) || PRODUCT_DETAIL_PATH.test(new URL(model.url).pathname)) ? "Review activity, costs and special prices. Date filters do not change records." : "Complete the form. Validation and saving follow the same business rules as the full page."}</DialogDescription>
-      {loaded && shareSource && <SnapshotMenu source={shareSource}/>}
+        {loaded && shareSource && <SnapshotMenu source={shareSource} />}
       </div>
-      {model && <iframe ref={frame} src={model.url} name="inprofic-form-dialog" title={model.title || 'Record form'} onLoad={ready} className="ui-form-frame" style={{visibility:loaded ? 'visible' : 'hidden'}}/>}
+      {model && <iframe ref={frame} src={model.url} name="inprofic-form-dialog" title={model.title || 'Record form'} onLoad={ready} className="ui-form-frame" style={{ visibility: loaded ? 'visible' : 'hidden' }} />}
     </DialogContent>
   </Dialog>;
 }
@@ -187,7 +187,7 @@ function LegacyHost() {
       prepareDialogBody(node);
       node.dataset.uiDialogWidth = getComputedStyle(node).maxWidth === 'none' ? '68rem' : getComputedStyle(node).maxWidth;
       placeholder.current = document.createComment('dialog location'); node.before(placeholder.current);
-      node.setAttribute('open',''); setDialog(node);
+      node.setAttribute('open', ''); setDialog(node);
     };
     if (pendingLegacy) { const node = pendingLegacy; pendingLegacy = null; openLegacy(node); }
   }, []);
@@ -195,11 +195,11 @@ function LegacyHost() {
     closeLegacy = (node, value) => { if (node === dialog) finish(value); };
     if (dialog && content.current) content.current.append(dialog);
   }, [dialog]);
-  return <Dialog open={!!dialog} onOpenChange={value => { if (!value) { const event = new Event('cancel', {cancelable:true}); if (dialog?.dispatchEvent(event)) finish(); } }}>
-    <DialogContent portalContainer={placeholder.current?.parentElement} data-dialog-size={dialog?.dataset.formSize} style={{"--ui-legacy-width":dialog?.dataset.uiDialogWidth || "68rem", "--ui-form-height":dialog?.dataset.formSize === 'compact' ? '30rem' : '48rem'} as React.CSSProperties} className="ui-legacy-dialog" onOpenAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => content.current?.closest<HTMLElement>('[role="dialog"]')?.querySelector<HTMLElement>('.ui-dialog-heading')?.focus()); }} onCloseAutoFocus={event => event.preventDefault()}>
+  return <Dialog open={!!dialog} onOpenChange={value => { if (!value) { const event = new Event('cancel', { cancelable: true }); if (dialog?.dispatchEvent(event)) finish(); } }}>
+    <DialogContent portalContainer={placeholder.current?.parentElement} data-dialog-size={dialog?.dataset.formSize} style={{ "--ui-legacy-width": dialog?.dataset.uiDialogWidth || "68rem", "--ui-form-height": dialog?.dataset.formSize === 'compact' ? '30rem' : '48rem' } as React.CSSProperties} className="ui-legacy-dialog" onOpenAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => content.current?.closest<HTMLElement>('[role="dialog"]')?.querySelector<HTMLElement>('.ui-dialog-heading')?.focus()); }} onCloseAutoFocus={event => event.preventDefault()}>
       <div className="ui-dialog-heading" tabIndex={-1}><DialogTitle>{dialogTitleText(dialog?.querySelector('h1,h2,h3') || null) || dialog?.getAttribute('aria-label') || 'Details'}</DialogTitle>
-      <DialogDescription className="sr-only">Review the details and available actions.</DialogDescription></div>
-      <div ref={node => { content.current = node; if (node && dialog) { node.append(dialog); dialog.removeAttribute("aria-hidden"); } }} data-ui-legacy/>
+        <DialogDescription className="sr-only">Review the details and available actions.</DialogDescription></div>
+      <div ref={node => { content.current = node; if (node && dialog) { node.append(dialog); dialog.removeAttribute("aria-hidden"); } }} data-ui-legacy />
     </DialogContent>
   </Dialog>;
 }
@@ -211,19 +211,19 @@ function SelectCombo({ select }: { select: HTMLSelectElement }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const options = Array.from(select.options).filter(option => !option.hidden && !option.closest('optgroup')?.disabled);
   const selected = options.filter(option => option.selected);
-  const label = select.getAttribute('aria-label') || document.querySelector(`label[for="${CSS.escape(select.id)}"]`)?.textContent?.trim() || select.name.replaceAll('_',' ') || 'Choose an option';
+  const label = select.getAttribute('aria-label') || document.querySelector(`label[for="${CSS.escape(select.id)}"]`)?.textContent?.trim() || select.name.replaceAll('_', ' ') || 'Choose an option';
   useEffect(() => {
     const update = () => refresh(value => value + 1);
-    const invalid = (event: Event) => { event.preventDefault(); trigger.current?.focus(); trigger.current?.setAttribute('aria-invalid','true'); };
+    const invalid = (event: Event) => { event.preventDefault(); trigger.current?.focus(); trigger.current?.setAttribute('aria-invalid', 'true'); };
     const labelClick = (event: Event) => { if ((event.target as Element).closest('button,a,input')) return; event.preventDefault(); trigger.current?.focus(); };
-    const labels = Array.from(select.labels || []); labels.forEach(label => label.addEventListener('click',labelClick));
-    const observer = new MutationObserver(update); observer.observe(select,{childList:true,subtree:true,attributes:true,attributeFilter:['disabled','hidden','selected','label','required']});
-    select.addEventListener('change',update); select.addEventListener('ms-refresh',update); select.addEventListener('invalid',invalid);
-    const reset = () => queueMicrotask(update); select.form?.addEventListener('reset',reset);
+    const labels = Array.from(select.labels || []); labels.forEach(label => label.addEventListener('click', labelClick));
+    const observer = new MutationObserver(update); observer.observe(select, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'hidden', 'selected', 'label', 'required'] });
+    select.addEventListener('change', update); select.addEventListener('ms-refresh', update); select.addEventListener('invalid', invalid);
+    const reset = () => queueMicrotask(update); select.form?.addEventListener('reset', reset);
     // Existing page scripts often assign select.value without dispatching an
     // event. Refresh on focus/open as well as option mutations.
-    const focus = () => update(); window.addEventListener('focus',focus);
-    return () => { labels.forEach(label => label.removeEventListener('click',labelClick)); observer.disconnect(); select.removeEventListener('change',update); select.removeEventListener('ms-refresh',update); select.removeEventListener('invalid',invalid); select.form?.removeEventListener('reset',reset); window.removeEventListener('focus',focus); };
+    const focus = () => update(); window.addEventListener('focus', focus);
+    return () => { labels.forEach(label => label.removeEventListener('click', labelClick)); observer.disconnect(); select.removeEventListener('change', update); select.removeEventListener('ms-refresh', update); select.removeEventListener('invalid', invalid); select.form?.removeEventListener('reset', reset); window.removeEventListener('focus', focus); };
   }, [select]);
   const choose = (option: HTMLOptionElement) => {
     if (option.disabled || select.disabled) return;
@@ -232,18 +232,18 @@ function SelectCombo({ select }: { select: HTMLSelectElement }) {
   };
   return <Popover open={open} onOpenChange={value => { refresh(n => n + 1); setOpen(value); }}>
     <PopoverTrigger asChild><button ref={trigger} type="button" className="ui-combo-trigger" role="combobox" aria-expanded={open} aria-label={label} aria-required={select.required} aria-invalid={select.getAttribute('aria-invalid') || undefined} disabled={select.disabled} onFocus={() => refresh(n => n + 1)}>
-      <span>{select.multiple ? (selected.length ? selected.map(option => option.label).join(', ') : select.dataset.placeholder || 'Choose options') : selected[0]?.label || 'Choose an option'}</span><ChevronsUpDown aria-hidden="true" size={15}/>
+      <span>{select.multiple ? (selected.length ? selected.map(option => option.label).join(', ') : select.dataset.placeholder || 'Choose options') : selected[0]?.label || 'Choose an option'}</span><ChevronsUpDown aria-hidden="true" size={15} />
     </button></PopoverTrigger>
-    <PopoverContent onPointerDownCapture={event => selectPopoverInteractions.set(event.nativeEvent,select)} onFocusCapture={event => selectPopoverInteractions.set(event.nativeEvent,select)} aria-label={`${label} options`} className="ui-combo-popover" align="start">
-      <Command key={revision} loop><CommandInput placeholder="Search options…" aria-label={`Search ${label}`}/><CommandList><CommandEmpty>No matching options.</CommandEmpty>
-        {options.map((option,index) => <CommandItem key={index} value={`${index} ${option.label}`} disabled={option.disabled} onSelect={() => choose(option)} aria-selected={option.selected}><Check aria-hidden="true" size={14} style={{visibility:option.selected?'visible':'hidden'}}/><span>{option.label || 'None'}</span></CommandItem>)}
+    <PopoverContent onPointerDownCapture={event => selectPopoverInteractions.set(event.nativeEvent, select)} onFocusCapture={event => selectPopoverInteractions.set(event.nativeEvent, select)} aria-label={`${label} options`} className="ui-combo-popover" align="start">
+      <Command key={revision} loop><CommandInput placeholder="Search options…" aria-label={`Search ${label}`} /><CommandList><CommandEmpty>No matching options.</CommandEmpty>
+        {options.map((option, index) => <CommandItem key={index} value={`${index} ${option.label}`} disabled={option.disabled} onSelect={() => choose(option)} aria-selected={option.selected}><Check aria-hidden="true" size={14} style={{ visibility: option.selected ? 'visible' : 'hidden' }} /><span>{option.label || 'None'}</span></CommandItem>)}
       </CommandList></Command>
     </PopoverContent>
   </Popover>;
 }
 
 function PublicNavigation() {
-  return <DropdownMenu><DropdownMenuTrigger asChild><button type="button" className="workspace-icon-button" aria-label="Explore INPROFIC">Explore</button></DropdownMenuTrigger><DropdownMenuContent className="ui-menu" align="end">{[['#about','About INPROFIC'],['#interactive-demo','Interactive walkthrough'],['#capabilities','Connected modules'],['#workflows','Stock to sale'],['#plans','Plans and features'],['#faq','Questions and answers']].map(([href,label])=><DropdownMenuItem key={href} asChild><a href={href}>{label}</a></DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu>;
+  return <DropdownMenu><DropdownMenuTrigger asChild><button type="button" className="workspace-icon-button" aria-label="Explore INPROFIC">Explore</button></DropdownMenuTrigger><DropdownMenuContent className="ui-menu" align="end">{[['#about', 'About INPROFIC'], ['#interactive-demo', 'Interactive walkthrough'], ['#capabilities', 'Connected modules'], ['#workflows', 'Stock to sale'], ['#plans', 'Plans and features'], ['#faq', 'Questions and answers']].map(([href, label]) => <DropdownMenuItem key={href} asChild><a href={href}>{label}</a></DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu>;
 }
 
 function AppearancePopover({ panel, button }: { panel: HTMLElement; button: HTMLElement }) {
@@ -259,8 +259,8 @@ function AppearancePopover({ panel, button }: { panel: HTMLElement; button: HTML
     if (node) { node.append(panel); panel.hidden = false; }
     else { placeholder.current?.after(panel); panel.hidden = true; }
   };
-  return <Popover><PopoverTrigger asChild><button type="button" className="workspace-icon-button" aria-label="Appearance"><span aria-hidden="true" dangerouslySetInnerHTML={{__html: button.innerHTML}}/></button></PopoverTrigger>
-    <PopoverContent className="ui-appearance-content" align="end"><div ref={attach}/></PopoverContent>
+  return <Popover><PopoverTrigger asChild><button type="button" className="workspace-icon-button" aria-label="Appearance"><span aria-hidden="true" dangerouslySetInnerHTML={{ __html: button.innerHTML }} /></button></PopoverTrigger>
+    <PopoverContent className="ui-appearance-content" align="end"><div ref={attach} /></PopoverContent>
   </Popover>;
 }
 
@@ -279,7 +279,7 @@ function FilterPopover({ panel, button }: { panel: HTMLElement; button: HTMLElem
     else { placeholder.current?.after(panel); panel.hidden = true; }
   }, [panel]);
   return <Popover open={open} onOpenChange={setOpen}>
-    <PopoverTrigger asChild><button type="button" className="workspace-icon-button" aria-label={button.getAttribute('aria-label') || 'Choose period'}><span aria-hidden="true" dangerouslySetInnerHTML={{__html: button.innerHTML}}/></button></PopoverTrigger>
+    <PopoverTrigger asChild><button type="button" className="workspace-icon-button" aria-label={button.getAttribute('aria-label') || 'Choose period'}><span aria-hidden="true" dangerouslySetInnerHTML={{ __html: button.innerHTML }} /></button></PopoverTrigger>
     <PopoverContent className="ui-filter-content" align="end" collisionPadding={12} aria-label={button.getAttribute('aria-label') || 'Choose period'} onInteractOutside={event => {
       // Native-field islands have separate React roots. Their portalled lists
       // are logically inside this filter even though Radix sees them outside.
@@ -290,13 +290,13 @@ function FilterPopover({ panel, button }: { panel: HTMLElement; button: HTMLElem
       const owner = selectPopoverInteractions.get(original);
       if ((target instanceof Node && panel.contains(target)) || (owner && panel.contains(owner))) event.preventDefault();
     }}>
-      <div ref={attach}/>
+      <div ref={attach} />
       <button type="button" className="workspace-button mt-3 w-full" onClick={() => setOpen(false)}>Done</button>
     </PopoverContent>
   </Popover>;
 }
 
-const selectRoots = new Map<HTMLSelectElement, {root: ReturnType<typeof createRoot>, mount: HTMLElement}>();
+const selectRoots = new Map<HTMLSelectElement, { root: ReturnType<typeof createRoot>, mount: HTMLElement }>();
 function enhanceSelections(root: ParentNode = document) {
   root.querySelectorAll<HTMLSelectElement>('select:not([data-native-select])').forEach(select => {
     const existing = selectRoots.get(select);
@@ -311,24 +311,24 @@ function enhanceSelections(root: ParentNode = document) {
     // widgets before wiring the new formset row to its own native field.
     const clonedWidget = select.nextElementSibling;
     if (clonedWidget?.matches('[data-ui-combo-root]')) clonedWidget.remove();
-    select.classList.add('ui-native-select'); select.setAttribute('aria-hidden','true'); select.tabIndex = -1;
+    select.classList.add('ui-native-select'); select.setAttribute('aria-hidden', 'true'); select.tabIndex = -1;
     const mount = document.createElement('span'); mount.dataset.uiComboRoot = ''; select.after(mount);
-    const reactRoot = createRoot(mount); selectRoots.set(select,{root:reactRoot,mount}); reactRoot.render(<SelectCombo select={select}/>);
+    const reactRoot = createRoot(mount); selectRoots.set(select, { root: reactRoot, mount }); reactRoot.render(<SelectCombo select={select} />);
   });
-  selectRoots.forEach((value,select) => { if (!select.isConnected) { value.root.unmount(); value.mount.remove(); selectRoots.delete(select); } });
+  selectRoots.forEach((value, select) => { if (!select.isConnected) { value.root.unmount(); value.mount.remove(); selectRoots.delete(select); } });
 }
 
 // List workspaces also contain inline editors (Books, Tax, mailing, delivery).
 // Keep their actual forms and listeners; expose them through the same dialog.
 const inlineForms = new WeakSet<HTMLFormElement>();
 const inlineRetryKey = 'inprofic:inline-form-retry';
-let inlineRetry: {path:string,index:number,at:number} | null | undefined;
+let inlineRetry: { path: string, index: number, at: number } | null | undefined;
 function enhanceInlineForms() {
   if (embedded || !document.querySelector('.desktop-sidebar') || isFormPath(location.pathname)) return;
   if (inlineRetry === undefined) {
     try { inlineRetry = JSON.parse(sessionStorage.getItem(inlineRetryKey) || 'null'); sessionStorage.removeItem(inlineRetryKey); } catch (_) { inlineRetry = null; }
   }
-  document.querySelectorAll<HTMLFormElement>('.workspace-content form[method="post" i]').forEach((form,index) => {
+  document.querySelectorAll<HTMLFormElement>('.workspace-content form[method="post" i]').forEach((form, index) => {
     if (inlineForms.has(form) || form.closest('dialog,[role="dialog"],.workspace-utility-bar,[data-no-dialog],[data-standalone-profile]')) return;
     const fields = [...form.elements].filter(field => field.matches('input:not([type="hidden"]):not([type="submit"]):not([type="button"]),select,textarea')) as HTMLInputElement[];
     if (!fields.some(field => !field.matches(':disabled') && !field.readOnly && !!field.getClientRects().length)) return;
@@ -347,11 +347,11 @@ function enhanceInlineForms() {
       const entry = groups.find(group => group.contains(form)) || form;
       const trigger = document.createElement('button');
       trigger.type = 'button'; trigger.className = 'workspace-action ui-inline-form-trigger'; trigger.textContent = label;
-      trigger.setAttribute('aria-haspopup','dialog'); entry.before(trigger);
+      trigger.setAttribute('aria-haspopup', 'dialog'); entry.before(trigger);
       const hide = (node: HTMLElement) => { node.hidden = true; node.dataset.uiInlineSource = ''; };
       hide(form); groups.forEach(hide);
       external.filter(field => !groups.some(group => group.contains(field))).forEach(field => hide(field.closest<HTMLElement>('label,.inprofic-control-wrap') || field));
-      trigger.addEventListener('click', () => openForm?.(location.href,label,trigger));
+      trigger.addEventListener('click', () => openForm?.(location.href, label, trigger));
       return;
     }
     const dialog = document.createElement('dialog');
@@ -362,7 +362,7 @@ function enhanceInlineForms() {
     dialog.dataset.inlineFormDialog = '';
     const trigger = document.createElement('button');
     trigger.type = 'button'; trigger.className = 'workspace-action ui-inline-form-trigger'; trigger.textContent = label;
-    trigger.setAttribute('aria-haspopup','dialog');
+    trigger.setAttribute('aria-haspopup', 'dialog');
     trigger.addEventListener('click', () => dialog.showModal());
     // Row editors must continue to show the record's current name/value.
     if (form.closest('td') && fields.length === 1 && fields[0].value) {
@@ -374,7 +374,7 @@ function enhanceInlineForms() {
     form.addEventListener('submit', event => queueMicrotask(() => {
       if (event.defaultPrevented) return;
       // Remember only the entry point, never passwords, payment details or files.
-      try { sessionStorage.setItem(inlineRetryKey, JSON.stringify({path:location.pathname,index,at:Date.now()})); } catch (_) { /* Field errors still reopen the editor. */ }
+      try { sessionStorage.setItem(inlineRetryKey, JSON.stringify({ path: location.pathname, index, at: Date.now() })); } catch (_) { /* Field errors still reopen the editor. */ }
     }));
     const errors = [...document.querySelectorAll<HTMLElement>('[data-message-level~="error"]')];
     const retry = inlineRetry?.path === location.pathname && inlineRetry.index === index && Date.now() - inlineRetry.at < 300000 && errors.length;
@@ -382,7 +382,7 @@ function enhanceInlineForms() {
       errors.forEach(error => {
         const copy = error.cloneNode(true) as HTMLElement;
         copy.removeAttribute('id'); copy.querySelectorAll('[id]').forEach(node => node.removeAttribute('id'));
-        copy.setAttribute('role','alert'); form.before(copy);
+        copy.setAttribute('role', 'alert'); form.before(copy);
       });
       requestAnimationFrame(() => dialog.showModal());
     }
@@ -398,8 +398,8 @@ function initializeSidebar() {
     const apply = () => {
       const collapsed = root.dataset.sidebar === 'collapsed';
       sidebarToggle.setAttribute('aria-expanded', String(!collapsed));
-      sidebarToggle.setAttribute('aria-label', collapsed ? 'Expand navigation' : 'Collapse navigation');
-      sidebarToggle.title = collapsed ? 'Expand navigation' : 'Collapse navigation';
+      sidebarToggle.setAttribute('aria-label', collapsed ? 'Expand Panel' : 'Collapse Panel');
+      sidebarToggle.title = collapsed ? 'Expand Panel' : 'Collapse Panel';
       categories.forEach(category => {
         // Closed native details hide descendants from keyboard and screen readers.
         // Open all groups in the icon rail and restore their state on expansion.
@@ -423,30 +423,30 @@ function initializeSidebar() {
 
 function boot() {
   initializeSidebar();
-  const mount = document.createElement('div'); mount.dataset.uiRoot=''; document.body.append(mount);
-  createRoot(mount).render(<><ConfirmHost/>{!embedded && <><FormHost/><LegacyHost/></>}</>);
+  const mount = document.createElement('div'); mount.dataset.uiRoot = ''; document.body.append(mount);
+  createRoot(mount).render(<><ConfirmHost />{!embedded && <><FormHost /><LegacyHost /></>}</>);
   document.querySelectorAll<HTMLElement>('[data-ui-snapshot-menu]').forEach(node => {
     const source = node.closest<HTMLElement>('[data-snapshot-share]');
-    if (source) createRoot(node).render(<SnapshotMenu source={source}/>);
+    if (source) createRoot(node).render(<SnapshotMenu source={source} />);
   });
-  document.querySelectorAll('[data-ui-site-menu]').forEach(node => createRoot(node).render(<PublicNavigation/>));
+  document.querySelectorAll('[data-ui-site-menu]').forEach(node => createRoot(node).render(<PublicNavigation />));
   document.querySelectorAll<HTMLElement>('[data-appearance-root]').forEach(node => {
     const button = node.querySelector<HTMLElement>('[data-appearance-toggle]'), panel = node.querySelector<HTMLElement>('[data-appearance-panel]');
     if (!button || !panel) return;
-    const slot = document.createElement('span'); node.append(slot); button.style.display='none';
-    createRoot(slot).render(<AppearancePopover panel={panel} button={button}/>);
+    const slot = document.createElement('span'); node.append(slot); button.style.display = 'none';
+    createRoot(slot).render(<AppearancePopover panel={panel} button={button} />);
   });
   document.querySelectorAll<HTMLElement>('[data-ui-filter-root]').forEach(node => {
     const button = node.querySelector<HTMLElement>('[data-ui-filter-toggle]');
     const panel = node.querySelector<HTMLElement>('[data-ui-filter-panel]');
     if (!button || !panel) return;
     const slot = document.createElement('span'); node.append(slot); button.style.display = 'none';
-    createRoot(slot).render(<FilterPopover panel={panel} button={button}/>);
+    createRoot(slot).render(<FilterPopover panel={panel} button={button} />);
   });
   enhanceSelections();
   enhanceInlineForms();
   let queued = false;
-  new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; enhanceSelections(); enhanceInlineForms(); bridgeDialogs(); }); } }).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['hidden','style']});
+  new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; enhanceSelections(); enhanceInlineForms(); bridgeDialogs(); }); } }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'style'] });
   const approved = new WeakSet<HTMLFormElement>();
   document.addEventListener('submit', async event => {
     const form = event.target as HTMLFormElement;
@@ -455,13 +455,13 @@ function boot() {
     const match = code.match(/^\s*return\s+confirm\((['"])([\s\S]*)\1\);?\s*$/);
     if (!match || !confirmRequest) return;
     event.preventDefault(); event.stopImmediatePropagation();
-    const message = match[2].replace(/\\(['"\\nrt])/g,(_,c) => ({n:'\n',r:'\r',t:'\t'}[c] || c));
+    const message = match[2].replace(/\\(['"\\nrt])/g, (_, c) => ({ n: '\n', r: '\r', t: '\t' }[c] || c));
     if (await confirmRequest(message)) { form.onsubmit = null; form.removeAttribute('onsubmit'); approved.add(form); form.requestSubmit((event as SubmitEvent).submitter as HTMLElement | null); }
-  },true);
+  }, true);
   document.addEventListener('click', async event => {
     const mouse = event as MouseEvent, link = (event.target as Element).closest<HTMLAnchorElement>('a[href]');
     if (!link || event.defaultPrevented || mouse.button || mouse.metaKey || mouse.ctrlKey || mouse.shiftKey || mouse.altKey || link.target || link.hasAttribute('download') || link.hasAttribute('data-no-dialog')) return;
-    const url = new URL(link.href,location.href);
+    const url = new URL(link.href, location.href);
     if (embedded) {
       if (/^(cancel|back|return)\b/i.test(link.textContent?.trim() || '')) { event.preventDefault(); postParent('cancel'); }
       return;
@@ -469,10 +469,10 @@ function boot() {
     if (url.origin !== location.origin || !(link.hasAttribute('data-form-dialog') || isFormPath(url.pathname) || CUSTOMER_ACTIVITY_PATH.test(url.pathname) || PRODUCT_DETAIL_PATH.test(url.pathname)) || !openForm) return;
     event.preventDefault();
     if (link.dataset.confirm && !(await confirmRequest(link.dataset.confirm, false, 'edit-payment'))) return;
-    openForm(url.href,link.getAttribute('aria-label') || dialogTitleText(link).replace(/^\+\s*/,'') || 'Record form',link);
+    openForm(url.href, link.getAttribute('aria-label') || dialogTitleText(link).replace(/^\+\s*/, '') || 'Record form', link);
   });
   if (embedded) {
-    document.documentElement.dataset.uiEmbedded='true';
+    document.documentElement.dataset.uiEmbedded = 'true';
     const content = document.querySelector<HTMLElement>('.workspace-content');
     if (content) prepareDialogBody(content);
     // Embedded forms share the active palette, including changes made while open.
@@ -486,30 +486,30 @@ function boot() {
       for (const name of styles) if (name.startsWith('--ui-') || name.startsWith('--tenant-')) root.style.setProperty(name, styles.getPropertyValue(name));
     };
     syncAppearance();
-    new MutationObserver(syncAppearance).observe(window.parent.document.documentElement, {attributes:true});
-    document.addEventListener('keydown',event => {
+    new MutationObserver(syncAppearance).observe(window.parent.document.documentElement, { attributes: true });
+    document.addEventListener('keydown', event => {
       if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('dialog[open],[role=dialog][data-state=open],[role=alertdialog]')) { event.preventDefault(); postParent('cancel'); }
     });
     const markDirty = (event: Event) => {
       if (!(event.target as HTMLElement)?.closest('form[method="get"],[data-readonly-detail]')) postParent('dirty');
     };
-    document.addEventListener('input',markDirty); document.addEventListener('change',markDirty);
-    document.addEventListener('submit',event => { queueMicrotask(() => { if (!event.defaultPrevented) postParent('submit', {stayOpen: ((event as SubmitEvent).submitter?.getAttribute('name') === 'save_add_new' || (event as SubmitEvent).submitter?.hasAttribute('data-stay-open'))}); }); });
+    document.addEventListener('input', markDirty); document.addEventListener('change', markDirty);
+    document.addEventListener('submit', event => { queueMicrotask(() => { if (!event.defaultPrevented) postParent('submit', { stayOpen: ((event as SubmitEvent).submitter?.getAttribute('name') === 'save_add_new' || (event as SubmitEvent).submitter?.hasAttribute('data-stay-open')) }); }); });
   }
-  bridgeDialogs(); document.documentElement.dataset.uiReady='true';
+  bridgeDialogs(); document.documentElement.dataset.uiReady = 'true';
   if (embedded) {
     // DOM readiness includes the form's deferred scripts; don't wait for logos,
     // fonts or unrelated page assets before presenting an interactive form.
     if (document.readyState === 'complete') postParent('ready');
-    else document.addEventListener('DOMContentLoaded', () => postParent('ready'), {once:true});
+    else document.addEventListener('DOMContentLoaded', () => postParent('ready'), { once: true });
   }
 }
 function bridgeDialogs() {
   if (embedded) return;
   document.querySelectorAll<HTMLDialogElement>('dialog:not([data-native-dialog])').forEach(dialog => {
-    if (dialog.dataset.uiDialog) return; dialog.dataset.uiDialog='true';
-    Object.defineProperty(dialog,'showModal',{configurable:true,value:() => { if (openLegacy) openLegacy(dialog); else pendingLegacy = dialog; }});
-    Object.defineProperty(dialog,'close',{configurable:true,value:(value='') => closeLegacy?.(dialog,value)});
+    if (dialog.dataset.uiDialog) return; dialog.dataset.uiDialog = 'true';
+    Object.defineProperty(dialog, 'showModal', { configurable: true, value: () => { if (openLegacy) openLegacy(dialog); else pendingLegacy = dialog; } });
+    Object.defineProperty(dialog, 'close', { configurable: true, value: (value = '') => closeLegacy?.(dialog, value) });
   });
 }
-if (document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

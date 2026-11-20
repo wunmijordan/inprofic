@@ -481,7 +481,7 @@ test("new retail tables keep the shared rounded wrapper and full available works
     .evaluate((node) => node.getBoundingClientRect().width);
   expect(expanded).toBeGreaterThan(1600);
   await page
-    .getByRole("button", { name: "Collapse navigation", exact: true })
+    .getByRole("button", { name: "Collapse Panel", exact: true })
     .click();
   await expect(page.locator("html")).toHaveAttribute(
     "data-sidebar",
@@ -568,14 +568,14 @@ test("parked baskets use the shared modal, preserve active baskets and restore s
   await expect(page.locator('[name="customer_name"]')).toHaveValue(
     "Parked customer",
   );
-  await page.setViewportSize({width:390,height:844});
-  await page.getByRole("button", {name:"Park basket", exact:true}).click();
-  await expect(page.getByRole("status").filter({hasText:"Basket parked."})).toBeVisible();
-  await page.getByRole("button", {name:"Parked baskets", exact:true}).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Park basket", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Basket parked." })).toBeVisible();
+  await page.getByRole("button", { name: "Parked baskets", exact: true }).click();
   await expect(dialog).toBeVisible();
   expect((await dialog.boundingBox()).width).toBeLessThanOrEqual(390);
-  await expect(dialog.getByRole("button",{name:"Close",exact:true})).toHaveCount(1);
-  await dialog.getByRole("button",{name:"Close",exact:true}).click();
+  await expect(dialog.getByRole("button", { name: "Close", exact: true })).toHaveCount(1);
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
 });
 
 test("business vocabulary applies to desktop navigation and workspace headings", async ({

@@ -6,7 +6,7 @@
         <img class="sidebar-mark" data-brand-logo-light="{% static 'core/brand/inprofic-mark.png' %}" data-brand-logo-dark="{% static 'core/brand/inprofic-mark-on-dark.png' %}" src="{% static 'core/brand/inprofic-mark-on-dark.png' %}" alt="INPROFIC" width="32" height="32">
         <img data-brand-logo-light="{% static 'core/brand/inprofic-wordmark-on-light.png' %}" data-brand-logo-dark="{% static 'core/brand/inprofic-wordmark-on-dark.png' %}" src="{% if not biz or biz.background_text_color == '#FFFFFF' %}{% static 'core/brand/inprofic-wordmark-on-dark.png' %}{% else %}{% static 'core/brand/inprofic-wordmark-on-light.png' %}{% endif %}" alt="INPROFIC" class="sidebar-wordmark max-w-full" style="width:10.5rem;height:auto" width="1827" height="290">
       </a>
-      <button type="button" id="sidebar-toggle" aria-label="Collapse navigation" aria-expanded="true" aria-controls="desktop-navigation" title="Collapse navigation"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-arrow-badge-left"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M11 17h6l-4 -5l4 -5h-6l-4 5l4 5" /></svg></button>
+      <button type="button" id="sidebar-toggle" aria-label="Collapse Panel" aria-expanded="true" aria-controls="desktop-navigation" title="Collapse Panel"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-arrow-badge-left"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M11 17h6l-4 -5l4 -5h-6l-4 5l4 5" /></svg></button>
       <div class="sidebar-business">
       <div class="mt-3 min-w-0 truncate font-display font-semibold">{% if biz %}{{ biz.name }}{% else %}Project Mailing{% endif %}</div>
       <div class="tenant-tagline text-[10px] tracking-[0.2em]">{% if biz %}{{ biz.tagline|default:vertical_ui.platform_label }}{% else %}Project-wide communications{% endif %}</div>
@@ -26,7 +26,7 @@
     </nav>
     {% if not offline_mode %}<form action="{% url 'logout' %}" method="post" class="shrink-0 px-5 py-3 border-t border-white/10">
       {% csrf_token %}
-      <button class="tenant-muted-control text-[11px] hover:opacity-100" title="Log out" aria-label="Log out"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M9 4H3v16h6M14 8l4 4-4 4M8 12h13"/></svg><span class="nav-label">Log Out ({{ user.fullname|default:user.username }})</span></button>
+      <button class="tenant-muted-control text-[11px] hover:opacity-100" title="Log out" aria-label="Log out"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff0000da" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-logout-2"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M10 8v-2a2 2 0 0 1 2 -2h7a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-7a2 2 0 0 1 -2 -2v-2" /><path d="M15 12h-12l3 -3" /><path d="M6 15l-3 -3" /></svg><span class="nav-label">Log Out ({{ user.fullname|default:user.username }})</span></button>
     </form>{% endif %}
   </aside>
 
