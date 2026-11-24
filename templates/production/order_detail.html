@@ -188,11 +188,8 @@ document.querySelectorAll('[data-flex-central]').forEach(function (box) {
     {% for s in shortages %}<li>{{ s.name }} <span class="text-[10px] text-rose-500">({{ s.category }})</span> — needs {{ s.needed|num }} {{ s.usage_unit|unit_plural:s.needed }}, has {{ s.have|num }} {{ s.usage_unit|unit_plural:s.have }}, short by {{ s.short|num }} {{ s.usage_unit|unit_plural:s.short }}</li>{% endfor %}
   </ul>
   {% if confirm_approve %}
-  <form method="post" action="{% url 'order_approve' order.pk %}" class="mt-2">
-    {% csrf_token %}<input type="hidden" name="force" value="1"><input type="hidden" name="event_date" value="{{ request.POST.event_date }}">
-    {% for row in flexible_usages %}<input type="hidden" name="{{ row.input_name }}" value="{{ row.input_value }}">{% endfor %}
-    <button data-button-surface type="submit" class="px-3 py-1.5 text-xs rounded-md font-medium bg-rose-600 text-white hover:bg-rose-700">Approve anyway (Raw Materials go negative)</button>
-  </form>
+  <p class="mt-2">Review the material amounts and approval date below before clearing this shortage.</p>
+  <button data-button-surface type="submit" form="approve-order-form" name="force" value="1" class="mt-2 px-3 py-1.5 text-xs rounded-md font-medium bg-rose-600 text-white hover:bg-rose-700">Approve anyway (Raw Materials go negative)</button>
   {% endif %}
 </div>
 {% endif %}
@@ -209,7 +206,7 @@ document.querySelectorAll('[data-flex-central]').forEach(function (box) {
   {% if production_run and production_run.status == 'draft' %}
   <a data-button-surface href="{% url 'production_run_detail' production_run.pk %}" class="px-3.5 py-2 text-sm rounded-md font-medium bg-sky-50 text-sky-800 border border-sky-200">Approve via Shared Run</a>
   {% elif not kitchen_view %}
-  <form id="approve-order-form" method="post" action="{% url 'order_approve' order.pk %}" class="flex flex-wrap items-center gap-2">{% csrf_token %}
+  <form id="approve-order-form" data-no-dialog method="post" action="{% url 'order_approve' order.pk %}" class="flex flex-wrap items-center gap-2">{% csrf_token %}
     {% include "partials/_event_date.html" with label="Approve on" min=order.date|date:"Y-m-d" value=request.POST.event_date required=True %}
     <button data-button-surface type="submit" class="px-3.5 py-2 text-sm rounded-md font-medium bg-[#8f172d] text-white hover:bg-[#4D1C25]">Approve — release Raw Materials</button>
   </form>

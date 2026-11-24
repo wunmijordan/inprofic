@@ -106,7 +106,7 @@ with tempfile.TemporaryDirectory(prefix='inprofic-ui-') as directory:
         RoleModulePermission.objects.filter(role=roles[CustomUser.ROLE_BUSINESS_ADMIN]).update(can_view=True, can_edit=True)
         RecipeItem.objects.filter(finished_good=good).update(flexible_usage=True)
         approval = Order.raw_objects.create(pk=87001,business=business,created_by=admin,date=day,
-            order_type='physical_store',notes='Modal approval fixture')
+            order_type='physical_store',notes='Inline approval fixture')
         OrderItem.objects.create(order=approval,finished_good=good,piece_qty=10)
     if os.environ.get('INPROFIC_UI_RETAIL_FIXTURE') == '1':
         from inventory.models import FinishedGoodChannelPrice

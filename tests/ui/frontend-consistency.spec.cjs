@@ -204,20 +204,46 @@ test('distribution invoice choices include short dates for returns and payments'
   await expect(frame.locator('select[name=sale] option:not([value=""])').first()).toContainText(/Sale #\d+ · \d{1,2} [A-Za-z]{3} \d{4}/);
 });
 
-test('production approval keeps externally associated flexible amounts inside the review modal', async ({ page }) => {
+test('production approval stays inline through material shortage clearance', async ({ page }) => {
   test.skip(process.env.INPROFIC_UI_ALL_MODULES_FIXTURE !== '1', 'Requires the isolated flexible-production fixture.');
-  await page.goto('/orders/87001/');
-  const trigger = page.getByRole('button', { name: /Approve.*release/ }).first();
-  await trigger.click();
-  const frame = page.frameLocator('iframe[name="inprofic-form-dialog"]');
-  const flexible = frame.locator('input[form="approve-order-form"]').first();
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('inprofic:theme', { detail: 'light' })));
+  await page.goto('/orders/');
+  await page.locator('a[href="/orders/87001/"]').click();
+  const flexible = page.locator('input[form="approve-order-form"]').first();
+  const date = page.locator('#approve-order-form input[name=event_date]');
   await expect(flexible).toBeVisible();
-  await flexible.fill('25');
+  await expect(date).toBeVisible();
+  await expect(date).toHaveValue('');
   expect(await flexible.evaluate(input => Array.from(input.form.elements).includes(input))).toBe(true);
-  const date = frame.locator('#approve-order-form input[name=event_date]');
+  await flexible.fill('1500');
   const today = await date.getAttribute('max');
   await date.fill(today);
-  await frame.locator('#approve-order-form').getByRole('button', { name: /Approve/ }).click();
+  await page.locator('#approve-order-form').getByRole('button', { name: /Approve/ }).click();
+  await expect(page.getByText('Not enough inventory material to approve:')).toBeVisible();
+  await expect(page.locator('.ui-form-dialog,iframe[name="inprofic-form-dialog"]')).toHaveCount(0);
+  await expect(flexible).toBeVisible();
+  await expect(flexible).toHaveValue('1500');
+  await expect(date).toHaveValue(today);
+  const clearance = page.getByRole('button', { name: 'Approve anyway (Raw Materials go negative)', exact: true });
+  await expect(clearance).toBeVisible();
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('inprofic:theme', { detail: 'dark' })));
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(flexible).toBeVisible();
+  await expect(date).toBeVisible();
+  await flexible.fill('1400');
+  await date.fill(today);
+  await page.locator('#approve-order-form').getByRole('button', { name: /Approve/ }).click();
+  await expect(clearance).toBeVisible();
+  // Clearance must submit the current visible fields rather than stale hidden copies.
+  await flexible.fill('1300');
+  const flexibleName = await flexible.getAttribute('name');
+  const submitted = page.waitForRequest(request => request.method() === 'POST' && request.url().endsWith('/orders/87001/approve/'));
+  await clearance.click();
+  const payload = new URLSearchParams((await submitted).postData());
+  expect(payload.get(flexibleName)).toBe('1300');
+  expect(payload.get('force')).toBe('1');
+  expect(payload.get('event_date')).toBe(today);
+  await expect(page.locator('main')).toContainText('Order approved — raw materials released for production.');
   await expect(page.locator('.ui-form-dialog')).toHaveCount(0);
-  await expect(page.locator('main')).toContainText('Approved');
 });

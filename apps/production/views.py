@@ -1145,13 +1145,35 @@ def order_detail(request, pk):
     if kitchen and order.order_type != Order.TYPE_UNASSIGNED:
         messages.error(request, "That order has already been assigned, so it isn't available from this account.")
         return redirect("orders_list")
+    return _render_order_detail(request, order, kitchen=kitchen)
+
+
+def _render_order_detail(request, order, *, kitchen=False, approval_review=None):
+    """Keep the full order context visible through approval validation/review."""
     run_link = order.production_run_links.select_related("production_run").first()
     in_draft_run = bool(run_link and run_link.production_run.status == "draft")
-    shortages = order.shortages() if order.status == "pending" and not in_draft_run and not kitchen else []
-    flexible_usages = _material_release_plan(order)[0] if order.status == "pending" and not in_draft_run else []
+    if approval_review is None:
+        shortages = order.shortages() if order.status == "pending" and not in_draft_run and not kitchen else []
+        flexible_usages = _material_release_plan(order)[0] if order.status == "pending" and not in_draft_run else []
+    else:
+        shortages = approval_review["shortages"]
+        flexible_usages = approval_review["flexible_usages"]
     batches = order.production_batches.select_related("finished_good").prefetch_related("quality_check", "offcut_allocations__customer")
     allocations = list(order.allocations.select_related("customer", "sale").prefetch_related("lines__order_item__finished_good")) if order.is_multi_channel else []
-    return render(request, "production/order_detail.html", {"order": order, "kitchen_summary": summarize_report(order), "shortages": shortages, "batches": batches, "flexible_usages": flexible_usages, "production_run": run_link.production_run if run_link else None, "kitchen_view": kitchen, "allocations": allocations, "pool_ratio_warnings": pool_ratio_warnings(order) if order.status in ("pending", "approved") else []})
+    context = {
+        "order": order,
+        "kitchen_summary": summarize_report(order),
+        "shortages": shortages,
+        "batches": batches,
+        "flexible_usages": flexible_usages,
+        "production_run": run_link.production_run if run_link else None,
+        "kitchen_view": kitchen,
+        "allocations": allocations,
+        "pool_ratio_warnings": pool_ratio_warnings(order) if order.status in ("pending", "approved") else [],
+    }
+    if approval_review is not None:
+        context.update(approval_review)
+    return render(request, "production/order_detail.html", context)
 
 
 @login_required
@@ -1206,10 +1228,9 @@ def order_approve(request, pk):
     if errors:
         for error in errors:
             messages.error(request, error)
-        return render(request, "production/order_detail.html", {
-            "order": order, "shortages": order.shortages(), "confirm_approve": False,
+        return _render_order_detail(request, order, approval_review={
+            "shortages": order.shortages(), "confirm_approve": False,
             "flexible_usages": flexible_usages,
-            "batches": order.production_batches.select_related("finished_good").prefetch_related("quality_check"),
         })
     # Lock every shared input in stable order before checking its live balance.
     locked_materials = {m.pk: m for m in RawMaterial.objects.select_for_update().filter(
@@ -1224,10 +1245,9 @@ def order_approve(request, pk):
                 "needed": needed, "have": mat.stock, "short": needed - mat.stock,
             })
     if shortages and not force:
-        return render(request, "production/order_detail.html", {
-            "order": order, "shortages": shortages, "confirm_approve": True,
+        return _render_order_detail(request, order, approval_review={
+            "shortages": shortages, "confirm_approve": True,
             "flexible_usages": flexible_usages,
-            "batches": order.production_batches.select_related("finished_good").prefetch_related("quality_check"),
         })
     with transaction.atomic():
         locked_order = Order.objects.select_for_update().get(pk=order.pk)

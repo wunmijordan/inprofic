@@ -9,8 +9,11 @@ responsible for submission.
 Use `data-form-dialog` on an additional form link or `data-no-dialog` on an entry
 point that needs ordinary navigation. Normal links retain their original URLs for
 direct visits and modified clicks. Inline POST editors use their existing form
-nodes and listeners. Production approvals with externally associated inputs open
-the complete review workspace so `form="…"` associations remain intact.
+nodes and listeners. Order approval stays on the order detail page: its form uses
+`data-no-dialog` so flexible material adjustments and the required approval date
+remain visible. Shortage review retains the entered amounts and date; its explicit
+“Approve anyway” button submits the same form, including any further adjustments.
+Stock is released only after successful approval or explicit shortage clearance.
 
 Dialog dimensions come from route profiles before the content loads. Long forms
 use the full phone viewport; short forms retain a compact dialog. The embedded

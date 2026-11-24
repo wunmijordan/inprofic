@@ -616,6 +616,53 @@ class CentralFlexibleMaterialTests(TestCase):
         self.assertEqual(self.sugar.stock, Decimal("491"))
 
 
+    def test_shortage_review_preserves_adjustments_and_requires_explicit_clearance(self):
+        from .models import OrderMaterialUsage
+        from inventory.models import StockMovement
+
+        user = CustomUser.objects.create_superuser(username="shortage-admin", password="safe-password-123")
+        self.client.force_login(user)
+        for basis in (Order.BASIS_BASE_MATERIAL, Order.BASIS_PRODUCT_QUANTITY):
+            with self.subTest(basis=basis):
+                order = self.make_order(basis)
+                self.sugar.stock = Decimal("1")
+                self.sugar.save()
+                page = self.client.get(reverse("order_detail", args=[order.pk]))
+                rows = page.context["flexible_usages"]
+                payload = {"event_date": "2026-09-03"}
+                payload.update({row["input_name"]: "9" for row in rows})
+                response = self.client.post(reverse("order_approve", args=[order.pk]), payload)
+                self.assertEqual(response.status_code, 200)
+                self.assertTrue(response.context["confirm_approve"])
+                self.assertContains(response, 'id="approve-order-form" data-no-dialog')
+                self.assertContains(response, 'form="approve-order-form" name="force" value="1"')
+                self.assertContains(response, 'value="2026-09-03"')
+                self.assertIn("kitchen_summary", response.context)
+                self.assertIn("pool_ratio_warnings", response.context)
+                for row in response.context["flexible_usages"]:
+                    self.assertEqual(Decimal(row["input_value"]), Decimal("9"))
+                order.refresh_from_db()
+                self.sugar.refresh_from_db()
+                self.assertEqual(order.status, "pending")
+                self.assertEqual(self.sugar.stock, Decimal("1"))
+                self.assertFalse(OrderMaterialUsage.objects.filter(order=order).exists())
+                self.assertFalse(StockMovement.raw_objects.filter(reference=f"PROD-{order.pk}").exists())
+
+                payload.update({row["input_name"]: "8" for row in rows})
+                payload["force"] = "1"
+                response = self.client.post(reverse("order_approve", args=[order.pk]), payload)
+                self.assertRedirects(response, reverse("order_detail", args=[order.pk]))
+                order.refresh_from_db()
+                self.sugar.refresh_from_db()
+                self.assertEqual(order.status, "approved")
+                self.assertEqual(order.approved_date, date(2026, 9, 3))
+                usages = OrderMaterialUsage.objects.filter(order=order, raw_material=self.sugar)
+                total = sum((usage.actual_quantity for usage in usages), Decimal("0"))
+                expected = Decimal("8") if basis == Order.BASIS_BASE_MATERIAL else Decimal("24")
+                self.assertEqual(total, expected)
+                self.assertEqual(self.sugar.stock, Decimal("1") - expected)
+
+
 class SharedRunBaseMaterialPoolTests(TestCase):
     """A shared run carries one overall base-material pool that is fully consumed:
     it is mapped onto every member product by output weight, and the only limit is
