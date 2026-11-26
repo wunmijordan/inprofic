@@ -18,6 +18,13 @@ test('customer period invoice uses the storefront document and prints the select
   expect(new URL(invoice.url()).searchParams.get('start')).toBe(day);
   expect(new URL(invoice.url()).searchParams.get('end')).toBe(day);
   await expect(invoice.locator('[data-document-customer]')).toHaveText('Customer 00');
+  const fullDate = await invoice.evaluate(value => {
+    const [year,month,day]=value.split('-').map(Number);
+    return new Intl.DateTimeFormat('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(new Date(year,month-1,day));
+  },day);
+  await expect(invoice.getByText(fullDate,{exact:true})).toHaveCount(1);
+  await expect(invoice.locator('.receipt-card')).not.toContainText(' – ');
+  await expect(invoice.locator('.receipt-card')).not.toContainText('Sale #');
   await expect(invoice.locator('.receipt-card')).toContainText('Invoice total');
   await expect(invoice.locator('.receipt-card')).toContainText('Balance due');
   await expect(invoice.getByText('Payment confirmed',{exact:true})).toHaveCount(0);

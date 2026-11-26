@@ -6,7 +6,7 @@ from django.shortcuts import render
 from django.utils.cache import patch_cache_control
 
 from core.models import FinancialTransaction
-from core.quantities import format_quantity, sale_quantity_display
+from core.quantities import format_product_quantity, format_quantity, product_portion, sale_quantity_display
 from inventory.models import DistributionReturn
 from .models import CustomerPayment
 
@@ -21,6 +21,47 @@ def _dated_totals(queryset, key, amount, start, end):
         lifetime=Sum(amount))}
 
 
+def _add_product_line(groups, item, display, value, returned):
+    """Merge lot allocations within one sale without averaging saved prices."""
+    good = item.finished_good
+    group = groups.setdefault(good.pk, {
+        'good': good, 'base_units': ZERO, 'line_total': ZERO, 'returned': ZERO, 'rates': {},
+    })
+    if item.commercial_quantity is not None and item.commercial_unit_price is not None:
+        quantity = item.commercial_quantity
+        factor = item.total_units / quantity if quantity else ZERO
+    else:
+        if item.price_unit:
+            factor = item.price_unit_quantity
+        else:
+            factor = product_portion(good)[1] if display['operator'] == '×' else Decimal('1')
+        quantity = item.total_units / factor
+    price = display['price'] - display['discount']
+    key = (display['price_unit'], factor, price)
+    rate = group['rates'].setdefault(key, {'quantity': ZERO, 'unit': display['price_unit'], 'unit_price': price})
+    rate['quantity'] += quantity
+    group['base_units'] += item.total_units
+    group['line_total'] += value
+    group['returned'] += returned
+
+
+def _product_lines(groups):
+    lines = []
+    for group in groups.values():
+        rates = list(group['rates'].values())
+        line = {'name': group['good'].name, 'line_total': group['line_total'],
+                'returned': group['returned'].quantize(CENT)}
+        if len(rates) == 1:
+            rate = rates[0]
+            line.update(quantity=format_quantity(rate['quantity'], rate['unit']), unit_price=rate['unit_price'])
+        else:
+            line.update(quantity=format_product_quantity(group['base_units'], group['good']), multiple_prices=True,
+                price_breakdown=[{'quantity': format_quantity(rate['quantity'], rate['unit']),
+                                  'unit_price': rate['unit_price']} for rate in rates])
+        lines.append(line)
+    return lines
+
+
 def sale_document(business, sales, *, start, end, include_earlier=False):
     sales = list(sales.filter(business=business, date__lte=end).exclude(linked_order__status='reversed')
                  .select_related('linked_order').prefetch_related('items__finished_good__portion_profile'))
@@ -33,13 +74,14 @@ def sale_document(business, sales, *, start, end, include_earlier=False):
     returns = _dated_totals(DistributionReturn.raw_objects.filter(business=business, sale_item__sale_id__in=ids),
         'sale_item_id', 'quantity', start, end)
     lines, settlements = [], []
+    opening_line = None
     totals = dict.fromkeys(('gross', 'credit', 'total', 'paid', 'due', 'overpaid', 'brought_forward'), ZERO)
     for sale in sales:
         earlier = sale.date < start
         if earlier and not include_earlier:
             continue
         gross, prior_credit, period_credit = ZERO, ZERO, ZERO
-        item_lines = []
+        product_groups = {}
         for item in sale.items.all():
             display = sale_quantity_display(item)
             value = item.line_total
@@ -54,11 +96,7 @@ def sale_document(business, sales, *, start, end, include_earlier=False):
             gross += value
             prior_credit += before_credit
             period_credit += during_credit
-            quantity = display['quantity'] if display['operator'] == '×' else format_quantity(item.total_units, item.finished_good.unit)
-            item_lines.append({'name': item.finished_good.name, 'quantity': quantity,
-                'unit_price': display['price'] - display['discount'], 'line_total': value,
-                'detail': f'Sale #{sale.pk} · {sale.date:%d %b %Y} · {sale.display_source}',
-                'returned': (before_credit+during_credit).quantize(CENT)})
+            _add_product_line(product_groups, item, display, value, before_credit+during_credit)
         gross, prior_credit, period_credit = (v.quantize(CENT) for v in (gross, prior_credit, period_credit))
         # Payment rows are the authoritative receipt history when present.
         # Their existence also prevents a later Paid state from being projected
@@ -72,12 +110,14 @@ def sale_document(business, sales, *, start, end, include_earlier=False):
         if earlier:
             if opening == ZERO:
                 continue
-            lines.append({'name': f'Balance brought forward · Sale #{sale.pk}', 'quantity': '1 balance',
-                'unit_price': opening, 'line_total': opening,
-                'detail': f'{sale.date:%d %b %Y} · {sale.customer} · {sale.display_source}'})
+            if opening_line is None:
+                opening_line = {'name': 'Balance brought forward', 'quantity': '1 balance', 'unit_price': ZERO, 'line_total': ZERO}
+                lines.append(opening_line)
+            opening_line['unit_price'] += opening
+            opening_line['line_total'] += opening
             invoice_value, credit = opening, min(period_credit, opening)
         else:
-            lines.extend(item_lines)
+            lines.extend(_product_lines(product_groups))
             invoice_value, credit = gross, prior_credit+period_credit
             # Advance receipts attached to these period sales count toward their
             # settlement, but receipts after the period end never do.

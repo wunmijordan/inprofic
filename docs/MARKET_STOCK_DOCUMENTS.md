@@ -7,7 +7,10 @@ activity view. Choose **From** and **To** before creating the document.
 
 **Invoice this period** uses every selected sale, including sales beyond the
 visible activity page. It uses saved selling quantities, prices and discounts,
-with receipts and return credits through the selected end date. Payments and
+with receipts and return credits through the selected end date. Product lines
+within each sale combine production-batch allocations, retaining saved quantities,
+prices and return credits. Dates include the weekday and full month; a one-day
+period shows one date. Sale references and dates are omitted from the product body. Payments and
 returns recorded after that date do not change the earlier period's payment
 status. The activity page uses the same cutoff.
 

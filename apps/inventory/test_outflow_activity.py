@@ -57,6 +57,47 @@ class OutflowActivityTests(TestCase):
         invalid = self.client.get(url, {'start': self.day, 'end': 'invalid'})
         self.assertEqual(invalid.status_code, 400)
 
+    def test_invoice_groups_batch_lines_by_product_within_each_sale(self):
+        from sales.models import SaleItem
+        from .models import DistributionReturn
+        sale = self.release(quantity=2)
+        original = sale.items.get()
+        SaleItem.objects.create(sale=sale, finished_good=self.good, piece_qty=3, price=100)
+        DistributionReturn.raw_objects.create(business=self.business, date=self.day,
+            sale_item=original, quantity=1, condition='redistributable', reason='Returned')
+        self.release(quantity=2)
+        page = self.client.get(reverse('customer_activity_invoice', args=[self.customer.pk]), {'start': self.day, 'end': self.day})
+        document = page.context['activity_document']
+        self.assertEqual(len(document['lines']), 2)
+        self.assertEqual([(line['quantity'], line['line_total']) for line in document['lines']], [('5 loaves', 500), ('2 loaves', 200)])
+        self.assertEqual((document['credit'], document['total'], document['due']), (100, 600, 600))
+        self.assertNotContains(page, f'Sale #{sale.pk}')
+        self.assertNotIn('detail', document['lines'][0])
+
+    def test_grouped_product_preserves_different_saved_prices(self):
+        from sales.models import SaleItem
+        sale = self.release(quantity=2)
+        SaleItem.objects.create(sale=sale, finished_good=self.good, piece_qty=3, price=120)
+        page = self.client.get(reverse('customer_activity_invoice', args=[self.customer.pk]), {'start': self.day, 'end': self.day})
+        document = page.context['activity_document']
+        self.assertEqual(len(document['lines']), 1)
+        line = document['lines'][0]
+        self.assertEqual((line['quantity'], line['line_total']), ('5 loaves', 560))
+        self.assertEqual([rate['unit_price'] for rate in line['price_breakdown']], [100, 120])
+        self.assertEqual(document['total'], 560)
+
+    def test_invoice_period_uses_full_weekday_dates_and_one_date_for_a_day(self):
+        from django.utils.formats import date_format
+        self.release(quantity=2)
+        url = reverse('customer_activity_invoice', args=[self.customer.pk])
+        full_day = date_format(self.day, 'l, j F Y')
+        page = self.client.get(url, {'start': self.day, 'end': self.day})
+        self.assertContains(page, full_day, count=1)
+        self.assertNotContains(page, ' – ')
+        start = self.day-timedelta(days=1)
+        period = self.client.get(url, {'start': start, 'end': self.day})
+        self.assertContains(period, date_format(start, 'l, j F Y') + ' – ' + full_day)
+
     def test_later_returns_do_not_change_period_invoice_or_activity_status(self):
         from .models import DistributionReturn
         sale = self.release(quantity=2)
