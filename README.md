@@ -107,6 +107,12 @@ what was borrowed and what was deliberately left out).
   from Market Stock using Online/customer prices per selling portion, with paid or
   receivable settlement. Online stock movements and sales appear in the distribution
   page, shared snapshots/text and normal sales/Finance reports.
+  Customer and other destination activity can issue period invoices in the
+  storefront document style, with payment status cut off at the period end and
+  an unchecked option to include earlier outstanding balances. Transfers and
+  staff/gifting issues use stock documents with no payment. Audited corrections
+  cover Online/direct Market Stock sales and staff/gifting issues too.
+  See [documents and corrections](docs/MARKET_STOCK_DOCUMENTS.md).
   Recorded customer returns credit the original invoice
   balance without changing cash receipts. Redistributable goods return to Market
   Stock for a new customer or store sale; damaged goods become a Finance loss at

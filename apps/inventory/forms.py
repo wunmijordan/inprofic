@@ -992,12 +992,19 @@ class MarketStockOnlineSaleForm(MarketStockReleaseHeaderForm):
 class MarketStockReleaseCorrectionForm(StyledForm):
     date = forms.DateField(disabled=True, widget=forms.DateInput(attrs={"type": "date"}))
     customer = forms.ModelChoiceField(queryset=Customer.objects.none())
+    customer_name = forms.CharField(max_length=120, required=False, label='Customer name')
     reason = forms.CharField(max_length=255, label="Reason for correction", widget=forms.Textarea(attrs={"rows": 2}))
     revision = forms.CharField(widget=forms.HiddenInput)
 
-    def __init__(self, *args, business, **kwargs):
+    def __init__(self, *args, business, sale=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['customer'].queryset = Customer.objects.filter(business=business, active=True).order_by('name')
+        if sale and sale.source != 'distribution_order':
+            self.fields['customer'].required = False
+            if sale.source == 'walkin':
+                self.fields.pop('customer')
+        else:
+            self.fields.pop('customer_name')
 
 
 class MarketStockPhysicalSaleForm(StyledForm):

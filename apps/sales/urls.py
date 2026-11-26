@@ -6,6 +6,7 @@ urlpatterns = [
     path("customers/<int:pk>/reprice/", customer_reprice, name="customer_reprice"),
     path("customers/", views.customer_list, name="customer_list"),
     path("customers/<int:pk>/activity/", views.customer_activity, name="customer_activity"),
+    path("customers/<int:pk>/activity/invoice/", views.customer_activity_invoice, name="customer_activity_invoice"),
     path("customers/add/", views.customer_form, name="customer_add"),
     path("customers/<int:pk>/edit/", views.customer_form, name="customer_edit"),
     path("customers/<int:pk>/toggle-active/", views.customer_toggle_active, name="customer_toggle_active"),

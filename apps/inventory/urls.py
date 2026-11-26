@@ -1,8 +1,11 @@
 from django.urls import path
-from . import alert_views, payment_views, views
+from . import alert_views, payment_views, views, outflow_activity
 from .distribution_summary import distribution_snapshot
 
 urlpatterns = [
+    path('market-stock/activity/<slug:kind>/', outflow_activity.outflow_activity, name='market_outflow_activity'),
+    path('market-stock/activity/<slug:kind>/document/', outflow_activity.outflow_activity, {'document': True}, name='market_outflow_document'),
+    path('market-stock/outflows/<int:pk>/edit/', outflow_activity.outflow_edit, name='market_outflow_edit'),
     path('product-use/market/', views.product_stock_issue, {'stock_source': 'market_stock'}, name='market_stock_issue'),
     path('product-use/physical/', views.product_stock_issue, {'stock_source': 'physical_store'}, name='physical_stock_issue'),
     path("alerts/feed/", alert_views.alert_feed, name="inventory_alert_feed"),

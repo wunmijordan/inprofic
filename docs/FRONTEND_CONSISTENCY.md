@@ -119,3 +119,12 @@ Product offer ribbons remain visible when switching selling portions. The help
 explains which portions qualify. For multiple active offers in the selected
 channel, its title includes the count and each offer keeps its normal heading
 and structured terms inside the same scrollable, viewport-clamped help tip.
+
+
+Market Stock destination links open period activity, including staff/gifting
+recipients, Online guests, Physical Store sales and transfers. Customer activity
+and other sales activity provide a period invoice form with an unchecked
+**Include earlier outstanding balances** control. Payment labels and return
+credits use the selected end date. Invoice/stock documents reuse the storefront
+receipt partial and print styles; they open separately from the activity editor.
+See [Market Stock documents](MARKET_STOCK_DOCUMENTS.md).

@@ -13,10 +13,10 @@ test('customer activity opens in the global modal and date filters stay read-onl
  await expect(frame.getByRole('heading',{name:'Sales and distribution',exact:true})).toBeVisible();
  await expect(frame.getByRole('heading',{name:'Special product prices',exact:false})).toBeVisible();
  await expect(frame.locator('table').last()).toContainText('200.00 / loaf');
- const end=await frame.locator('input[name="end"]').inputValue();
- await frame.locator('input[name="start"]').fill(end);
+ const end=await frame.locator('input[type="date"][name="end"]').inputValue();
+ await frame.locator('input[type="date"][name="start"]').fill(end);
  await frame.getByRole('button',{name:'Show activity',exact:true}).click();
- await expect(frame.locator('input[name="start"]')).toHaveValue(end);
+ await expect(frame.locator('input[type="date"][name="start"]')).toHaveValue(end);
  await expect(modal).toBeVisible();
  await page.setViewportSize({width:390,height:844});
  expect(await modal.evaluate(el=>el.getBoundingClientRect().width<=innerWidth+1)).toBe(true);
@@ -39,6 +39,6 @@ test('distribution links preserve the selected day and help text stays in a help
  await page.keyboard.press('Escape');
  await link.click();
  const frame=page.frameLocator('iframe[name="inprofic-form-dialog"]');
- await expect(frame.locator('input[name="start"]')).toHaveValue(date);
- await expect(frame.locator('input[name="end"]')).toHaveValue(date);
+ await expect(frame.locator('input[type="date"][name="start"]')).toHaveValue(date);
+ await expect(frame.locator('input[type="date"][name="end"]')).toHaveValue(date);
 });

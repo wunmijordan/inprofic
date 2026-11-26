@@ -39,7 +39,7 @@ class CustomerActivityTests(TestCase):
         self.assertEqual(response.context['recorded_payments'],20)
         self.assertContains(response,'80.00 / loaf')
         self.assertContains(response,'2 loaves')
-        self.assertEqual(response.context['outstanding'],280)
+        self.assertEqual(response.context['outstanding'],180)
         detail=self.client.get(reverse('dashboard_search_detail'),{'type':'customer','channel':'distribution','value':self.customer.name})
         self.assertEqual(detail.status_code,200)
         self.assertEqual(detail.json()['activity_url'],self.url)

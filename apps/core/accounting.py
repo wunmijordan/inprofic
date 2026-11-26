@@ -77,11 +77,12 @@ def shift_period(business, period, steps):
     return fiscal_period(business, add_months(period["start"], steps * period["months"]), kind=period["kind"])
 
 
-def _sale_expressions(prefix="items__", *, net_returns=True):
+def _sale_expressions(prefix="items__", *, net_returns=True, returns_through=None):
     """Revenue, cost and unit expressions. ``prefix`` is the path to the sale
     item: ``items__`` from a Sale queryset, ``""`` from a SaleItem queryset.
     Retains the frozen invoice price and yield, deducting lifetime return credits
-    by default. Books opt out to post the original invoice and dated credits."""
+    by default. Activity can cut returns off at a period end. Books opt out to
+    post the original invoice and dated credits."""
     money_field = DecimalField(max_digits=24, decimal_places=6)
     units_field = DecimalField(max_digits=20, decimal_places=4)
 
@@ -100,7 +101,10 @@ def _sale_expressions(prefix="items__", *, net_returns=True):
         returned = DistributionReturn.raw_objects.filter(
             sale_item_id=OuterRef(f"{prefix}pk"),
             business_id=OuterRef(f"{prefix}sale__business_id"),
-        ).order_by().values("sale_item_id").annotate(qty=Sum("quantity")).values("qty")[:1]
+        )
+        if returns_through is not None:
+            returned = returned.filter(date__lte=returns_through)
+        returned = returned.order_by().values("sale_item_id").annotate(qty=Sum("quantity")).values("qty")[:1]
         total_units = Greatest(gross_units - Coalesce(Subquery(returned, output_field=units_field),
             Value(ZERO), output_field=units_field), Value(ZERO), output_field=units_field)
     from django.db import connection

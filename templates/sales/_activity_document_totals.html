@@ -1,0 +1,17 @@
+{% load core_extras %}
+<div class="border-t border-stone-100 bg-stone-50/70 px-6 py-6 sm:px-8">
+  {% if not activity_document.non_sale %}
+  <dl class="space-y-2 text-sm text-stone-600">
+    {% if activity_document.brought_forward %}<div class="flex justify-between gap-4"><dt>Earlier outstanding included</dt><dd>{{ activity_document.brought_forward|money:store_business.currency_symbol }}</dd></div>{% endif %}
+    <div class="flex justify-between gap-4"><dt>Sales in period</dt><dd>{{ activity_document.period_sales|money:store_business.currency_symbol }}</dd></div>
+    {% if activity_document.credit %}<div class="flex justify-between gap-4"><dt>Return credits</dt><dd>{{ activity_document.credit|money:store_business.currency_symbol }}</dd></div>{% endif %}
+    <div class="flex justify-between gap-4"><dt>Paid</dt><dd>{{ activity_document.paid|money:store_business.currency_symbol }}</dd></div>
+    <div class="flex justify-between gap-4 font-semibold text-stone-900"><dt>Balance due</dt><dd>{{ activity_document.due|money:store_business.currency_symbol }}</dd></div>
+    {% if activity_document.overpaid %}<div class="flex justify-between gap-4"><dt>Overpayment / refund review</dt><dd>{{ activity_document.overpaid|money:store_business.currency_symbol }}</dd></div>{% endif %}
+  </dl>
+  <div class="mt-5 text-right"><p class="text-xs font-bold uppercase tracking-wider text-stone-400">Invoice total</p><p class="mt-1 font-display text-3xl font-semibold text-stone-900" data-document-total>{{ activity_document.total|money:store_business.currency_symbol }}</p></div>
+  <p class="mt-4 text-xs text-stone-500">Sales and payment status for the selected period. Receipts and return credits after {{ activity_document.end|date:"j M Y" }} are excluded. {% if activity_document.include_earlier %}Earlier outstanding balances are included as balances brought forward.{% else %}Earlier outstanding balances are excluded.{% endif %}</p>
+  <div class="mt-4 space-y-3 text-xs text-stone-600">{% for row in activity_document.settlements %}<div><p class="font-semibold text-stone-900">Sale #{{ row.sale }} · {{ row.date|date:"j M Y" }} · {{ row.status }}</p><p>{{ row.customer }} · {{ row.channel }}</p><p>Total {{ row.total|money:store_business.currency_symbol }} · Paid {{ row.paid|money:store_business.currency_symbol }} · Due {{ row.due|money:store_business.currency_symbol }}</p></div>{% endfor %}</div>
+  {% else %}<p class="text-sm text-stone-600">Payment: Not applicable.</p>{% endif %}
+  <button data-button-surface type="button" onclick="window.print()" class="print-hidden mt-6 w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold text-stone-800">Download / print {{ activity_document.title|lower }}</button>
+</div>

@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% load core_extras %}
+{% block content %}
+<div class="space-y-4" data-readonly-detail>
+  <div class="flex flex-wrap justify-between items-center gap-3"><h1 class="text-xl font-display font-semibold">{{ target_name|default:title }}</h1><a class="workspace-action" href="{% url 'market_stock' %}{% if start %}?date={{ start|date:'Y-m-d' }}{% endif %}">Back to Market Stock</a></div>
+  <form method="get" class="workspace-card p-4" aria-label="Outflow activity dates">
+    <input type="hidden" name="name" value="{{ target_name }}"><input type="hidden" name="purpose" value="{{ purpose }}">
+    <div class="flex flex-wrap gap-3 items-end">{% for field in date_form %}<div><label class="block text-xs mb-1" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endfor %}<button class="workspace-action workspace-action-primary">Show activity</button></div>
+    {% if date_form.non_field_errors %}<div role="alert">{{ date_form.non_field_errors }}</div>{% endif %}
+  </form>
+  {% if start %}
+  <section id="outflow-records" class="workspace-card p-4">
+    <div class="flex flex-wrap justify-between items-center gap-3"><h2 class="font-semibold">{{ title }} · {{ start|date:"j M Y" }} – {{ end|date:"j M Y" }}</h2><form method="get" action="{% url 'market_outflow_document' kind %}" target="_blank" class="flex flex-wrap items-center gap-3" aria-label="Create period document"><input type="hidden" name="start" value="{{ start|date:'Y-m-d' }}"><input type="hidden" name="end" value="{{ end|date:'Y-m-d' }}"><input type="hidden" name="name" value="{{ target_name }}"><input type="hidden" name="purpose" value="{{ purpose }}">{% if kind == 'physical_sale' or kind == 'online' or kind == 'customer' %}<label class="inline-flex items-center gap-2 text-xs"><input type="checkbox" name="include_outstanding" value="1">Include earlier outstanding balances</label>{% endif %}<button class="workspace-action">{% if kind == 'store' %}Stock transfer{% elif kind == 'non_stock' %}Stock issue{% else %}Invoice{% endif %} this period</button></form></div>
+    <div class="mt-3 overflow-x-auto"><table class="w-full text-sm"><thead><tr><th class="p-2 text-left">Date / record</th><th class="p-2 text-left">Details</th><th class="p-2 text-right">Value / quantity</th><th class="p-2 text-left">Action</th></tr></thead><tbody>
+    {% for row in settlements %}<tr><td class="p-2">{{ row.date|date:"j M Y" }} · Sale #{{ row.sale }}</td><td class="p-2">{{ row.customer }} · {{ row.status }}<div class="text-xs">Paid {{ row.paid|money:biz.currency_symbol }} · Due {{ row.due|money:biz.currency_symbol }}</div></td><td class="p-2 text-right font-mono">{{ row.total|money:biz.currency_symbol }}</td><td class="p-2">{% if vertical_ui.uses_production and module_permissions.inventory.edit and module_permissions.sales.edit and module_permissions.finance.edit %}<a class="underline" href="{% url 'market_stock_release_edit' row.sale %}">Edit sale</a>{% endif %}</td></tr>{% endfor %}
+    {% for row in outflows %}<tr><td class="p-2">{{ row.date|date:"j M Y" }} · #{{ row.pk }}</td><td class="p-2">{% if kind == 'non_stock' %}{{ row.finished_good.name }} · {{ row.recipient }} · {{ row.get_reason_display }}{% else %}{{ row.lot.finished_good.name }} · {{ row.note }}{% endif %}</td><td class="p-2 text-right font-mono">{% if kind == 'non_stock' %}{{ row.display_quantity|product_quantity:row.finished_good }}{% else %}{{ row.display_quantity|product_quantity:row.lot.finished_good }}{% endif %}</td><td class="p-2">{% if kind == 'non_stock' and row.stock_source == 'market_stock' and module_permissions.inventory.edit %}<a class="underline" href="{% url 'market_outflow_edit' row.pk %}">Edit issue</a>{% endif %}</td></tr>{% endfor %}
+    {% if not settlements and not outflows %}<tr><td class="p-3" colspan="4">No records in this period.</td></tr>{% endif %}
+    </tbody></table></div>
+    {% include "sales/_activity_pagination.html" with page=activity_page parameter="page" label="Records" anchor="outflow-records" extra_query=activity_query %}
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,4 +1,4 @@
-"""Audited corrections of standalone customer releases; cash receipts stay fixed."""
+"""Audited corrections of standalone Market Stock sales; cash receipts stay fixed."""
 from decimal import Decimal
 
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -23,8 +23,8 @@ def can_correct_release(user, business):
 
 
 def release_correction_error(sale):
-    if sale.source != 'distribution_order' or sale.linked_order_id:
-        return 'Only standalone Market Stock customer releases can be edited here.'
+    if sale.source not in {'distribution_order', 'online_order', 'walkin'} or sale.linked_order_id:
+        return 'Only standalone Market Stock sales and customer releases can be edited here.'
     if DistributionReturn.raw_objects.filter(business=sale.business, sale_item__sale=sale).exists():
         return 'This release already has recorded returns. Its original product lines must remain linked to those returns.'
     if EInvoice.raw_objects.filter(business=sale.business, sale=sale).filter(
@@ -55,7 +55,7 @@ def include_original_quantities(available, sale):
 
 
 @transaction.atomic
-def correct_market_release(*, business, sale_id, items, customer, reason, revision, user):
+def correct_market_release(*, business, sale_id, items, customer, reason, revision, user, customer_name=""):
     if not can_correct_release(user, business):
         raise PermissionDenied('Inventory, Sales and Finance edit access are required.')
     sale = Sale.objects.select_for_update().get(business=business, pk=sale_id)
@@ -69,10 +69,16 @@ def correct_market_release(*, business, sale_id, items, customer, reason, revisi
         raise ValidationError(error)
     if not items or len({row['finished_good'].pk for row in items}) != len(items):
         raise ValidationError('Add at least one product, with one row per product.')
-    try:
-        customer = Customer.raw_objects.select_for_update().get(business=business, pk=customer.pk, active=True)
-    except Customer.DoesNotExist:
+    if customer is not None:
+        try:
+            customer = Customer.raw_objects.select_for_update().get(business=business, pk=customer.pk, active=True)
+        except Customer.DoesNotExist:
+            raise ValidationError('Choose an active customer from this business.')
+    elif sale.source == 'distribution_order':
         raise ValidationError('Choose an active customer from this business.')
+    customer_name = customer.name if customer else (customer_name or sale.customer).strip()
+    if not customer_name or len(customer_name) > 120:
+        raise ValidationError('Enter the customer name, up to 120 characters.')
     segment = ledger.segment_for(business, sale.date)
     ledger.check_scope_date(sale.date)
     if segment == ledger.SEGMENT_BACKLOG and not ledger.can_enter_backlog(user, business):
@@ -109,6 +115,7 @@ def correct_market_release(*, business, sale_id, items, customer, reason, revisi
                'unit_cost': str(i.unit_cost), 'discount': str(i.discount),
                'production_batch': i.production_batch_id, 'price_unit': i.price_unit, 'value': str(i.line_total)} for i in old_items]
     old_customer = {'id': sale.customer_master_id, 'name': sale.customer}
+    same_customer = old_customer['id'] == customer.pk if customer else old_customer['id'] is None and old_customer['name'] == customer_name
     movement_totals = list(MarketStockMovement.objects.filter(business=business, sale=sale,
         movement_type=MarketStockMovement.RELEASE).order_by().values('lot_id').annotate(total=Sum('quantity')))
     lots = {lot.pk: lot for lot in MarketStockLot.objects.select_for_update().filter(
@@ -139,26 +146,26 @@ def correct_market_release(*, business, sale_id, items, customer, reason, revisi
         expected[item.finished_good_id] = expected.get(item.finished_good_id, ZERO) + item.total_units
     if restored != expected:
         raise ValidationError('The release lines do not match their stock movements. Review the stock history before correcting it.')
-    if segment != ledger.SEGMENT_BACKLOG:
+    if segment != ledger.SEGMENT_BACKLOG and sale.source != "walkin":
         for pk, quantity in restored.items():
             goods[pk].total_delivered_to_customers -= quantity
             goods[pk].save(update_fields=['total_delivered_to_customers', 'updated_at'])
     # Explicit compensating movements above reverse the allocation. No stock or
     # payment reversal depends on deleting these replaceable invoice lines.
     sale.items.all().delete()
-    sale.customer_master, sale.customer = customer, customer.name
+    sale.customer_master, sale.customer = customer, customer_name
     sale.save(update_fields=['customer_master', 'customer', 'updated_at'])
     for row in items:
         _allocate_market_stock_line(business=business, good=goods[row['finished_good'].pk], customer=customer,
             quantity=row['quantity'], date=sale.date, user=user, note=f'Corrected release: {reason}', sale=sale,
-            price_snapshot=original_prices.get(row['finished_good'].pk) if old_customer['id'] == customer.pk else None)
+            price_snapshot=original_prices.get(row['finished_good'].pk) if same_customer else None)
     if not payments and paid > 0:
         CustomerPayment.raw_objects.create(business=business, created_by=user, sale=sale, date=sale.date,
-            customer=customer.name, customer_master=customer, amount=paid, payment_method=sale.payment_method,
+            customer=customer_name, customer_master=customer, amount=paid, payment_method=sale.payment_method,
             account=sale.account, reference=f'RELEASE-OPEN-{sale.pk}',
             notes='Original receipt preserved during release correction. No additional cash received.')
-    elif old_customer['id'] != customer.pk or old_customer['name'] != customer.name:
-        CustomerPayment.raw_objects.filter(business=business, sale=sale).update(customer_master=customer, customer=customer.name)
+    elif old_customer['id'] != (customer.pk if customer else None) or old_customer['name'] != customer_name:
+        CustomerPayment.raw_objects.filter(business=business, sale=sale).update(customer_master=customer, customer=customer_name)
     new_total = sale.total
     sale.transaction_type = 'paid' if paid >= new_total else ('partial' if paid > 0 else 'unpaid')
     sale.save(update_fields=['transaction_type', 'updated_at'])
@@ -167,7 +174,7 @@ def correct_market_release(*, business, sale_id, items, customer, reason, revisi
         invoice.error = 'Release corrected; prepare this invoice again before submission.'
         invoice.save(update_fields=['status', 'payload', 'error', 'updated_at'])
     audit(business, user, 'correct_market_release', sale, f'Customer release corrected: {reason}', {
-        'reason': reason, 'old_customer': old_customer, 'new_customer': {'id': customer.pk, 'name': customer.name},
+        'reason': reason, 'old_customer': old_customer, 'new_customer': {'id': customer.pk if customer else None, 'name': customer_name},
         'before': before, 'after': [{'product': i.finished_good_id, 'quantity': str(i.total_units),
             'price': str(i.price), 'discount': str(i.discount), 'unit_cost': str(i.unit_cost),
             'production_batch': i.production_batch_id, 'value': str(i.line_total)} for i in sale.items.all()],

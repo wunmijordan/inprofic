@@ -4,8 +4,8 @@ from decimal import Decimal
 
 from django import forms
 from django.core.paginator import Paginator
-from django.db.models import F, OuterRef, Q, Subquery, Sum, Value
-from django.db.models.functions import Coalesce, Greatest
+from django.db.models import Exists, OuterRef, Q, Subquery, Sum, Value
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from accounts.services import user_has_permission
@@ -25,11 +25,22 @@ class ActivityDates(forms.Form):
         return data
 
 
-def customer_activity_context(request, customer):
+def customer_sales(business, customer):
+    return Sale.objects.filter(business=business).filter(
+        Q(customer_master=customer) | Q(customer_master__isnull=True, customer=customer.name)
+    ).exclude(linked_order__status='reversed')
+
+
+def activity_dates(request):
     day = timezone.localdate()
     values = {'start': request.GET.get('start',day.replace(day=1).isoformat()),
               'end': request.GET.get('end',day.isoformat())}
-    form = ActivityDates(values)
+    return ActivityDates(values)
+
+
+def customer_activity_context(request, customer):
+    day = timezone.localdate()
+    form = activity_dates(request)
     result = {'customer':customer,'date_form':form,'period_links':[
         ('This week', (day-timedelta(days=day.weekday())).isoformat(),day.isoformat()),
         ('This month', day.replace(day=1).isoformat(),day.isoformat()),
@@ -40,22 +51,38 @@ def customer_activity_context(request, customer):
     if not form.is_valid():
         return result
     start,end = form.cleaned_data['start'],form.cleaned_data['end']
-    all_sales = Sale.objects.filter(business=request.business).filter(
-        Q(customer_master=customer) | Q(customer_master__isnull=True,customer=customer.name))
+    all_sales = customer_sales(request.business, customer)
     sales = all_sales.filter(date__range=(start,end)).select_related('linked_order').prefetch_related('items__finished_good__portion_profile', return_prefetch('items__distribution_returns'))
     items = SaleItem.objects.filter(sale__in=sales)
-    money_field,line,_cost,units = _sale_expressions(prefix='')
-    # Aggregate open balances in SQL rather than loading every historic line or
-    # payment into a small customer modal. Payments include later ledger periods.
+    money_field,line,_cost,units = _sale_expressions(prefix='', returns_through=end)
+    # Aggregate each invoice in SQL without expanding its lines into the UI.
+    # Lifetime receipt existence distinguishes a genuinely paid-at-creation sale
+    # from one whose status changed after this period ended.
     invoice_value = SaleItem.objects.filter(sale_id=OuterRef('pk')).values('sale_id').annotate(value=Sum(line)).values('value')[:1]
-    paid_value = CustomerPayment.raw_objects.filter(business=request.business,sale_id=OuterRef('pk')).values('sale_id').annotate(value=Sum('amount')).values('value')[:1]
-    zero = Value(Decimal('0'),output_field=money_field)
-    open_sales = all_sales.filter(source__in=('distribution_order','online_order'),transaction_type__in=('unpaid','partial')).exclude(linked_order__status='reversed')
-    result['outstanding'] = open_sales.annotate(
-        invoice_value=Coalesce(Subquery(invoice_value,output_field=money_field),zero),
-        paid_value=Coalesce(Subquery(paid_value,output_field=money_field),zero),
-    ).aggregate(value=Sum(Greatest(F('invoice_value')-F('paid_value'),zero,output_field=money_field)))['value'] or Decimal('0')
-    result.update(start=start,end=end,sales=Paginator(sales.order_by('-date','-pk'),25).get_page(request.GET.get('sales_page')),
+    all_payments = CustomerPayment.raw_objects.filter(business=request.business, sale_id=OuterRef('pk'))
+    paid_value = all_payments.filter(date__lte=end).values('sale_id').annotate(value=Sum('amount')).values('value')[:1]
+    zero = Value(Decimal('0'), output_field=money_field)
+    period_balances = sales.prefetch_related(None).select_related(None).annotate(
+        invoice_value=Coalesce(Subquery(invoice_value, output_field=money_field), zero),
+        has_receipts=Exists(all_payments),
+        paid_value=Coalesce(Subquery(paid_value, output_field=money_field), zero),
+    ).values('invoice_value', 'has_receipts', 'paid_value', 'transaction_type')
+    # Combine the small aggregate rows in Python. Repeating the nested pricing
+    # and return subquery inside CASE/MAX exceeds SQLite's parser depth.
+    result['outstanding'] = sum((
+        max(row['invoice_value'] - (row['invoice_value'] if row['transaction_type'] == 'paid' and not row['has_receipts']
+                                   else row['paid_value']), Decimal('0'))
+        for row in period_balances.iterator()
+    ), Decimal('0'))
+    page = Paginator(sales.order_by('-date','-pk'),25).get_page(request.GET.get('sales_page'))
+    from .activity_documents import sale_document
+    page.object_list = list(page.object_list)
+    settlement = sale_document(request.business, Sale.objects.filter(pk__in=[sale.pk for sale in page.object_list]), start=start, end=end)
+    by_id = {row['sale']: row for row in settlement['settlements']}
+    for sale in page.object_list:
+        sale.activity_payment_status = by_id[sale.pk]['status']
+        sale.activity_net_total = by_id[sale.pk]['total']
+    result.update(start=start,end=end,sales=page,
         sale_count=sales.count(),invoiced=items.aggregate(value=Sum(line))['value'] or Decimal('0'),
         product_totals=items.values('finished_good__name','finished_good__unit').annotate(quantity=Sum(units),value=Sum(line)).order_by('finished_good__name'))
     if user_has_permission(request.user,request.business,'production','view') and request.business.uses_production:

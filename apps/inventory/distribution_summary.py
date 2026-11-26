@@ -222,6 +222,7 @@ def distribution_summaries(request, *, lots=None, directory=None):
             releases = row.setdefault('release_ids', [])
             if sale_id not in releases:
                 releases.append(sale_id)
+        return row
 
     if business.uses_production:
         source_lots = list(lots) if lots is not None else list(MarketStockLot.objects.filter(business=business).select_related('finished_good'))
@@ -275,11 +276,11 @@ def distribution_summaries(request, *, lots=None, directory=None):
             elif kind == MarketStockMovement.RELEASE:
                 if movement['sale__source'] == 'walkin':
                     row['physical_sold'] -= quantity
-                    destination(pk, name, unit, 'Physical Store sales', -quantity, 'physical_sale')
+                    destination(pk, name, unit, 'Physical Store sales', -quantity, 'physical_sale', sale_id=movement['sale_id'])
                 elif movement['sale__source'] == 'online_order':
                     row['online_sold'] -= quantity
                     destination(pk, name, unit, movement['sale__customer'] or 'Online customer', -quantity, 'online',
-                        customer_id=movement['sale__customer_master_id'] or movement['customer_id'])
+                        customer_id=movement['sale__customer_master_id'] or movement['customer_id'], sale_id=movement['sale_id'])
                 else:
                     row['distributed'] -= quantity
                     destination(pk, name, unit, movement['sale__customer'] or movement['customer__name'] or 'Customer (name unavailable)', -quantity, customer_id=movement['sale__customer_master_id'] or movement['customer_id'], sale_id=movement['sale_id'])
@@ -322,6 +323,7 @@ def distribution_summaries(request, *, lots=None, directory=None):
             row['other_change'] = row['closing'] - row['opening'] - row['received'] + row['distributed']
     from .models import StockAdjustment
     from .product_use import product_issues
+    from .outflow_activity import activity_url
     issues = list(product_issues(business, day, day, stock_source=StockAdjustment.SOURCE_MARKET if business.uses_production else StockAdjustment.SOURCE_PHYSICAL))
     issue_cost = sum((-issue.value for issue in issues), ZERO)
     for issue in issues:
@@ -330,12 +332,19 @@ def distribution_summaries(request, *, lots=None, directory=None):
         if not business.uses_production:
             row['issued'] -= issue.quantity
             row['other_change'] -= issue.quantity
-        destination(good.pk, good.name, good.unit,
+        target = destination(good.pk, good.name, good.unit,
             f'{issue.get_reason_display()} · {issue.recipient or "Recipient not recorded"}', -issue.quantity, 'non_stock')
+        target['activity_url'] = activity_url('non_stock', day, name=issue.recipient, purpose=issue.reason)
+        if issue.stock_source == StockAdjustment.SOURCE_MARKET:
+            target.setdefault('issue_ids', []).append(issue.pk)
     rows = sorted((row for row in products.values() if any(row[key] for key in ['opening','received','returned','distributed','online_sold','physical_sold','physical','issued','closing','other_change'])), key=lambda row: (not (row['distributed'] or row['made'] or row['physical']), row['product'].casefold()))
     allocations = sorted((row for row in destinations.values() if row['quantity']), key=lambda row: (row['product'].casefold(), row['destination'].casefold()))
     goods = {good.pk: good for good in FinishedGood.objects.filter(
         business=business, pk__in=products).select_related('portion_profile')}
+    for row in allocations:
+        if row['kind'] in {'physical_sale', 'online', 'store'} or (row['kind'] == 'customer' and not row.get('customer_id')):
+            row['activity_url'] = activity_url(row['kind'], day,
+                name=row['destination'] if row['kind'] in {'online', 'customer'} else '')
     for row in [*rows, *allocations]:
         row['finished_good'] = goods.get(row['product_id'])
         row['quantity_label'] = format_product_quantity(row.get('quantity',ZERO),row['finished_good'],unit=row['unit'])

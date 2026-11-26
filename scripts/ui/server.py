@@ -57,6 +57,22 @@ with tempfile.TemporaryDirectory(prefix='inprofic-ui-') as directory:
         cake = FinishedGood.raw_objects.create(business=business,name='Fixture Cake',unit='piece',stock=None,reorder_level=None)
         FinishedGoodChannelPrice.objects.create(finished_good=cake,channel='distribution',price=500)
         MarketStockLot.objects.create(business=business,finished_good=cake,received_date=day,quantity_received=20,quantity_available=20)
+    if os.environ.get('INPROFIC_UI_OUTFLOW_FIXTURE') == '1':
+        from inventory.models import FinishedGoodChannelPrice
+        from inventory.services import (release_market_stock_items, sell_market_stock_items,
+            sell_market_stock_online, transfer_market_stock_to_physical, issue_product_stock)
+        FinishedGoodChannelPrice.objects.get_or_create(finished_good=good, channel='distribution', defaults={'price':250})
+        recipient = Customer.raw_objects.get(business=business, name='Customer 00')
+        till = CashAccount.raw_objects.get(business=business, name='Fixture Till')
+        release_market_stock_items(business=business, items=[{'finished_good':good, 'quantity':2}],
+            customer=recipient, date=day, payment_status='unpaid', payment_method='', account=None, user=admin)
+        sell_market_stock_items(business=business, items=[{'finished_good':good, 'quantity':2}],
+            date=day, payment_method='Cash', account=till, user=admin)
+        sell_market_stock_online(business=business, items=[{'finished_good':good, 'quantity':3}],
+            date=day, payment_status='unpaid', payment_method='', account=None, user=admin, customer_name='Online guest')
+        issue_product_stock(business=business, good=good, quantity=1, date=day, stock_source='market_stock',
+            reason='staff', recipient='Bakery team', description='Lunch', user=admin)
+        transfer_market_stock_to_physical(business=business, good=good, quantity=2, date=day, user=admin, reason='Shop stock')
     if os.environ.get('INPROFIC_UI_COMPLETION_FIXTURE') == '1':
         from datetime import timedelta
         from production.models import Order, OrderItem

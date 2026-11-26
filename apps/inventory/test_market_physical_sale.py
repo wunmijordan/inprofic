@@ -43,7 +43,7 @@ class MarketPhysicalSaleTests(TestCase):
         row=summary['distribution_rows'][0]
         self.assertEqual((row['opening'],row['physical_sold'],row['distributed'],row['closing']),(10,3,0,7))
         self.assertEqual(summary['physical_sales_value'],300)
-        self.assertIn('Sold in Physical Store: 3 loaves',summary['distribution_share_text'])
+        self.assertIn('Physical Store sales: 3 loaves',summary['distribution_share_text'])
         self.assertNotIn('Reading this report',summary['distribution_share_text'])
         self.assertNotIn('Written off:',summary['distribution_share_text'])
 

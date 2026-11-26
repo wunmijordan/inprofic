@@ -304,7 +304,8 @@ def _market_stock_request_date(request):
 
 
 def _market_form_response(request, form, *, title, intro, submit_label, formset=None, edit_sale=None, edit_error=''):
-    online = isinstance(form, MarketStockOnlineSaleForm)
+    online = isinstance(form, MarketStockOnlineSaleForm) or bool(edit_sale and edit_sale.source == "online_order")
+    physical = isinstance(form, MarketStockPhysicalSaleForm) or bool(edit_sale and edit_sale.source == "walkin")
     on_date = edit_sale.date if edit_sale else _market_stock_request_date(request)
     available_by_product = market_stock_availability(request.business, on_date)
     if edit_sale:
@@ -314,21 +315,24 @@ def _market_form_response(request, form, *, title, intro, submit_label, formset=
         from sales.models import CustomerProductPrice
         for good in FinishedGood.objects.filter(business=request.business, pk__in=available_by_product).select_related('portion_profile').prefetch_related('channel_prices'):
             stock = available_by_product[str(good.pk)]
-            price = good.selling_price_for('online') if online else good.selling_price_for('physical_store') if isinstance(form, MarketStockPhysicalSaleForm) else good.explicit_selling_price_for('distribution')
+            price = good.selling_price_for('online') if online else good.selling_price_for('physical_store') if physical else good.explicit_selling_price_for('distribution')
             stock['price'] = str(price) if price is not None else None
             stock['customer_prices'] = {}
-        if not isinstance(form, MarketStockPhysicalSaleForm):
+        if not physical:
             for price in CustomerProductPrice.objects.filter(business=request.business, customer__business=request.business,
                     finished_good_id__in=available_by_product, channel='online' if online else 'distribution'):
                 available_by_product[str(price.finished_good_id)]['customer_prices'][str(price.customer_id)] = str(price.price)
-    if edit_sale and edit_sale.customer_master_id:
+    if edit_sale:
         from core.quantities import product_portion
         for item in edit_sale.items.select_related('finished_good__portion_profile'):
             stock = available_by_product.get(str(item.finished_good_id))
             if stock is not None:
                 # Show the saved net price in today's displayed selling unit.
-                stock['customer_prices'][str(edit_sale.customer_master_id)] = str(
-                    (item.price - item.discount) * product_portion(item.finished_good)[1] / item.price_unit_quantity)
+                saved_price = str((item.price - item.discount) * product_portion(item.finished_good)[1] / item.price_unit_quantity)
+                if edit_sale.customer_master_id:
+                    stock['customer_prices'][str(edit_sale.customer_master_id)] = saved_price
+                else:
+                    stock['price'] = saved_price
     if request.method == "GET" and request.GET.get("availability") == "1":
         return JsonResponse({"products": available_by_product, "date": on_date.isoformat()})
     return render(request, "inventory/market_stock_form.html", {
@@ -340,7 +344,7 @@ def _market_form_response(request, form, *, title, intro, submit_label, formset=
         "available_by_product": available_by_product,
         "stock_as_of": on_date.isoformat(),
         "edit_sale": edit_sale, "edit_error": edit_error,
-        "market_stock_action": "online" if online else "sale" if isinstance(form, MarketStockPhysicalSaleForm) else "transfer" if isinstance(form, MarketStockTransferForm) else "release",
+        "market_stock_action": "online" if online else "sale" if physical else "transfer" if isinstance(form, MarketStockTransferForm) else "release",
     })
 
 
@@ -402,15 +406,15 @@ def market_stock_release_edit(request, pk):
         quantity = row['quantity']
         if quantity == quantity.quantize(Decimal('.01')):
             row['quantity'] = quantity.quantize(Decimal('.01'))
-    form = MarketStockReleaseCorrectionForm(request.POST or None, business=request.business,
-        initial={'date': sale.date, 'customer': sale.customer_master_id, 'revision': str(sale.updated_at)})
+    form = MarketStockReleaseCorrectionForm(request.POST or None, business=request.business, sale=sale,
+        initial={'date': sale.date, 'customer': sale.customer_master_id, 'customer_name': sale.customer, 'revision': str(sale.updated_at)})
     formset = MarketStockReleaseItemFormSet(request.POST or None, prefix='items', initial=list(initial.values()),
         form_kwargs={'business': request.business, 'on_date': sale.date, 'include_product_ids': list(initial)})
     if request.method == 'POST' and form.is_valid() and formset.is_valid():
         try:
             correct_market_release(business=request.business, sale_id=sale.pk,
                 items=[row.cleaned_data for row in formset if row.cleaned_data and not row.cleaned_data.get('DELETE')],
-                customer=form.cleaned_data['customer'], reason=form.cleaned_data['reason'],
+                customer=form.cleaned_data.get('customer'), customer_name=form.cleaned_data.get('customer_name', ''), reason=form.cleaned_data['reason'],
                 revision=form.cleaned_data['revision'], user=request.user)
         except ValidationError as exc:
             form.add_error(None, exc)
@@ -418,8 +422,8 @@ def market_stock_release_edit(request, pk):
             messages.success(request, f'Release #{sale.pk} corrected. Recorded cash payments were preserved.')
             return redirect(reverse('market_stock') + '?date=' + sale.date.isoformat() + '#distribution-summary')
     return _market_form_response(request, form, formset=formset, edit_sale=sale, edit_error=error,
-        title=f'Edit customer release #{sale.pk} · {sale.customer}', submit_label='Save correction',
-        intro='Correct customer or product quantities with a reason. The release date and recorded cash stay fixed. Existing product prices are retained; a changed customer or newly added product uses its configured Distribution price. Any changed balance remains available in Finance.')
+        title=f"Edit {'customer release' if sale.source == 'distribution_order' else 'Market Stock sale'} #{sale.pk} · {sale.customer}", submit_label='Save correction',
+        intro='Correct customer or product quantities with a reason. The release date and recorded cash stay fixed. Existing product prices are retained; a changed customer or newly added product uses its configured channel price. Any changed balance remains available in Finance.')
 
 
 @login_required

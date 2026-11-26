@@ -68,4 +68,4 @@ class MarketOnlineSaleTests(TestCase):
             'items-0-finished_good': self.good.pk, 'items-0-quantity': '2'})
         self.assertEqual(response.status_code, 302)
         self.assertEqual(Sale.raw_objects.get().total, 3000)
-        self.assertContains(self.client.get(reverse('market_stock')), 'Sell online')
+        self.assertContains(self.client.get(reverse('market_stock')), 'Sell Online')

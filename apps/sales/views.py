@@ -309,3 +309,25 @@ def customer_activity(request, pk):
         return render(request,'403.html',status=403)
     customer = get_object_or_404(Customer.objects.filter(business=request.business),pk=pk)
     return render(request,'sales/customer_activity.html',customer_activity_context(request,customer))
+
+
+@login_required
+@require_GET
+def customer_activity_invoice(request, pk):
+    from accounts.services import user_has_permission
+    from .customer_activity import activity_dates, customer_activity_context, customer_sales
+    from .activity_documents import render_document, sale_document
+    if not user_has_permission(request.user, request.business, 'sales', 'view'):
+        return render(request, '403.html', status=403)
+    customer = get_object_or_404(Customer.objects.filter(business=request.business), pk=pk)
+    dates = activity_dates(request)
+    if not dates.is_valid():
+        return render(request, 'sales/customer_activity.html', customer_activity_context(request, customer), status=400)
+    start, end = dates.cleaned_data['start'], dates.cleaned_data['end']
+    include_earlier = request.GET.get('include_outstanding') == '1'
+    sales = customer_sales(request.business, customer).filter(date__lte=end)
+    if not include_earlier:
+        sales = sales.filter(date__gte=start)
+    sales = sales.order_by('date', 'pk')
+    return render_document(request, sale_document(request.business, sales, start=start, end=end, include_earlier=include_earlier), name=customer.name, customer=customer,
+        start=start, end=end, reference=f'C{customer.pk}-{start:%Y%m%d}-{end:%Y%m%d}')
